@@ -5,7 +5,7 @@ import heroImg from './assets/hero.png'
 import './App.css'
 
 function App() {
-  const [number, setNumber] = useState(0)
+  const [count, setCount] = useState(0)
 
   return (
     <>
@@ -24,9 +24,9 @@ function App() {
         <button
           type="button"
           className="counter"
-          onClick={() => setNumber((number) => number + 1)}
+          onClick={() => setCount((count) => count + 1)}
         >
-          Number is {number}
+          Count is {count}
         </button>
       </section>
 
