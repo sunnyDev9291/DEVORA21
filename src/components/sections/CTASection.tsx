@@ -3,7 +3,7 @@ import { CONTACT_INFO } from "@/lib/constants";
 
 export default function CTASection() {
   return (
-    <section className="bg-navy-950 py-24 sm:py-32">
+    <section className="bg-slate-50 dark:bg-navy-950 py-24 sm:py-32">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         <div className="relative rounded-3xl bg-gradient-to-br from-blue-600/20 via-indigo-600/10 to-navy-900 border border-blue-500/20 p-10 sm:p-16 overflow-hidden">
           {/* Glow */}
@@ -11,15 +11,14 @@ export default function CTASection() {
           <div className="absolute -top-20 -right-20 w-64 h-64 bg-blue-600/10 blur-[80px] rounded-full pointer-events-none" />
 
           <div className="relative">
-            <p className="text-blue-400 text-sm font-semibold tracking-widest uppercase mb-4">
-              Ready to Level Up?
-            </p>
+
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-5 tracking-tight">
-              Let&apos;s Work Together
+              Not sure where to start?
             </h2>
             <p className="text-slate-400 text-lg max-w-xl mx-auto mb-10">
-              Book a free 30-minute consultation and let&apos;s figure out the fastest
-              path to your next engineering milestone.
+              Book a free 30-minute call. Tell us what you&apos;re dealing with
+              and we&apos;ll give you an honest answer on how we can help —
+              no pitch, no pressure.
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -27,7 +26,7 @@ export default function CTASection() {
                 href="/contact"
                 className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-xl shadow-blue-600/30 hover:shadow-blue-500/40 hover:-translate-y-0.5"
               >
-                Book a Free Consultation
+                Get a Free Consultation
               </Link>
               <a
                 href={CONTACT_INFO.whatsapp}

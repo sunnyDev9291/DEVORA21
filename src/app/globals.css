@@ -10,6 +10,7 @@
 
 * {
   box-sizing: border-box;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 html {
@@ -41,7 +42,7 @@ body {
 
 @layer utilities {
   .text-gradient {
-    @apply text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-blue-500 to-indigo-500;
+    @apply text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600;
   }
   .bg-glass {
     background: rgba(255, 255, 255, 0.03);

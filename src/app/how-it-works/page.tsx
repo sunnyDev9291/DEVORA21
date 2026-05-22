@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import HowItWorksSection from "@/components/sections/HowItWorksSection";
 import CTASection from "@/components/sections/CTASection";
@@ -60,15 +61,24 @@ export default function HowItWorksPage() {
   return (
     <>
       {/* Hero */}
-      <section className="bg-navy-950 pt-32 pb-16">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <p className="text-blue-400 text-sm font-semibold tracking-widest uppercase mb-3">
-            The Process
-          </p>
+      <section className="relative pt-32 pb-20 overflow-hidden min-h-[480px] flex items-center">
+        <div className="absolute inset-0">
+          <Image
+            src="/bg.jpeg"
+            alt=""
+            fill
+            className="object-cover object-center"
+            priority
+            quality={80}
+          />
+          <div className="absolute inset-0 bg-slate-900/60 dark:bg-navy-950/80" />
+        </div>
+        <div className="relative z-10 w-full max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+
           <h1 className="text-4xl sm:text-5xl font-bold text-white mb-5 tracking-tight">
             Simple. Clear. Effective.
           </h1>
-          <p className="text-slate-400 text-lg">
+          <p className="text-slate-300 text-lg">
             We designed our process to get you results fast — with no wasted time
             and no guesswork.
           </p>
@@ -78,7 +88,7 @@ export default function HowItWorksPage() {
       <HowItWorksSection />
 
       {/* Deep-dive detail */}
-      <section className="bg-navy-950 py-24 sm:py-32">
+      <section className="bg-slate-50 dark:bg-navy-950 py-24 sm:py-32">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="space-y-16">
             {details.map((item, index) => (
@@ -96,12 +106,12 @@ export default function HowItWorksPage() {
                 </div>
                 {/* Content */}
                 <div className="flex-1">
-                  <h2 className="text-white text-2xl font-bold mb-1">{item.title}</h2>
+                  <h2 className="text-slate-900 dark:text-white text-2xl font-bold mb-1">{item.title}</h2>
                   <p className="text-blue-400 text-sm font-medium mb-4">{item.heading}</p>
-                  <p className="text-slate-400 leading-relaxed mb-5">{item.body}</p>
+                  <p className="text-slate-500 dark:text-slate-400 leading-relaxed mb-5">{item.body}</p>
                   <ul className="space-y-2">
                     {item.points.map((pt) => (
-                      <li key={pt} className="flex items-center gap-2.5 text-sm text-slate-300">
+                      <li key={pt} className="flex items-center gap-2.5 text-sm text-slate-500 dark:text-slate-300">
                         <svg className="w-4 h-4 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                         </svg>
@@ -117,10 +127,10 @@ export default function HowItWorksPage() {
       </section>
 
       {/* CTA */}
-      <section className="bg-navy-900 py-16">
+      <section className="bg-white dark:bg-navy-900 py-16">
         <div className="max-w-xl mx-auto px-4 text-center">
-          <h2 className="text-white text-2xl font-bold mb-3">Ready to get started?</h2>
-          <p className="text-slate-400 mb-6">Your free consultation is one click away.</p>
+          <h2 className="text-slate-900 dark:text-white text-2xl font-bold mb-3">Ready to get started?</h2>
+          <p className="text-slate-500 dark:text-slate-400 mb-6">Your free consultation is one click away.</p>
           <Link
             href="/contact"
             className="inline-flex bg-blue-600 hover:bg-blue-500 text-white font-semibold px-8 py-4 rounded-xl transition-all shadow-lg shadow-blue-600/25"

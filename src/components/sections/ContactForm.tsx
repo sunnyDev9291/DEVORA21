@@ -56,9 +56,9 @@ export default function ContactForm() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
         </div>
-        <h3 className="text-white text-xl font-bold mb-2">Message Sent!</h3>
+        <h3 className="text-white text-xl font-bold mb-2">Got it — thanks!</h3>
         <p className="text-slate-400 text-sm max-w-xs">
-          We&apos;ll be in touch within 24 hours. You can also reach us instantly on WhatsApp.
+          We&apos;ll read your message and get back to you within 24 hours. For a faster reply, reach out on WhatsApp.
         </p>
         <a
           href={CONTACT_INFO.whatsapp}
@@ -77,7 +77,7 @@ export default function ContactForm() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
         <div>
           <label htmlFor="name" className="block text-sm font-medium text-slate-300 mb-1.5">
-            Full Name <span className="text-red-400">*</span>
+            Your Name <span className="text-red-400">*</span>
           </label>
           <input
             id="name"
@@ -86,13 +86,13 @@ export default function ContactForm() {
             required
             value={form.name}
             onChange={handleChange}
-            placeholder="John Smith"
+            placeholder="Jane Smith"
             className="w-full bg-white/[0.04] border border-white/[0.10] hover:border-white/[0.18] focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 rounded-xl px-4 py-3 text-white text-sm placeholder:text-slate-600 outline-none transition-all"
           />
         </div>
         <div>
           <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-1.5">
-            Email Address <span className="text-red-400">*</span>
+            Email <span className="text-red-400">*</span>
           </label>
           <input
             id="email"
@@ -109,7 +109,7 @@ export default function ContactForm() {
 
       <div>
         <label htmlFor="service" className="block text-sm font-medium text-slate-300 mb-1.5">
-          What do you need help with?
+          What are you working on?
         </label>
         <select
           id="service"
@@ -118,7 +118,7 @@ export default function ContactForm() {
           onChange={handleChange}
           className="w-full bg-navy-800 border border-white/[0.10] hover:border-white/[0.18] focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 rounded-xl px-4 py-3 text-sm text-white outline-none transition-all appearance-none"
         >
-          <option value="" className="text-slate-500">Select a service...</option>
+          <option value="" className="text-slate-500">Pick the closest option...</option>
           {services.map((s) => (
             <option key={s} value={s} className="bg-slate-800">{s}</option>
           ))}
@@ -127,7 +127,7 @@ export default function ContactForm() {
 
       <div>
         <label htmlFor="message" className="block text-sm font-medium text-slate-300 mb-1.5">
-          Tell us about your situation <span className="text-red-400">*</span>
+          What&apos;s going on? <span className="text-red-400">*</span>
         </label>
         <textarea
           id="message"
@@ -136,7 +136,7 @@ export default function ContactForm() {
           rows={5}
           value={form.message}
           onChange={handleChange}
-          placeholder="Briefly describe where you are and what you're trying to achieve..."
+          placeholder="Give us a quick overview — where you are, what you're trying to do, and what's blocking you. The more context, the better we can help."
           className="w-full bg-white/[0.04] border border-white/[0.10] hover:border-white/[0.18] focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 rounded-xl px-4 py-3 text-white text-sm placeholder:text-slate-600 outline-none transition-all resize-none"
         />
       </div>
@@ -155,7 +155,7 @@ export default function ContactForm() {
             Sending...
           </>
         ) : (
-          "Send Message & Book Consultation"
+          "Send Message"
         )}
       </button>
     </form>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { CONTACT_INFO } from "@/lib/constants";
 
 const serviceLinks = [
@@ -20,20 +21,24 @@ const companyLinks = [
 
 export default function Footer() {
   return (
-    <footer className="bg-navy-900 border-t border-white/[0.06]">
+    <footer className="bg-white dark:bg-navy-900 border-t border-slate-200 dark:border-white/[0.06]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 mb-12">
           {/* Brand col */}
           <div className="lg:col-span-2">
             <Link href="/" className="inline-flex items-center gap-2.5 mb-5">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-xs">
-                D21
-              </div>
-              <span className="text-white font-bold text-lg">
-                Devora<span className="text-blue-400">21</span>
+              <Image
+                src="/logo.png"
+                alt=""
+                width={72}
+                height={72}
+                className="h-12 w-auto object-contain"
+              />
+              <span className="text-2xl font-extrabold bg-gradient-to-r from-blue-500 to-violet-600 bg-clip-text text-transparent tracking-tight">
+                Devora21
               </span>
             </Link>
-            <p className="text-slate-500 text-sm leading-relaxed max-w-xs mb-6">
+            <p className="text-slate-500 dark:text-slate-500 text-sm leading-relaxed max-w-xs mb-6">
               Professional job support and technical consulting for software engineers who are ready to get hired, perform better, and solve real technical challenges.
             </p>
             <div className="flex items-center gap-2.5">
@@ -73,7 +78,7 @@ export default function Footer() {
 
           {/* Services */}
           <div>
-            <h4 className="text-white text-sm font-semibold mb-4 tracking-wide">Services</h4>
+            <h4 className="text-slate-900 dark:text-white text-sm font-semibold mb-4 tracking-wide">Services</h4>
             <ul className="space-y-2.5">
               {serviceLinks.map((link) => (
                 <li key={link.href}>
@@ -87,7 +92,7 @@ export default function Footer() {
 
           {/* Company */}
           <div>
-            <h4 className="text-white text-sm font-semibold mb-4 tracking-wide">Company</h4>
+            <h4 className="text-slate-900 dark:text-white text-sm font-semibold mb-4 tracking-wide">Company</h4>
             <ul className="space-y-2.5">
               {companyLinks.map((link) => (
                 <li key={link.href}>
@@ -102,10 +107,10 @@ export default function Footer() {
 
         {/* Bottom bar */}
         <div className="pt-8 border-t border-white/[0.06] flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p className="text-slate-600 text-sm">
+          <p className="text-slate-500 dark:text-slate-600 text-sm">
             © {new Date().getFullYear()} Devora21. All rights reserved.
           </p>
-          <p className="text-slate-700 text-sm">
+          <p className="text-slate-400 dark:text-slate-700 text-sm">
             Built for engineers, by engineers.
           </p>
         </div>
