@@ -7,9 +7,7 @@ export default function HowItWorksSection() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="text-center mb-16">
-          <p className="text-blue-400 text-sm font-semibold tracking-widest uppercase mb-3">
-            The Process
-          </p>
+
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
             How It Works
           </h2>

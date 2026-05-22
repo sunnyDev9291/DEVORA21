@@ -6,17 +6,20 @@ import { useInView } from "@/hooks/useInView";
 interface AnimatedCounterProps {
   value: string;
   label: string;
+  description: string;
+  icon: React.ReactNode;
+  gradient: string;
 }
 
 function parseValue(val: string): { number: number; suffix: string; prefix: string } {
   const prefix = val.startsWith("$") ? "$" : "";
-  const clean = val.replace(/[$+%k]/gi, "");
+  const clean = val.replace(/[$+%kh]/gi, "");
   const number = parseFloat(clean) || 0;
   const suffix = val.replace(prefix, "").replace(String(number), "");
   return { number, suffix, prefix };
 }
 
-export default function AnimatedCounter({ value, label }: AnimatedCounterProps) {
+export default function AnimatedCounter({ value, label, description, icon, gradient }: AnimatedCounterProps) {
   const { ref, inView } = useInView();
   const [display, setDisplay] = useState("0");
   const hasRun = useRef(false);
@@ -28,13 +31,10 @@ export default function AnimatedCounter({ value, label }: AnimatedCounterProps) 
     const { number, suffix, prefix } = parseValue(value);
     const duration = 1800;
     const steps = 60;
-    const increment = number / steps;
-    let current = 0;
     let step = 0;
 
     const timer = setInterval(() => {
       step++;
-      current = Math.min(current + increment, number);
       const eased = number * (1 - Math.pow(1 - step / steps, 3));
       const clamped = Math.min(eased, number);
       const formatted = Number.isInteger(number)
@@ -50,12 +50,26 @@ export default function AnimatedCounter({ value, label }: AnimatedCounterProps) 
   return (
     <div
       ref={ref as React.RefObject<HTMLDivElement>}
-      className="text-center"
+      className="relative group flex flex-col items-center text-center p-8 rounded-2xl bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] hover:border-blue-500/40 dark:hover:border-blue-500/30 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-blue-500/10"
     >
-      <p className="text-4xl sm:text-5xl font-bold text-white mb-1 tracking-tight tabular-nums">
+      {/* Subtle glow on hover */}
+      <div className={`absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-20 transition-opacity duration-300 bg-gradient-to-br ${gradient} blur-2xl -z-10`} />
+
+      {/* Icon badge */}
+      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center mb-5 shadow-lg`}>
+        <div className="text-white w-5 h-5">{icon}</div>
+      </div>
+
+      {/* Number */}
+      <p className={`text-5xl sm:text-6xl font-black bg-gradient-to-br ${gradient} bg-clip-text text-transparent tabular-nums leading-none mb-2`}>
         {inView ? display : "0"}
       </p>
-      <p className="text-slate-500 text-sm font-medium">{label}</p>
+
+      {/* Label */}
+      <p className="text-slate-900 dark:text-white font-semibold text-base mb-1">{label}</p>
+
+      {/* Description */}
+      <p className="text-slate-500 dark:text-slate-500 text-xs leading-relaxed">{description}</p>
     </div>
   );
 }

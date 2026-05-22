@@ -33,7 +33,6 @@ export const SERVICES = [
       "Behavioral interviews trip up even strong engineers. We coach you on how to tell your story clearly, handle tough questions, and walk in confident.",
     features: [
       "STAR method coaching",
-      "Live mock interview sessions",
       "Feedback on tone and delivery",
       "Salary negotiation guidance",
     ],

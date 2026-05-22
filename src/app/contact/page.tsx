@@ -18,9 +18,7 @@ export default function ContactPage() {
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Page header */}
           <div className="text-center mb-14">
-            <p className="text-blue-400 text-sm font-semibold tracking-widest uppercase mb-3">
-              Get In Touch
-            </p>
+
             <h1 className="text-4xl sm:text-5xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
               Let&apos;s Talk About Your Goals
             </h1>

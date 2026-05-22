@@ -130,7 +130,7 @@ export default function HeroSection() {
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-slate-50 dark:bg-navy-950">
       {/* Grid background */}
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:72px_72px]" />
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(0,0,0,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(0,0,0,0.05)_1px,transparent_1px)] dark:bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:72px_72px]" />
 
       {/* Particles */}
       <Particles />
@@ -146,7 +146,7 @@ export default function HeroSection() {
           style={{ animation: "fadeUp 0.6s ease 0.1s both" }}
         >
           <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-          <span className="text-blue-300 text-sm font-medium">Currently accepting new clients</span>
+          <span className="text-blue-600 dark:text-blue-300 text-sm font-medium">Currently accepting new clients</span>
         </div>
 
         {/* Headline */}
@@ -185,7 +185,7 @@ export default function HeroSection() {
           </Link>
           <Link
             href="/services"
-            className="w-full sm:w-auto bg-white/[0.05] hover:bg-white/[0.08] border border-white/10 hover:border-white/20 text-white font-semibold px-8 py-4 rounded-xl transition-all duration-200 text-base"
+            className="w-full sm:w-auto bg-slate-100 hover:bg-slate-200 dark:bg-white/[0.05] dark:hover:bg-white/[0.08] border border-slate-300 dark:border-white/10 hover:border-slate-400 dark:hover:border-white/20 text-slate-900 dark:text-white font-semibold px-8 py-4 rounded-xl transition-all duration-200 text-base"
           >
             See What We Do →
           </Link>
@@ -202,7 +202,7 @@ export default function HeroSection() {
             "Engineers helping engineers",
             "First consultation is free",
           ].map((item) => (
-            <div key={item} className="flex items-center gap-2 text-slate-500 text-sm">
+            <div key={item} className="flex items-center gap-2 text-slate-500 dark:text-slate-500 text-sm">
               <svg className="w-4 h-4 text-green-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
               </svg>
@@ -213,9 +213,8 @@ export default function HeroSection() {
       </div>
 
       {/* Scroll hint */}
-      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5 text-slate-700">
-        <span className="text-xs tracking-widest uppercase">Scroll</span>
-        <div className="w-px h-8 bg-gradient-to-b from-slate-600 to-transparent" />
+      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center">
+        <div className="w-px h-8 bg-gradient-to-b from-slate-400 dark:from-slate-600 to-transparent" />
       </div>
 
       <style>{`

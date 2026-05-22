@@ -33,15 +33,18 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 lg:h-20">
           {/* Logo */}
-          <Link href="/" className="flex items-center pt-6 pb-3 px-2">
+          <Link href="/" className="flex items-center gap-2.5 pt-6 pb-3 px-2">
             <Image
               src="/logo.png"
-              alt="Devora21"
+              alt=""
               width={200}
               height={200}
-              className="w-[200px] h-auto object-contain"
+              className="w-[72px] h-auto object-contain"
               priority
             />
+            <span className="text-2xl font-extrabold bg-gradient-to-r from-blue-500 to-violet-600 bg-clip-text text-transparent tracking-tight">
+              Devora21
+            </span>
           </Link>
 
           {/* Desktop nav links */}
@@ -52,8 +55,8 @@ export default function Navbar() {
                 href={link.href}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
                   pathname === link.href
-                    ? "text-blue-400 bg-blue-500/10"
-                    : "text-slate-400 hover:text-white hover:bg-white/[0.05]"
+                    ? "text-blue-600 dark:text-blue-400 bg-blue-500/10"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.05]"
                 }`}
               >
                 {link.label}
@@ -68,8 +71,8 @@ export default function Navbar() {
               href="/contact"
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                 pathname === "/contact"
-                  ? "text-blue-400"
-                  : "text-slate-400 hover:text-white"
+                  ? "text-blue-600 dark:text-blue-400"
+                  : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
               }`}
             >
               Contact

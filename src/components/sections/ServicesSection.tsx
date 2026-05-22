@@ -16,9 +16,7 @@ export default function ServicesSection({ limit, showCTA = true }: ServicesSecti
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="text-center mb-14">
-          <p className="text-blue-400 text-sm font-semibold tracking-widest uppercase mb-3">
-            What We Offer
-          </p>
+
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
             Every Service an Engineer Needs
           </h2>

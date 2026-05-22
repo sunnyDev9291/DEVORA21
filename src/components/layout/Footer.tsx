@@ -26,14 +26,17 @@ export default function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 mb-12">
           {/* Brand col */}
           <div className="lg:col-span-2">
-            <Link href="/" className="inline-flex mb-5">
+            <Link href="/" className="inline-flex items-center gap-2.5 mb-5">
               <Image
                 src="/logo.png"
-                alt="Devora21"
+                alt=""
                 width={72}
                 height={72}
-                className="h-16 w-auto object-contain"
+                className="h-12 w-auto object-contain"
               />
+              <span className="text-2xl font-extrabold bg-gradient-to-r from-blue-500 to-violet-600 bg-clip-text text-transparent tracking-tight">
+                Devora21
+              </span>
             </Link>
             <p className="text-slate-500 dark:text-slate-500 text-sm leading-relaxed max-w-xs mb-6">
               Professional job support and technical consulting for software engineers who are ready to get hired, perform better, and solve real technical challenges.

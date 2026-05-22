@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import CTASection from "@/components/sections/CTASection";
 
@@ -41,9 +42,9 @@ const values = [
   },
   {
     icon: "🌍",
-    title: "Built for the US Market",
+    title: "Built for the World Market",
     description:
-      "Our services are designed specifically for software engineers navigating the US tech job market and workplace.",
+      "Our services are designed for software engineers worldwide — wherever you are, we help you navigate the global tech job market.",
   },
 ];
 
@@ -51,16 +52,27 @@ export default function AboutPage() {
   return (
     <>
       {/* Hero */}
-      <section className="bg-slate-50 dark:bg-navy-950 pt-32 pb-20 relative overflow-hidden">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[400px] bg-blue-600/10 blur-[120px] rounded-full pointer-events-none" />
-        <div className="relative max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <p className="text-blue-400 text-sm font-semibold tracking-widest uppercase mb-3">
-            Who We Are
-          </p>
-          <h1 className="text-4xl sm:text-5xl font-bold text-slate-900 dark:text-white mb-6 tracking-tight">
+      <section className="relative pt-32 pb-20 overflow-hidden min-h-[480px] flex items-center">
+        {/* Background image */}
+        <div className="absolute inset-0">
+          <Image
+            src="/bg.jpeg"
+            alt=""
+            fill
+            className="object-cover object-center"
+            priority
+            quality={80}
+          />
+          {/* Dark overlay — heavier in dark mode, lighter in light mode */}
+          <div className="absolute inset-0 bg-slate-900/60 dark:bg-navy-950/80" />
+        </div>
+
+        <div className="relative z-10 w-full max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+
+          <h1 className="text-4xl sm:text-5xl font-bold text-white mb-6 tracking-tight">
             Engineers Supporting Engineers
           </h1>
-          <p className="text-slate-500 dark:text-slate-400 text-lg leading-relaxed">
+          <p className="text-slate-300 text-lg leading-relaxed">
             Devora21 was built out of a simple observation: software engineers face real,
             hard challenges — in job searches, in technical interviews, and in their
             day-to-day work — and most of the support available is generic, outdated, or
@@ -74,9 +86,7 @@ export default function AboutPage() {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <div>
-              <p className="text-blue-400 text-sm font-semibold tracking-widest uppercase mb-3">
-                Our Mission
-              </p>
+
               <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-5 leading-tight">
                 Helping engineers win — at getting hired and at the job itself.
               </h2>
@@ -116,9 +126,7 @@ export default function AboutPage() {
       <section className="bg-slate-50 dark:bg-navy-950 py-24">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-14">
-            <p className="text-blue-400 text-sm font-semibold tracking-widest uppercase mb-3">
-              Our Values
-            </p>
+
             <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white tracking-tight">
               What We Stand For
             </h2>

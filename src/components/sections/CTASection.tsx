@@ -11,9 +11,7 @@ export default function CTASection() {
           <div className="absolute -top-20 -right-20 w-64 h-64 bg-blue-600/10 blur-[80px] rounded-full pointer-events-none" />
 
           <div className="relative">
-            <p className="text-blue-400 text-sm font-semibold tracking-widest uppercase mb-4">
-              Let&apos;s Talk
-            </p>
+
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-5 tracking-tight">
               Not sure where to start?
             </h2>
