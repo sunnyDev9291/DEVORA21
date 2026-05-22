@@ -4,11 +4,11 @@ export const SERVICES = [
     icon: "📄",
     title: "ATS-Optimized Resume Support",
     description:
-      "Get your resume past automated filters and into human hands. We craft resumes that score high on ATS systems and impress hiring managers at top tech companies.",
+      "Most resumes never reach a human. We rewrite yours so it passes ATS filters and gives hiring managers a reason to call — not skip.",
     features: [
-      "ATS keyword optimization",
-      "Role-specific tailoring",
-      "Format & layout overhaul",
+      "ATS keyword targeting by role",
+      "Clear, results-focused formatting",
+      "Tailored for each job level",
       "LinkedIn profile alignment",
     ],
   },
@@ -17,12 +17,12 @@ export const SERVICES = [
     icon: "🎯",
     title: "Job Application Support",
     description:
-      "Stop applying blindly. We help you build a targeted strategy, identify the right roles, craft compelling cover letters, and track your pipeline for maximum results.",
+      "Applying to dozens of jobs and hearing nothing back? We help you apply smarter — the right roles, the right messaging, the right timing.",
     features: [
       "Targeted job search strategy",
       "Cover letter writing",
-      "Application tracking",
-      "Company research support",
+      "Application tracking system",
+      "Company and role research",
     ],
   },
   {
@@ -30,12 +30,12 @@ export const SERVICES = [
     icon: "🎤",
     title: "Interview Preparation",
     description:
-      "Master behavioral and situational interviews with proven frameworks. We run mock interviews and give you the feedback you need to confidently answer any question.",
+      "Behavioral interviews trip up even strong engineers. We coach you on how to tell your story clearly, handle tough questions, and walk in confident.",
     features: [
       "STAR method coaching",
-      "Mock interview sessions",
-      "Common question prep",
-      "Salary negotiation tips",
+      "Live mock interview sessions",
+      "Feedback on tone and delivery",
+      "Salary negotiation guidance",
     ],
   },
   {
@@ -43,12 +43,12 @@ export const SERVICES = [
     icon: "💻",
     title: "Technical Interview Prep",
     description:
-      "Crack technical interviews at any level. We help you master data structures, algorithms, system design, and the exact patterns top companies test.",
+      "We help you build the problem-solving instincts and communication habits that actually get you through technical screens — not just memorized solutions.",
     features: [
-      "LeetCode strategy & patterns",
-      "System design coaching",
+      "LeetCode patterns and strategy",
+      "System design walkthroughs",
       "Live coding practice",
-      "Whiteboard technique",
+      "Real interview simulation",
     ],
   },
   {
@@ -56,12 +56,12 @@ export const SERVICES = [
     icon: "🐛",
     title: "Debugging Support",
     description:
-      "Stuck on a bug that's costing you hours? Our engineers help you pinpoint root causes fast, understand what went wrong, and write cleaner code going forward.",
+      "Spent hours on a bug that won't budge? We work through it with you — finding the root cause fast so you can ship and move on.",
     features: [
       "Root cause analysis",
-      "Complex bug resolution",
-      "Performance debugging",
-      "Environment & config issues",
+      "Step-by-step debugging sessions",
+      "Performance and memory issues",
+      "Environment and config problems",
     ],
   },
   {
@@ -69,12 +69,12 @@ export const SERVICES = [
     icon: "🚀",
     title: "Project Support",
     description:
-      "Struggling with a real-work project deadline? We provide hands-on guidance to help you plan, build, and deliver projects on time with professional quality.",
+      "Stuck mid-project with a deadline coming up? We help you get unstuck, think through the approach, and finish with something you're proud of.",
     features: [
-      "Project planning & scoping",
-      "Technical implementation",
-      "Deadline management",
-      "Best practices guidance",
+      "Project planning and scoping",
+      "Hands-on technical guidance",
+      "Deadline and priority management",
+      "Code quality and best practices",
     ],
   },
   {
@@ -82,12 +82,12 @@ export const SERVICES = [
     icon: "🔍",
     title: "Code Review",
     description:
-      "Get expert eyes on your code. We review for quality, security, performance, and maintainability — giving you actionable feedback that levels up your craft.",
+      "Get a thorough, honest review from an experienced engineer — not just style feedback, but real insight into what's working and what isn't.",
     features: [
-      "Quality & style review",
-      "Security vulnerability check",
-      "Performance analysis",
-      "Best practices audit",
+      "Readability and maintainability",
+      "Security and edge case review",
+      "Performance improvements",
+      "Actionable, specific feedback",
     ],
   },
   {
@@ -95,12 +95,12 @@ export const SERVICES = [
     icon: "🏗️",
     title: "Architecture Guidance",
     description:
-      "Design systems that scale. We help you make smart architectural decisions for new projects or guide you through refactoring legacy systems the right way.",
+      "Making a big technical decision? We help you think it through properly — tradeoffs, scalability, long-term maintainability — before you commit.",
     features: [
       "System design review",
-      "Scalability planning",
+      "Scalability and cost tradeoffs",
       "Tech stack recommendations",
-      "Refactoring strategy",
+      "Legacy system refactoring",
     ],
   },
   {
@@ -108,12 +108,12 @@ export const SERVICES = [
     icon: "⚡",
     title: "Real Work Technical Problem Solving",
     description:
-      "When your actual job throws a challenge you haven't faced before, we're your expert partner. Real problems, real solutions, real fast.",
+      "Something broke in production, a third-party integration isn't working, or you're facing something you've never seen before. We jump in and help you figure it out.",
     features: [
-      "On-demand expert help",
-      "Production issue support",
-      "Third-party integrations",
-      "API & database issues",
+      "On-demand expert sessions",
+      "Production incident support",
+      "API and integration issues",
+      "Database and query problems",
     ],
   },
   {
@@ -121,12 +121,12 @@ export const SERVICES = [
     icon: "📈",
     title: "Career Guidance",
     description:
-      "Navigate your engineering career with clarity. Whether you're aiming for Senior, Staff, or a new domain — we map a strategy and keep you moving forward.",
+      "Not sure what your next move should be? We help you figure out where you are, where you want to go, and what it actually takes to get there.",
     features: [
-      "Career roadmap planning",
-      "Promotion strategy",
-      "Skill gap analysis",
-      "Networking & visibility",
+      "Career path planning",
+      "Promotion and raise strategy",
+      "Skills gap assessment",
+      "Visibility and networking tips",
     ],
   },
 ];
@@ -134,36 +134,36 @@ export const SERVICES = [
 export const HOW_IT_WORKS = [
   {
     step: "01",
-    title: "Book a Free Consultation",
+    title: "Book a Free Call",
     description:
-      "Schedule a no-pressure 30-minute call. We listen to your challenges and understand exactly where you are in your job search or engineering career.",
+      "Schedule a 30-minute call at no cost. We listen, ask the right questions, and get a clear picture of what you're dealing with before suggesting anything.",
   },
   {
     step: "02",
-    title: "We Assess Your Needs",
+    title: "We Assess Your Situation",
     description:
-      "Our team evaluates your situation — whether it's a job search, a technical blocker, or long-term growth — and identifies the fastest path to your goal.",
+      "We give you an honest read on where things stand — what's blocking you, what the realistic options are, and what the best path forward looks like for your specific situation.",
   },
   {
     step: "03",
-    title: "We Build a Plan Together",
+    title: "We Build a Plan",
     description:
-      "You get a clear, customized action plan. No generic advice — focused, actionable steps tailored to your tech stack, experience level, and goals.",
+      "You get a clear, specific action plan — not generic tips. Every step is tailored to your tech stack, experience level, timeline, and the outcome you're working toward.",
   },
   {
     step: "04",
-    title: "Execute & See Results",
+    title: "We Work Through It Together",
     description:
-      "We work alongside you through execution — from resume rewrites to live debugging sessions — until you hit your milestone and feel ready to move forward independently.",
+      "We stay hands-on through the whole process — debugging sessions, resume drafts, mock interviews, code reviews — whatever it takes until you reach the goal.",
   },
 ];
 
 export const TESTIMONIALS = [
   {
     name: "Marcus T.",
-    role: "Software Engineer → Senior SWE at Fintech",
+    role: "Software Engineer → Senior SWE at Fintech Company",
     content:
-      "I was stuck in my job search for 6 months. Devora21 rewrote my resume, coached me through 4 rounds of interviews, and I landed an offer 3x my previous salary. Their technical interview prep is elite.",
+      "I had been applying for six months and getting nowhere. Devora21 rewrote my resume, helped me prep for four rounds of interviews, and I landed a Senior SWE role at 3x my previous salary. The technical interview coaching especially made a huge difference.",
     rating: 5,
     initials: "MT",
   },
@@ -171,7 +171,7 @@ export const TESTIMONIALS = [
     name: "Priya K.",
     role: "Backend Developer, Healthcare Tech",
     content:
-      "I had a production bug destroying our auth system at 2am. I reached out to Devora21 and within 30 minutes we had root cause analysis and a fix. This is what real technical support looks like.",
+      "We had a critical auth bug in production on a Friday night. I messaged Devora21 and within 30 minutes we were on a call digging through the logs together. Root cause identified, fix deployed, incident resolved — all in under two hours. That kind of support is rare.",
     rating: 5,
     initials: "PK",
   },
@@ -179,7 +179,7 @@ export const TESTIMONIALS = [
     name: "Jason R.",
     role: "Junior Dev → Mid-Level Engineer",
     content:
-      "The code review and architecture sessions changed the way I think about building software. I went from writing spaghetti code to getting compliments from senior engineers on my team.",
+      "The weekly code reviews completely changed how I write software. I went from code that worked but no one wanted to touch, to getting actual compliments from the senior engineers on my team. Promoted to mid-level four months later.",
     rating: 5,
     initials: "JR",
   },
@@ -187,7 +187,7 @@ export const TESTIMONIALS = [
     name: "Aisha M.",
     role: "CS Graduate → First Full-Time Engineering Role",
     content:
-      "As a new grad with no network, I had no idea how to beat the ATS black hole. Devora21's resume support and interview prep gave me the confidence and the tools to land my first role.",
+      "As a new grad with no network and no idea how to get past the ATS filters, I felt invisible. Devora21 fixed my resume, coached me through interviews, and I had my first engineering offer within six weeks. I genuinely could not have done it without them.",
     rating: 5,
     initials: "AM",
   },
@@ -195,7 +195,7 @@ export const TESTIMONIALS = [
     name: "David L.",
     role: "Mid-Level Engineer, E-commerce Platform",
     content:
-      "I was completely stuck on a system design challenge. One session with Devora21 and I had a clear architecture, trade-offs mapped out, and I delivered it with confidence to my team.",
+      "I was stuck on a system design problem I'd never faced before. One session with Devora21 and I had a clear architecture, understood the tradeoffs, and delivered it confidently to my team the next day. Worth every minute.",
     rating: 5,
     initials: "DL",
   },
@@ -203,7 +203,7 @@ export const TESTIMONIALS = [
     name: "Sarah N.",
     role: "Software Engineer, Remote SaaS Company",
     content:
-      "Their career guidance helped me realize I was underpaid and under-leveled. They helped me negotiate a $40k raise and a title bump. Truly one of the best investments I've made.",
+      "I had been underpaid for years and didn't know how to bring it up. Devora21 helped me understand my market value, put together a case for a raise, and coached me through the conversation. I walked away with a $40k raise and a Staff Engineer title.",
     rating: 5,
     initials: "SN",
   },
@@ -213,49 +213,49 @@ export const FAQS = [
   {
     question: "Who is Devora21 for?",
     answer:
-      "Devora21 is built specifically for software engineers — from new graduates and junior developers to mid-level and senior engineers. Whether you're job hunting, struggling with real work challenges, or planning your career growth, we're here for you.",
+      "We work with software engineers at every level — new grads trying to land their first role, junior and mid-level engineers working through real job challenges, and senior engineers navigating promotions or career transitions. If you write code for a living (or want to), we can help.",
   },
   {
-    question: "Is this a tutoring service or a coding bootcamp?",
+    question: "Is this like a tutoring service or a coding bootcamp?",
     answer:
-      "Neither. We're a professional consulting and job support service. We don't teach basics — we solve real problems. We help working and aspiring engineers with the real challenges that come up in job searches, technical interviews, and day-to-day engineering work.",
+      "Neither. We don't teach programming fundamentals. We work with engineers who already know how to code but need real support — getting hired, cracking technical interviews, solving actual work problems, or figuring out their next career move. Think of it as having an experienced engineer in your corner.",
   },
   {
-    question: "How quickly can I get support?",
+    question: "How quickly can I get help?",
     answer:
-      "For consultations, we typically schedule within 24–48 hours. For urgent technical support (production issues, debugging), we offer same-day and priority response options. Reach out via WhatsApp for fastest response.",
+      "For consultations, we typically get you scheduled within 24–48 hours. For urgent technical issues — production bugs, deadline pressure, live debugging — we offer same-day and priority support. WhatsApp is the fastest way to reach us.",
   },
   {
-    question: "Is everything confidential?",
+    question: "Is my information kept private?",
     answer:
-      "Absolutely. Everything discussed — your job situation, code, company details, and career plans — is completely confidential. We take your privacy seriously and never share client information.",
+      "Yes, completely. Your code, your job situation, your company name, your salary — everything you share stays between you and us. We don't share, publish, or reference any client information. Ever.",
   },
   {
-    question: "What technologies do you support?",
+    question: "What technologies and stacks do you work with?",
     answer:
-      "We work across the full spectrum of modern software development — JavaScript, TypeScript, Python, Java, Go, Rust, React, Node.js, AWS, GCP, databases, microservices, and more. If it's a real engineering problem, we can help.",
+      "We cover a wide range of modern tech — JavaScript, TypeScript, Python, Java, Go, React, Node.js, AWS, GCP, SQL and NoSQL databases, microservices, REST and GraphQL APIs, and more. If it's something you're working with professionally, there's a good chance we can help.",
   },
   {
-    question: "How does the free consultation work?",
+    question: "What happens during the free consultation?",
     answer:
-      "It's a 30-minute video or voice call with no strings attached. We'll learn about your situation, answer your questions, and explain how we can help. If we're a good fit, we'll outline a plan. No sales pressure.",
+      "It's a 30-minute call — video or voice, your choice. We listen to what you're dealing with, ask some questions to understand your situation, and tell you honestly whether and how we can help. There's no sales pitch and no obligation to continue.",
   },
   {
-    question: "Do you offer ongoing support or one-time sessions?",
+    question: "Can I book a single session or do I need an ongoing plan?",
     answer:
-      "Both. You can book a single session for a specific problem, or work with us on an ongoing basis for comprehensive job search or career development support. We tailor our engagement to what you need.",
+      "Both options are available. If you have one specific problem — a bug, a resume review, mock interview prep — you can book a single session. If you want ongoing support for a job search or career goal, we can work together over time. We don't lock you into anything.",
   },
   {
-    question: "What makes Devora21 different from other job support services?",
+    question: "What makes Devora21 different?",
     answer:
-      "We're engineers supporting engineers. Our team has real industry experience — not just career coaches. We understand what it's actually like to face a tough technical interview, deal with a production issue, or navigate a tech career transition.",
+      "We're engineers, not career coaches. We know what it's actually like to debug something for six hours, freeze during a technical screen, or get passed over for a promotion you deserved. That experience is what makes the support we give you different — it's grounded in how software engineering actually works.",
   },
 ];
 
 export const STATS = [
   { value: "50+", label: "Engineers Helped" },
   { value: "90%", label: "Interview Success Rate" },
-  { value: "24h", label: "Avg Response Time" },
+  { value: "24h", label: "Avg. Response Time" },
   { value: "100%", label: "Confidential" },
 ];
 

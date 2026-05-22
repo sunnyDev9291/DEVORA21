@@ -51,15 +51,15 @@ export default function SuccessStoriesPage() {
   return (
     <>
       {/* Hero */}
-      <section className="bg-navy-950 pt-32 pb-16">
+      <section className="bg-slate-50 dark:bg-navy-950 pt-32 pb-16">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <p className="text-blue-400 text-sm font-semibold tracking-widest uppercase mb-3">
             Proven Results
           </p>
-          <h1 className="text-4xl sm:text-5xl font-bold text-white mb-5 tracking-tight">
+          <h1 className="text-4xl sm:text-5xl font-bold text-slate-900 dark:text-white mb-5 tracking-tight">
             Engineers Who Leveled Up
           </h1>
-          <p className="text-slate-400 text-lg max-w-xl mx-auto">
+          <p className="text-slate-500 dark:text-slate-400 text-lg max-w-xl mx-auto">
             Real stories from real engineers. No fabricated case studies — just
             outcomes we&apos;re proud of.
           </p>
@@ -67,25 +67,25 @@ export default function SuccessStoriesPage() {
       </section>
 
       {/* Case studies */}
-      <section className="bg-navy-900 py-24">
+      <section className="bg-white dark:bg-navy-900 py-24">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
           {caseStudies.map((cs) => (
             <div
               key={cs.name}
-              className="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-8 hover:border-white/[0.14] transition-all"
+              className="bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] rounded-2xl p-8 hover:border-slate-300 dark:hover:border-white/[0.14] transition-all"
             >
               <div className="flex flex-wrap items-center gap-3 mb-5">
-                <span className="bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs font-semibold px-3 py-1 rounded-full">
+                <span className="bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-300 text-xs font-semibold px-3 py-1 rounded-full">
                   {cs.tag}
                 </span>
-                <span className="text-slate-600 text-xs font-mono">{cs.tech}</span>
+                <span className="text-slate-400 dark:text-slate-600 text-xs font-mono">{cs.tech}</span>
               </div>
-              <h2 className="text-white text-xl font-bold mb-1">{cs.outcome}</h2>
+              <h2 className="text-slate-900 dark:text-white text-xl font-bold mb-1">{cs.outcome}</h2>
               <p className="text-slate-500 text-sm mb-4">Client: {cs.name}</p>
-              <p className="text-slate-400 leading-relaxed mb-6">{cs.story}</p>
+              <p className="text-slate-500 dark:text-slate-400 leading-relaxed mb-6">{cs.story}</p>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {cs.results.map((r) => (
-                  <div key={r} className="flex items-start gap-2 text-sm text-slate-300">
+                  <div key={r} className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
                     <svg className="w-4 h-4 text-green-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                     </svg>

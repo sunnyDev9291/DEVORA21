@@ -25,7 +25,7 @@ export default function TestimonialCard({
   const colorIndex = name.charCodeAt(0) % avatarColors.length;
 
   return (
-    <div className="flex flex-col bg-white/[0.03] border border-white/[0.08] rounded-2xl p-6 hover:border-white/[0.14] transition-all duration-300">
+    <div className="flex flex-col bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] rounded-2xl p-6 hover:border-slate-300 dark:hover:border-white/[0.14] transition-all duration-300 shadow-sm dark:shadow-none">
       {/* Stars */}
       <div className="flex gap-0.5 mb-4">
         {Array.from({ length: rating }).map((_, i) => (
@@ -36,7 +36,7 @@ export default function TestimonialCard({
       </div>
 
       {/* Content */}
-      <p className="text-slate-300 text-sm leading-relaxed mb-6 flex-1">
+      <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed mb-6 flex-1">
         &ldquo;{content}&rdquo;
       </p>
 
@@ -48,8 +48,8 @@ export default function TestimonialCard({
           {initials}
         </div>
         <div>
-          <p className="text-white text-sm font-semibold">{name}</p>
-          <p className="text-slate-500 text-xs">{role}</p>
+          <p className="text-slate-900 dark:text-white text-sm font-semibold">{name}</p>
+          <p className="text-slate-500 dark:text-slate-500 text-xs">{role}</p>
         </div>
       </div>
     </div>

@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function ContactPage() {
   return (
     <>
-      <section className="bg-navy-950 min-h-screen pt-28 pb-24 relative overflow-hidden">
+      <section className="bg-slate-50 dark:bg-navy-950 min-h-screen pt-28 pb-24 relative overflow-hidden">
         {/* Background glow */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[400px] bg-blue-600/10 blur-[130px] rounded-full pointer-events-none" />
 
@@ -21,10 +21,10 @@ export default function ContactPage() {
             <p className="text-blue-400 text-sm font-semibold tracking-widest uppercase mb-3">
               Get In Touch
             </p>
-            <h1 className="text-4xl sm:text-5xl font-bold text-white mb-4 tracking-tight">
+            <h1 className="text-4xl sm:text-5xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
               Let&apos;s Talk About Your Goals
             </h1>
-            <p className="text-slate-400 text-lg max-w-xl mx-auto">
+            <p className="text-slate-500 dark:text-slate-400 text-lg max-w-xl mx-auto">
               Book a free 30-minute consultation or send us a message. We respond
               within 24 hours — usually much faster.
             </p>
@@ -38,7 +38,7 @@ export default function ContactPage() {
                 href={CONTACT_INFO.whatsapp}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-4 bg-white/[0.03] border border-white/[0.08] hover:border-green-500/30 hover:bg-green-500/[0.05] rounded-2xl p-5 transition-all group"
+                className="flex items-center gap-4 bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] hover:border-green-500/30 hover:bg-green-500/[0.05] rounded-2xl p-5 transition-all group"
               >
                 <div className="w-12 h-12 bg-green-500/10 border border-green-500/20 rounded-xl flex items-center justify-center flex-shrink-0">
                   <svg className="w-6 h-6 text-green-400" fill="currentColor" viewBox="0 0 24 24">
@@ -46,7 +46,7 @@ export default function ContactPage() {
                   </svg>
                 </div>
                 <div>
-                  <p className="text-white font-semibold text-sm group-hover:text-green-300 transition-colors">
+                  <p className="text-slate-900 dark:text-white font-semibold text-sm group-hover:text-green-600 dark:group-hover:text-green-300 transition-colors">
                     WhatsApp (Fastest)
                   </p>
                   <p className="text-slate-500 text-xs mt-0.5">Get a reply in minutes</p>
@@ -57,7 +57,7 @@ export default function ContactPage() {
                 href={CONTACT_INFO.linkedin}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-4 bg-white/[0.03] border border-white/[0.08] hover:border-blue-500/30 hover:bg-blue-500/[0.05] rounded-2xl p-5 transition-all group"
+                className="flex items-center gap-4 bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] hover:border-blue-500/30 hover:bg-blue-500/[0.05] rounded-2xl p-5 transition-all group"
               >
                 <div className="w-12 h-12 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-center justify-center flex-shrink-0">
                   <svg className="w-6 h-6 text-blue-400" fill="currentColor" viewBox="0 0 24 24">
@@ -65,7 +65,7 @@ export default function ContactPage() {
                   </svg>
                 </div>
                 <div>
-                  <p className="text-white font-semibold text-sm group-hover:text-blue-300 transition-colors">
+                  <p className="text-slate-900 dark:text-white font-semibold text-sm group-hover:text-blue-600 dark:group-hover:text-blue-300 transition-colors">
                     LinkedIn
                   </p>
                   <p className="text-slate-500 text-xs mt-0.5">Connect professionally</p>
@@ -74,7 +74,7 @@ export default function ContactPage() {
 
               <a
                 href={`mailto:${CONTACT_INFO.email}`}
-                className="flex items-center gap-4 bg-white/[0.03] border border-white/[0.08] hover:border-slate-400/20 hover:bg-white/[0.05] rounded-2xl p-5 transition-all group"
+                className="flex items-center gap-4 bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] hover:border-slate-400/20 hover:bg-white/[0.05] rounded-2xl p-5 transition-all group"
               >
                 <div className="w-12 h-12 bg-slate-500/10 border border-slate-500/20 rounded-xl flex items-center justify-center flex-shrink-0">
                   <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -82,7 +82,7 @@ export default function ContactPage() {
                   </svg>
                 </div>
                 <div>
-                  <p className="text-white font-semibold text-sm group-hover:text-slate-200 transition-colors">
+                  <p className="text-slate-900 dark:text-white font-semibold text-sm group-hover:text-slate-700 dark:group-hover:text-slate-200 transition-colors">
                     Email Us
                   </p>
                   <p className="text-slate-500 text-xs mt-0.5">{CONTACT_INFO.email}</p>
@@ -91,14 +91,14 @@ export default function ContactPage() {
 
               {/* Guarantee box */}
               <div className="bg-blue-500/[0.07] border border-blue-500/20 rounded-2xl p-5 space-y-3 mt-2">
-                <p className="text-white text-sm font-semibold">What to expect:</p>
+                <p className="text-slate-900 dark:text-white text-sm font-semibold">What to expect:</p>
                 {[
                   "Response within 24 hours",
                   "Free 30-min consultation",
                   "No sales pressure",
                   "100% confidential",
                 ].map((item) => (
-                  <div key={item} className="flex items-center gap-2 text-sm text-slate-400">
+                  <div key={item} className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
                     <svg className="w-4 h-4 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                     </svg>
@@ -109,8 +109,8 @@ export default function ContactPage() {
             </div>
 
             {/* Form */}
-            <div className="lg:col-span-3 bg-white/[0.03] border border-white/[0.08] rounded-2xl p-8">
-              <h2 className="text-white text-xl font-bold mb-1">Send us a message</h2>
+            <div className="lg:col-span-3 bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] rounded-2xl p-8">
+              <h2 className="text-slate-900 dark:text-white text-xl font-bold mb-1">Send us a message</h2>
               <p className="text-slate-500 text-sm mb-7">
                 Fill out the form and we&apos;ll get back to you within 24 hours.
               </p>

@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { NAV_LINKS } from "@/lib/constants";
+import ThemeToggle from "@/components/ui/ThemeToggle";
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
@@ -24,20 +26,22 @@ export default function Navbar() {
     <nav
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
         scrolled
-          ? "bg-navy-950/95 backdrop-blur-md border-b border-white/[0.06] shadow-xl shadow-black/20"
+          ? "bg-white/95 dark:bg-navy-950/95 backdrop-blur-md border-b border-slate-200 dark:border-white/[0.06] shadow-xl shadow-black/10 dark:shadow-black/20"
           : "bg-transparent"
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 lg:h-20">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-xs tracking-wide shadow-lg shadow-blue-500/25">
-              D21
-            </div>
-            <span className="text-white font-bold text-lg tracking-tight">
-              Devora<span className="text-blue-400">21</span>
-            </span>
+          <Link href="/" className="flex items-center pt-6 pb-3 px-2">
+            <Image
+              src="/logo.png"
+              alt="Devora21"
+              width={200}
+              height={200}
+              className="w-[200px] h-auto object-contain"
+              priority
+            />
           </Link>
 
           {/* Desktop nav links */}
@@ -59,6 +63,7 @@ export default function Navbar() {
 
           {/* Desktop CTA */}
           <div className="hidden lg:flex items-center gap-3">
+            <ThemeToggle />
             <Link
               href="/contact"
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
@@ -77,13 +82,15 @@ export default function Navbar() {
             </Link>
           </div>
 
-          {/* Mobile hamburger */}
-          <button
-            onClick={() => setIsOpen(!isOpen)}
-            className="lg:hidden p-2 text-slate-400 hover:text-white rounded-lg hover:bg-white/[0.05] transition-colors"
-            aria-label="Toggle navigation"
-            aria-expanded={isOpen}
-          >
+          {/* Mobile theme + hamburger */}
+          <div className="lg:hidden flex items-center gap-2">
+            <ThemeToggle />
+            <button
+              onClick={() => setIsOpen(!isOpen)}
+              className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-white/[0.05] transition-colors"
+              aria-label="Toggle navigation"
+              aria-expanded={isOpen}
+            >
             {isOpen ? (
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -93,7 +100,8 @@ export default function Navbar() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             )}
-          </button>
+            </button>
+          </div>
         </div>
       </div>
 

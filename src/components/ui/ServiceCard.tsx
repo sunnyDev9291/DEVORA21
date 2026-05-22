@@ -22,7 +22,7 @@ export default function ServiceCard({
       className={`group relative flex flex-col rounded-2xl border p-6 transition-all duration-300 hover:-translate-y-1 ${
         featured
           ? "bg-gradient-to-br from-blue-600/20 to-indigo-600/10 border-blue-500/30 hover:border-blue-400/50"
-          : "bg-white/[0.03] border-white/[0.08] hover:border-white/[0.16] hover:bg-white/[0.05]"
+          : "bg-white dark:bg-white/[0.03] border-slate-200 dark:border-white/[0.08] hover:border-slate-300 dark:hover:border-white/[0.16] shadow-sm dark:shadow-none"
       }`}
     >
       {featured && (
@@ -33,12 +33,12 @@ export default function ServiceCard({
 
       <div className="text-3xl mb-4">{icon}</div>
 
-      <h3 className="text-white font-semibold text-lg mb-2 leading-snug">{title}</h3>
-      <p className="text-slate-400 text-sm leading-relaxed mb-5 flex-1">{description}</p>
+      <h3 className="text-slate-900 dark:text-white font-semibold text-lg mb-2 leading-snug">{title}</h3>
+      <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed mb-5 flex-1">{description}</p>
 
       <ul className="space-y-2 mb-6">
         {features.map((feature) => (
-          <li key={feature} className="flex items-center gap-2 text-sm text-slate-400">
+          <li key={feature} className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
             <svg
               className="w-4 h-4 text-blue-400 flex-shrink-0"
               fill="none"
