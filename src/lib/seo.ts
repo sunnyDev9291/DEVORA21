@@ -21,6 +21,17 @@ export function absoluteUrl(path = "/"): string {
   return new URL(path, SITE_URL).toString();
 }
 
+export const OG_IMAGE_ALT =
+  "Devora21 — Job Support & Tech Consulting for Software Engineers";
+
+/** Shared Open Graph / Twitter preview image (generated at /opengraph-image). */
+export const DEFAULT_OG_IMAGE = {
+  url: "/opengraph-image",
+  width: 1200,
+  height: 630,
+  alt: OG_IMAGE_ALT,
+} as const;
+
 export function pageMetadata({
   title,
   description = DEFAULT_DESCRIPTION,
@@ -46,11 +57,13 @@ export function pageMetadata({
       siteName: SITE_NAME,
       type: "website",
       locale: "en_US",
+      images: [DEFAULT_OG_IMAGE],
     },
     twitter: {
       card: "summary_large_image",
       title: fullTitle,
       description,
+      images: [DEFAULT_OG_IMAGE.url],
     },
     robots: noIndex ? { index: false, follow: false } : { index: true, follow: true },
   };
