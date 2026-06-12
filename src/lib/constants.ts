@@ -259,8 +259,8 @@ export const STATS = [
 ];
 
 export const CONTACT_INFO = {
-  whatsapp: "https://wa.me/1234567890",
-  linkedin: "https://linkedin.com/company/devora21",
+  whatsapp: "https://wa.me/5493885167478",
+  linkedin: "https://www.linkedin.com/company/devora21",
   email: "hello@devora21.com",
 };
 
