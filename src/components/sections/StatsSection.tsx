@@ -49,22 +49,21 @@ const stats = [
 
 export default function StatsSection() {
   return (
-    <section className="bg-slate-50 dark:bg-navy-950 py-24 sm:py-32">
+    <section className="bg-slate-50 dark:bg-navy-950 py-24 sm:py-32" aria-labelledby="stats-heading">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="text-center mb-14">
-
-          <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white tracking-tight">
+        <header className="text-center mb-14">
+          <h2 id="stats-heading" className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white tracking-tight">
             Results that speak for themselves
           </h2>
-        </div>
+        </header>
 
-        {/* Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 list-none m-0 p-0">
           {stats.map((stat) => (
-            <AnimatedCounter key={stat.label} {...stat} />
+            <li key={stat.label}>
+              <AnimatedCounter {...stat} />
+            </li>
           ))}
-        </div>
+        </ul>
       </div>
     </section>
   );

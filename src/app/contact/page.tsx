@@ -1,36 +1,34 @@
-import type { Metadata } from "next";
 import ContactForm from "@/components/sections/ContactForm";
 import { CONTACT_INFO } from "@/lib/constants";
+import { pageMetadata } from "@/lib/seo";
+import type { Metadata } from "next";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Contact",
   description:
     "Book a free consultation with Devora21. Reach us by form, WhatsApp, LinkedIn, or email — we respond within 24 hours.",
-};
+  path: "/contact",
+});
 
 export default function ContactPage() {
   return (
     <>
-      <section className="bg-slate-50 dark:bg-navy-950 min-h-screen pt-28 pb-24 relative overflow-hidden">
-        {/* Background glow */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[400px] bg-blue-600/10 blur-[130px] rounded-full pointer-events-none" />
+      <section className="bg-slate-50 dark:bg-navy-950 min-h-screen pt-28 pb-24 relative overflow-hidden" aria-labelledby="contact-heading">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[400px] bg-blue-600/10 blur-[130px] rounded-full pointer-events-none" aria-hidden="true" />
 
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Page header */}
-          <div className="text-center mb-14">
-
-            <h1 className="text-4xl sm:text-5xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
+          <header className="text-center mb-14">
+            <h1 id="contact-heading" className="text-4xl sm:text-5xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
               Let&apos;s Talk About Your Goals
             </h1>
             <p className="text-slate-500 dark:text-slate-400 text-lg max-w-xl mx-auto">
               Book a free 30-minute consultation or send us a message. We respond
               within 24 hours — usually much faster.
             </p>
-          </div>
+          </header>
 
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-10">
-            {/* Contact info sidebar */}
-            <div className="lg:col-span-2 space-y-6">
+            <aside className="lg:col-span-2 space-y-6" aria-label="Contact options">
               {/* Quick contact cards */}
               <a
                 href={CONTACT_INFO.whatsapp}
@@ -104,9 +102,8 @@ export default function ContactPage() {
                   </div>
                 ))}
               </div>
-            </div>
+            </aside>
 
-            {/* Form */}
             <div className="lg:col-span-3 bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] rounded-2xl p-8">
               <h2 className="text-slate-900 dark:text-white text-xl font-bold mb-1">Send us a message</h2>
               <p className="text-slate-500 text-sm mb-7">

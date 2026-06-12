@@ -12,28 +12,27 @@ export default function ServicesSection({ limit, showCTA = true }: ServicesSecti
   const services = limit ? SERVICES.slice(0, limit) : SERVICES;
 
   return (
-    <section className="bg-slate-50 dark:bg-navy-950 py-24 sm:py-32">
+    <section className="bg-slate-50 dark:bg-navy-950 py-24 sm:py-32" aria-labelledby="services-heading">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="text-center mb-14">
-
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
+        <header className="text-center mb-14">
+          <h2 id="services-heading" className="text-3xl sm:text-4xl lg:text-5xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
             Every Service an Engineer Needs
           </h2>
           <p className="text-slate-500 dark:text-slate-400 text-lg max-w-2xl mx-auto">
             From your first application to your next promotion — we cover every
             critical stage of a software engineer&apos;s career.
           </p>
-        </div>
+        </header>
 
-        {/* Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 list-none m-0 p-0">
           {services.map((service, i) => (
-            <FadeIn key={service.id} delay={i * 80} direction="up">
-              <ServiceCard {...service} featured={i === 3} />
-            </FadeIn>
+            <li key={service.id}>
+              <FadeIn delay={i * 80} direction="up">
+                <ServiceCard {...service} featured={i === 3} />
+              </FadeIn>
+            </li>
           ))}
-        </div>
+        </ul>
 
         {showCTA && limit && SERVICES.length > limit && (
           <div className="mt-12 text-center">

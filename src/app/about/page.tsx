@@ -1,13 +1,15 @@
-import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import CTASection from "@/components/sections/CTASection";
+import PageHero from "@/components/layout/PageHero";
+import { pageMetadata } from "@/lib/seo";
+import type { Metadata } from "next";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "About",
   description:
     "Devora21 is a software engineering job support and tech consulting company built by engineers, for engineers. Learn about our mission and values.",
-};
+  path: "/about",
+});
 
 const values = [
   {
@@ -51,38 +53,12 @@ const values = [
 export default function AboutPage() {
   return (
     <>
-      {/* Hero */}
-      <section className="relative pt-32 pb-20 overflow-hidden min-h-[480px] flex items-center">
-        {/* Background image */}
-        <div className="absolute inset-0">
-          <Image
-            src="/bg.jpeg"
-            alt=""
-            fill
-            className="object-cover object-center"
-            priority
-            quality={80}
-          />
-          {/* Dark overlay — heavier in dark mode, lighter in light mode */}
-          <div className="absolute inset-0 bg-slate-900/60 dark:bg-navy-950/80" />
-        </div>
+      <PageHero
+        title="Engineers Supporting Engineers"
+        description="Devora21 was built out of a simple observation: software engineers face real, hard challenges — in job searches, in technical interviews, and in their day-to-day work — and most of the support available is generic, outdated, or disconnected from how the tech industry actually works."
+      />
 
-        <div className="relative z-10 w-full max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-
-          <h1 className="text-4xl sm:text-5xl font-bold text-white mb-6 tracking-tight">
-            Engineers Supporting Engineers
-          </h1>
-          <p className="text-slate-300 text-lg leading-relaxed">
-            Devora21 was built out of a simple observation: software engineers face real,
-            hard challenges — in job searches, in technical interviews, and in their
-            day-to-day work — and most of the support available is generic, outdated, or
-            completely disconnected from how the tech industry actually works.
-          </p>
-        </div>
-      </section>
-
-      {/* Mission */}
-      <section className="bg-white dark:bg-navy-900 py-20">
+      <section className="bg-white dark:bg-navy-900 py-20" aria-labelledby="mission-heading">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <div>

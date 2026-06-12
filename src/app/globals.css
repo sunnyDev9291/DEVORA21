@@ -2,6 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer utilities {
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+}
+
 :root {
   --bg-primary: #060B18;
   --bg-secondary: #0A0F1E;
@@ -38,6 +52,23 @@ body {
 ::selection {
   background: rgba(59, 130, 246, 0.25);
   color: #f8fafc;
+}
+
+/* docx-preview output — print-preview canvas (one page shown at a time) */
+.docx-preview-canvas .docx-wrapper {
+  background: transparent;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  min-width: min-content;
+}
+/* Each page: white sheet with a drop shadow, like Word print layout */
+.docx-preview-canvas .docx-wrapper > section.docx {
+  background: #ffffff;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.22);
+  margin: 0;
 }
 
 @layer utilities {
