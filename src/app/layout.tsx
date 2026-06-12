@@ -3,18 +3,27 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
-import WhatsAppButton from "@/components/ui/WhatsAppButton";
+import SkipLink from "@/components/layout/SkipLink";
+import ChatWidgets from "@/components/ui/ChatWidgets";
 import ThemeProvider from "@/providers/ThemeProvider";
+import JsonLd from "@/components/seo/JsonLd";
+import {
+  DEFAULT_DESCRIPTION,
+  SITE_NAME,
+  SITE_URL,
+  organizationJsonLd,
+  websiteJsonLd,
+} from "@/lib/seo";
 
 const inter = Inter({ subsets: ["latin"], display: "swap" });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: {
-    default: "Devora21 | Job Support & Tech Consulting for Software Engineers",
-    template: "%s | Devora21",
+    default: `${SITE_NAME} | Job Support & Tech Consulting for Software Engineers`,
+    template: `%s | ${SITE_NAME}`,
   },
-  description:
-    "Devora21 helps software engineers get hired, perform better in real work, and solve technical challenges. ATS resume support, interview prep, debugging, code review & career guidance.",
+  description: DEFAULT_DESCRIPTION,
   keywords: [
     "software engineer job support",
     "technical interview prep",
@@ -24,19 +33,24 @@ export const metadata: Metadata = {
     "career guidance engineers",
     "software consulting",
   ],
+  authors: [{ name: SITE_NAME, url: SITE_URL }],
+  creator: SITE_NAME,
+  publisher: SITE_NAME,
+  formatDetection: { email: false, address: false, telephone: false },
   openGraph: {
-    title: "Devora21 | Job Support & Tech Consulting for Software Engineers",
-    description:
-      "Professional job support and technical consulting for software engineers who are ready to level up.",
+    title: `${SITE_NAME} | Job Support & Tech Consulting for Software Engineers`,
+    description: DEFAULT_DESCRIPTION,
     type: "website",
-    siteName: "Devora21",
+    siteName: SITE_NAME,
+    locale: "en_US",
+    url: SITE_URL,
   },
   twitter: {
     card: "summary_large_image",
-    title: "Devora21 | Job Support & Tech Consulting for Software Engineers",
-    description:
-      "Professional job support and technical consulting for software engineers.",
+    title: `${SITE_NAME} | Job Support & Tech Consulting for Software Engineers`,
+    description: DEFAULT_DESCRIPTION,
   },
+  robots: { index: true, follow: true },
 };
 
 export default function RootLayout({
@@ -47,11 +61,13 @@ export default function RootLayout({
   return (
     <html lang="en" className="scroll-smooth dark">
       <body className={`${inter.className} bg-slate-50 dark:bg-navy-950 text-slate-900 dark:text-slate-100 transition-colors duration-300`}>
+        <JsonLd data={[organizationJsonLd(), websiteJsonLd()]} />
         <ThemeProvider>
+          <SkipLink />
           <Navbar />
-          <main>{children}</main>
+          <main id="main-content">{children}</main>
           <Footer />
-          <WhatsAppButton />
+          <ChatWidgets />
         </ThemeProvider>
       </body>
     </html>

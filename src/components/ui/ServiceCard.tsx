@@ -18,7 +18,8 @@ export default function ServiceCard({
   featured = false,
 }: ServiceCardProps) {
   return (
-    <div
+    <article
+      id={id}
       className={`group relative flex flex-col rounded-2xl border p-6 transition-all duration-300 hover:-translate-y-1 ${
         featured
           ? "bg-gradient-to-br from-blue-600/20 to-indigo-600/10 border-blue-500/30 hover:border-blue-400/50"
@@ -31,7 +32,7 @@ export default function ServiceCard({
         </span>
       )}
 
-      <div className="text-3xl mb-4">{icon}</div>
+      <div className="text-3xl mb-4" aria-hidden="true">{icon}</div>
 
       <h3 className="text-slate-900 dark:text-white font-semibold text-lg mb-2 leading-snug">{title}</h3>
       <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed mb-5 flex-1">{description}</p>
@@ -61,6 +62,6 @@ export default function ServiceCard({
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
         </svg>
       </Link>
-    </div>
+    </article>
   );
 }

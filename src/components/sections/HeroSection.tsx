@@ -122,22 +122,27 @@ function Particles() {
     <canvas
       ref={canvasRef}
       className="absolute inset-0 w-full h-full pointer-events-none"
+      aria-hidden="true"
     />
   );
 }
 
 export default function HeroSection() {
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-slate-50 dark:bg-navy-950">
-      {/* Grid background */}
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(0,0,0,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(0,0,0,0.05)_1px,transparent_1px)] dark:bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:72px_72px]" />
+    <section
+      className="relative min-h-screen flex items-center justify-center overflow-hidden bg-slate-50 dark:bg-navy-950"
+      aria-labelledby="hero-heading"
+    >
+      <div
+        className="absolute inset-0 bg-[linear-gradient(rgba(0,0,0,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(0,0,0,0.05)_1px,transparent_1px)] dark:bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:72px_72px]"
+        aria-hidden="true"
+      />
 
-      {/* Particles */}
       <Particles />
 
       {/* Glow blobs */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-blue-600/15 blur-[140px] rounded-full pointer-events-none" />
-      <div className="absolute bottom-0 right-1/3 w-[500px] h-[350px] bg-indigo-600/10 blur-[120px] rounded-full pointer-events-none" />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-blue-600/15 blur-[140px] rounded-full pointer-events-none" aria-hidden="true" />
+      <div className="absolute bottom-0 right-1/3 w-[500px] h-[350px] bg-indigo-600/10 blur-[120px] rounded-full pointer-events-none" aria-hidden="true" />
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-20 text-center">
         {/* Status badge */}
@@ -151,6 +156,7 @@ export default function HeroSection() {
 
         {/* Headline */}
         <h1
+          id="hero-heading"
           className="text-4xl sm:text-6xl lg:text-7xl font-bold text-slate-900 dark:text-white leading-[1.15] tracking-tight mb-6"
           style={{ animation: "fadeUp 0.6s ease 0.2s both" }}
         >
@@ -192,9 +198,10 @@ export default function HeroSection() {
         </div>
 
         {/* Trust signals */}
-        <div
-          className="flex flex-wrap items-center justify-center gap-6 sm:gap-10"
+        <ul
+          className="flex flex-wrap items-center justify-center gap-6 sm:gap-10 list-none m-0 p-0"
           style={{ animation: "fadeUp 0.6s ease 0.65s both" }}
+          aria-label="Why engineers choose Devora21"
         >
           {[
             "Everything stays confidential",
@@ -202,14 +209,14 @@ export default function HeroSection() {
             "Engineers helping engineers",
             "First consultation is free",
           ].map((item) => (
-            <div key={item} className="flex items-center gap-2 text-slate-500 dark:text-slate-500 text-sm">
+            <li key={item} className="flex items-center gap-2 text-slate-500 dark:text-slate-500 text-sm">
               <svg className="w-4 h-4 text-green-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
               </svg>
               {item}
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       </div>
 
       {/* Scroll hint */}

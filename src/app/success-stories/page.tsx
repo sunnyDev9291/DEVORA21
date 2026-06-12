@@ -1,13 +1,15 @@
-import type { Metadata } from "next";
-import Image from "next/image";
 import TestimonialsSection from "@/components/sections/TestimonialsSection";
 import CTASection from "@/components/sections/CTASection";
+import PageHero from "@/components/layout/PageHero";
+import { pageMetadata } from "@/lib/seo";
+import type { Metadata } from "next";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Success Stories",
   description:
     "Real results from real software engineers who worked with Devora21 — from landing first jobs to salary negotiations to production bug fixes.",
-};
+  path: "/success-stories",
+});
 
 const caseStudies = [
   {
@@ -51,33 +53,12 @@ const caseStudies = [
 export default function SuccessStoriesPage() {
   return (
     <>
-      {/* Hero */}
-      <section className="relative pt-32 pb-20 overflow-hidden min-h-[480px] flex items-center">
-        <div className="absolute inset-0">
-          <Image
-            src="/bg.jpeg"
-            alt=""
-            fill
-            className="object-cover object-center"
-            priority
-            quality={80}
-          />
-          <div className="absolute inset-0 bg-slate-900/60 dark:bg-navy-950/80" />
-        </div>
-        <div className="relative z-10 w-full max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <PageHero
+        title="Engineers Who Leveled Up"
+        description="Real stories from real engineers. No fabricated case studies — just outcomes we're proud of."
+      />
 
-          <h1 className="text-4xl sm:text-5xl font-bold text-white mb-5 tracking-tight">
-            Engineers Who Leveled Up
-          </h1>
-          <p className="text-slate-300 text-lg max-w-xl mx-auto">
-            Real stories from real engineers. No fabricated case studies — just
-            outcomes we&apos;re proud of.
-          </p>
-        </div>
-      </section>
-
-      {/* Case studies */}
-      <section className="bg-white dark:bg-navy-900 py-24">
+      <section className="bg-white dark:bg-navy-900 py-24" aria-labelledby="case-studies-heading">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
           {caseStudies.map((cs) => (
             <div

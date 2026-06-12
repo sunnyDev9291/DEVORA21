@@ -48,28 +48,25 @@ export default function AnimatedCounter({ value, label, description, icon, gradi
   }, [inView, value]);
 
   return (
-    <div
-      ref={ref as React.RefObject<HTMLDivElement>}
-      className="relative group flex flex-col items-center text-center p-8 rounded-2xl bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] hover:border-blue-500/40 dark:hover:border-blue-500/30 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-blue-500/10"
+    <article
+      ref={ref as React.RefObject<HTMLElement>}
+      className="relative group flex flex-col items-center text-center p-8 rounded-2xl bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] hover:border-blue-500/40 dark:hover:border-blue-500/30 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-blue-500/10 h-full"
     >
       {/* Subtle glow on hover */}
       <div className={`absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-20 transition-opacity duration-300 bg-gradient-to-br ${gradient} blur-2xl -z-10`} />
 
       {/* Icon badge */}
-      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center mb-5 shadow-lg`}>
+      <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center mb-5 shadow-lg`} aria-hidden="true">
         <div className="text-white w-5 h-5">{icon}</div>
       </div>
 
-      {/* Number */}
-      <p className={`text-5xl sm:text-6xl font-black bg-gradient-to-br ${gradient} bg-clip-text text-transparent tabular-nums leading-none mb-2`}>
+      <p className={`text-5xl sm:text-6xl font-black bg-gradient-to-br ${gradient} bg-clip-text text-transparent tabular-nums leading-none mb-2`} aria-hidden="true">
         {inView ? display : "0"}
       </p>
+      <p className="sr-only">{inView ? display : "0"} {label}</p>
 
-      {/* Label */}
-      <p className="text-slate-900 dark:text-white font-semibold text-base mb-1">{label}</p>
-
-      {/* Description */}
+      <h3 className="text-slate-900 dark:text-white font-semibold text-base mb-1">{label}</h3>
       <p className="text-slate-500 dark:text-slate-500 text-xs leading-relaxed">{description}</p>
-    </div>
+    </article>
   );
 }

@@ -3,7 +3,7 @@ import { CONTACT_INFO } from "@/lib/constants";
 
 export default function CTASection() {
   return (
-    <section className="bg-slate-50 dark:bg-navy-950 py-24 sm:py-32">
+    <section className="bg-slate-50 dark:bg-navy-950 py-24 sm:py-32" aria-labelledby="cta-heading">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         <div className="relative rounded-3xl bg-gradient-to-br from-blue-600/20 via-indigo-600/10 to-navy-900 border border-blue-500/20 p-10 sm:p-16 overflow-hidden">
           {/* Glow */}
@@ -12,7 +12,7 @@ export default function CTASection() {
 
           <div className="relative">
 
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-5 tracking-tight">
+            <h2 id="cta-heading" className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-5 tracking-tight">
               Not sure where to start?
             </h2>
             <p className="text-slate-400 text-lg max-w-xl mx-auto mb-10">
