@@ -8,6 +8,10 @@ const nextConfig: NextConfig = {
     "/api/templates": ["./assets/starting resumes/**/*"],
     "/api/templates/file": ["./assets/starting resumes/**/*"],
     "/api/resume": ["./assets/starting resumes/**/*"],
+    "/api/resume/stream": ["./assets/starting resumes/**/*"],
+    "/api/resume/build": ["./assets/starting resumes/**/*"],
+    "/api/prompts": ["./assets/Prompts/**/*"],
+    "/api/prompts/file": ["./assets/Prompts/**/*"],
   },
   serverExternalPackages: ["pizzip"],
 };

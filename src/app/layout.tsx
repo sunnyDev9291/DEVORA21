@@ -6,6 +6,7 @@ import Footer from "@/components/layout/Footer";
 import SkipLink from "@/components/layout/SkipLink";
 import ChatWidgets from "@/components/ui/ChatWidgets";
 import ThemeProvider from "@/providers/ThemeProvider";
+import { AuthProvider } from "@/context/AuthContext";
 import JsonLd from "@/components/seo/JsonLd";
 import {
   DEFAULT_DESCRIPTION,
@@ -66,11 +67,13 @@ export default function RootLayout({
       <body className={`${inter.className} bg-slate-50 dark:bg-navy-950 text-slate-900 dark:text-slate-100 transition-colors duration-300`}>
         <JsonLd data={[organizationJsonLd(), websiteJsonLd()]} />
         <ThemeProvider>
-          <SkipLink />
-          <Navbar />
-          <main id="main-content">{children}</main>
-          <Footer />
-          <ChatWidgets />
+          <AuthProvider>
+            <SkipLink />
+            <Navbar />
+            <main id="main-content">{children}</main>
+            <Footer />
+            <ChatWidgets />
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { CONTACT_INFO } from "@/lib/constants";
 
 const TYPEWRITER_WORDS = [
   "Get Hired.",
@@ -183,12 +184,14 @@ export default function HeroSection() {
           className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16"
           style={{ animation: "fadeUp 0.6s ease 0.5s both" }}
         >
-          <Link
-            href="/contact"
-            className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-xl shadow-blue-600/30 hover:shadow-blue-500/40 hover:-translate-y-0.5 text-base"
+          <a
+            href={CONTACT_INFO.calendly}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-xl shadow-blue-600/30 hover:shadow-blue-500/40 hover:-translate-y-0.5 text-base text-center"
           >
             Get a Free Consultation
-          </Link>
+          </a>
           <Link
             href="/services"
             className="w-full sm:w-auto bg-slate-100 hover:bg-slate-200 dark:bg-white/[0.05] dark:hover:bg-white/[0.08] border border-slate-300 dark:border-white/10 hover:border-slate-400 dark:hover:border-white/20 text-slate-900 dark:text-white font-semibold px-8 py-4 rounded-xl transition-all duration-200 text-base"

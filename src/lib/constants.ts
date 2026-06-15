@@ -259,10 +259,43 @@ export const STATS = [
 ];
 
 export const CONTACT_INFO = {
+  calendly: "https://calendly.com/hello-devora21/30min",
   whatsapp: "https://wa.me/5493885167478",
   linkedin: "https://www.linkedin.com/company/devora21",
   email: "hello@devora21.com",
 };
+
+export const APP_FEATURES = {
+  resume: {
+    href: "/resume",
+    label: "Resume Builder",
+    shortLabel: "Resume",
+    description: "ATS-tailored resumes",
+    accent: "blue",
+  },
+  realTimeInterview: {
+    href: "/real-time-interview",
+    label: "Real Time Job Interview",
+    shortLabel: "Live Interview",
+    description: "Live coaching support",
+    accent: "violet",
+  },
+} as const;
+
+export const APP_LINKS = {
+  resume: APP_FEATURES.resume.href,
+  realTimeInterview: APP_FEATURES.realTimeInterview.href,
+} as const;
+
+export const AUTH_LINKS = {
+  login: "/login",
+  register: "/register",
+  dashboard: "/dashboard",
+  forgotPassword: "/forgot-password",
+} as const;
+
+export const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://31.44.7.64:5000";
 
 export const NAV_LINKS = [
   { label: "Services", href: "/services" },
@@ -270,4 +303,5 @@ export const NAV_LINKS = [
   { label: "Success Stories", href: "/success-stories" },
   { label: "About", href: "/about" },
   { label: "FAQ", href: "/faq" },
+  { label: "Contact", href: "/contact" },
 ];

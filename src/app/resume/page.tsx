@@ -15,7 +15,7 @@ export default function ResumePage() {
     <>
       <PageHero
         title="Resume Builder"
-        description="Choose a template, enter the job details, and we'll generate tailored content and update your resume for download."
+        description="Pick a template, generate an AI draft for your target job, edit every section yourself, then download a tailored .docx."
       />
       <ResumeBuilder />
     </>

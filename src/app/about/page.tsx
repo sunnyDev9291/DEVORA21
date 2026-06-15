@@ -1,5 +1,6 @@
 import Link from "next/link";
 import CTASection from "@/components/sections/CTASection";
+import { CONTACT_INFO } from "@/lib/constants";
 import PageHero from "@/components/layout/PageHero";
 import { pageMetadata } from "@/lib/seo";
 import type { Metadata } from "next";
@@ -161,12 +162,14 @@ export default function AboutPage() {
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-3">Have a question about us?</h2>
           <p className="text-slate-500 dark:text-slate-400 mb-6">We&apos;re happy to chat — no commitment required.</p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Link
-              href="/contact"
+            <a
+              href={CONTACT_INFO.calendly}
+              target="_blank"
+              rel="noopener noreferrer"
               className="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-7 py-3.5 rounded-xl transition-all shadow-lg shadow-blue-600/25"
             >
               Book Free Consultation
-            </Link>
+            </a>
             <Link
               href="/faq"
               className="bg-slate-200 dark:bg-white/[0.05] hover:bg-slate-300 dark:hover:bg-white/[0.08] border border-slate-300 dark:border-white/10 text-slate-900 dark:text-white font-semibold px-7 py-3.5 rounded-xl transition-all"

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { CONTACT_INFO } from "@/lib/constants";
 
 export default function CTASection() {
@@ -22,12 +21,14 @@ export default function CTASection() {
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link
-                href="/contact"
-                className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-xl shadow-blue-600/30 hover:shadow-blue-500/40 hover:-translate-y-0.5"
+              <a
+                href={CONTACT_INFO.calendly}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-xl shadow-blue-600/30 hover:shadow-blue-500/40 hover:-translate-y-0.5 text-center"
               >
                 Get a Free Consultation
-              </Link>
+              </a>
               <a
                 href={CONTACT_INFO.whatsapp}
                 target="_blank"
