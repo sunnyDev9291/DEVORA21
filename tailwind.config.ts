@@ -23,12 +23,22 @@ export default {
       },
       animation: {
         "fade-up": "fadeUp 0.6s ease-out forwards",
+        "dialog-enter": "dialogEnter 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards",
+        "backdrop-enter": "backdropEnter 0.2s ease-out forwards",
         pulse: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
       },
       keyframes: {
         fadeUp: {
           "0%": { opacity: "0", transform: "translateY(24px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        dialogEnter: {
+          "0%": { opacity: "0", transform: "scale(0.96) translateY(10px)" },
+          "100%": { opacity: "1", transform: "scale(1) translateY(0)" },
+        },
+        backdropEnter: {
+          "0%": { opacity: "0" },
+          "100%": { opacity: "1" },
         },
       },
     },

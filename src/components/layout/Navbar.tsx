@@ -6,6 +6,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { NAV_LINKS } from "@/lib/constants";
 import ThemeToggle from "@/components/ui/ThemeToggle";
+import NavbarActions from "@/components/layout/NavbarActions";
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
@@ -35,7 +36,7 @@ export default function Navbar() {
         className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"
       >
         <div className="flex items-center justify-between h-16 lg:h-20">
-          <Link href="/" className="flex items-center gap-2.5 pt-6 pb-3 px-2" aria-label="Devora21 home">
+          <Link href="/" className="flex items-center gap-2.5 pt-6 pb-3 px-2 shrink-0" aria-label="Devora21 home">
             <Image
               src="/logo.png"
               alt="Devora21 logo"
@@ -49,13 +50,13 @@ export default function Navbar() {
             </span>
           </Link>
 
-          <ul className="hidden lg:flex items-center gap-1 list-none m-0 p-0" role="list">
+          <ul className="hidden lg:flex items-center gap-0.5 xl:gap-1 list-none m-0 p-0 mx-4" role="list">
             {NAV_LINKS.map((link) => (
               <li key={link.href}>
                 <Link
                   href={link.href}
                   aria-current={pathname === link.href ? "page" : undefined}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+                  className={`px-3 xl:px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap ${
                     pathname === link.href
                       ? "text-blue-600 dark:text-blue-400 bg-blue-500/10"
                       : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.05]"
@@ -67,32 +68,9 @@ export default function Navbar() {
             ))}
           </ul>
 
-          <div className="hidden lg:flex items-center gap-3">
+          <div className="hidden lg:flex items-center gap-2 xl:gap-3 shrink-0">
             <ThemeToggle />
-            <Link
-              href="/contact"
-              aria-current={pathname === "/contact" ? "page" : undefined}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                pathname === "/contact"
-                  ? "text-blue-600 dark:text-blue-400"
-                  : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-              }`}
-            >
-              Contact
-            </Link>
-            <Link
-              href="/resume"
-              aria-current={pathname === "/resume" ? "page" : undefined}
-              className="bg-slate-200 dark:bg-white/[0.05] hover:bg-slate-300 dark:hover:bg-white/[0.08] border border-slate-300 dark:border-white/10 text-slate-900 dark:text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-all duration-200"
-            >
-              Resume
-            </Link>
-            <Link
-              href="/contact"
-              className="bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-all duration-200 shadow-lg shadow-blue-600/25 hover:shadow-blue-500/35 hover:-translate-y-px"
-            >
-              Book Free Consultation
-            </Link>
+            <NavbarActions variant="desktop" />
           </div>
 
           <div className="lg:hidden flex items-center gap-2">
@@ -122,7 +100,7 @@ export default function Navbar() {
       <div
         id="mobile-nav-menu"
         className={`lg:hidden overflow-hidden transition-all duration-300 ${
-          isOpen ? "max-h-screen opacity-100" : "max-h-0 opacity-0"
+          isOpen ? "max-h-[90vh] opacity-100 overflow-y-auto" : "max-h-0 opacity-0"
         }`}
         aria-hidden={!isOpen}
       >
@@ -144,20 +122,7 @@ export default function Navbar() {
               </li>
             ))}
           </ul>
-          <div className="pt-2 space-y-2">
-            <Link
-              href="/resume"
-              className="block bg-slate-200 dark:bg-white/[0.05] hover:bg-slate-300 dark:hover:bg-white/[0.08] border border-slate-300 dark:border-white/10 text-slate-900 dark:text-white text-sm font-semibold px-5 py-3 rounded-xl text-center transition-all"
-            >
-              Resume
-            </Link>
-            <Link
-              href="/contact"
-              className="block bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-5 py-3 rounded-xl text-center transition-all"
-            >
-              Book Free Consultation
-            </Link>
-          </div>
+          <NavbarActions variant="mobile" onNavigate={() => setIsOpen(false)} />
         </nav>
       </div>
     </header>

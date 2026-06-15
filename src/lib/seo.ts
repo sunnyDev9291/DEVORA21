@@ -15,6 +15,7 @@ export const PUBLIC_ROUTES = [
   { path: "/faq", priority: 0.7, changeFrequency: "monthly" as const },
   { path: "/contact", priority: 0.9, changeFrequency: "monthly" as const },
   { path: "/resume", priority: 0.8, changeFrequency: "weekly" as const },
+  { path: "/real-time-interview", priority: 0.8, changeFrequency: "weekly" as const },
 ];
 
 export function absoluteUrl(path = "/"): string {

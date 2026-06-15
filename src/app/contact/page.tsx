@@ -29,7 +29,25 @@ export default function ContactPage() {
 
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-10">
             <aside className="lg:col-span-2 space-y-6" aria-label="Contact options">
-              {/* Quick contact cards */}
+              <a
+                href={CONTACT_INFO.calendly}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-4 bg-blue-500/[0.07] border border-blue-500/30 hover:border-blue-500/50 hover:bg-blue-500/[0.12] rounded-2xl p-5 transition-all group"
+              >
+                <div className="w-12 h-12 bg-blue-500/15 border border-blue-500/25 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-slate-900 dark:text-white font-semibold text-sm group-hover:text-blue-600 dark:group-hover:text-blue-300 transition-colors">
+                    Book Free Consultation
+                  </p>
+                  <p className="text-slate-500 text-xs mt-0.5">Pick a 30-minute slot on Calendly</p>
+                </div>
+              </a>
+
               <a
                 href={CONTACT_INFO.whatsapp}
                 target="_blank"
