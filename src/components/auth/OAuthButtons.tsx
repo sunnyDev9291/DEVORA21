@@ -1,4 +1,3 @@
-import Button from "@/components/ui/Button";
 import { getOAuthUrl } from "@/lib/auth-api";
 
 function GoogleIcon() {
