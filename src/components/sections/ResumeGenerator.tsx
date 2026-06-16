@@ -402,11 +402,6 @@ export default function ResumeGenerator({
     atsAbortRef.current?.abort();
   }
 
-  const docxBlob = useMemo(
-    () => (docxBase64 ? base64ToBlob(docxBase64, DOCX_MIME) : null),
-    [docxBase64]
-  );
-
   const pdfBlob = useMemo(
     () => (pdfBase64 ? base64ToBlob(pdfBase64, PDF_MIME) : null),
     [pdfBase64]
