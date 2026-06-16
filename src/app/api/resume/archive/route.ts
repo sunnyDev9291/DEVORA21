@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "@/lib/constants";
+import { getServerApiBaseUrl } from "@/lib/api-base-url";
 
 export const runtime = "nodejs";
 
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const upstream = await fetch(`${API_BASE_URL}/resume/archive`, {
+    const upstream = await fetch(`${getServerApiBaseUrl()}/resume/archive`, {
       method: "POST",
       body: upstreamForm,
     });

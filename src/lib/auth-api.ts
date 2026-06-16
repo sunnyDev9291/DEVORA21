@@ -1,5 +1,5 @@
 import axios, { isAxiosError } from "axios";
-import { API_BASE_URL } from "@/lib/constants";
+import { getClientAuthBaseUrl } from "@/lib/api-base-url";
 import type {
   AuthResponse,
   MessageResponse,
@@ -8,7 +8,7 @@ import type {
 } from "@/types/auth";
 
 export const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: getClientAuthBaseUrl(),
   withCredentials: true,
   headers: {
     "Content-Type": "application/json",
@@ -59,5 +59,5 @@ export const authApi = {
 };
 
 export function getOAuthUrl(provider: "google" | "microsoft"): string {
-  return `${API_BASE_URL}/auth/${provider}`;
+  return `/api/auth/${provider}`;
 }
