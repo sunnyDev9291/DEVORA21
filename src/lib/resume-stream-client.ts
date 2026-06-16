@@ -112,7 +112,7 @@ export async function consumeResumeStream(
   if (!result) {
     throw new Error(
       output.trim()
-        ? "Resume generation was cut short before finishing. On Netlify, set DEEPSEEK_API_KEY and use a plan with longer function timeouts (26s+)."
+        ? "Resume generation was cut short (Netlify function timeout). Redeploy with the latest code — generation now runs on your backend server."
         : "Stream ended without resume content. Set DEEPSEEK_API_KEY in Netlify environment variables and try again."
     );
   }

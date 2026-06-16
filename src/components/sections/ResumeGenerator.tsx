@@ -10,7 +10,7 @@ import { resolveResumeWizardStep } from "@/components/sections/ResumeStepper";
 import type { ResumeTemplate } from "@/lib/resume-template";
 import type { ResumePromptOption } from "@/lib/resume-prompt-option";
 import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
-import { consumeResumeStream } from "@/lib/resume-stream-client";
+import { generateResume } from "@/lib/resume-generate-client";
 import { archiveResume } from "@/lib/resume-archive";
 import type { GeneratedResumeContent, ResumeBuildResponse, AtsScoreResult } from "@/lib/resume-types";
 
@@ -281,18 +281,15 @@ export default function ResumeGenerator({
     abortRef.current = controller;
 
     try {
-      const res = await fetch("/api/resume/stream", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, templateName: selectedTemplate.name }),
-        signal: controller.signal,
-      });
-
-      const data = await consumeResumeStream(res, {
-        onPhase: (phase) => {
-          if (generationRunRef.current === runId) setStreamPhase(phase);
-        },
-      });
+      const data = await generateResume(
+        { ...form, templateName: selectedTemplate.name },
+        {
+          onPhase: (phase) => {
+            if (generationRunRef.current === runId) setStreamPhase(phase);
+          },
+          signal: controller.signal,
+        }
+      );
 
       if (generationRunRef.current !== runId) return;
 
