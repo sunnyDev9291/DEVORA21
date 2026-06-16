@@ -15,12 +15,12 @@ async function getBlobStore() {
   return getStore({ name: "resume-jobs", consistency: "strong" });
 }
 
-function useBlobStore(): boolean {
+function isNetlifyDeploy(): boolean {
   return process.env.NETLIFY === "true";
 }
 
 export async function saveResumeJob(jobId: string, job: ResumeJobRecord): Promise<void> {
-  if (useBlobStore()) {
+  if (isNetlifyDeploy()) {
     const store = await getBlobStore();
     await store.setJSON(jobId, job);
     return;
@@ -31,7 +31,7 @@ export async function saveResumeJob(jobId: string, job: ResumeJobRecord): Promis
 }
 
 export async function getResumeJob(jobId: string): Promise<ResumeJobRecord | null> {
-  if (useBlobStore()) {
+  if (isNetlifyDeploy()) {
     const store = await getBlobStore();
     const job = await store.get(jobId, { type: "json" });
     return (job as ResumeJobRecord | null) ?? null;
@@ -42,7 +42,7 @@ export async function getResumeJob(jobId: string): Promise<ResumeJobRecord | nul
 }
 
 export async function deleteResumeJob(jobId: string): Promise<void> {
-  if (useBlobStore()) {
+  if (isNetlifyDeploy()) {
     const store = await getBlobStore();
     await store.delete(jobId);
     return;

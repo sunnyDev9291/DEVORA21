@@ -1,7 +1,4 @@
-import {
-  finalizeResumeContent,
-  type ResumeMergeContext,
-} from "@/lib/resume-generate-prep";
+import { finalizeResumeContent } from "@/lib/resume-generate-prep";
 import { deleteResumeJob, getResumeJob } from "@/lib/resume-job-store";
 
 export const runtime = "nodejs";
