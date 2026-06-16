@@ -7,6 +7,7 @@ import {
   buildResumeNdjsonStream,
   resumeNdjsonResponse,
 } from "@/lib/resume-generate-stream";
+import { isNetlifyRuntime } from "@/lib/netlify-runtime";
 import { saveResumeJob } from "@/lib/resume-job-store";
 
 export const runtime = "nodejs";
@@ -44,7 +45,7 @@ export async function POST(req: Request) {
   try {
     const prep = await prepareResumeGeneration(body);
 
-    if (process.env.NETLIFY === "true") {
+    if (isNetlifyRuntime()) {
       const jobId = randomUUID();
       const mergeContext = {
         existingExperiences: prep.existingExperiences,

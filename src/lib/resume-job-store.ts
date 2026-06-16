@@ -1,3 +1,4 @@
+import { isNetlifyRuntime } from "@/lib/netlify-runtime";
 import type { ResumeJobRecord } from "@/lib/resume-generate-prep";
 
 const MEMORY_STORE = new Map<string, ResumeJobRecord>();
@@ -15,12 +16,8 @@ async function getBlobStore() {
   return getStore({ name: "resume-jobs", consistency: "strong" });
 }
 
-function isNetlifyDeploy(): boolean {
-  return process.env.NETLIFY === "true";
-}
-
 export async function saveResumeJob(jobId: string, job: ResumeJobRecord): Promise<void> {
-  if (isNetlifyDeploy()) {
+  if (isNetlifyRuntime()) {
     const store = await getBlobStore();
     await store.setJSON(jobId, job);
     return;
@@ -31,7 +28,7 @@ export async function saveResumeJob(jobId: string, job: ResumeJobRecord): Promis
 }
 
 export async function getResumeJob(jobId: string): Promise<ResumeJobRecord | null> {
-  if (isNetlifyDeploy()) {
+  if (isNetlifyRuntime()) {
     const store = await getBlobStore();
     const job = await store.get(jobId, { type: "json" });
     return (job as ResumeJobRecord | null) ?? null;
@@ -42,7 +39,7 @@ export async function getResumeJob(jobId: string): Promise<ResumeJobRecord | nul
 }
 
 export async function deleteResumeJob(jobId: string): Promise<void> {
-  if (isNetlifyDeploy()) {
+  if (isNetlifyRuntime()) {
     const store = await getBlobStore();
     await store.delete(jobId);
     return;
