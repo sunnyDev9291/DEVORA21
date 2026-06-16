@@ -15,8 +15,12 @@ import {
 
 export { ATS_PASS_THRESHOLD } from "@/lib/resume-ats-algorithm";
 
-async function extractJobKeywords(jobTitle: string, jobDescription: string): Promise<JobKeywords> {
-  const heuristic = extractHeuristicKeywords(jobTitle, jobDescription);
+async function extractJobKeywords(
+  jobTitle: string,
+  jobDescription: string,
+  companyName: string
+): Promise<JobKeywords> {
+  const heuristic = extractHeuristicKeywords(jobTitle, jobDescription, companyName);
 
   if (!jobDescription.trim()) return heuristic;
 
@@ -24,7 +28,7 @@ async function extractJobKeywords(jobTitle: string, jobDescription: string): Pro
     const raw = await completeDeepSeek(
       [
         { role: "system", content: KEYWORD_EXTRACT_PROMPT },
-        { role: "user", content: buildKeywordExtractUserPrompt(jobTitle, jobDescription) },
+        { role: "user", content: buildKeywordExtractUserPrompt(jobTitle, jobDescription, companyName) },
       ],
       2048,
       { jsonObject: true }
@@ -50,14 +54,16 @@ async function extractJobKeywords(jobTitle: string, jobDescription: string): Pro
  */
 export async function evaluateStrictAtsScore({
   jobTitle,
+  companyName,
   jobDescription,
   content,
 }: {
   jobTitle: string;
+  companyName: string;
   jobDescription: string;
   content: GeneratedResumeContent;
 }): Promise<AtsScoreResult> {
-  const keywords = await extractJobKeywords(jobTitle, jobDescription);
+  const keywords = await extractJobKeywords(jobTitle, jobDescription, companyName);
   const computation = computeStrictAtsScore(content, jobTitle, keywords);
   const recommendations = buildStrictRecommendations(computation, keywords, content);
   return toAtsScoreResult(computation, recommendations);

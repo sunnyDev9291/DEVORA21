@@ -153,6 +153,7 @@ export default function ResumeAtsScoreModal({
                   applying={applying}
                   generating={generating}
                   templateName={templateName}
+                  jobTitle={jobTitle}
                   applyLabel={applyLabel}
                   generationKey={generationKey}
                   embedded

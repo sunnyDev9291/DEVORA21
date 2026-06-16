@@ -287,7 +287,7 @@ function extractSection(text: string, patterns: RegExp[]): string {
   return "";
 }
 
-function extractHeuristicKeywords(jobTitle: string, jobDescription: string): JobKeywords {
+function extractHeuristicKeywords(jobTitle: string, jobDescription: string, companyName: string): JobKeywords {
   const jd = jobDescription || jobTitle;
   const lower = jd.toLowerCase();
 
@@ -318,6 +318,7 @@ function extractHeuristicKeywords(jobTitle: string, jobDescription: string): Job
 
   const roleKeywords = uniqueKeywords([
     ...jobTitle.split(/[\s|,/]+/),
+    ...(companyName.split(/[\s|,/]+/)),
     ...(lower.includes("senior") ? ["Senior"] : []),
     ...(lower.includes("staff") ? ["Staff"] : []),
     ...(lower.includes("lead") ? ["Lead"] : []),
@@ -356,9 +357,14 @@ export function parseKeywordExtractJson(raw: string): JobKeywords | null {
   }
 }
 
-export function buildKeywordExtractUserPrompt(jobTitle: string, jobDescription: string): string {
+export function buildKeywordExtractUserPrompt(
+  jobTitle: string,
+  jobDescription: string,
+  companyName: string
+): string {
   return [
     jobTitle && `Job title: ${jobTitle}`,
+    `Company: ${companyName}`,
     jobDescription && `Job description:\n${jobDescription}`,
   ]
     .filter(Boolean)

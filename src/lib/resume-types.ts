@@ -23,6 +23,12 @@ export type ResumeBuildResponse = {
   fileName: string;
 };
 
+export type ResumeArchiveResponse = {
+  resumeName: string;
+  pdfFileName: string;
+  pdfBase64: string;
+};
+
 export type AtsScoreBreakdown = {
   category: string;
   score: number;
