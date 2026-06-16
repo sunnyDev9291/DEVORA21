@@ -36,6 +36,7 @@ export type ResumeJobRecord =
       status: "pending";
       templateName: string;
       mergeContext: ResumeMergeContext;
+      messages: Array<{ role: "system" | "user"; content: string }>;
       createdAt: number;
     }
   | {

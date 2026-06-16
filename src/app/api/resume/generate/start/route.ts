@@ -12,28 +12,6 @@ import { saveResumeJob } from "@/lib/resume-job-store";
 
 export const runtime = "nodejs";
 
-function getSiteUrl(): string {
-  return (
-    process.env.URL ||
-    process.env.DEPLOY_PRIME_URL ||
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    "http://localhost:8888"
-  );
-}
-
-async function triggerBackgroundJob(jobId: string, messages: unknown[]) {
-  const response = await fetch(`${getSiteUrl()}/.netlify/functions/resume-generate-background`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jobId, messages }),
-  });
-
-  if (response.status !== 202 && !response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(detail || `Failed to start background generation (${response.status}).`);
-  }
-}
-
 export async function POST(req: Request) {
   let body: ResumeGenerateRequest;
   try {
@@ -56,10 +34,9 @@ export async function POST(req: Request) {
         status: "pending",
         templateName: prep.templateName,
         mergeContext,
+        messages: prep.messages,
         createdAt: Date.now(),
       });
-
-      await triggerBackgroundJob(jobId, prep.messages);
 
       return Response.json({
         mode: "async",

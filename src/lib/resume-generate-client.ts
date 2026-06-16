@@ -15,6 +15,21 @@ interface StartAsyncResponse {
 
 const POLL_MS = 1500;
 const MAX_POLL_MS = 15 * 60 * 1000;
+const RUN_PATH = "/.netlify/functions/resume-generate-background";
+
+async function triggerResumeBackgroundJob(jobId: string, signal?: AbortSignal) {
+  const response = await fetch(RUN_PATH, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jobId }),
+    signal,
+  });
+
+  if (response.status !== 202 && !response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(detail || `Failed to start background generation (${response.status}).`);
+  }
+}
 const POLL_PHASES: ResumeGenerationPhase[] = [
   "starting",
   "analyzing",
@@ -130,5 +145,6 @@ export async function generateResume(
     throw new Error("Unexpected response from resume generator.");
   }
 
+  await triggerResumeBackgroundJob(startData.jobId, handlers.signal);
   return pollResumeJob(startData.jobId, handlers);
 }
