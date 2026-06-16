@@ -35,12 +35,14 @@ Rules:
 
 export function buildResumeUserPrompt({
   jobTitle,
+  companyName,
   jobDescription,
   customPrompt,
   headerTitle,
   existingExperiences,
 }: {
   jobTitle: string;
+  companyName: string;
   jobDescription: string;
   customPrompt: string;
   headerTitle: string;
@@ -48,6 +50,7 @@ export function buildResumeUserPrompt({
 }): string {
   return [
     jobTitle && `Target job title: ${jobTitle}`,
+    `Target company: ${companyName}`,
     jobDescription && `Job description:\n${jobDescription}`,
     customPrompt && `Additional instructions:\n${customPrompt}`,
     headerTitle && `Current resume title line: ${headerTitle}`,

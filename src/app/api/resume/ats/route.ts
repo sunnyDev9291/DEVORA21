@@ -5,6 +5,7 @@ export const runtime = "nodejs";
 
 interface AtsRequest {
   jobTitle?: string;
+  companyName?: string;
   jobDescription?: string;
   content?: GeneratedResumeContent;
 }
@@ -18,6 +19,7 @@ export async function POST(req: Request) {
   }
 
   const jobTitle = body.jobTitle?.trim() ?? "";
+  const companyName = body.companyName?.trim() ?? "";
   const jobDescription = body.jobDescription?.trim() ?? "";
   const content = body.content;
 
@@ -25,15 +27,16 @@ export async function POST(req: Request) {
     return Response.json({ error: "Resume content is required for ATS evaluation." }, { status: 400 });
   }
 
-  if (!jobTitle && !jobDescription) {
-    return Response.json(
-      { error: "Provide a job title or job description to evaluate against." },
-      { status: 400 }
-    );
+  if (!jobTitle) {
+    return Response.json({ error: "Job title is required." }, { status: 400 });
+  }
+
+  if (!companyName) {
+    return Response.json({ error: "Company name is required." }, { status: 400 });
   }
 
   try {
-    const result = await evaluateStrictAtsScore({ jobTitle, jobDescription, content });
+    const result = await evaluateStrictAtsScore({ jobTitle, companyName, jobDescription, content });
     return Response.json(result, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     const message = err instanceof Error ? err.message : "ATS evaluation failed.";

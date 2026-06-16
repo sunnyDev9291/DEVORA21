@@ -1,6 +1,7 @@
 import { readFile } from "fs/promises";
 import path from "path";
 import { applyContentToDocx } from "@/lib/resume-docx";
+import { buildExpectedResumeFileName } from "@/lib/resume-filename";
 import type { GeneratedResumeContent } from "@/lib/resume-types";
 import { TEMPLATES_DIR } from "@/lib/templates-dir";
 
@@ -8,6 +9,7 @@ export const runtime = "nodejs";
 
 interface BuildRequest {
   templateName?: string;
+  jobTitle?: string;
   content?: GeneratedResumeContent;
 }
 
@@ -64,7 +66,8 @@ export async function POST(req: Request) {
     const templateBuffer = await readFile(filePath);
     const updatedBuffer = applyContentToDocx(templateBuffer, content);
     const docxBase64 = updatedBuffer.toString("base64");
-    const fileName = `${templateName}-tailored.docx`;
+    const jobTitle = body.jobTitle?.trim() ?? "";
+    const fileName = buildExpectedResumeFileName(templateName, jobTitle, content);
 
     return Response.json({ templateName, docxBase64, fileName });
   } catch (err) {

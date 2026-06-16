@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
+    "@netlify/blobs": "^8.1.0",
+    "@netlify/functions": "^2.8.2",
     "axios": "^1.7.9",
     "docx-preview": "^0.3.7",
     "mammoth": "^1.12.0",

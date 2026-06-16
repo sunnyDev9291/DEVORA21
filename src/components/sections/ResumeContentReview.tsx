@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { GeneratedResumeContent, ResumeExperience } from "@/lib/resume-types";
+import { buildExpectedResumeBaseName } from "@/lib/resume-filename";
 
 interface ResumeContentReviewProps {
   content: GeneratedResumeContent;
@@ -11,6 +12,7 @@ interface ResumeContentReviewProps {
   applying: boolean;
   generating?: boolean;
   templateName: string;
+  jobTitle?: string;
   applyLabel?: string;
   generationKey: number;
   /** Compact layout for side-by-side use inside the ATS modal */
@@ -28,12 +30,21 @@ export default function ResumeContentReview({
   applying,
   generating = false,
   templateName,
+  jobTitle = "",
   applyLabel = "Apply to Resume",
   generationKey,
   embedded = false,
 }: ResumeContentReviewProps) {
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [expandedExp, setExpandedExp] = useState<number | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  const copyBullet = useCallback((key: string, text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey((k) => (k === key ? null : k)), 1800);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     setReviewConfirmed(false);
@@ -62,6 +73,11 @@ export default function ResumeContentReview({
     content.summary.trim() &&
     content.skills.trim() &&
     content.experiences.every((exp) => exp.company.trim() && exp.role.trim() && exp.bullets.some((b) => b.trim()));
+
+  const expectedResumeName = useMemo(
+    () => buildExpectedResumeBaseName(templateName, jobTitle, content),
+    [templateName, jobTitle, content]
+  );
 
   return (
     <div className={embedded ? "space-y-4" : "space-y-6"}>
@@ -200,6 +216,27 @@ export default function ResumeContentReview({
                               className={bulletFieldClass}
                               placeholder={`Achievement ${bulletIndex + 1}`}
                             />
+                            <button
+                              type="button"
+                              onClick={() => copyBullet(`${index}-${bulletIndex}`, bullet)}
+                              title="Copy bullet"
+                              className="shrink-0 mt-1.5 w-7 h-7 rounded-lg flex items-center justify-center border transition-all
+                                border-slate-200 dark:border-white/[0.10]
+                                bg-white dark:bg-white/[0.04]
+                                text-slate-400 hover:text-blue-600 dark:hover:text-blue-400
+                                hover:border-blue-400 dark:hover:border-blue-500
+                                hover:bg-blue-50 dark:hover:bg-blue-500/10"
+                            >
+                              {copiedKey === `${index}-${bulletIndex}` ? (
+                                <svg className="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                                </svg>
+                              ) : (
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                </svg>
+                              )}
+                            </button>
                           </div>
                         ))}
                       </div>
@@ -211,6 +248,18 @@ export default function ResumeContentReview({
           })}
         </div>
       </div>
+
+      {expectedResumeName && (
+        <div className="rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.02] px-5 py-4">
+          <p className="text-xs font-medium text-slate-500 mb-1">Expected resume name</p>
+          <p className="text-sm font-mono font-semibold text-slate-900 dark:text-white break-all">
+            {expectedResumeName}
+          </p>
+          <p className="text-xs text-slate-400 mt-1">
+            Updates as you edit title and skills · saved as <span className="font-mono">{expectedResumeName}.docx</span>
+          </p>
+        </div>
+      )}
 
       <div className={`${embedded ? "rounded-2xl border border-slate-200 dark:border-white/[0.10] bg-slate-50/80 dark:bg-white/[0.02] p-4" : "sticky bottom-4 z-10 rounded-2xl border border-slate-200 dark:border-white/[0.10] bg-white/95 dark:bg-navy-900/95 backdrop-blur-md shadow-xl shadow-slate-200/50 dark:shadow-black/40 p-5"}`}>
         <label className="flex items-start gap-3 cursor-pointer mb-4">

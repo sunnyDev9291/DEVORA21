@@ -16,6 +16,7 @@ export const runtime = "nodejs";
 
 interface ResumeRequest {
   jobTitle?: string;
+  companyName?: string;
   jobDescription?: string;
   customPrompt?: string;
   templateName?: string;
@@ -30,14 +31,16 @@ export async function POST(req: Request) {
   }
 
   const jobTitle = body.jobTitle?.trim() ?? "";
+  const companyName = body.companyName?.trim() ?? "";
   const jobDescription = body.jobDescription?.trim() ?? "";
   const customPrompt = body.customPrompt?.trim() ?? "";
 
-  if (!jobTitle && !jobDescription) {
-    return Response.json(
-      { error: "Provide at least a job title or a job description." },
-      { status: 400 }
-    );
+  if (!jobTitle) {
+    return Response.json({ error: "Job title is required." }, { status: 400 });
+  }
+
+  if (!companyName) {
+    return Response.json({ error: "Company name is required." }, { status: 400 });
   }
 
   const templateInput = body.templateName?.trim();
@@ -62,6 +65,7 @@ export async function POST(req: Request) {
 
     const userPrompt = buildResumeUserPrompt({
       jobTitle,
+      companyName,
       jobDescription,
       customPrompt,
       headerTitle: header.title,

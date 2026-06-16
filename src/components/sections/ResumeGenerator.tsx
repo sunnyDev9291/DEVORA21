@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import DocxPreviewModal from "@/components/ui/DocxPreviewModal";
+import PdfPreviewModal from "@/components/ui/PdfPreviewModal";
 import SavedPromptPicker from "@/components/ui/SavedPromptPicker";
 import ResumeThinkingProgress from "@/components/ui/ResumeThinkingProgress";
 import ResumeAtsScoreModal from "@/components/ui/ResumeAtsScoreModal";
@@ -10,7 +10,8 @@ import { resolveResumeWizardStep } from "@/components/sections/ResumeStepper";
 import type { ResumeTemplate } from "@/lib/resume-template";
 import type { ResumePromptOption } from "@/lib/resume-prompt-option";
 import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
-import { consumeResumeStream } from "@/lib/resume-stream-client";
+import { generateResume } from "@/lib/resume-generate-client";
+import { archiveResume } from "@/lib/resume-archive";
 import type { GeneratedResumeContent, ResumeBuildResponse, AtsScoreResult } from "@/lib/resume-types";
 
 interface ResumeGeneratorProps {
@@ -24,6 +25,7 @@ const inputClass =
   "w-full bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.10] hover:border-slate-300 dark:hover:border-white/[0.16] focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-4 py-3.5 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 dark:placeholder:text-slate-600 outline-none transition-all";
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const PDF_MIME = "application/pdf";
 
 function base64ToBlob(base64: string, mime: string): Blob {
   const binary = atob(base64);
@@ -32,11 +34,25 @@ function base64ToBlob(base64: string, mime: string): Blob {
   return new Blob([bytes], { type: mime });
 }
 
+function downloadBlob(blob: Blob, downloadName: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = downloadName;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function ResumeGenerator({
   selectedTemplate,
   onWizardStepChange,
 }: ResumeGeneratorProps) {
-  const [form, setForm] = useState({ jobTitle: "", jobDescription: "", customPrompt: "" });
+  const [form, setForm] = useState({
+    jobTitle: "",
+    companyName: "",
+    jobDescription: "",
+    customPrompt: "",
+  });
   const [prompts, setPrompts] = useState<ResumePromptOption[]>([]);
   const [selectedPromptId, setSelectedPromptId] = useState("");
   const [loadingPrompt, setLoadingPrompt] = useState(false);
@@ -45,6 +61,10 @@ export default function ResumeGenerator({
   const [content, setContent] = useState<GeneratedResumeContent | null>(null);
   const [docxBase64, setDocxBase64] = useState("");
   const [fileName, setFileName] = useState("");
+  const [pdfBase64, setPdfBase64] = useState("");
+  const [pdfFileName, setPdfFileName] = useState("");
+  const [archiving, setArchiving] = useState(false);
+  const [archiveError, setArchiveError] = useState("");
   const [generating, setGenerating] = useState(false);
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState("");
@@ -59,6 +79,7 @@ export default function ResumeGenerator({
   const atsAbortRef = useRef<AbortController | null>(null);
   const generationRunRef = useRef(0);
   const reviewRef = useRef<HTMLDivElement>(null);
+  const successBannerRef = useRef<HTMLDivElement>(null);
 
   const wizardStep = resolveResumeWizardStep({
     hasTemplate: !!selectedTemplate,
@@ -77,6 +98,9 @@ export default function ResumeGenerator({
     setGenerationKey(0);
     setDocxBase64("");
     setFileName("");
+    setPdfBase64("");
+    setPdfFileName("");
+    setArchiveError("");
     setPreviewOpen(false);
     setError("");
     setStreamPhase("starting");
@@ -117,6 +141,12 @@ export default function ResumeGenerator({
     }
   }, [step, content, generationKey]);
 
+  useEffect(() => {
+    if (step === "done" && docxBase64) {
+      successBannerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [step, docxBase64]);
+
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
     if (e.target.name === "customPrompt") setSelectedPromptId("");
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -150,12 +180,44 @@ export default function ResumeGenerator({
 
   function handleClear() {
     if (generating || applying) return;
-    setForm({ jobTitle: "", jobDescription: "", customPrompt: "" });
-    setSelectedPromptId("");
+
+    abortRef.current?.abort();
+    atsAbortRef.current?.abort();
+
+    setForm((prev) => ({
+      ...prev,
+      jobTitle: "",
+      companyName: "",
+      jobDescription: "",
+    }));
+    setStep("form");
+    setContent(null);
+    setGenerationKey((k) => k + 1);
+    setDocxBase64("");
+    setFileName("");
+    setPdfBase64("");
+    setPdfFileName("");
+    setArchiveError("");
+    setPreviewOpen(false);
     setError("");
+    setStreamPhase("starting");
+    setAtsScore(null);
+    setAtsError("");
+    setAtsModalOpen(false);
   }
 
-  const formHasContent = form.jobTitle.trim() || form.jobDescription.trim() || form.customPrompt.trim();
+  const hasClearableContent =
+    !!form.jobTitle.trim() ||
+    !!form.companyName.trim() ||
+    !!form.jobDescription.trim() ||
+    !!content ||
+    step !== "form" ||
+    !!docxBase64 ||
+    !!pdfBase64;
+
+  const targetJobLabel = `${form.jobTitle.trim()} at ${form.companyName.trim()}`;
+
+  const canGenerate = !!selectedTemplate && !!form.jobTitle.trim() && !!form.companyName.trim();
 
   async function evaluateAts(resumeContent: GeneratedResumeContent, options?: { openModal?: boolean }) {
     atsAbortRef.current?.abort();
@@ -175,6 +237,7 @@ export default function ResumeGenerator({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           jobTitle: form.jobTitle,
+          companyName: form.companyName,
           jobDescription: form.jobDescription,
           content: resumeContent,
         }),
@@ -198,6 +261,14 @@ export default function ResumeGenerator({
       setError("Choose a resume template above before generating.");
       return;
     }
+    if (!form.jobTitle.trim()) {
+      setError("Job title is required.");
+      return;
+    }
+    if (!form.companyName.trim()) {
+      setError("Company name is required.");
+      return;
+    }
 
     abortRef.current?.abort();
 
@@ -210,18 +281,15 @@ export default function ResumeGenerator({
     abortRef.current = controller;
 
     try {
-      const res = await fetch("/api/resume/stream", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, templateName: selectedTemplate.name }),
-        signal: controller.signal,
-      });
-
-      const data = await consumeResumeStream(res, {
-        onPhase: (phase) => {
-          if (generationRunRef.current === runId) setStreamPhase(phase);
-        },
-      });
+      const data = await generateResume(
+        { ...form, templateName: selectedTemplate.name },
+        {
+          onPhase: (phase) => {
+            if (generationRunRef.current === runId) setStreamPhase(phase);
+          },
+          signal: controller.signal,
+        }
+      );
 
       if (generationRunRef.current !== runId) return;
 
@@ -255,6 +323,30 @@ export default function ResumeGenerator({
     void handleGenerate();
   }
 
+  async function submitResumeArchive(docxB64: string, resumeFileName: string) {
+    setArchiving(true);
+    setArchiveError("");
+    setPdfBase64("");
+    setPdfFileName("");
+
+    try {
+      const docxBlob = base64ToBlob(docxB64, DOCX_MIME);
+      const result = await archiveResume({
+        jobTitle: form.jobTitle,
+        companyName: form.companyName,
+        jobDescription: form.jobDescription,
+        docxBlob,
+        fileName: resumeFileName,
+      });
+      setPdfBase64(result.pdfBase64);
+      setPdfFileName(result.pdfFileName);
+    } catch (err) {
+      setArchiveError((err as Error).message || "Could not generate PDF from backend.");
+    } finally {
+      setArchiving(false);
+    }
+  }
+
   async function handleApply() {
     if (!content || !selectedTemplate || applying) return;
     setError("");
@@ -263,7 +355,11 @@ export default function ResumeGenerator({
       const res = await fetch("/api/resume/build", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ templateName: selectedTemplate.name, content }),
+        body: JSON.stringify({
+          templateName: selectedTemplate.name,
+          jobTitle: form.jobTitle,
+          content,
+        }),
       });
       const data = (await res.json()) as ResumeBuildResponse & { error?: string };
       if (!res.ok) throw new Error(data?.error || `Request failed (${res.status}).`);
@@ -271,8 +367,10 @@ export default function ResumeGenerator({
       setFileName(data.fileName);
       setStep("done");
       setAtsModalOpen(false);
+      setArchiveError("");
       setPreviewOpen(true);
       void evaluateAts(content, { openModal: false });
+      void submitResumeArchive(data.docxBase64, data.fileName);
     } catch (err) {
       setError((err as Error).message || "Failed to update resume.");
     } finally {
@@ -280,14 +378,12 @@ export default function ResumeGenerator({
     }
   }
 
-  function handleDownload() {
-    if (!docxBlob) return;
-    const url = URL.createObjectURL(docxBlob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = fileName || "resume.docx";
-    a.click();
-    URL.revokeObjectURL(url);
+  function handleDownloadPdf() {
+    if (!pdfBlob) return;
+    downloadBlob(
+      pdfBlob,
+      pdfFileName || fileName.replace(/\.docx$/i, ".pdf") || "resume.pdf"
+    );
   }
 
   function handleStartOver() {
@@ -295,6 +391,9 @@ export default function ResumeGenerator({
     setContent(null);
     setDocxBase64("");
     setFileName("");
+    setPdfBase64("");
+    setPdfFileName("");
+    setArchiveError("");
     setPreviewOpen(false);
     setError("");
     setAtsScore(null);
@@ -308,18 +407,23 @@ export default function ResumeGenerator({
     [docxBase64]
   );
 
-  const [previewSourceUrl, setPreviewSourceUrl] = useState<string | null>(null);
+  const pdfBlob = useMemo(
+    () => (pdfBase64 ? base64ToBlob(pdfBase64, PDF_MIME) : null),
+    [pdfBase64]
+  );
+
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!docxBlob) {
-      setPreviewSourceUrl(null);
+    if (!pdfBlob) {
+      setPdfPreviewUrl(null);
       return;
     }
 
-    const url = URL.createObjectURL(docxBlob);
-    setPreviewSourceUrl(url);
+    const url = URL.createObjectURL(pdfBlob);
+    setPdfPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
-  }, [docxBlob]);
+  }, [pdfBlob]);
 
   const showReview = content && step !== "form";
 
@@ -336,11 +440,37 @@ export default function ResumeGenerator({
         </div>
 
         <form onSubmit={handleGenerate} className="space-y-4">
-          <div>
-            <label htmlFor="jobTitle" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-              Job title <span className="text-red-400">*</span>
-            </label>
-            <input id="jobTitle" name="jobTitle" type="text" value={form.jobTitle} onChange={handleChange} placeholder="e.g. Senior Backend Engineer" className={inputClass} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="jobTitle" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                Job title <span className="text-red-400">*</span>
+              </label>
+              <input
+                id="jobTitle"
+                name="jobTitle"
+                type="text"
+                value={form.jobTitle}
+                onChange={handleChange}
+                placeholder="e.g. Senior Backend Engineer"
+                className={inputClass}
+                required
+              />
+            </div>
+            <div>
+              <label htmlFor="companyName" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                Company name <span className="text-red-400">*</span>
+              </label>
+              <input
+                id="companyName"
+                name="companyName"
+                type="text"
+                value={form.companyName}
+                onChange={handleChange}
+                placeholder="e.g. Acme Corp"
+                className={inputClass}
+                required
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-5">
@@ -396,7 +526,7 @@ export default function ResumeGenerator({
           <div className="flex flex-col sm:flex-row flex-wrap gap-3">
             <button
               type="submit"
-              disabled={generating || applying || !selectedTemplate}
+              disabled={generating || applying || !canGenerate}
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold px-8 py-3.5 rounded-xl transition-all shadow-lg shadow-blue-600/25 hover:shadow-blue-500/30 hover:-translate-y-px"
             >
               {generating ? (
@@ -426,7 +556,7 @@ export default function ResumeGenerator({
             <button
               type="button"
               onClick={handleClear}
-              disabled={generating || applying || !formHasContent}
+              disabled={generating || applying || !hasClearableContent}
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2 border border-slate-200 dark:border-white/[0.12] bg-white dark:bg-white/[0.03] hover:bg-slate-50 dark:hover:bg-white/[0.06] disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 dark:text-slate-200 font-semibold px-6 py-3.5 rounded-xl transition-all"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -437,7 +567,7 @@ export default function ResumeGenerator({
           </div>
 
           {generating && (
-            <ResumeThinkingProgress phase={streamPhase} jobTitle={form.jobTitle} />
+            <ResumeThinkingProgress phase={streamPhase} jobTitle={targetJobLabel} />
           )}
         </form>
       </div>
@@ -455,29 +585,68 @@ export default function ResumeGenerator({
       {showReview && (
         <div ref={reviewRef} className="pt-8 border-t border-slate-200 dark:border-white/[0.06]">
           {step === "done" && docxBase64 && (
-            <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-green-500/25 bg-gradient-to-r from-green-500/[0.08] to-emerald-500/[0.05] px-5 py-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-green-500/20 flex items-center justify-center">
-                  <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                  </svg>
+            <div
+              ref={successBannerRef}
+              className="mb-6 flex flex-col gap-4 rounded-2xl border border-green-500/25 bg-gradient-to-r from-green-500/[0.08] to-emerald-500/[0.05] px-5 py-4"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-green-500/20 flex items-center justify-center">
+                    <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-green-800 dark:text-green-200">Resume ready</p>
+                    {archiving ? (
+                      <p className="text-xs text-green-700/70 dark:text-green-300/70 mt-1 flex items-center gap-1.5">
+                        <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Generating PDF from backend…
+                      </p>
+                    ) : pdfFileName ? (
+                      <p className="text-sm text-green-700/80 dark:text-green-300/80">{pdfFileName}</p>
+                    ) : (
+                      <p className="text-sm text-green-700/80 dark:text-green-300/80">{fileName}</p>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <p className="font-semibold text-green-800 dark:text-green-200">Resume ready</p>
-                  <p className="text-sm text-green-700/80 dark:text-green-300/80">{fileName}</p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewOpen(true)}
+                    className="px-4 py-2 rounded-xl text-sm font-semibold bg-white dark:bg-white/10 border border-green-500/20 text-green-800 dark:text-green-200 hover:bg-green-50 dark:hover:bg-white/[0.08] transition-all"
+                  >
+                    View PDF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDownloadPdf}
+                    disabled={!pdfBlob || archiving}
+                    className="px-4 py-2 rounded-xl text-sm font-semibold bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-green-600/20 transition-all"
+                  >
+                    Download PDF
+                  </button>
+                  <button type="button" onClick={handleStartOver} className="px-4 py-2 rounded-xl text-sm font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-all">
+                    Start over
+                  </button>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={() => setPreviewOpen(true)} className="px-4 py-2 rounded-xl text-sm font-semibold bg-white dark:bg-white/10 border border-green-500/20 text-green-800 dark:text-green-200 hover:bg-green-50 dark:hover:bg-white/[0.08] transition-all">
-                  Preview
-                </button>
-                <button type="button" onClick={handleDownload} className="px-4 py-2 rounded-xl text-sm font-semibold bg-green-600 hover:bg-green-500 text-white shadow-lg shadow-green-600/20 transition-all">
-                  Download .docx
-                </button>
-                <button type="button" onClick={handleStartOver} className="px-4 py-2 rounded-xl text-sm font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-all">
-                  Start over
-                </button>
-              </div>
+              {archiveError && (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3">
+                  <p className="text-sm text-amber-800 dark:text-amber-200">{archiveError}</p>
+                  <button
+                    type="button"
+                    onClick={() => void submitResumeArchive(docxBase64, fileName)}
+                    disabled={archiving}
+                    className="shrink-0 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-600 hover:bg-amber-500 text-white transition-all disabled:opacity-50"
+                  >
+                    Retry PDF
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -531,6 +700,7 @@ export default function ResumeGenerator({
               applying={applying}
               generating={generating}
               templateName={selectedTemplate?.name ?? ""}
+              jobTitle={form.jobTitle}
               applyLabel={step === "done" ? "Re-apply changes" : "Apply to resume"}
               generationKey={generationKey}
             />
@@ -549,7 +719,7 @@ export default function ResumeGenerator({
       <ResumeAtsScoreModal
         open={atsModalOpen}
         onClose={() => setAtsModalOpen(false)}
-        jobTitle={form.jobTitle}
+        jobTitle={targetJobLabel}
         score={atsScore}
         loading={atsLoading}
         error={atsError}
@@ -568,14 +738,16 @@ export default function ResumeGenerator({
         generationKey={generationKey}
       />
 
-      <DocxPreviewModal
+      <PdfPreviewModal
         open={previewOpen}
         onClose={() => setPreviewOpen(false)}
-        title={selectedTemplate?.name ?? "Template preview"}
-        subtitle="Tailored resume · same template layout and styling as your base file"
-        sourceUrl={previewSourceUrl}
-        fileName={fileName}
-        onDownload={handleDownload}
+        title={pdfFileName || fileName.replace(/\.docx$/i, ".pdf") || "Resume PDF"}
+        subtitle="Tailored resume PDF · ready to download"
+        sourceUrl={pdfPreviewUrl}
+        fileName={pdfFileName || fileName.replace(/\.docx$/i, ".pdf") || "resume.pdf"}
+        loading={archiving}
+        error={archiveError}
+        onDownload={handleDownloadPdf}
       />
     </>
   );
