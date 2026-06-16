@@ -16,12 +16,10 @@ import csv
 import os
 import shutil
 import subprocess
-import threading
-import uuid
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-import requests
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
@@ -31,12 +29,6 @@ RESUMES_DIR = STORAGE_DIR / "resumes"
 CSV_PATH = STORAGE_DIR / "resume_log.csv"
 MAX_FILE_BYTES = 10 * 1024 * 1024
 CSV_HEADER = ["datetime", "job_title", "company_name", "job_description", "resume_name"]
-DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions"
-DEEPSEEK_MODEL = "deepseek-v4-pro"
-DEEPSEEK_MAX_TOKENS = 16384
-
-_generate_jobs: dict[str, dict] = {}
-_generate_lock = threading.Lock()
 
 app = Flask(__name__)
 CORS(
@@ -79,61 +71,6 @@ def find_soffice() -> str | None:
     return None
 
 
-def call_deepseek(messages: list) -> str:
-    api_key = os.environ.get("DEEPSEEK_API_KEY")
-    if not api_key:
-        raise RuntimeError("DEEPSEEK_API_KEY is not set on the backend server.")
-
-    response = requests.post(
-        DEEPSEEK_API_URL,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        json={
-            "model": DEEPSEEK_MODEL,
-            "messages": messages,
-            "max_tokens": DEEPSEEK_MAX_TOKENS,
-            "stream": False,
-            "response_format": {"type": "json_object"},
-            "thinking": {"type": "disabled"},
-        },
-        timeout=120,
-    )
-    response.raise_for_status()
-    data = response.json()
-    content = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-    if not content:
-        raise RuntimeError("Empty response from DeepSeek.")
-    return content
-
-
-def run_generate_job(job_id: str, messages: list) -> None:
-    try:
-        text = call_deepseek(messages)
-        with _generate_lock:
-            _generate_jobs[job_id] = {"status": "done", "text": text}
-    except Exception as exc:
-        with _generate_lock:
-            _generate_jobs[job_id] = {"status": "error", "message": str(exc)}
-
-
-def append_csv_row(
-    dt: str,
-    job_title: str,
-    company_name: str,
-    job_description: str,
-    resume_name: str,
-) -> None:
-    STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-    write_header = not CSV_PATH.exists() or CSV_PATH.stat().st_size == 0
-    with CSV_PATH.open("a", newline="", encoding="utf-8") as handle:
-        writer = csv.writer(handle)
-        if write_header:
-            writer.writerow(CSV_HEADER)
-        writer.writerow([dt, job_title, company_name, job_description, resume_name])
-
-
 def convert_docx_to_pdf(docx_path: Path) -> Path:
     soffice = find_soffice()
     if not soffice:
@@ -172,47 +109,25 @@ def convert_docx_to_pdf(docx_path: Path) -> Path:
     return pdf_path
 
 
+def append_csv_row(
+    dt: str,
+    job_title: str,
+    company_name: str,
+    job_description: str,
+    resume_name: str,
+) -> None:
+    STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+    write_header = not CSV_PATH.exists() or CSV_PATH.stat().st_size == 0
+    with CSV_PATH.open("a", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        if write_header:
+            writer.writerow(CSV_HEADER)
+        writer.writerow([dt, job_title, company_name, job_description, resume_name])
+
+
 @app.get("/health")
 def health():
-    return jsonify(
-        status="ok",
-        libreoffice=find_soffice() is not None,
-        deepseek=bool(os.environ.get("DEEPSEEK_API_KEY")),
-    )
-
-
-@app.post("/resume/generate")
-def start_resume_generate():
-    data = request.get_json(silent=True) or {}
-    messages = data.get("messages")
-    if not isinstance(messages, list) or not messages:
-        return jsonify(error="messages array is required."), 400
-
-    job_id = str(uuid.uuid4())
-    with _generate_lock:
-        _generate_jobs[job_id] = {"status": "pending"}
-
-    thread = threading.Thread(target=run_generate_job, args=(job_id, messages), daemon=True)
-    thread.start()
-    return jsonify(jobId=job_id)
-
-
-@app.get("/resume/generate/<job_id>")
-def resume_generate_status(job_id: str):
-    with _generate_lock:
-        job = _generate_jobs.get(job_id)
-
-    if not job:
-        return jsonify(error="Job not found."), 404
-
-    if job.get("status") == "pending":
-        return jsonify(status="pending")
-    if job.get("status") == "error":
-        return jsonify(status="error", message=job.get("message", "Generation failed."))
-    if job.get("status") == "done":
-        return jsonify(status="done", text=job.get("text", ""))
-
-    return jsonify(error="Unknown job status."), 500
+    return jsonify(status="ok", libreoffice=find_soffice() is not None)
 
 
 @app.post("/resume/archive")
