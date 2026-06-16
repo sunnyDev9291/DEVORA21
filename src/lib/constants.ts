@@ -287,8 +287,6 @@ export const APP_LINKS = {
   realTimeInterview: APP_FEATURES.realTimeInterview.href,
 } as const;
 
-import { getServerApiBaseUrl } from "@/lib/api-base-url";
-
 export const AUTH_LINKS = {
   login: "/login",
   register: "/register",
@@ -296,7 +294,8 @@ export const AUTH_LINKS = {
   forgotPassword: "/forgot-password",
 } as const;
 
-export const API_BASE_URL = getServerApiBaseUrl();
+export const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://31.44.7.64:5000";
 
 export const NAV_LINKS = [
   { label: "Services", href: "/services" },

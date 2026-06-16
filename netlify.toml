@@ -4,8 +4,3 @@
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
-
-# Extend serverless timeout for AI resume streaming (requires Netlify Pro for 60s)
-[functions]
-  node_bundler = "esbuild"
-

@@ -16,8 +16,6 @@ import {
 import { TEMPLATES_DIR } from "@/lib/templates-dir";
 
 export const runtime = "nodejs";
-/** Netlify/serverless: allow long AI resume generation (upgrade plan for >26s). */
-export const maxDuration = 60;
 
 interface ResumeRequest {
   jobTitle?: string;
