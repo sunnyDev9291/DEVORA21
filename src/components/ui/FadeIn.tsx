@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useInView } from "@/hooks/useInView";
 
 interface FadeInProps {
@@ -16,6 +17,11 @@ export default function FadeIn({
   direction = "up",
 }: FadeInProps) {
   const { ref, inView } = useInView();
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    setReduceMotion(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }, []);
 
   const translateMap = {
     up: "translateY(32px)",
@@ -25,14 +31,18 @@ export default function FadeIn({
     none: "none",
   };
 
+  const visible = reduceMotion || inView;
+
   return (
     <div
       ref={ref as React.RefObject<HTMLDivElement>}
       className={className}
       style={{
-        opacity: inView ? 1 : 0,
-        transform: inView ? "none" : translateMap[direction],
-        transition: `opacity 0.6s ease ${delay}ms, transform 0.6s ease ${delay}ms`,
+        opacity: visible ? 1 : 0,
+        transform: visible ? "none" : translateMap[direction],
+        transition: reduceMotion
+          ? "none"
+          : `opacity 0.6s ease ${delay}ms, transform 0.6s ease ${delay}ms`,
       }}
     >
       {children}

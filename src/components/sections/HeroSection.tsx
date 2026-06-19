@@ -48,6 +48,7 @@ function TypewriterText() {
 
 function Particles() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const visibleRef = useRef(true);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -64,6 +65,14 @@ function Particles() {
     resize();
     window.addEventListener("resize", resize);
 
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        visibleRef.current = entry.isIntersecting;
+      },
+      { rootMargin: "100px" }
+    );
+    observer.observe(canvas);
+
     const count = 55;
     const particles = Array.from({ length: count }, () => ({
       x: Math.random() * canvas.width,
@@ -75,6 +84,10 @@ function Particles() {
     }));
 
     function draw() {
+      if (!visibleRef.current) {
+        animId = requestAnimationFrame(draw);
+        return;
+      }
       if (!ctx || !canvas) return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -92,7 +105,6 @@ function Particles() {
         ctx.fill();
       });
 
-      // Draw faint connecting lines
       for (let i = 0; i < particles.length; i++) {
         for (let j = i + 1; j < particles.length; j++) {
           const dx = particles[i].x - particles[j].x;
@@ -116,6 +128,7 @@ function Particles() {
     return () => {
       cancelAnimationFrame(animId);
       window.removeEventListener("resize", resize);
+      observer.disconnect();
     };
   }, []);
 
