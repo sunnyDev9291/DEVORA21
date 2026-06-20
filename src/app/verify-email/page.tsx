@@ -8,12 +8,13 @@ import Button from "@/components/ui/Button";
 import { useAuth } from "@/context/AuthContext";
 import { authApi, getApiErrorMessage } from "@/lib/auth-api";
 import { AUTH_LINKS } from "@/lib/constants";
+import { getPostAuthRedirectPath } from "@/lib/auth-redirect";
 import { useSearchParams } from "next/navigation";
 
 function VerifyEmailContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { refreshUser, markEmailVerified } = useAuth();
+  const { user, refreshUser, markEmailVerified } = useAuth();
   const token = searchParams.get("token") ?? "";
   const [state, setState] = useState<"loading" | "success" | "error">("loading");
   const [message, setMessage] = useState("");
@@ -66,8 +67,12 @@ function VerifyEmailContent() {
         {state === "success" && (
           <>
             <p className="text-sm text-slate-300">{message}</p>
-            <Button type="button" className="w-full" onClick={() => router.replace(AUTH_LINKS.dashboard)}>
-              Go to dashboard
+            <Button
+              type="button"
+              className="w-full"
+              onClick={() => router.replace(user ? getPostAuthRedirectPath(user) : AUTH_LINKS.onboarding)}
+            >
+              Continue setup
             </Button>
           </>
         )}

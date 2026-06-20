@@ -1,5 +1,6 @@
 import { AUTH_LINKS } from "@/lib/constants";
 import { isUserEmailVerified } from "@/lib/email-verification";
+import { needsOnboarding } from "@/lib/onboarding";
 import type { User } from "@/types/auth";
 
 const ALLOWED_PREFIXES = ["/dashboard", "/resume", "/real-time-interview"];
@@ -17,10 +18,14 @@ export function getSafeRedirectPath(next: string | null | undefined, fallback = 
   return allowed ? next : fallback;
 }
 
-/** After login/register/OAuth — verified users go to their destination; others wait for email verification. */
+/** After login/register/OAuth — verified users complete onboarding first, then their destination. */
 export function getPostAuthRedirectPath(user: User, next?: string | null): string {
   if (!isUserEmailVerified(user)) {
     return AUTH_LINKS.verifyEmailPending;
+  }
+
+  if (needsOnboarding(user)) {
+    return AUTH_LINKS.onboarding;
   }
 
   return getSafeRedirectPath(next);

@@ -11,7 +11,7 @@ import AuthInput from "@/components/auth/AuthInput";
 import Button from "@/components/ui/Button";
 import { GuestGuard } from "@/components/auth/AuthGuard";
 import { useAuth } from "@/context/AuthContext";
-import { getApiErrorMessage } from "@/lib/auth-api";
+import { getLoginErrorMessage, isGoogleAccountAuthError } from "@/lib/auth-password";
 import { getPostAuthRedirectPath } from "@/lib/auth-redirect";
 import { AUTH_LINKS } from "@/lib/constants";
 import { loginSchema, type LoginFormValues } from "@/lib/auth-schemas";
@@ -21,6 +21,7 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [serverError, setServerError] = useState("");
+  const [isGoogleAccount, setIsGoogleAccount] = useState(false);
 
   const {
     register,
@@ -33,11 +34,13 @@ function LoginForm() {
 
   const onSubmit = async (values: LoginFormValues) => {
     setServerError("");
+    setIsGoogleAccount(false);
     try {
       const user = await login(values.email, values.password);
       router.replace(getPostAuthRedirectPath(user, searchParams.get("next")));
     } catch (error) {
-      setServerError(getApiErrorMessage(error, "Login failed. Please try again."));
+      setIsGoogleAccount(isGoogleAccountAuthError(error));
+      setServerError(getLoginErrorMessage(error));
     }
   };
 
@@ -57,6 +60,11 @@ function LoginForm() {
         {serverError && (
           <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300" role="alert">
             {serverError}
+            {isGoogleAccount && (
+              <p className="mt-2 text-xs text-red-200">
+                Use the <span className="font-semibold">Sign in with Google</span> button above.
+              </p>
+            )}
           </div>
         )}
         <AuthInput label="Email" type="email" autoComplete="email" placeholder="you@example.com" error={errors.email?.message} {...register("email")} />
