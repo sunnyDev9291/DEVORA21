@@ -42,17 +42,17 @@ export const ONBOARDING_STEPS = [
   {
     id: "avatar",
     title: "Add a profile photo",
-    subtitle: "Upload a photo so people recognize you.",
+    subtitle: "This photo becomes your profile avatar across Devora21.",
   },
   {
     id: "resume",
-    title: "Choose a resume template",
-    subtitle: "Pick a starting template for your resumes.",
+    title: "Upload your resume template",
+    subtitle: "Upload a .docx file — your personal template, not a shared catalog.",
   },
   {
     id: "prompt",
-    title: "Set your writing prompt",
-    subtitle: "Default instructions used when generating resumes.",
+    title: "Upload your writing prompt",
+    subtitle: "Upload a prompt file only you can access when generating resumes.",
   },
 ] as const;
 
@@ -62,9 +62,6 @@ export type OnboardingDraft = {
   firstName: string;
   lastName: string;
   avatarUrl: string;
-  resumeTemplateName: string;
-  customPrompt: string;
-  selectedPromptId: string;
 };
 
 export function buildInitialDraft(user: User): OnboardingDraft {
@@ -74,8 +71,5 @@ export function buildInitialDraft(user: User): OnboardingDraft {
     firstName,
     lastName,
     avatarUrl: user.avatar?.trim() ?? "",
-    resumeTemplateName: "",
-    customPrompt: "",
-    selectedPromptId: "",
   };
 }

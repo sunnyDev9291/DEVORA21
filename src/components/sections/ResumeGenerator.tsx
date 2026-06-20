@@ -2,19 +2,14 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
-import SavedPromptPicker from "@/components/ui/SavedPromptPicker";
-import MarkdownBoldTextarea from "@/components/ui/MarkdownBoldTextarea";
 import ResumeThinkingProgress from "@/components/ui/ResumeThinkingProgress";
 import ResumeContentReview from "@/components/sections/ResumeContentReview";
 import { resolveResumeWizardStep } from "@/components/sections/ResumeStepper";
-import type { ResumeTemplate } from "@/lib/resume-template";
-import type { ResumePromptOption } from "@/lib/resume-prompt-option";
+import type { UserResumeTemplateAsset } from "@/lib/profile-api";
 import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
 import { generateResume } from "@/lib/resume-generate-client";
 import { archiveResume } from "@/lib/resume-archive";
 import { pickBestRegenerateResult, type RegenerateEvaluation } from "@/lib/resume-ats-regenerate";
-import { useAuth } from "@/context/AuthContext";
-import { loadStoredProfile, saveStoredProfile } from "@/lib/user-profile";
 import type { GeneratedResumeContent, ResumeBuildResponse, AtsScoreResult, HumanToneScoreResult, RuleKeepScoreResult } from "@/lib/resume-types";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
@@ -22,7 +17,9 @@ const ResumeAtsScoreModal = dynamic(() => import("@/components/ui/ResumeAtsScore
 const ResumeChatDialog = dynamic(() => import("@/components/ui/ResumeChatDialog"));
 
 interface ResumeGeneratorProps {
-  selectedTemplate: ResumeTemplate | null;
+  userTemplate: UserResumeTemplateAsset | null;
+  userPrompt: string;
+  promptFileName?: string;
   onWizardStepChange?: (step: number) => void;
 }
 
@@ -51,18 +48,17 @@ function downloadBlob(blob: Blob, downloadName: string) {
 }
 
 export default function ResumeGenerator({
-  selectedTemplate,
+  userTemplate,
+  userPrompt,
+  promptFileName,
   onWizardStepChange,
 }: ResumeGeneratorProps) {
-  const { user } = useAuth();
   const [form, setForm] = useState({
     jobTitle: "",
     companyName: "",
     jobDescription: "",
-    customPrompt: "",
+    customPrompt: userPrompt,
   });
-  const [selectedPromptId, setSelectedPromptId] = useState("");
-  const [loadingPrompt, setLoadingPrompt] = useState(false);
   const [step, setStep] = useState<Step>("form");
   const [content, setContent] = useState<GeneratedResumeContent | null>(null);
   const [docxBase64, setDocxBase64] = useState("");
@@ -98,23 +94,12 @@ export default function ResumeGenerator({
   const promptPrefsLoadedRef = useRef(false);
 
   useEffect(() => {
-    if (!user?.id || promptPrefsLoadedRef.current) return;
-    const prefs = loadStoredProfile(user.id);
-    setForm((prev) => ({ ...prev, customPrompt: prefs.customPrompt }));
-    setSelectedPromptId(prefs.selectedPromptId);
+    setForm((prev) => ({ ...prev, customPrompt: userPrompt }));
     promptPrefsLoadedRef.current = true;
-  }, [user?.id]);
-
-  useEffect(() => {
-    if (!user?.id || !promptPrefsLoadedRef.current) return;
-    saveStoredProfile(user.id, {
-      customPrompt: form.customPrompt,
-      selectedPromptId: selectedPromptId,
-    });
-  }, [user?.id, form.customPrompt, selectedPromptId]);
+  }, [userPrompt]);
 
   const wizardStep = resolveResumeWizardStep({
-    hasTemplate: !!selectedTemplate,
+    hasTemplate: !!userTemplate,
     generating,
     hasDraft: !!content,
     isDone: step === "done",
@@ -145,7 +130,7 @@ export default function ResumeGenerator({
     setAtsModalOpen(false);
     setResumeChatOpen(false);
     keywordsCacheKeyRef.current = null;
-  }, [selectedTemplate?.id]);
+  }, [userTemplate?.fileName, userTemplate?.templateBase64]);
 
   useEffect(() => {
     keywordsCacheKeyRef.current = null;
@@ -171,42 +156,7 @@ export default function ResumeGenerator({
   }, [step, docxBase64]);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
-    if (e.target.name === "customPrompt") setSelectedPromptId("");
-    setForm((prev) => {
-      const next = { ...prev, [e.target.name]: e.target.value };
-      if (e.target.name === "customPrompt" && user?.id) {
-        saveStoredProfile(user.id, { customPrompt: e.target.value, selectedPromptId: "" });
-      }
-      return next;
-    });
-  }
-
-  async function handlePromptSelect(promptId: string, prompt?: ResumePromptOption) {
-    setSelectedPromptId(promptId);
-    setError("");
-
-    if (!promptId) {
-      setForm((prev) => ({ ...prev, customPrompt: "" }));
-      if (user?.id) saveStoredProfile(user.id, { customPrompt: "", selectedPromptId: "" });
-      return;
-    }
-
-    if (!prompt) return;
-
-    setLoadingPrompt(true);
-    try {
-      const res = await fetch(prompt.file, { cache: "no-store" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || `Failed to load prompt (${res.status}).`);
-      const content = String(data.content ?? "");
-      setForm((prev) => ({ ...prev, customPrompt: content }));
-      if (user?.id) saveStoredProfile(user.id, { customPrompt: content, selectedPromptId: promptId });
-    } catch (err) {
-      setSelectedPromptId("");
-      setError((err as Error).message || "Could not load the selected prompt.");
-    } finally {
-      setLoadingPrompt(false);
-    }
+    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   }
 
   function handleClear() {
@@ -255,7 +205,7 @@ export default function ResumeGenerator({
 
   const targetJobLabel = `${form.jobTitle.trim()} at ${form.companyName.trim()}`;
 
-  const canGenerate = !!selectedTemplate && !!form.jobTitle.trim() && !!form.companyName.trim();
+  const canGenerate = !!userTemplate && !!form.jobTitle.trim() && !!form.companyName.trim();
 
   async function evaluateResumeScores(
     resumeContent: GeneratedResumeContent,
@@ -343,8 +293,8 @@ export default function ResumeGenerator({
   ) {
     e?.preventDefault();
     if (applying) return;
-    if (!selectedTemplate) {
-      setError("Choose a resume template above before generating.");
+    if (!userTemplate) {
+      setError("Upload a resume template on your dashboard before generating.");
       return;
     }
     if (!form.jobTitle.trim()) {
@@ -371,7 +321,8 @@ export default function ResumeGenerator({
       const data = await generateResume(
         {
           ...form,
-          templateName: selectedTemplate.name,
+          templateName: userTemplate.fileName,
+          templateBase64: userTemplate.templateBase64,
           ...(options?.atsFeedback && { atsFeedback: options.atsFeedback }),
           ...(options?.humanToneFeedback && { humanToneFeedback: options.humanToneFeedback }),
           ...(options?.previousContent && { previousContent: options.previousContent }),
@@ -475,7 +426,7 @@ export default function ResumeGenerator({
   }
 
   async function handleApply() {
-    if (!content || !selectedTemplate || applying) return;
+    if (!content || !userTemplate || applying) return;
     setError("");
     setApplying(true);
     try {
@@ -483,7 +434,8 @@ export default function ResumeGenerator({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          templateName: selectedTemplate.name,
+          templateName: userTemplate.fileName,
+          templateBase64: userTemplate.templateBase64,
           jobTitle: form.jobTitle,
           customPrompt: form.customPrompt,
           content,
@@ -608,36 +560,33 @@ export default function ResumeGenerator({
               />
             </div>
             <div className="flex flex-col">
-              <label htmlFor="customPrompt" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                Extra instructions <span className="text-slate-400 font-normal">(optional)</span>
+              <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                Your profile prompt
               </label>
-              <SavedPromptPicker
-                selectedId={selectedPromptId}
-                loading={loadingPrompt}
-                disabled={generating || applying}
-                onSelect={handlePromptSelect}
-              />
-              <MarkdownBoldTextarea
-                id="customPrompt"
-                value={form.customPrompt}
-                onChange={(customPrompt) => {
-                  setSelectedPromptId("");
-                  setForm((prev) => ({ ...prev, customPrompt }));
-                }}
-                placeholder="Years of experience, tech stack, tone, achievements to highlight…"
-                className={inputClass}
-                rows={10}
-                maxHeight={260}
-              />
+              {promptFileName && (
+                <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">File: {promptFileName}</p>
+              )}
+              <div className={`${inputClass} h-[260px] max-h-[260px] overflow-y-auto whitespace-pre-wrap text-slate-600 dark:text-slate-300`}>
+                {form.customPrompt.trim() ? (
+                  form.customPrompt
+                ) : (
+                  <span className="text-slate-400 dark:text-slate-500">
+                    No prompt uploaded yet. Add one on your dashboard profile.
+                  </span>
+                )}
+              </div>
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                This prompt is loaded from your profile only. Update it on your dashboard.
+              </p>
             </div>
           </div>
 
-          {!selectedTemplate && (
+          {!userTemplate && (
             <div className="flex items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-4 py-3">
               <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <p className="text-sm text-amber-800 dark:text-amber-200">Select a template in step 1 before generating.</p>
+              <p className="text-sm text-amber-800 dark:text-amber-200">Upload your resume template on your dashboard before generating.</p>
             </div>
           )}
 
@@ -856,7 +805,7 @@ export default function ResumeGenerator({
               onRegenerate={handleRegenerate}
               applying={applying}
               generating={generating}
-              templateName={selectedTemplate?.name ?? ""}
+              templateName={userTemplate?.fileName ?? ""}
               jobTitle={form.jobTitle}
               customPrompt={form.customPrompt}
               applyLabel={step === "done" ? "Re-apply changes" : "Apply to resume"}
@@ -898,7 +847,7 @@ export default function ResumeGenerator({
         streamPhase={streamPhase}
         generateError={error}
         regenerateNotice={regenerateNotice}
-        templateName={selectedTemplate?.name ?? ""}
+        templateName={userTemplate?.fileName ?? ""}
         fileNameJobTitle={form.jobTitle}
         customPrompt={form.customPrompt}
         applyLabel={step === "done" ? "Re-apply changes" : "Apply to resume"}

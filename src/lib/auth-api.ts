@@ -3,11 +3,12 @@ import { readEmailVerified } from "@/lib/email-verification";
 import type {
   AuthResponse,
   MessageResponse,
-  OnboardingCompletePayload,
   User,
   UserProfileUpdate,
   ApiError as ApiErrorBody,
 } from "@/types/auth";
+import type { OnboardingFilesPayload, ProfileUpdateFilesPayload } from "@/lib/profile-api";
+import { profileApi } from "@/lib/profile-api";
 
 export class ApiError extends Error {  status: number;
   data?: ApiErrorBody;
@@ -189,6 +190,16 @@ export function normalizeAuthUser(raw: unknown): User {
     source.onboardingComplete === true ||
     source.profileCompleted === true;
 
+  const resumeTemplateFileName =
+    typeof source.resumeTemplateFileName === "string"
+      ? source.resumeTemplateFileName.trim()
+      : typeof source.resumeTemplateName === "string"
+        ? source.resumeTemplateName.trim()
+        : undefined;
+
+  const promptFileName =
+    typeof source.promptFileName === "string" ? source.promptFileName.trim() : undefined;
+
   const createdAt =
     typeof source.createdAt === "string" ? source.createdAt : undefined;
 
@@ -197,6 +208,8 @@ export function normalizeAuthUser(raw: unknown): User {
     email,
     emailVerified,
     onboardingCompleted: onboardingCompleted || undefined,
+    resumeTemplateFileName: resumeTemplateFileName || undefined,
+    promptFileName: promptFileName || undefined,
     createdAt,
     firstName: firstName || undefined,
     lastName: lastName || undefined,
@@ -241,30 +254,11 @@ export const authApi = {
       body: JSON.stringify(body),
     }).then((data) => ({ data: normalizeAuthUser(data) })),
 
-  /** Single batch save after all onboarding steps (name → avatar → template → prompt). */
-  completeOnboarding: async (body: OnboardingCompletePayload) => {
-    const payload: UserProfileUpdate = {
-      ...body,
-      onboardingCompleted: true,
-    };
+  updateProfileWithFiles: (payload: ProfileUpdateFilesPayload) =>
+    profileApi.updateProfile(payload).then((user) => ({ data: user })),
 
-    try {
-      const data = await apiRequest<unknown>("/auth/onboarding", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-      return { data: normalizeAuthUser(data) };
-    } catch (err) {
-      if (err instanceof ApiError && [404, 405, 501].includes(err.status)) {
-        const data = await apiRequest<unknown>("/auth/profile", {
-          method: "PATCH",
-          body: JSON.stringify(payload),
-        });
-        return { data: normalizeAuthUser(data) };
-      }
-      throw err;
-    }
-  },
+  completeOnboarding: (payload: OnboardingFilesPayload) =>
+    profileApi.completeOnboarding(payload).then((user) => ({ data: user })),
 
   logout: () =>
     apiRequest<MessageResponse>("/auth/logout", { method: "POST" }).then((data) => ({ data })),

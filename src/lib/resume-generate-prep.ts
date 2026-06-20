@@ -1,7 +1,6 @@
-import { readFile } from "fs/promises";
-import path from "path";
 import { parseResumeHeaderFromDocxBuffer } from "@/lib/resume-docx";
 import { getCachedTemplateExperiences } from "@/lib/resume-template-cache";
+import { resolveTemplateBuffer } from "@/lib/resume-template-resolve";
 import {
   buildResumeSystemPrompt,
   buildResumeUserPrompt,
@@ -9,7 +8,6 @@ import {
   parseResumeJsonContent,
 } from "@/lib/resume-prompt";
 import type { AtsScoreResult, GeneratedResumeContent, HumanToneScoreResult, ResumeExperience } from "@/lib/resume-types";
-import { TEMPLATES_DIR } from "@/lib/templates-dir";
 
 export interface ResumeGenerateRequest {
   jobTitle?: string;
@@ -17,6 +15,7 @@ export interface ResumeGenerateRequest {
   jobDescription?: string;
   customPrompt?: string;
   templateName?: string;
+  templateBase64?: string;
   /** Prior ATS evaluation — used when regenerating to target a higher score. */
   atsFeedback?: AtsScoreResult;
   /** Prior human tone evaluation — co-target during regenerate. */
@@ -78,22 +77,16 @@ export async function prepareResumeGeneration(
   if (!jobTitle) throw new Error("Job title is required.");
   if (!companyName) throw new Error("Company name is required.");
 
-  const templateInput = body.templateName?.trim();
-  if (!templateInput) {
-    throw new Error("templateName is required — select a template first.");
+  const hasTemplate = Boolean(body.templateBase64?.trim() || body.templateName?.trim());
+  if (!hasTemplate) {
+    throw new Error("Upload a resume template in your profile first.");
   }
 
-  const safeName = path.basename(
-    templateInput.endsWith(".docx") ? templateInput : `${templateInput}.docx`
-  );
-  const filePath = path.join(TEMPLATES_DIR, safeName);
-  const templateName = safeName.replace(/\.docx$/i, "");
+  const { buffer: templateBuffer, templateName } = await resolveTemplateBuffer({
+    templateName: body.templateName,
+    templateBase64: body.templateBase64,
+  });
 
-  if (!path.resolve(filePath).startsWith(path.resolve(TEMPLATES_DIR))) {
-    throw new Error("Invalid template.");
-  }
-
-  const templateBuffer = await readFile(filePath);
   const existingExperiences = await getCachedTemplateExperiences(templateName, templateBuffer);
   const header = parseResumeHeaderFromDocxBuffer(templateBuffer);
 
