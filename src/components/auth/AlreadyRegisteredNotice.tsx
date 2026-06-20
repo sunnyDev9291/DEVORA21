@@ -7,6 +7,7 @@ import AuthLayout, { AuthFooterLink } from "@/components/auth/AuthLayout";
 import Button from "@/components/ui/Button";
 import { useAuth } from "@/context/AuthContext";
 import { getPostAuthRedirectPath } from "@/lib/auth-redirect";
+import { isValidAuthUser } from "@/lib/auth-api";
 import { AUTH_LINKS } from "@/lib/constants";
 
 export default function AlreadyRegisteredNotice() {
@@ -14,7 +15,7 @@ export default function AlreadyRegisteredNotice() {
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
 
-  if (!user) return null;
+  if (!user || !isValidAuthUser(user)) return null;
 
   const handleGoToAccount = () => {
     router.replace(getPostAuthRedirectPath(user));

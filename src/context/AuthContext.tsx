@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { authApi, ApiError, getApiErrorMessage } from "@/lib/auth-api";
+import { authApi, ApiError, getApiErrorMessage, isValidAuthUser } from "@/lib/auth-api";
 import { isUserEmailVerified, mergeEmailVerifiedState } from "@/lib/email-verification";
 import type { User } from "@/types/auth";
 
@@ -34,7 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const applyUser = useCallback((next: User | null) => {
     setUser((previous) => {
-      if (!next) return null;
+      if (!next || !isValidAuthUser(next)) return null;
       return mergeEmailVerifiedState(previous, next);
     });
   }, []);
@@ -83,12 +83,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const { data } = await authApi.login(email, password);
+    if (!isValidAuthUser(data.user)) {
+      throw new Error("Login succeeded but the server returned an invalid user profile.");
+    }
     applyUser(data.user);
     return data.user;
   }, [applyUser]);
 
   const register = useCallback(async (name: string, email: string, password: string) => {
     const { data } = await authApi.register(name, email, password);
+    if (!isValidAuthUser(data.user)) {
+      throw new Error("Registration succeeded but the server returned an invalid user profile.");
+    }
     applyUser(data.user);
     return data.user;
   }, [applyUser]);
@@ -109,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       isLoading,
-      isAuthenticated: !!user,
+      isAuthenticated: isValidAuthUser(user),
       isEmailVerified: isUserEmailVerified(user),
       login,
       register,

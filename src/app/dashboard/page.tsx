@@ -8,7 +8,7 @@ import DashboardProfilePanel from "@/components/dashboard/DashboardProfilePanel"
 import EmailVerificationBanner from "@/components/auth/EmailVerificationBanner";
 import { AuthGuard } from "@/components/auth/AuthGuard";
 import { useAuth } from "@/context/AuthContext";
-import { getApiErrorMessage } from "@/lib/auth-api";
+import { getApiErrorMessage, isValidAuthUser } from "@/lib/auth-api";
 import { resolveUserNames, loadStoredProfile } from "@/lib/user-profile";
 import { AUTH_LINKS, APP_FEATURES } from "@/lib/constants";
 
@@ -46,7 +46,10 @@ export default function DashboardPage() {
     }
   };
 
-  const names = user ? resolveUserNames(user, loadStoredProfile(user.id)) : { firstName: "", lastName: "", fullName: "" };
+  const names =
+    user && isValidAuthUser(user)
+      ? resolveUserNames(user, loadStoredProfile(user.id))
+      : { firstName: "", lastName: "", fullName: "" };
 
   return (
     <AuthGuard>
@@ -64,7 +67,7 @@ export default function DashboardPage() {
             </Button>
           </div>
 
-          {user && (
+          {user && isValidAuthUser(user) && (
             <div className="mt-6">
               <EmailVerificationBanner user={user} />
             </div>
@@ -76,7 +79,7 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {user && (
+          {user && isValidAuthUser(user) && (
             <div className="mt-8">
               <DashboardProfilePanel
                 user={user}

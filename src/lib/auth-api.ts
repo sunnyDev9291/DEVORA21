@@ -143,38 +143,54 @@ function splitFullName(name: string): { firstName: string; lastName: string } {
   };
 }
 
-/** Backend may return firstName/lastName/avatar instead of name. */
-export function normalizeAuthUser(
-  raw: User & {
-    firstName?: string;
-    lastName?: string;
-    avatarUrl?: string;
-    picture?: string;
+function toRawUserRecord(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== "object") return {};
+  const obj = raw as Record<string, unknown>;
+  const nested = obj.user;
+  if (nested && typeof nested === "object") {
+    return nested as Record<string, unknown>;
   }
-): User {
-  const avatar = raw.avatar?.trim() || raw.avatarUrl?.trim() || raw.picture?.trim();
+  return obj;
+}
 
-  let firstName = raw.firstName?.trim() ?? "";
-  let lastName = raw.lastName?.trim() ?? "";
+/** Backend may return firstName/lastName/avatar instead of name, or nest under `user`. */
+export function normalizeAuthUser(raw: unknown): User {
+  const source = toRawUserRecord(raw);
 
-  if (!firstName && !lastName && raw.name?.trim()) {
-    const split = splitFullName(raw.name);
+  const id = String(source.id ?? source._id ?? source.userId ?? "").trim();
+  const email = String(source.email ?? "").trim();
+
+  const avatarRaw = source.avatar ?? source.avatarUrl ?? source.picture;
+  const avatar =
+    typeof avatarRaw === "string"
+      ? avatarRaw.trim()
+      : "";
+
+  let firstName = typeof source.firstName === "string" ? source.firstName.trim() : "";
+  let lastName = typeof source.lastName === "string" ? source.lastName.trim() : "";
+  const nameField = typeof source.name === "string" ? source.name.trim() : "";
+
+  if (!firstName && !lastName && nameField) {
+    const split = splitFullName(nameField);
     firstName = split.firstName;
     lastName = split.lastName;
   }
 
   const name =
-    raw.name?.trim() ||
+    nameField ||
     [firstName, lastName].filter(Boolean).join(" ").trim() ||
-    raw.email;
+    email;
 
-  const emailVerified = readEmailVerified(raw as unknown as Record<string, unknown>);
+  const emailVerified = readEmailVerified(source);
+
+  const createdAt =
+    typeof source.createdAt === "string" ? source.createdAt : undefined;
 
   return {
-    id: raw.id,
-    email: raw.email,
+    id,
+    email,
     emailVerified,
-    createdAt: raw.createdAt,
+    createdAt,
     firstName: firstName || undefined,
     lastName: lastName || undefined,
     name,
@@ -182,44 +198,41 @@ export function normalizeAuthUser(
   };
 }
 
+export function isValidAuthUser(user: User | null | undefined): user is User {
+  return Boolean(user?.id?.trim() && user?.email?.trim());
+}
+
 export const authApi = {
   getMe: () =>
-    apiRequest<User & { firstName?: string; lastName?: string; avatarUrl?: string; picture?: string }>(
-      "/auth/me"
-    ).then((data) => ({
+    apiRequest<unknown>("/auth/me").then((data) => ({
       data: normalizeAuthUser(data),
     })),
 
   login: (email: string, password: string) =>
-    apiRequest<
-      AuthResponse & {
-        user: User & { firstName?: string; lastName?: string; avatarUrl?: string; picture?: string };
-      }
-    >("/auth/login", {
+    apiRequest<AuthResponse & Record<string, unknown>>("/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
-    }).then((data) => ({ data: { ...data, user: normalizeAuthUser(data.user) } })),
+    }).then((data) => {
+      const user = normalizeAuthUser(data.user ?? data);
+      return { data: { ...data, user } };
+    }),
 
   register: (name: string, email: string, password: string) => {
     const { firstName, lastName } = splitFullName(name);
-    return apiRequest<
-      AuthResponse & {
-        user: User & { firstName?: string; lastName?: string; avatarUrl?: string; picture?: string };
-      }
-    >("/auth/register", {
+    return apiRequest<AuthResponse & Record<string, unknown>>("/auth/register", {
       method: "POST",
       body: JSON.stringify({ email, password, firstName, lastName }),
-    }).then((data) => ({ data: { ...data, user: normalizeAuthUser(data.user) } }));
+    }).then((data) => {
+      const user = normalizeAuthUser(data.user ?? data);
+      return { data: { ...data, user } };
+    });
   },
 
   updateProfile: (body: UserProfileUpdate) =>
-    apiRequest<User & { firstName?: string; lastName?: string; avatarUrl?: string; picture?: string }>(
-      "/auth/profile",
-      {
-        method: "PATCH",
-        body: JSON.stringify(body),
-      }
-    ).then((data) => ({ data: normalizeAuthUser(data) })),
+    apiRequest<unknown>("/auth/profile", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }).then((data) => ({ data: normalizeAuthUser(data) })),
 
   logout: () =>
     apiRequest<MessageResponse>("/auth/logout", { method: "POST" }).then((data) => ({ data })),

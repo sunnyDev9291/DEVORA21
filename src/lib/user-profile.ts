@@ -24,8 +24,8 @@ const EMPTY_PROFILE: StoredUserProfile = {
   selectedPromptId: "",
 };
 
-export function loadStoredProfile(userId: string): StoredUserProfile {
-  if (typeof window === "undefined") return { ...EMPTY_PROFILE };
+export function loadStoredProfile(userId: string | undefined): StoredUserProfile {
+  if (!userId || typeof window === "undefined") return { ...EMPTY_PROFILE };
 
   try {
     const raw = localStorage.getItem(profileKey(userId));
@@ -90,18 +90,21 @@ export function resolveUserNames(user: User, stored?: StoredUserProfile | null):
   lastName: string;
   fullName: string;
 } {
+  const email = user.email?.trim() ?? "";
+  const emailLocalPart = email.includes("@") ? email.split("@")[0] : email;
+
   const firstName =
     stored?.firstName?.trim() ||
     user.firstName?.trim() ||
     splitDisplayName(user.name ?? "").firstName ||
-    user.email.split("@")[0];
+    emailLocalPart;
 
   const lastName =
     stored?.lastName?.trim() ||
     user.lastName?.trim() ||
     splitDisplayName(user.name ?? "").lastName;
 
-  const fullName = [firstName, lastName].filter(Boolean).join(" ").trim() || user.name?.trim() || user.email;
+  const fullName = [firstName, lastName].filter(Boolean).join(" ").trim() || user.name?.trim() || email;
 
   return { firstName, lastName, fullName };
 }

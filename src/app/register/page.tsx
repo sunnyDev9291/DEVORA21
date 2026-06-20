@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import AuthLayout, { AuthDivider, AuthFooterLink } from "@/components/auth/AuthLayout";
 import AlreadyRegisteredNotice from "@/components/auth/AlreadyRegisteredNotice";
+import { RegisterPageGuard } from "@/components/auth/AuthGuard";
 import OAuthButtons from "@/components/auth/OAuthButtons";
 import AuthInput from "@/components/auth/AuthInput";
 import Button from "@/components/ui/Button";
@@ -110,14 +111,16 @@ function RegisterPageContent() {
 
 export default function RegisterPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center bg-navy-950">
-          <div className="h-10 w-10 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
-        </div>
-      }
-    >
-      <RegisterPageContent />
-    </Suspense>
+    <RegisterPageGuard>
+      <Suspense
+        fallback={
+          <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center bg-navy-950">
+            <div className="h-10 w-10 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+          </div>
+        }
+      >
+        <RegisterPageContent />
+      </Suspense>
+    </RegisterPageGuard>
   );
 }
