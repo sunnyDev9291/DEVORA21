@@ -2,6 +2,15 @@ import { BACKEND_API_URL } from "@/lib/api-base-url";
 
 export const runtime = "nodejs";
 
+function upstreamAuthHeaders(req: Request): HeadersInit {
+  const headers: Record<string, string> = {};
+  const cookie = req.headers.get("cookie");
+  if (cookie) headers.cookie = cookie;
+  const authorization = req.headers.get("authorization");
+  if (authorization) headers.authorization = authorization;
+  return headers;
+}
+
 export async function POST(req: Request) {
   let formData: FormData;
   try {
@@ -41,6 +50,7 @@ export async function POST(req: Request) {
     const upstream = await fetch(`${BACKEND_API_URL}/resume/archive`, {
       method: "POST",
       body: upstreamForm,
+      headers: upstreamAuthHeaders(req),
     });
 
     const contentType = upstream.headers.get("content-type") ?? "";
