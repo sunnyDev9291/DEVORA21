@@ -9,6 +9,7 @@ import AuthLayout, { AuthDivider, AuthFooterLink } from "@/components/auth/AuthL
 import AlreadyRegisteredNotice from "@/components/auth/AlreadyRegisteredNotice";
 import { RegisterPageGuard } from "@/components/auth/AuthGuard";
 import OAuthButtons from "@/components/auth/OAuthButtons";
+import OAuthNotice from "@/components/auth/OAuthNotice";
 import AuthInput from "@/components/auth/AuthInput";
 import Button from "@/components/ui/Button";
 import { useAuth } from "@/context/AuthContext";
@@ -64,7 +65,10 @@ function RegisterForm() {
         </>
       }
     >
-      <OAuthButtons />
+      <div className="space-y-4">
+        <OAuthNotice page="register" />
+        <OAuthButtons mode="signup" />
+      </div>
       <AuthDivider />
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
         {serverError && (

@@ -1,4 +1,11 @@
-import { getGoogleOAuthUrl } from "@/lib/auth-api";
+"use client";
+
+import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
+import { authApi } from "@/lib/auth-api";
+import { getGoogleOAuthUrl, type GoogleOAuthIntent } from "@/lib/auth-oauth";
+import { clearAuthClientStorage } from "@/lib/auth-storage";
 
 function GoogleIcon() {
   return (
@@ -12,19 +19,43 @@ function GoogleIcon() {
 }
 
 const oauthClass =
-  "w-full inline-flex items-center justify-center gap-2 font-semibold transition-all duration-200 border border-white/10 hover:border-white/25 bg-white/[0.03] hover:bg-white/[0.06] text-white px-5 py-2.5 text-sm rounded-xl";
+  "w-full inline-flex items-center justify-center gap-2 font-semibold transition-all duration-200 border border-white/10 hover:border-white/25 bg-white/[0.03] hover:bg-white/[0.06] text-white px-5 py-2.5 text-sm rounded-xl disabled:opacity-60 disabled:pointer-events-none";
 
-export default function OAuthButtons() {
+interface OAuthButtonsProps {
+  mode: GoogleOAuthIntent;
+}
+
+export default function OAuthButtons({ mode }: OAuthButtonsProps) {
+  const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const [busy, setBusy] = useState(false);
+
+  const label = mode === "signup" ? "Sign up with Google" : "Sign in with Google";
+
+  async function handleClick() {
+    setBusy(true);
+    try {
+      // Signup must never reuse an existing API session (prevents silent dashboard redirect).
+      if (mode === "signup") {
+        clearAuthClientStorage(user?.id);
+        try {
+          await authApi.logout();
+        } catch {
+          // Continue — user may already be logged out.
+        }
+      }
+
+      const next = mode === "login" ? searchParams.get("next") : null;
+      window.location.href = getGoogleOAuthUrl({ intent: mode, next });
+    } catch {
+      setBusy(false);
+    }
+  }
+
   return (
-    <button
-      type="button"
-      className={oauthClass}
-      onClick={() => {
-        window.location.href = getGoogleOAuthUrl();
-      }}
-    >
+    <button type="button" className={oauthClass} disabled={busy} onClick={() => void handleClick()}>
       <GoogleIcon />
-      Continue with Google
+      {busy ? "Redirecting…" : label}
     </button>
   );
 }

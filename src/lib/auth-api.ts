@@ -256,6 +256,4 @@ export const authApi = {
     }).then((data) => ({ data })),
 };
 
-export function getGoogleOAuthUrl(): string {
-  return `${API_BASE_URL}/auth/google`;
-}
+export { getGoogleOAuthUrl } from "@/lib/auth-oauth";

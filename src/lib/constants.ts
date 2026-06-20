@@ -295,6 +295,7 @@ export const AUTH_LINKS = {
   resetPassword: "/reset-password",
   verifyEmail: "/verify-email",
   verifyEmailPending: "/verify-email/pending",
+  oauthComplete: "/auth/oauth/complete",
 } as const;
 
 export { API_BASE_URL, BACKEND_API_URL, DEFAULT_API_URL } from "@/lib/api-base-url";

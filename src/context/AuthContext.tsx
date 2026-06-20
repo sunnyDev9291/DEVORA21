@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { authApi, ApiError, getApiErrorMessage, isValidAuthUser } from "@/lib/auth-api";
+import { clearAuthClientStorage } from "@/lib/auth-storage";
 import { isUserEmailVerified, mergeEmailVerifiedState } from "@/lib/email-verification";
 import type { User } from "@/types/auth";
 
@@ -104,12 +105,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    const userId = user?.id;
     try {
       await authApi.logout();
     } finally {
+      clearAuthClientStorage(userId);
       setUser(null);
     }
-  }, []);
+  }, [user?.id]);
 
   const value = useMemo(
     () => ({
