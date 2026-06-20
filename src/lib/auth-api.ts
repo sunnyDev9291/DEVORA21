@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "@/lib/api-base-url";
+import { readEmailVerified } from "@/lib/email-verification";
 import type {
   AuthResponse,
   MessageResponse,
@@ -89,6 +90,47 @@ export function getApiErrorMessage(
   return fallback;
 }
 
+export const REGISTER_EMAIL_EXISTS_MESSAGE =
+  "An account with this email already exists. Sign in instead.";
+
+function messageLooksLikeDuplicateEmail(message: string): boolean {
+  return /already|exist|taken|duplicate|registered/i.test(message);
+}
+
+export function isDuplicateEmailRegisterError(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return false;
+  if (error.status === 409) return true;
+
+  const emailError = error.data?.errors?.email?.[0];
+  if (emailError && messageLooksLikeDuplicateEmail(emailError)) return true;
+
+  const message = error.data?.message ?? error.message;
+  return Boolean(message && messageLooksLikeDuplicateEmail(message));
+}
+
+export function getRegisterErrorMessage(
+  error: unknown,
+  fallback = "Registration failed. Please try again.",
+): string {
+  if (isDuplicateEmailRegisterError(error)) {
+    if (error instanceof ApiError) {
+      const emailError = error.data?.errors?.email?.[0];
+      if (emailError) return emailError;
+
+      const message = error.data?.message ?? error.message;
+      if (message && messageLooksLikeDuplicateEmail(message)) return message;
+    }
+
+    return REGISTER_EMAIL_EXISTS_MESSAGE;
+  }
+
+  if (error instanceof ApiError && error.data?.errors?.email?.[0]) {
+    return error.data.errors.email[0];
+  }
+
+  return getApiErrorMessage(error, fallback);
+}
+
 function splitFullName(name: string): { firstName: string; lastName: string } {
   const trimmed = name.trim();
   const space = trimmed.indexOf(" ");
@@ -126,10 +168,12 @@ export function normalizeAuthUser(
     [firstName, lastName].filter(Boolean).join(" ").trim() ||
     raw.email;
 
+  const emailVerified = readEmailVerified(raw as unknown as Record<string, unknown>);
+
   return {
     id: raw.id,
     email: raw.email,
-    emailVerified: raw.emailVerified,
+    emailVerified,
     createdAt: raw.createdAt,
     firstName: firstName || undefined,
     lastName: lastName || undefined,

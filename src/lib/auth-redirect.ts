@@ -1,4 +1,6 @@
 import { AUTH_LINKS } from "@/lib/constants";
+import { isUserEmailVerified } from "@/lib/email-verification";
+import type { User } from "@/types/auth";
 
 const ALLOWED_PREFIXES = ["/dashboard", "/resume", "/real-time-interview"];
 
@@ -13,6 +15,15 @@ export function getSafeRedirectPath(next: string | null | undefined, fallback = 
 
   const allowed = ALLOWED_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
   return allowed ? next : fallback;
+}
+
+/** After login/register/OAuth — verified users go to their destination; others wait for email verification. */
+export function getPostAuthRedirectPath(user: User, next?: string | null): string {
+  if (!isUserEmailVerified(user)) {
+    return AUTH_LINKS.verifyEmailPending;
+  }
+
+  return getSafeRedirectPath(next);
 }
 
 export function buildLoginUrl(nextPath?: string): string {

@@ -12,7 +12,7 @@ import Button from "@/components/ui/Button";
 import { GuestGuard } from "@/components/auth/AuthGuard";
 import { useAuth } from "@/context/AuthContext";
 import { getApiErrorMessage } from "@/lib/auth-api";
-import { getSafeRedirectPath } from "@/lib/auth-redirect";
+import { getPostAuthRedirectPath } from "@/lib/auth-redirect";
 import { AUTH_LINKS } from "@/lib/constants";
 import { loginSchema, type LoginFormValues } from "@/lib/auth-schemas";
 
@@ -34,9 +34,8 @@ function LoginForm() {
   const onSubmit = async (values: LoginFormValues) => {
     setServerError("");
     try {
-      await login(values.email, values.password);
-      const next = getSafeRedirectPath(searchParams.get("next"));
-      router.replace(next);
+      const user = await login(values.email, values.password);
+      router.replace(getPostAuthRedirectPath(user, searchParams.get("next")));
     } catch (error) {
       setServerError(getApiErrorMessage(error, "Login failed. Please try again."));
     }

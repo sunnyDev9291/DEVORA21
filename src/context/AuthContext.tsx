@@ -10,16 +10,19 @@ import {
   type ReactNode,
 } from "react";
 import { authApi, ApiError, getApiErrorMessage } from "@/lib/auth-api";
+import { isUserEmailVerified, mergeEmailVerifiedState } from "@/lib/email-verification";
 import type { User } from "@/types/auth";
 
 interface AuthContextValue {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  isEmailVerified: boolean;
+  login: (email: string, password: string) => Promise<User>;
+  register: (name: string, email: string, password: string) => Promise<User>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  markEmailVerified: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -29,17 +32,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authChecked, setAuthChecked] = useState(false);
   const isLoading = !authChecked;
 
+  const applyUser = useCallback((next: User | null) => {
+    setUser((previous) => {
+      if (!next) return null;
+      return mergeEmailVerifiedState(previous, next);
+    });
+  }, []);
+
   const refreshUser = useCallback(async () => {
     try {
       const { data } = await authApi.getMe();
-      setUser(data);
+      applyUser(data);
     } catch (error) {
       if (!(error instanceof ApiError) || error.status !== 401) {
         console.error("Failed to fetch user:", getApiErrorMessage(error));
       }
       setUser(null);
     }
-  }, []);
+  }, [applyUser]);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async function init() {
       try {
         const { data } = await authApi.getMe();
-        if (!cancelled) setUser(data);
+        if (!cancelled) applyUser(data);
       } catch {
         if (!cancelled) setUser(null);
       } finally {
@@ -60,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [applyUser]);
 
   useEffect(() => {
     function onFocus() {
@@ -73,12 +83,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const { data } = await authApi.login(email, password);
-    setUser(data.user);
-  }, []);
+    applyUser(data.user);
+    return data.user;
+  }, [applyUser]);
 
   const register = useCallback(async (name: string, email: string, password: string) => {
     const { data } = await authApi.register(name, email, password);
-    setUser(data.user);
+    applyUser(data.user);
+    return data.user;
+  }, [applyUser]);
+
+  const markEmailVerified = useCallback(() => {
+    setUser((prev) => (prev ? { ...prev, emailVerified: true } : prev));
   }, []);
 
   const logout = useCallback(async () => {
@@ -94,12 +110,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       isLoading,
       isAuthenticated: !!user,
+      isEmailVerified: isUserEmailVerified(user),
       login,
       register,
       logout,
       refreshUser,
+      markEmailVerified,
     }),
-    [user, isLoading, login, register, logout, refreshUser],
+    [user, isLoading, login, register, logout, refreshUser, markEmailVerified],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
