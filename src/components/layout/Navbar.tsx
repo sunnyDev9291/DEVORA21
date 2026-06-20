@@ -49,8 +49,8 @@ export default function Navbar() {
             <Image
               src="/logo.png"
               alt="Devora21 logo"
-              width={200}
-              height={200}
+              width={72}
+              height={72}
               className="w-[72px] h-auto object-contain"
               priority
             />

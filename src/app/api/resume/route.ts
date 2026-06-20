@@ -2,7 +2,7 @@ import { readFile } from "fs/promises";
 import path from "path";
 import { completeDeepSeek } from "@/lib/deepseek-stream";
 import { parseResumeHeaderFromDocxBuffer } from "@/lib/resume-docx";
-import { resolveExperiencesFromDocx } from "@/lib/resume-docx-ai-parse";
+import { getCachedTemplateExperiences } from "@/lib/resume-template-cache";
 import {
   RESUME_SYSTEM_PROMPT,
   buildResumeUserPrompt,
@@ -60,7 +60,7 @@ export async function POST(req: Request) {
     }
 
     const templateBuffer = await readFile(filePath);
-    const existingExperiences = await resolveExperiencesFromDocx(templateBuffer);
+    const existingExperiences = await getCachedTemplateExperiences(templateName, templateBuffer);
     const header = parseResumeHeaderFromDocxBuffer(templateBuffer);
 
     const userPrompt = buildResumeUserPrompt({

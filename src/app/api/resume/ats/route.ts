@@ -8,6 +8,7 @@ interface AtsRequest {
   companyName?: string;
   jobDescription?: string;
   content?: GeneratedResumeContent;
+  keywordsCacheKey?: string;
 }
 
 export async function POST(req: Request) {
@@ -36,7 +37,13 @@ export async function POST(req: Request) {
   }
 
   try {
-    const result = await evaluateStrictAtsScore({ jobTitle, companyName, jobDescription, content });
+    const result = await evaluateStrictAtsScore({
+      jobTitle,
+      companyName,
+      jobDescription,
+      content,
+      keywordsCacheKey: body.keywordsCacheKey?.trim() || undefined,
+    });
     return Response.json(result, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     const message = err instanceof Error ? err.message : "ATS evaluation failed.";

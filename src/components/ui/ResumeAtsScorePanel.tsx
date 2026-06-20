@@ -1,6 +1,6 @@
 "use client";
 
-import { ATS_PASS_THRESHOLD } from "@/lib/resume-ats";
+import { ATS_PASS_THRESHOLD, ATS_SCORE_MAX } from "@/lib/resume-ats";
 import type { AtsScoreResult } from "@/lib/resume-types";
 
 export interface ResumeAtsScorePanelProps {
@@ -24,9 +24,10 @@ function scoreRingColor(overall: number): string {
 }
 
 function ScoreRing({ overall }: { overall: number }) {
+  const display = Math.min(Math.max(overall, 0), ATS_SCORE_MAX);
   const radius = 54;
   const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (overall / 100) * circumference;
+  const offset = circumference - (display / ATS_SCORE_MAX) * circumference;
 
   return (
     <div className="relative h-32 w-32 shrink-0 mx-auto sm:mx-0">
@@ -46,8 +47,8 @@ function ScoreRing({ overall }: { overall: number }) {
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className={`text-3xl font-bold tabular-nums ${scoreColor(overall)}`}>{overall}</span>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">/ 100</span>
+        <span className={`text-3xl font-bold tabular-nums ${scoreColor(display)}`}>{display}</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">/ {ATS_SCORE_MAX}</span>
       </div>
     </div>
   );

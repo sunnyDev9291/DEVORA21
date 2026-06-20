@@ -55,3 +55,34 @@ export type AtsScoreResult = {
   mustHaveCoverage?: number;
   algorithm?: string;
 };
+
+export type HumanToneScoreResult = {
+  overall: number;
+  passed: boolean;
+  breakdown: AtsScoreBreakdown[];
+  recommendations: string[];
+  summary: string;
+  gates?: AtsPassGate[];
+  /** Detected AI-style buzzwords or phrases. */
+  flags?: string[];
+  algorithm?: string;
+};
+
+export type RuleKeepCheck = {
+  id: string;
+  rule: string;
+  category: string;
+  passed: boolean;
+  detail: string;
+};
+
+export type RuleKeepScoreResult = {
+  overall: number;
+  passed: boolean;
+  totalRules: number;
+  passedRules: number;
+  rules: RuleKeepCheck[];
+  recommendations: string[];
+  summary: string;
+  algorithm?: string;
+};

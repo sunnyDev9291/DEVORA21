@@ -9,8 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { isAxiosError } from "axios";
-import { authApi, getApiErrorMessage } from "@/lib/auth-api";
+import { authApi, ApiError, getApiErrorMessage } from "@/lib/auth-api";
 import type { User } from "@/types/auth";
 
 interface AuthContextValue {
@@ -27,14 +26,15 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [authChecked, setAuthChecked] = useState(false);
+  const isLoading = !authChecked;
 
   const refreshUser = useCallback(async () => {
     try {
       const { data } = await authApi.getMe();
       setUser(data);
     } catch (error) {
-      if (!isAxiosError(error) || error.response?.status !== 401) {
+      if (!(error instanceof ApiError) || error.status !== 401) {
         console.error("Failed to fetch user:", getApiErrorMessage(error));
       }
       setUser(null);
@@ -45,22 +45,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     async function init() {
-      setIsLoading(true);
       try {
         const { data } = await authApi.getMe();
         if (!cancelled) setUser(data);
       } catch {
         if (!cancelled) setUser(null);
       } finally {
-        if (!cancelled) setIsLoading(false);
+        if (!cancelled) setAuthChecked(true);
       }
     }
 
-    init();
+    void init();
+
     return () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    function onFocus() {
+      if (authChecked) void refreshUser();
+    }
+
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [authChecked, refreshUser]);
 
   const login = useCallback(async (email: string, password: string) => {
     const { data } = await authApi.login(email, password);

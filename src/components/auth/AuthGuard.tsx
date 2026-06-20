@@ -1,19 +1,23 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import { buildLoginUrl, getSafeRedirectPath } from "@/lib/auth-redirect";
 import { AUTH_LINKS } from "@/lib/constants";
 
 export function GuestGuard({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      router.replace(AUTH_LINKS.dashboard);
+      const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+      const next = getSafeRedirectPath(params?.get("next") ?? undefined);
+      router.replace(next);
     }
-  }, [isAuthenticated, isLoading, router]);
+  }, [isAuthenticated, isLoading, router, pathname]);
 
   if (isLoading) {
     return (
@@ -31,12 +35,13 @@ export function GuestGuard({ children }: { children: ReactNode }) {
 export function AuthGuard({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      router.replace(AUTH_LINKS.login);
+      router.replace(buildLoginUrl(pathname));
     }
-  }, [isAuthenticated, isLoading, router]);
+  }, [isAuthenticated, isLoading, router, pathname]);
 
   if (isLoading) {
     return (

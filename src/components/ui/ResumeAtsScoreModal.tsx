@@ -5,14 +5,24 @@ import { createPortal } from "react-dom";
 import ResumeContentReview from "@/components/sections/ResumeContentReview";
 import ResumeThinkingProgress from "@/components/ui/ResumeThinkingProgress";
 import { ResumeAtsScorePanel, type ResumeAtsScorePanelProps } from "@/components/ui/ResumeAtsScorePanel";
+import { ResumeHumanTonePanel } from "@/components/ui/ResumeHumanTonePanel";
+import { ResumeRuleKeepPanel } from "@/components/ui/ResumeRuleKeepPanel";
 import { ATS_PASS_THRESHOLD } from "@/lib/resume-ats";
-import type { GeneratedResumeContent } from "@/lib/resume-types";
+import { HUMAN_TONE_PASS_THRESHOLD } from "@/lib/resume-human-tone";
+import { RULE_KEEP_PASS_THRESHOLD } from "@/lib/resume-rule-keep-constants";
+import type { GeneratedResumeContent, HumanToneScoreResult, RuleKeepScoreResult } from "@/lib/resume-types";
 import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
 
 interface ResumeAtsScoreModalProps extends ResumeAtsScorePanelProps {
   open: boolean;
   onClose: () => void;
   jobTitle?: string;
+  humanToneScore?: HumanToneScoreResult | null;
+  humanToneLoading?: boolean;
+  humanToneError?: string;
+  ruleKeepScore?: RuleKeepScoreResult | null;
+  ruleKeepLoading?: boolean;
+  ruleKeepError?: string;
   content?: GeneratedResumeContent | null;
   onContentChange?: (content: GeneratedResumeContent) => void;
   onApply?: () => void;
@@ -21,9 +31,13 @@ interface ResumeAtsScoreModalProps extends ResumeAtsScorePanelProps {
   generating?: boolean;
   streamPhase?: ResumeGenerationPhase;
   generateError?: string;
+  regenerateNotice?: string;
   templateName?: string;
+  fileNameJobTitle?: string;
+  customPrompt?: string;
   applyLabel?: string;
   generationKey?: number;
+  onOpenResumeChat?: () => void;
 }
 
 export default function ResumeAtsScoreModal({
@@ -35,6 +49,12 @@ export default function ResumeAtsScoreModal({
   error,
   onRecheck,
   recheckDisabled,
+  humanToneScore = null,
+  humanToneLoading = false,
+  humanToneError = "",
+  ruleKeepScore = null,
+  ruleKeepLoading = false,
+  ruleKeepError = "",
   content,
   onContentChange,
   onApply,
@@ -43,9 +63,13 @@ export default function ResumeAtsScoreModal({
   generating = false,
   streamPhase = "starting",
   generateError = "",
+  regenerateNotice = "",
   templateName = "",
+  fileNameJobTitle,
+  customPrompt = "",
   applyLabel,
   generationKey = 0,
+  onOpenResumeChat,
 }: ResumeAtsScoreModalProps) {
   const showContentReview = !!content && !!onContentChange && !!onApply && !!onRegenerate;
   const titleId = useId();
@@ -97,10 +121,12 @@ export default function ResumeAtsScoreModal({
           </div>
           <div className="min-w-0 flex-1">
             <h2 id={titleId} className="text-base font-bold text-slate-900 dark:text-white truncate">
-              {showContentReview ? "Review draft & ATS score" : "ATS Score Report"}
+              {showContentReview ? "Review draft & scores" : "Resume score report"}
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-              {jobTitle ? `Target: ${jobTitle}` : `Strict evaluation · ${ATS_PASS_THRESHOLD}% pass threshold`}
+              {jobTitle
+                ? `Target: ${jobTitle}`
+                : `ATS ${ATS_PASS_THRESHOLD}%+ · Tone ${HUMAN_TONE_PASS_THRESHOLD}%+ · Rules ${RULE_KEEP_PASS_THRESHOLD}%+`}
             </p>
           </div>
           <button
@@ -130,6 +156,16 @@ export default function ResumeAtsScoreModal({
               onRecheck={onRecheck}
               recheckDisabled={recheckDisabled}
             />
+            <ResumeHumanTonePanel
+              score={humanToneScore}
+              loading={humanToneLoading}
+              error={humanToneError}
+            />
+            <ResumeRuleKeepPanel
+              score={ruleKeepScore}
+              loading={ruleKeepLoading}
+              error={ruleKeepError}
+            />
           </div>
 
           {showContentReview && (
@@ -144,6 +180,11 @@ export default function ResumeAtsScoreModal({
                   <p className="text-xs text-red-600 dark:text-red-300">{generateError}</p>
                 </div>
               )}
+              {regenerateNotice && (
+                <div className="mx-4 mt-4 flex items-start gap-2 rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-3 py-2.5">
+                  <p className="text-xs text-amber-800 dark:text-amber-200">{regenerateNotice}</p>
+                </div>
+              )}
               <div className={`p-4 sm:p-5 ${generating ? "pointer-events-none opacity-60" : ""}`}>
                 <ResumeContentReview
                   content={content}
@@ -153,7 +194,8 @@ export default function ResumeAtsScoreModal({
                   applying={applying}
                   generating={generating}
                   templateName={templateName}
-                  jobTitle={jobTitle}
+                  jobTitle={fileNameJobTitle ?? jobTitle ?? ""}
+                  customPrompt={customPrompt}
                   applyLabel={applyLabel}
                   generationKey={generationKey}
                   embedded
@@ -164,6 +206,18 @@ export default function ResumeAtsScoreModal({
         </div>
 
         <footer className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-200 dark:border-white/[0.08] bg-white/95 dark:bg-navy-900/95 px-5 py-3 backdrop-blur-sm">
+          {onOpenResumeChat && content && (
+            <button
+              type="button"
+              onClick={onOpenResumeChat}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-sm font-semibold text-blue-700 dark:text-blue-300 hover:bg-blue-500/15 transition-all mr-auto"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              Resume Q&A
+            </button>
+          )}
           {onRecheck && score && !loading && (
             <button
               type="button"

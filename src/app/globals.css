@@ -124,6 +124,31 @@ body {
   line-height: 0;
 }
 
+.markdown-bold-editor {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.markdown-bold-editor:empty::before {
+  content: attr(data-placeholder);
+  color: rgb(148 163 184);
+  pointer-events: none;
+}
+
+.markdown-bold-editor strong,
+.markdown-bold-editor b {
+  font-weight: 600;
+  color: rgb(15 23 42);
+}
+
+.dark .markdown-bold-editor strong,
+.dark .markdown-bold-editor b {
+  color: rgb(248 250 252);
+}
+
 @layer utilities {
   .text-gradient {
     @apply text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600;

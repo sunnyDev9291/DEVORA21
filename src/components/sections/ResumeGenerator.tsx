@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import PdfPreviewModal from "@/components/ui/PdfPreviewModal";
+import dynamic from "next/dynamic";
 import SavedPromptPicker from "@/components/ui/SavedPromptPicker";
+import MarkdownBoldTextarea from "@/components/ui/MarkdownBoldTextarea";
 import ResumeThinkingProgress from "@/components/ui/ResumeThinkingProgress";
-import ResumeAtsScoreModal from "@/components/ui/ResumeAtsScoreModal";
 import ResumeContentReview from "@/components/sections/ResumeContentReview";
 import { resolveResumeWizardStep } from "@/components/sections/ResumeStepper";
 import type { ResumeTemplate } from "@/lib/resume-template";
@@ -12,7 +12,12 @@ import type { ResumePromptOption } from "@/lib/resume-prompt-option";
 import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
 import { generateResume } from "@/lib/resume-generate-client";
 import { archiveResume } from "@/lib/resume-archive";
-import type { GeneratedResumeContent, ResumeBuildResponse, AtsScoreResult } from "@/lib/resume-types";
+import { pickBestRegenerateResult, type RegenerateEvaluation } from "@/lib/resume-ats-regenerate";
+import type { GeneratedResumeContent, ResumeBuildResponse, AtsScoreResult, HumanToneScoreResult, RuleKeepScoreResult } from "@/lib/resume-types";
+
+const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
+const ResumeAtsScoreModal = dynamic(() => import("@/components/ui/ResumeAtsScoreModal"));
+const ResumeChatDialog = dynamic(() => import("@/components/ui/ResumeChatDialog"));
 
 interface ResumeGeneratorProps {
   selectedTemplate: ResumeTemplate | null;
@@ -53,10 +58,8 @@ export default function ResumeGenerator({
     jobDescription: "",
     customPrompt: "",
   });
-  const [prompts, setPrompts] = useState<ResumePromptOption[]>([]);
   const [selectedPromptId, setSelectedPromptId] = useState("");
   const [loadingPrompt, setLoadingPrompt] = useState(false);
-  const [promptListError, setPromptListError] = useState("");
   const [step, setStep] = useState<Step>("form");
   const [content, setContent] = useState<GeneratedResumeContent | null>(null);
   const [docxBase64, setDocxBase64] = useState("");
@@ -74,10 +77,19 @@ export default function ResumeGenerator({
   const [atsScore, setAtsScore] = useState<AtsScoreResult | null>(null);
   const [atsLoading, setAtsLoading] = useState(false);
   const [atsError, setAtsError] = useState("");
+  const [humanToneScore, setHumanToneScore] = useState<HumanToneScoreResult | null>(null);
+  const [humanToneLoading, setHumanToneLoading] = useState(false);
+  const [humanToneError, setHumanToneError] = useState("");
+  const [ruleKeepScore, setRuleKeepScore] = useState<RuleKeepScoreResult | null>(null);
+  const [ruleKeepLoading, setRuleKeepLoading] = useState(false);
+  const [ruleKeepError, setRuleKeepError] = useState("");
+  const [regenerateNotice, setRegenerateNotice] = useState("");
   const [atsModalOpen, setAtsModalOpen] = useState(false);
+  const [resumeChatOpen, setResumeChatOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const atsAbortRef = useRef<AbortController | null>(null);
   const generationRunRef = useRef(0);
+  const keywordsCacheKeyRef = useRef<string | null>(null);
   const reviewRef = useRef<HTMLDivElement>(null);
   const successBannerRef = useRef<HTMLDivElement>(null);
 
@@ -106,33 +118,24 @@ export default function ResumeGenerator({
     setStreamPhase("starting");
     setAtsScore(null);
     setAtsError("");
+    setHumanToneScore(null);
+    setHumanToneError("");
+    setRuleKeepScore(null);
+    setRuleKeepError("");
     setAtsModalOpen(false);
+    setResumeChatOpen(false);
+    keywordsCacheKeyRef.current = null;
   }, [selectedTemplate?.id]);
+
+  useEffect(() => {
+    keywordsCacheKeyRef.current = null;
+    setRuleKeepScore(null);
+    setRuleKeepError("");
+  }, [form.jobTitle, form.companyName, form.jobDescription, form.customPrompt]);
 
   useEffect(() => () => {
     abortRef.current?.abort();
     atsAbortRef.current?.abort();
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setPromptListError("");
-      try {
-        const res = await fetch("/api/prompts", { cache: "no-store" });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || `Failed to load prompts (${res.status}).`);
-        if (!cancelled) setPrompts(data.prompts ?? []);
-      } catch (err) {
-        if (!cancelled) {
-          setPrompts([]);
-          setPromptListError((err as Error).message || "Could not load saved prompts.");
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   useEffect(() => {
@@ -152,7 +155,7 @@ export default function ResumeGenerator({
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   }
 
-  async function handlePromptSelect(promptId: string) {
+  async function handlePromptSelect(promptId: string, prompt?: ResumePromptOption) {
     setSelectedPromptId(promptId);
     setError("");
 
@@ -161,7 +164,6 @@ export default function ResumeGenerator({
       return;
     }
 
-    const prompt = prompts.find((p) => p.id === promptId);
     if (!prompt) return;
 
     setLoadingPrompt(true);
@@ -203,7 +205,14 @@ export default function ResumeGenerator({
     setStreamPhase("starting");
     setAtsScore(null);
     setAtsError("");
+    setHumanToneScore(null);
+    setHumanToneError("");
+    setRuleKeepScore(null);
+    setRuleKeepError("");
+    setRegenerateNotice("");
     setAtsModalOpen(false);
+    setResumeChatOpen(false);
+    keywordsCacheKeyRef.current = null;
   }
 
   const hasClearableContent =
@@ -219,20 +228,35 @@ export default function ResumeGenerator({
 
   const canGenerate = !!selectedTemplate && !!form.jobTitle.trim() && !!form.companyName.trim();
 
-  async function evaluateAts(resumeContent: GeneratedResumeContent, options?: { openModal?: boolean }) {
+  async function evaluateResumeScores(
+    resumeContent: GeneratedResumeContent,
+    options?: {
+      openModal?: boolean;
+      preserveScore?: boolean;
+      reuseKeywords?: boolean;
+    }
+  ): Promise<RegenerateEvaluation | null> {
     atsAbortRef.current?.abort();
     const controller = new AbortController();
     atsAbortRef.current = controller;
 
     setAtsLoading(true);
+    setHumanToneLoading(true);
+    setRuleKeepLoading(true);
     setAtsError("");
-    setAtsScore(null);
+    setHumanToneError("");
+    setRuleKeepError("");
+    if (!options?.preserveScore) {
+      setAtsScore(null);
+      setHumanToneScore(null);
+      setRuleKeepScore(null);
+    }
     if (options?.openModal !== false) {
       setAtsModalOpen(true);
     }
 
     try {
-      const res = await fetch("/api/resume/ats", {
+      const res = await fetch("/api/resume/score", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -240,21 +264,62 @@ export default function ResumeGenerator({
           companyName: form.companyName,
           jobDescription: form.jobDescription,
           content: resumeContent,
+          customPrompt: form.customPrompt,
+          ...(options?.reuseKeywords && keywordsCacheKeyRef.current
+            ? { keywordsCacheKey: keywordsCacheKeyRef.current }
+            : {}),
         }),
         signal: controller.signal,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || `ATS evaluation failed (${res.status}).`);
-      setAtsScore(data as AtsScoreResult);
+
+      const data = (await res.json()) as RegenerateEvaluation & {
+        ruleKeep?: RuleKeepScoreResult;
+        keywordsCacheKey?: string;
+        error?: string;
+      };
+
+      if (!res.ok) {
+        throw new Error(data?.error || `Scoring failed (${res.status}).`);
+      }
+
+      if (data.keywordsCacheKey) {
+        keywordsCacheKeyRef.current = data.keywordsCacheKey;
+      }
+
+      setAtsScore(data.ats);
+      setHumanToneScore(data.humanTone);
+      if (data.ruleKeep) setRuleKeepScore(data.ruleKeep);
+      return { ats: data.ats, humanTone: data.humanTone };
     } catch (err) {
-      if ((err as Error).name === "AbortError") return;
-      setAtsError((err as Error).message || "Could not evaluate ATS score.");
+      if ((err as Error).name === "AbortError") return null;
+      const message = (err as Error).message || "Could not evaluate resume scores.";
+      setAtsError(message);
+      return null;
     } finally {
-      if (!controller.signal.aborted) setAtsLoading(false);
+      if (!controller.signal.aborted) {
+        setAtsLoading(false);
+        setHumanToneLoading(false);
+        setRuleKeepLoading(false);
+      }
     }
   }
 
-  async function handleGenerate(e?: React.FormEvent) {
+  async function evaluateAts(
+    resumeContent: GeneratedResumeContent,
+    options?: { openModal?: boolean; preserveScore?: boolean }
+  ): Promise<AtsScoreResult | null> {
+    const result = await evaluateResumeScores(resumeContent, options);
+    return result?.ats ?? null;
+  }
+
+  async function handleGenerate(
+    e?: React.FormEvent,
+    options?: {
+      atsFeedback?: AtsScoreResult;
+      humanToneFeedback?: HumanToneScoreResult;
+      previousContent?: GeneratedResumeContent;
+    }
+  ) {
     e?.preventDefault();
     if (applying) return;
     if (!selectedTemplate) {
@@ -274,6 +339,7 @@ export default function ResumeGenerator({
 
     const runId = ++generationRunRef.current;
     setError("");
+    setRegenerateNotice("");
     setGenerating(true);
     setStreamPhase("starting");
 
@@ -282,7 +348,13 @@ export default function ResumeGenerator({
 
     try {
       const data = await generateResume(
-        { ...form, templateName: selectedTemplate.name },
+        {
+          ...form,
+          templateName: selectedTemplate.name,
+          ...(options?.atsFeedback && { atsFeedback: options.atsFeedback }),
+          ...(options?.humanToneFeedback && { humanToneFeedback: options.humanToneFeedback }),
+          ...(options?.previousContent && { previousContent: options.previousContent }),
+        },
         {
           onPhase: (phase) => {
             if (generationRunRef.current === runId) setStreamPhase(phase);
@@ -293,12 +365,35 @@ export default function ResumeGenerator({
 
       if (generationRunRef.current !== runId) return;
 
-      setContent(data.content);
       setDocxBase64("");
       setFileName("");
-      setGenerationKey((k) => k + 1);
       setStep("review");
-      void evaluateAts(data.content);
+
+      if (options?.previousContent && options?.atsFeedback && options?.humanToneFeedback) {
+        const picked = await pickBestRegenerateResult(
+          options.previousContent,
+          options.atsFeedback,
+          options.humanToneFeedback,
+          data.content,
+          (candidate) =>
+            evaluateResumeScores(candidate, {
+              openModal: true,
+              preserveScore: true,
+              reuseKeywords: true,
+            })
+        );
+        setContent(picked.content);
+        setAtsScore(picked.score);
+        setHumanToneScore(picked.humanToneScore);
+        setRegenerateNotice(picked.notice);
+        if (picked.content !== options.previousContent) {
+          setGenerationKey((k) => k + 1);
+        }
+      } else {
+        setContent(data.content);
+        setGenerationKey((k) => k + 1);
+        await evaluateResumeScores(data.content);
+      }
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       if (generationRunRef.current !== runId) return;
@@ -311,16 +406,27 @@ export default function ResumeGenerator({
     }
   }
 
-  function handleRegenerate() {
-    if (applying) return;
+  async function handleRegenerate() {
+    if (applying || generating || !content) return;
 
-    atsAbortRef.current?.abort();
-    setAtsScore(null);
-    setAtsError("");
-    setAtsLoading(true);
     setAtsModalOpen(true);
+    setAtsError("");
+    setHumanToneError("");
 
-    void handleGenerate();
+    let scores = atsScore && humanToneScore
+      ? { ats: atsScore, humanTone: humanToneScore }
+      : null;
+
+    if (!scores) {
+      scores = await evaluateResumeScores(content, { openModal: true });
+      if (!scores) return;
+    }
+
+    await handleGenerate(undefined, {
+      atsFeedback: scores.ats,
+      humanToneFeedback: scores.humanTone,
+      previousContent: content,
+    });
   }
 
   async function submitResumeArchive(docxB64: string, resumeFileName: string) {
@@ -358,6 +464,7 @@ export default function ResumeGenerator({
         body: JSON.stringify({
           templateName: selectedTemplate.name,
           jobTitle: form.jobTitle,
+          customPrompt: form.customPrompt,
           content,
         }),
       });
@@ -369,7 +476,8 @@ export default function ResumeGenerator({
       setAtsModalOpen(false);
       setArchiveError("");
       setPreviewOpen(true);
-      void evaluateAts(content, { openModal: false });
+      void import("@/components/ui/PdfPreviewModal");
+      void evaluateResumeScores(content, { openModal: false });
       void submitResumeArchive(data.docxBase64, data.fileName);
     } catch (err) {
       setError((err as Error).message || "Failed to update resume.");
@@ -398,7 +506,14 @@ export default function ResumeGenerator({
     setError("");
     setAtsScore(null);
     setAtsError("");
+    setHumanToneScore(null);
+    setHumanToneError("");
+    setRuleKeepScore(null);
+    setRuleKeepError("");
+    setRegenerateNotice("");
     setAtsModalOpen(false);
+    setResumeChatOpen(false);
+    keywordsCacheKeyRef.current = null;
     atsAbortRef.current?.abort();
   }
 
@@ -407,18 +522,7 @@ export default function ResumeGenerator({
     [pdfBase64]
   );
 
-  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!pdfBlob) {
-      setPdfPreviewUrl(null);
-      return;
-    }
-
-    const url = URL.createObjectURL(pdfBlob);
-    setPdfPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [pdfBlob]);
+  const canPreviewPdf = !!pdfBlob && !archiving;
 
   const showReview = content && step !== "form";
 
@@ -469,7 +573,7 @@ export default function ResumeGenerator({
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-5">
-            <div className="flex flex-col min-h-[220px] lg:min-h-[280px]">
+            <div className="flex flex-col">
               <label htmlFor="jobDescription" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                 Job description
               </label>
@@ -479,32 +583,30 @@ export default function ResumeGenerator({
                 value={form.jobDescription}
                 onChange={handleChange}
                 placeholder="Paste the full job posting for better keyword matching…"
-                className={`${inputClass} flex-1 min-h-[200px] lg:min-h-[260px] resize-y`}
+                className={`${inputClass} h-[260px] max-h-[260px] resize-none overflow-y-auto`}
               />
             </div>
-            <div className="flex flex-col min-h-[220px] lg:min-h-[280px]">
+            <div className="flex flex-col">
               <label htmlFor="customPrompt" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                 Extra instructions <span className="text-slate-400 font-normal">(optional)</span>
               </label>
-              {prompts.length > 0 && (
-                <SavedPromptPicker
-                  prompts={prompts}
-                  selectedId={selectedPromptId}
-                  loading={loadingPrompt}
-                  disabled={generating || applying}
-                  onSelect={handlePromptSelect}
-                />
-              )}
-              {promptListError && prompts.length === 0 && (
-                <p className="mb-2 text-xs text-amber-600 dark:text-amber-400">{promptListError}</p>
-              )}
-              <textarea
+              <SavedPromptPicker
+                selectedId={selectedPromptId}
+                loading={loadingPrompt}
+                disabled={generating || applying}
+                onSelect={handlePromptSelect}
+              />
+              <MarkdownBoldTextarea
                 id="customPrompt"
-                name="customPrompt"
                 value={form.customPrompt}
-                onChange={handleChange}
+                onChange={(customPrompt) => {
+                  setSelectedPromptId("");
+                  setForm((prev) => ({ ...prev, customPrompt }));
+                }}
                 placeholder="Years of experience, tech stack, tone, achievements to highlight…"
-                className={`${inputClass} flex-1 min-h-[200px] lg:min-h-[260px] resize-y`}
+                className={inputClass}
+                rows={10}
+                maxHeight={260}
               />
             </div>
           </div>
@@ -576,6 +678,15 @@ export default function ResumeGenerator({
         </div>
       )}
 
+      {regenerateNotice && (
+        <div className="mb-6 flex items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-4 py-3">
+          <svg className="w-5 h-5 text-amber-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p className="text-sm text-amber-800 dark:text-amber-200">{regenerateNotice}</p>
+        </div>
+      )}
+
       {/* Step 3: Review */}
       {showReview && (
         <div ref={reviewRef} className="pt-8 border-t border-slate-200 dark:border-white/[0.06]">
@@ -611,10 +722,14 @@ export default function ResumeGenerator({
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => setPreviewOpen(true)}
-                    className="px-4 py-2 rounded-xl text-sm font-semibold bg-white dark:bg-white/10 border border-green-500/20 text-green-800 dark:text-green-200 hover:bg-green-50 dark:hover:bg-white/[0.08] transition-all"
+                    onClick={() => {
+                      setPreviewOpen(true);
+                      void import("@/components/ui/PdfPreviewModal");
+                    }}
+                    disabled={!canPreviewPdf && !archiving}
+                    className="px-4 py-2 rounded-xl text-sm font-semibold bg-white dark:bg-white/10 border border-green-500/20 text-green-800 dark:text-green-200 hover:bg-green-50 dark:hover:bg-white/[0.08] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    View PDF
+                    {archiving ? "Generating PDF…" : "View PDF"}
                   </button>
                   <button
                     type="button"
@@ -653,24 +768,50 @@ export default function ResumeGenerator({
                 <p className="text-sm text-slate-500 dark:text-slate-400">Review every field, then apply to your template</p>
               </div>
             </div>
-            {(atsScore || atsLoading) && (
-              <button
-                type="button"
-                onClick={() => setAtsModalOpen(true)}
-                className={`inline-flex items-center gap-2 shrink-0 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all ${
-                  atsScore?.passed
-                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/15"
-                    : atsScore
-                      ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/15"
-                      : "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300"
-                }`}
-              >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-                {atsLoading ? "Scoring…" : atsScore ? `ATS ${atsScore.overall}/100` : "ATS Report"}
-              </button>
-            )}
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              {(atsScore || humanToneScore || ruleKeepScore || atsLoading || humanToneLoading || ruleKeepLoading) && (
+                <button
+                  type="button"
+                  onClick={() => setAtsModalOpen(true)}
+                  className={`inline-flex items-center gap-2 shrink-0 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all ${
+                    atsScore?.passed
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/15"
+                      : atsScore
+                        ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/15"
+                        : "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300"
+                  }`}
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                  {atsLoading || humanToneLoading || ruleKeepLoading
+                    ? "Scoring…"
+                    : atsScore && humanToneScore
+                      ? ruleKeepScore && ruleKeepScore.totalRules > 0
+                        ? `ATS ${atsScore.overall} · Tone ${humanToneScore.overall} · Rules ${ruleKeepScore.overall}`
+                        : `ATS ${atsScore.overall} · Tone ${humanToneScore.overall}`
+                      : atsScore
+                        ? `ATS ${atsScore.overall}/100`
+                        : "Score report"}
+                </button>
+              )}
+              {content && (
+                <button
+                  type="button"
+                  onClick={() => setResumeChatOpen((open) => !open)}
+                  className={`inline-flex items-center gap-2 shrink-0 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all ${
+                    resumeChatOpen
+                      ? "border-blue-500/40 bg-blue-500/15 text-blue-700 dark:text-blue-300"
+                      : "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300 hover:bg-blue-500/15"
+                  }`}
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                  </svg>
+                  {resumeChatOpen ? "Close Q&A" : "Ask about resume"}
+                </button>
+              )}
+            </div>
           </div>
 
           {atsModalOpen ? (
@@ -696,6 +837,7 @@ export default function ResumeGenerator({
               generating={generating}
               templateName={selectedTemplate?.name ?? ""}
               jobTitle={form.jobTitle}
+              customPrompt={form.customPrompt}
               applyLabel={step === "done" ? "Re-apply changes" : "Apply to resume"}
               generationKey={generationKey}
             />
@@ -718,8 +860,14 @@ export default function ResumeGenerator({
         score={atsScore}
         loading={atsLoading}
         error={atsError}
-        onRecheck={content ? () => evaluateAts(content) : undefined}
-        recheckDisabled={atsLoading || generating || applying || !content}
+        onRecheck={content ? () => evaluateResumeScores(content) : undefined}
+        recheckDisabled={atsLoading || humanToneLoading || ruleKeepLoading || generating || applying || !content}
+        humanToneScore={humanToneScore}
+        humanToneLoading={humanToneLoading}
+        humanToneError={humanToneError}
+        ruleKeepScore={ruleKeepScore}
+        ruleKeepLoading={ruleKeepLoading}
+        ruleKeepError={ruleKeepError}
         content={content}
         onContentChange={setContent}
         onApply={handleApply}
@@ -728,9 +876,13 @@ export default function ResumeGenerator({
         generating={generating}
         streamPhase={streamPhase}
         generateError={error}
+        regenerateNotice={regenerateNotice}
         templateName={selectedTemplate?.name ?? ""}
+        fileNameJobTitle={form.jobTitle}
+        customPrompt={form.customPrompt}
         applyLabel={step === "done" ? "Re-apply changes" : "Apply to resume"}
         generationKey={generationKey}
+        onOpenResumeChat={() => setResumeChatOpen(true)}
       />
 
       <PdfPreviewModal
@@ -738,12 +890,54 @@ export default function ResumeGenerator({
         onClose={() => setPreviewOpen(false)}
         title={pdfFileName || fileName.replace(/\.docx$/i, ".pdf") || "Resume PDF"}
         subtitle="Tailored resume PDF · ready to download"
-        sourceUrl={pdfPreviewUrl}
+        blob={pdfBlob}
         fileName={pdfFileName || fileName.replace(/\.docx$/i, ".pdf") || "resume.pdf"}
-        loading={archiving}
+        waitingForPdf={archiving}
         error={archiveError}
         onDownload={handleDownloadPdf}
       />
+
+      {content && showReview && (
+        <>
+          <button
+            type="button"
+            onClick={() => setResumeChatOpen((open) => !open)}
+            aria-label={resumeChatOpen ? "Close resume Q&A" : "Open resume Q&A"}
+            aria-expanded={resumeChatOpen}
+            className={`fixed bottom-6 left-6 z-[101] flex items-center gap-2 text-white text-sm font-semibold pl-3.5 pr-4 h-11 rounded-full shadow-xl transition-all duration-200 hover:-translate-y-1 hover:scale-105 ${
+              resumeChatOpen
+                ? "bg-slate-700 hover:bg-slate-600 shadow-slate-700/30"
+                : "bg-blue-600 hover:bg-blue-500 shadow-blue-600/30 hover:shadow-blue-500/40"
+            }`}
+          >
+            {resumeChatOpen ? (
+              <>
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Close Q&A
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                Resume Q&A
+              </>
+            )}
+          </button>
+
+          <ResumeChatDialog
+            open={resumeChatOpen}
+            onClose={() => setResumeChatOpen(false)}
+            content={content}
+            jobTitle={form.jobTitle}
+            companyName={form.companyName}
+            jobDescription={form.jobDescription}
+            generationKey={generationKey}
+          />
+        </>
+      )}
     </>
   );
 }

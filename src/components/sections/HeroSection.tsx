@@ -48,15 +48,20 @@ function TypewriterText() {
 
 function Particles() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const visibleRef = useRef(true);
+  const visibleRef = useRef(false);
+  const animIdRef = useRef<number | null>(null);
 
   useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    let animId: number;
+    const isMobile = window.matchMedia("(max-width: 768px)").matches;
+    const drawLines = !isMobile;
+    const count = isMobile ? 22 : 40;
 
     const resize = () => {
       canvas.width = canvas.offsetWidth;
@@ -65,15 +70,6 @@ function Particles() {
     resize();
     window.addEventListener("resize", resize);
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        visibleRef.current = entry.isIntersecting;
-      },
-      { rootMargin: "100px" }
-    );
-    observer.observe(canvas);
-
-    const count = 55;
     const particles = Array.from({ length: count }, () => ({
       x: Math.random() * canvas.width,
       y: Math.random() * canvas.height,
@@ -84,11 +80,11 @@ function Particles() {
     }));
 
     function draw() {
-      if (!visibleRef.current) {
-        animId = requestAnimationFrame(draw);
+      if (!visibleRef.current || !ctx || !canvas) {
+        animIdRef.current = null;
         return;
       }
-      if (!ctx || !canvas) return;
+
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       particles.forEach((p) => {
@@ -105,28 +101,51 @@ function Particles() {
         ctx.fill();
       });
 
-      for (let i = 0; i < particles.length; i++) {
-        for (let j = i + 1; j < particles.length; j++) {
-          const dx = particles[i].x - particles[j].x;
-          const dy = particles[i].y - particles[j].y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < 120) {
-            ctx.beginPath();
-            ctx.moveTo(particles[i].x, particles[i].y);
-            ctx.lineTo(particles[j].x, particles[j].y);
-            ctx.strokeStyle = `rgba(99,130,246,${0.08 * (1 - dist / 120)})`;
-            ctx.lineWidth = 0.5;
-            ctx.stroke();
+      if (drawLines) {
+        for (let i = 0; i < particles.length; i++) {
+          for (let j = i + 1; j < particles.length; j++) {
+            const dx = particles[i].x - particles[j].x;
+            const dy = particles[i].y - particles[j].y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < 120) {
+              ctx.beginPath();
+              ctx.moveTo(particles[i].x, particles[i].y);
+              ctx.lineTo(particles[j].x, particles[j].y);
+              ctx.strokeStyle = `rgba(99,130,246,${0.08 * (1 - dist / 120)})`;
+              ctx.lineWidth = 0.5;
+              ctx.stroke();
+            }
           }
         }
       }
 
-      animId = requestAnimationFrame(draw);
+      animIdRef.current = requestAnimationFrame(draw);
     }
 
-    draw();
+    function startAnimation() {
+      if (animIdRef.current !== null) return;
+      animIdRef.current = requestAnimationFrame(draw);
+    }
+
+    function stopAnimation() {
+      if (animIdRef.current !== null) {
+        cancelAnimationFrame(animIdRef.current);
+        animIdRef.current = null;
+      }
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        visibleRef.current = entry.isIntersecting;
+        if (entry.isIntersecting) startAnimation();
+        else stopAnimation();
+      },
+      { rootMargin: "80px" }
+    );
+    observer.observe(canvas);
+
     return () => {
-      cancelAnimationFrame(animId);
+      stopAnimation();
       window.removeEventListener("resize", resize);
       observer.disconnect();
     };

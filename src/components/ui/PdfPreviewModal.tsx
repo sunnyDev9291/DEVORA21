@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
+import { usePdfPreview } from "@/hooks/usePdfPreview";
 
 interface PdfPreviewModalProps {
   open: boolean;
@@ -9,8 +10,8 @@ interface PdfPreviewModalProps {
   title: string;
   subtitle?: string;
   fileName?: string;
-  sourceUrl?: string | null;
-  loading?: boolean;
+  blob?: Blob | null;
+  waitingForPdf?: boolean;
   error?: string;
   onDownload?: () => void;
 }
@@ -21,17 +22,29 @@ export default function PdfPreviewModal({
   title,
   subtitle,
   fileName,
-  sourceUrl,
-  loading = false,
+  blob,
+  waitingForPdf = false,
   error = "",
   onDownload,
 }: PdfPreviewModalProps) {
   const titleId = useId();
   const [mounted, setMounted] = useState(false);
+  const [openTabUrl, setOpenTabUrl] = useState<string | null>(null);
+  const { containerRef, loading: rendering, error: renderError, totalPages } = usePdfPreview(open, blob);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!blob) {
+      setOpenTabUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    setOpenTabUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [blob]);
 
   useEffect(() => {
     if (!open) return;
@@ -46,7 +59,9 @@ export default function PdfPreviewModal({
 
   if (!open || !mounted) return null;
 
-  const ready = !!sourceUrl && !loading && !error;
+  const displayError = error || renderError;
+  const waiting = waitingForPdf && !blob;
+  const ready = !!blob && !waiting && !displayError && !rendering && totalPages > 0;
 
   return createPortal(
     <div
@@ -91,11 +106,22 @@ export default function PdfPreviewModal({
             )}
           </div>
 
+          {openTabUrl && (
+            <a
+              href={openTabUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-white/10 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.05] transition-colors"
+            >
+              Open in tab
+            </a>
+          )}
+
           {onDownload && (
             <button
               type="button"
               onClick={onDownload}
-              disabled={!ready}
+              disabled={!blob}
               className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-40 transition-colors"
             >
               <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -117,20 +143,30 @@ export default function PdfPreviewModal({
           </button>
         </header>
 
-        <div className="relative flex-1 min-h-0 w-full overflow-hidden bg-slate-100 dark:bg-navy-950">
-          {loading && (
+        <div className="relative flex-1 min-h-0 w-full overflow-y-auto bg-slate-100 dark:bg-navy-950">
+          {waiting && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
               <div
                 className="bg-white rounded-sm shadow-xl animate-pulse"
                 style={{ width: "min(80%, 480px)", aspectRatio: "8.5 / 11" }}
               />
-              <p className="text-sm text-slate-600 dark:text-slate-400">Generating PDF…</p>
+              <p className="text-sm text-slate-600 dark:text-slate-400">Generating PDF from backend…</p>
             </div>
           )}
 
-          {error && !loading && (
+          {displayError && !waiting && (
             <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
-              <p className="text-sm text-red-500 dark:text-red-400 max-w-md">{error}</p>
+              <p className="text-sm text-red-500 dark:text-red-400 max-w-md">{displayError}</p>
+              {openTabUrl && (
+                <a
+                  href={openTabUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-4 text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  Open PDF in new tab
+                </a>
+              )}
               <button
                 type="button"
                 onClick={onClose}
@@ -141,38 +177,44 @@ export default function PdfPreviewModal({
             </div>
           )}
 
-          {!loading && !error && !ready && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-              <p className="text-sm text-slate-600 dark:text-slate-400">Waiting for PDF…</p>
+          {blob && rendering && !displayError && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+              <div
+                className="bg-white rounded-sm shadow-xl animate-pulse"
+                style={{ width: "min(80%, 480px)", aspectRatio: "8.5 / 11" }}
+              />
+              <p className="text-sm text-slate-600 dark:text-slate-400">Rendering preview…</p>
             </div>
           )}
 
-          {ready && sourceUrl && (
-            <object
-              data={sourceUrl}
-              type="application/pdf"
-              className="h-full w-full bg-white"
-              aria-label={fileName ?? "Resume PDF preview"}
-            >
-              <iframe
-                title={fileName ?? "Resume PDF preview"}
-                src={sourceUrl}
-                className="h-full w-full border-0 bg-white"
-              />
-            </object>
+          {blob && !waiting && !displayError && (
+            <div
+              ref={containerRef}
+              className={`mx-auto w-full max-w-3xl px-4 py-6 ${rendering ? "invisible" : ""}`}
+            />
           )}
         </div>
 
         <footer className="relative flex shrink-0 items-center justify-center gap-3 border-t border-slate-200 dark:border-white/[0.08] bg-white/95 dark:bg-navy-900/95 h-11 px-4 backdrop-blur-sm">
           <span className="text-xs text-slate-400 dark:text-slate-500">
-            {loading ? "Preparing your PDF…" : ready ? "PDF preview" : error ? "PDF unavailable" : "Waiting…"}
+            {waiting
+              ? "Preparing your PDF…"
+              : rendering
+                ? "Rendering preview…"
+                : ready
+                  ? `${totalPages} page${totalPages === 1 ? "" : "s"}`
+                  : displayError
+                    ? "PDF unavailable"
+                    : blob
+                      ? "Loading…"
+                      : "Waiting…"}
           </span>
 
           {onDownload && (
             <button
               type="button"
               onClick={onDownload}
-              disabled={!ready}
+              disabled={!blob}
               className="sm:hidden absolute right-3 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
             >
               Download PDF

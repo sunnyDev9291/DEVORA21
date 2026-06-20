@@ -1,6 +1,7 @@
 import type { GeneratedResumeContent } from "@/lib/resume-types";
 import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
 import { consumeResumeStream } from "@/lib/resume-stream-client";
+import { RESUME_JOB_TTL_MS } from "@/lib/resume-job-constants";
 
 export interface ResumeGenerateResult {
   content: GeneratedResumeContent;
@@ -11,10 +12,12 @@ interface StartAsyncResponse {
   mode: "async";
   jobId: string;
   templateName: string;
+  triggered?: boolean;
+  reused?: boolean;
 }
 
 const POLL_MS = 1500;
-const MAX_POLL_MS = 15 * 60 * 1000;
+const MAX_POLL_MS = RESUME_JOB_TTL_MS;
 const RUN_PATH = "/.netlify/functions/resume-generate-background";
 
 async function triggerResumeBackgroundJob(jobId: string, signal?: AbortSignal) {
@@ -30,6 +33,7 @@ async function triggerResumeBackgroundJob(jobId: string, signal?: AbortSignal) {
     throw new Error(detail || `Failed to start background generation (${response.status}).`);
   }
 }
+
 const POLL_PHASES: ResumeGenerationPhase[] = [
   "starting",
   "analyzing",
@@ -89,7 +93,7 @@ async function pollResumeJob(
     };
 
     if (!statusRes.ok) {
-      throw new Error(statusData.error || `Status check failed (${statusRes.status}).`);
+      throw new Error(statusData.error || statusData.message || `Status check failed (${statusRes.status}).`);
     }
 
     if (statusData.status === "pending") {
@@ -102,7 +106,7 @@ async function pollResumeJob(
     }
 
     if (statusData.status === "error") {
-      throw new Error(statusData.message || "Resume generation failed.");
+      throw new Error(statusData.message || statusData.error || "Resume generation failed.");
     }
 
     if (statusData.status === "done" && statusData.content && statusData.templateName) {
@@ -145,6 +149,9 @@ export async function generateResume(
     throw new Error("Unexpected response from resume generator.");
   }
 
-  await triggerResumeBackgroundJob(startData.jobId, handlers.signal);
+  if (!startData.triggered) {
+    await triggerResumeBackgroundJob(startData.jobId, handlers.signal);
+  }
+
   return pollResumeJob(startData.jobId, handlers);
 }

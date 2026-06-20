@@ -1,14 +1,14 @@
 import { readFile } from "fs/promises";
 import path from "path";
 import { parseResumeHeaderFromDocxBuffer } from "@/lib/resume-docx";
-import { resolveExperiencesFromDocx } from "@/lib/resume-docx-ai-parse";
+import { getCachedTemplateExperiences } from "@/lib/resume-template-cache";
 import {
-  RESUME_SYSTEM_PROMPT,
+  buildResumeSystemPrompt,
   buildResumeUserPrompt,
   mergeResumeWithTemplate,
   parseResumeJsonContent,
 } from "@/lib/resume-prompt";
-import type { GeneratedResumeContent, ResumeExperience } from "@/lib/resume-types";
+import type { AtsScoreResult, GeneratedResumeContent, HumanToneScoreResult, ResumeExperience } from "@/lib/resume-types";
 import { TEMPLATES_DIR } from "@/lib/templates-dir";
 
 export interface ResumeGenerateRequest {
@@ -17,6 +17,12 @@ export interface ResumeGenerateRequest {
   jobDescription?: string;
   customPrompt?: string;
   templateName?: string;
+  /** Prior ATS evaluation — used when regenerating to target a higher score. */
+  atsFeedback?: AtsScoreResult;
+  /** Prior human tone evaluation — co-target during regenerate. */
+  humanToneFeedback?: HumanToneScoreResult;
+  /** Draft content from the previous generation — paired with feedback fields. */
+  previousContent?: GeneratedResumeContent;
 }
 
 export interface ResumeGeneratePrep {
@@ -38,6 +44,9 @@ export type ResumeJobRecord =
       mergeContext: ResumeMergeContext;
       messages: Array<{ role: "system" | "user"; content: string }>;
       createdAt: number;
+      expiresAt: number;
+      dedupeKey: string;
+      triggerStartedAt?: number;
     }
   | {
       status: "done";
@@ -45,6 +54,8 @@ export type ResumeJobRecord =
       mergeContext: ResumeMergeContext;
       text: string;
       createdAt: number;
+      expiresAt: number;
+      dedupeKey: string;
     }
   | {
       status: "error";
@@ -52,6 +63,8 @@ export type ResumeJobRecord =
       mergeContext: ResumeMergeContext;
       message: string;
       createdAt: number;
+      expiresAt: number;
+      dedupeKey: string;
     };
 
 export async function prepareResumeGeneration(
@@ -81,12 +94,14 @@ export async function prepareResumeGeneration(
   }
 
   const templateBuffer = await readFile(filePath);
-  const existingExperiences = await resolveExperiencesFromDocx(templateBuffer);
+  const existingExperiences = await getCachedTemplateExperiences(templateName, templateBuffer);
   const header = parseResumeHeaderFromDocxBuffer(templateBuffer);
 
   if (existingExperiences.length === 0) {
     throw new Error("No experience sections found in template.");
   }
+
+  const isRegenerate = Boolean(body.atsFeedback && body.previousContent);
 
   const userPrompt = buildResumeUserPrompt({
     jobTitle,
@@ -95,12 +110,15 @@ export async function prepareResumeGeneration(
     customPrompt,
     headerTitle: header.title,
     existingExperiences,
+    atsFeedback: body.atsFeedback,
+    humanToneFeedback: body.humanToneFeedback,
+    previousContent: body.previousContent,
   });
 
   return {
     templateName,
     messages: [
-      { role: "system", content: RESUME_SYSTEM_PROMPT },
+      { role: "system", content: buildResumeSystemPrompt(isRegenerate) },
       { role: "user", content: userPrompt },
     ],
     existingExperiences,

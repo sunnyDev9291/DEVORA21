@@ -54,8 +54,16 @@ interface NavbarActionsProps {
 export default function NavbarActions({ variant, onNavigate }: NavbarActionsProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { isAuthenticated, isLoading, logout } = useAuth();
+  const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const userInitial =
+    (user?.name || user?.email || "U")
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? "")
+      .join("") || "U";
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -75,13 +83,18 @@ export default function NavbarActions({ variant, onNavigate }: NavbarActionsProp
     <>
       <Link
         href={AUTH_LINKS.dashboard}
-        className={`inline-flex items-center px-3.5 py-2 rounded-xl text-xs xl:text-sm font-semibold transition-all duration-200 whitespace-nowrap ${
+        className={`hidden lg:inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs xl:text-sm font-semibold transition-all duration-200 whitespace-nowrap ${
           pathname === AUTH_LINKS.dashboard
             ? "text-blue-600 dark:text-blue-300 bg-blue-500/10"
             : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-white/[0.06]"
         }`}
+        title="Account dashboard"
       >
-        Dashboard
+        <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-500/15 text-[10px] font-bold text-blue-600 dark:text-blue-300">
+          {userInitial}
+        </span>
+        <span className="hidden xl:inline max-w-[8rem] truncate">{user?.name?.split(" ")[0] ?? "Dashboard"}</span>
+        <span className="xl:hidden">Dashboard</span>
       </Link>
       <button
         type="button"

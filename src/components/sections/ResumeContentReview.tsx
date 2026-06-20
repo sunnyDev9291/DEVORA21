@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { GeneratedResumeContent, ResumeExperience } from "@/lib/resume-types";
 import { buildExpectedResumeBaseName } from "@/lib/resume-filename";
+import MarkdownBoldTextarea from "@/components/ui/MarkdownBoldTextarea";
 
 interface ResumeContentReviewProps {
   content: GeneratedResumeContent;
@@ -13,6 +14,7 @@ interface ResumeContentReviewProps {
   generating?: boolean;
   templateName: string;
   jobTitle?: string;
+  customPrompt?: string;
   applyLabel?: string;
   generationKey: number;
   /** Compact layout for side-by-side use inside the ATS modal */
@@ -31,6 +33,7 @@ export default function ResumeContentReview({
   generating = false,
   templateName,
   jobTitle = "",
+  customPrompt = "",
   applyLabel = "Apply to Resume",
   generationKey,
   embedded = false,
@@ -75,8 +78,8 @@ export default function ResumeContentReview({
     content.experiences.every((exp) => exp.company.trim() && exp.role.trim() && exp.bullets.some((b) => b.trim()));
 
   const expectedResumeName = useMemo(
-    () => buildExpectedResumeBaseName(templateName, jobTitle, content),
-    [templateName, jobTitle, content]
+    () => buildExpectedResumeBaseName(templateName, jobTitle, content, customPrompt),
+    [templateName, jobTitle, content, customPrompt]
   );
 
   return (
@@ -121,7 +124,14 @@ export default function ResumeContentReview({
             <span className="w-6 h-6 rounded-md bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center text-xs">T</span>
             Resume title
           </label>
-          <input id="resume-title" type="text" value={content.title} onChange={(e) => onChange({ ...content, title: e.target.value })} className={fieldClass} placeholder="Senior Engineer | React | AWS" />
+          <MarkdownBoldTextarea
+            id="resume-title"
+            value={content.title}
+            onChange={(title) => onChange({ ...content, title })}
+            className={fieldClass}
+            rows={1}
+            placeholder="Senior Engineer | React | AWS"
+          />
         </div>
 
         <div className="rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.02] p-5">
@@ -129,7 +139,14 @@ export default function ResumeContentReview({
             <span className="w-6 h-6 rounded-md bg-violet-500/15 text-violet-600 dark:text-violet-400 flex items-center justify-center text-xs">S</span>
             Skillsets
           </label>
-          <textarea id="resume-skills" rows={3} value={content.skills} onChange={(e) => onChange({ ...content, skills: e.target.value })} className={`${fieldClass} resize-y min-h-[88px]`} placeholder="Comma-separated skills" />
+          <MarkdownBoldTextarea
+            id="resume-skills"
+            value={content.skills}
+            onChange={(skills) => onChange({ ...content, skills })}
+            className={`${fieldClass} min-h-[88px]`}
+            rows={3}
+            placeholder="Comma-separated skills"
+          />
         </div>
 
         <div className={`${embedded ? "" : "lg:col-span-2"} rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.02] p-5`}>
@@ -137,7 +154,13 @@ export default function ResumeContentReview({
             <span className="w-6 h-6 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-xs">∑</span>
             Summary
           </label>
-          <textarea id="resume-summary" rows={4} value={content.summary} onChange={(e) => onChange({ ...content, summary: e.target.value })} className={`${fieldClass} resize-y min-h-[120px] leading-relaxed`} />
+          <MarkdownBoldTextarea
+            id="resume-summary"
+            value={content.summary}
+            onChange={(summary) => onChange({ ...content, summary })}
+            className={`${fieldClass} min-h-[120px] leading-relaxed`}
+            rows={4}
+          />
         </div>
       </div>
 
@@ -205,16 +228,14 @@ export default function ResumeContentReview({
                             >
                               {bulletIndex + 1}
                             </span>
-                            <label htmlFor={`exp-${index}-bullet-${bulletIndex}`} className="sr-only">
-                              Bullet {bulletIndex + 1} for {exp.company}
-                            </label>
-                            <textarea
+                            <MarkdownBoldTextarea
                               id={`exp-${index}-bullet-${bulletIndex}`}
-                              rows={2}
                               value={bullet}
-                              onChange={(e) => updateBullet(index, bulletIndex, e.target.value)}
+                              onChange={(value) => updateBullet(index, bulletIndex, value)}
                               className={bulletFieldClass}
+                              rows={2}
                               placeholder={`Achievement ${bulletIndex + 1}`}
+                              aria-label={`Bullet ${bulletIndex + 1} for ${exp.company}`}
                             />
                             <button
                               type="button"

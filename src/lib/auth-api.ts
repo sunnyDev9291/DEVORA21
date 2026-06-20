@@ -149,6 +149,6 @@ export const authApi = {
     }).then((data) => ({ data })),
 };
 
-export function getOAuthUrl(provider: "google" | "microsoft"): string {
-  return `${API_BASE_URL}/auth/${provider}`;
+export function getGoogleOAuthUrl(): string {
+  return `${API_BASE_URL}/auth/google`;
 }

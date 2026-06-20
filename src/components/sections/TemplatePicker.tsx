@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import type { ResumeTemplate } from "@/lib/resume-template";
-import DocxPreviewModal from "@/components/ui/DocxPreviewModal";
+
+const DocxPreviewModal = dynamic(() => import("@/components/ui/DocxPreviewModal"));
 
 interface TemplatePickerProps {
   selected: ResumeTemplate | null;

@@ -10,6 +10,7 @@ export const runtime = "nodejs";
 interface BuildRequest {
   templateName?: string;
   jobTitle?: string;
+  customPrompt?: string;
   content?: GeneratedResumeContent;
 }
 
@@ -67,7 +68,8 @@ export async function POST(req: Request) {
     const updatedBuffer = applyContentToDocx(templateBuffer, content);
     const docxBase64 = updatedBuffer.toString("base64");
     const jobTitle = body.jobTitle?.trim() ?? "";
-    const fileName = buildExpectedResumeFileName(templateName, jobTitle, content);
+    const customPrompt = body.customPrompt?.trim() ?? "";
+    const fileName = buildExpectedResumeFileName(templateName, jobTitle, content, customPrompt);
 
     return Response.json({ templateName, docxBase64, fileName });
   } catch (err) {

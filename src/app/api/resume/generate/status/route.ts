@@ -1,5 +1,5 @@
 import { finalizeResumeContent } from "@/lib/resume-generate-prep";
-import { deleteResumeJob, getResumeJob } from "@/lib/resume-job-store";
+import { checkResumeJobStatus, deleteResumeJob } from "@/lib/resume-job-store";
 
 export const runtime = "nodejs";
 
@@ -21,22 +21,29 @@ export async function POST(req: Request) {
   }
 
   try {
-    const job = await getResumeJob(jobId);
-    if (!job) {
+    const check = await checkResumeJobStatus(jobId);
+
+    if (check.kind === "not_found") {
       return Response.json({ error: "Job not found or expired." }, { status: 404 });
     }
+
+    if (check.kind === "expired" || check.kind === "stale_trigger") {
+      return Response.json({ status: "error", message: check.message });
+    }
+
+    const job = check.job;
 
     if (job.status === "pending") {
       return Response.json({ status: "pending" });
     }
 
     if (job.status === "error") {
-      await deleteResumeJob(jobId);
+      await deleteResumeJob(jobId, job.dedupeKey);
       return Response.json({ status: "error", message: job.message });
     }
 
     const content = finalizeResumeContent(job.text, job.mergeContext);
-    await deleteResumeJob(jobId);
+    await deleteResumeJob(jobId, job.dedupeKey);
 
     return Response.json({
       status: "done",

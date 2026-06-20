@@ -1,4 +1,6 @@
-import type { GeneratedResumeContent } from "@/lib/resume-types";
+import { ATS_PASS_THRESHOLD, ATS_SCORE_MAX } from "@/lib/resume-ats-algorithm";
+import { HUMAN_TONE_PASS_THRESHOLD, HUMAN_TONE_SCORE_MAX } from "@/lib/resume-human-tone-algorithm";
+import type { AtsScoreResult, GeneratedResumeContent, HumanToneScoreResult } from "@/lib/resume-types";
 
 export const RESUME_AI_MODEL = "deepseek-v4-pro";
 
@@ -33,6 +35,108 @@ Rules:
 - Additional user instructions apply to summary, skills, and bullet wording only — never change employer names, roles, or dates.
 - No markdown fences, no commentary — valid json only.`;
 
+export const RESUME_REGENERATE_SYSTEM_SUFFIX = `When regeneration context is provided, this is a TARGETED REVISION pass — not a full rewrite. You must improve BOTH scores together:
+1) ATS match (keyword coverage, title, skills, format) — target ${ATS_PASS_THRESHOLD}+
+2) Human tone (natural wording, variety, collaboration cues, no buzzwords) — target ${HUMAN_TONE_PASS_THRESHOLD}+
+
+Preservation rules (highest priority):
+- Start from the previous draft in the user message and keep all strong, relevant content unchanged.
+- Preserve structure, metrics, achievements, and experience details wherever they already score well.
+- Do not rewrite entire sections, companies, or bullet lists from scratch.
+- Copy company, role, and dates exactly from the previous draft (and template).
+
+Revision rules:
+- Address ATS gaps (missing keywords, failed gates) AND human-tone gaps (repetition, buzzwords, lack of context) with minimal edits.
+- Prefer small edits over replacing whole sentences — vary verbs, add collaboration context, remove AI buzzwords while keeping keywords.
+- If a bullet already reads naturally and matches keywords, return it verbatim.
+- The revised draft must NOT score below the previous ATS or human-tone version.
+- Wrap only newly emphasized priority keywords in **bold** where truthful.`;
+
+export function buildResumeSystemPrompt(regenerate = false): string {
+  return regenerate
+    ? `${RESUME_SYSTEM_PROMPT}\n\n${RESUME_REGENERATE_SYSTEM_SUFFIX}`
+    : RESUME_SYSTEM_PROMPT;
+}
+
+export function buildHumanToneRegeneratePromptSection(
+  feedback: HumanToneScoreResult,
+  targetScore = HUMAN_TONE_PASS_THRESHOLD
+): string {
+  const failedGates = feedback.gates?.filter((g) => !g.passed) ?? [];
+  const weakCategories = feedback.breakdown
+    .filter((b) => b.score < b.maxScore * 0.75)
+    .map((b) => `- ${b.category}: ${b.score}/${b.maxScore} — ${b.notes}`);
+
+  return [
+    `HUMAN TONE REVISION — previous score ${feedback.overall}/${HUMAN_TONE_SCORE_MAX}. Target: ${targetScore}+ (co-equal with ATS).`,
+    `TONE FLOOR: Human tone MUST stay at or above ${feedback.overall}. Improve natural, recruiter-friendly wording — not keyword stuffing.`,
+    `Previous tone summary: ${feedback.summary}`,
+    feedback.flags && feedback.flags.length > 0 &&
+      `Remove or replace these AI-style buzzwords/phrases: ${feedback.flags.join(", ")}`,
+    feedback.recommendations.length > 0 &&
+      `Human-tone improvements (apply surgically alongside ATS fixes):\n${feedback.recommendations.map((r) => `- ${r}`).join("\n")}`,
+    failedGates.length > 0 &&
+      `Failed tone gates:\n${failedGates.map((g) => `- ${g.name}: ${g.detail}`).join("\n")}`,
+    weakCategories.length > 0 &&
+      `Weak tone categories (improve without breaking ATS keywords):\n${weakCategories.join("\n")}`,
+    `Tone revision checklist:
+- Vary action verbs and bullet openings — no repeated phrasing.
+- Add collaboration or context in bullets that lack human cues.
+- Use specific metrics (ms, users, $) instead of generic percentages on every line.
+- Remove em-dashes, bracket labels, first-person, and buzzword clutter.`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+export function buildAtsRegeneratePromptSection(
+  feedback: AtsScoreResult,
+  previousContent: GeneratedResumeContent,
+  targetScore = ATS_PASS_THRESHOLD
+): string {
+  const failedGates = feedback.gates?.filter((g) => !g.passed) ?? [];
+  const weakCategories = feedback.breakdown
+    .filter((b) => b.score < b.maxScore * 0.75)
+    .map((b) => `- ${b.category}: ${b.score}/${b.maxScore} — ${b.notes}`);
+
+  const previousDraft = {
+    title: previousContent.title,
+    summary: previousContent.summary,
+    skills: previousContent.skills,
+    experiences: previousContent.experiences.map((e) => ({
+      company: e.company,
+      role: e.role,
+      dates: e.dates,
+      bullets: e.bullets,
+    })),
+  };
+
+  return [
+    `ATS TARGETED REVISION — previous score ${feedback.overall}/${ATS_SCORE_MAX}. Target: ${targetScore}+ (strict acceptance).`,
+    `SCORE FLOOR: The revised draft MUST score at least ${feedback.overall} — never below the previous version. If a change would lower keyword coverage, format compliance, or title alignment, do not make it.`,
+    `IMPORTANT: Do NOT rewrite the entire resume. Use the previous draft below as your base. Preserve all strong and relevant content. Revise only what is necessary to close the ATS gaps listed here.`,
+    `Previous evaluation summary: ${feedback.summary}`,
+    feedback.missingKeywords.length > 0 &&
+      `Missing must-have keywords — add only where needed (title, summary, skills, or specific bullets; do not rewrite unaffected sections): ${feedback.missingKeywords.join(", ")}`,
+    feedback.recommendations.length > 0 &&
+      `Required improvements (apply surgically — one issue at a time, minimal edits):\n${feedback.recommendations.map((r) => `- ${r}`).join("\n")}`,
+    failedGates.length > 0 &&
+      `Failed pass gates (fix only what these gates require):\n${failedGates.map((g) => `- ${g.name}: ${g.detail}`).join("\n")}`,
+    weakCategories.length > 0 &&
+      `Weak scoring categories (touch only the sections tied to each category):\n${weakCategories.join("\n")}`,
+    feedback.matchedKeywords.length > 0 &&
+      `Protected keywords — do NOT remove or rephrase these; keep exact wording where already present: ${feedback.matchedKeywords.slice(0, 24).join(", ")}`,
+    `Previous draft (BASE VERSION — retain structure, style, and wording except where ATS gaps above require a small change):\n${JSON.stringify(previousDraft, null, 2)}`,
+    `Revision checklist:
+- Return the same number of experience entries and the same bullet count per company as the previous draft.
+- Copy company, role, and dates from the previous draft unchanged.
+- Leave unchanged any title line, summary sentence, skill, or bullet that already supports ATS matching.
+- Edit only sections directly tied to missing keywords, failed gates, weak categories, or recommendations.`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 export function buildResumeUserPrompt({
   jobTitle,
   companyName,
@@ -40,6 +144,9 @@ export function buildResumeUserPrompt({
   customPrompt,
   headerTitle,
   existingExperiences,
+  atsFeedback,
+  humanToneFeedback,
+  previousContent,
 }: {
   jobTitle: string;
   companyName: string;
@@ -47,20 +154,42 @@ export function buildResumeUserPrompt({
   customPrompt: string;
   headerTitle: string;
   existingExperiences: GeneratedResumeContent["experiences"];
+  atsFeedback?: AtsScoreResult;
+  humanToneFeedback?: HumanToneScoreResult;
+  previousContent?: GeneratedResumeContent;
 }): string {
+  const isRegenerate = Boolean(atsFeedback && previousContent);
+
+  const experienceInstructions = isRegenerate
+    ? `Previous draft companies (${previousContent!.experiences.length} required — copy company, role, dates exactly from previous draft; keep same bullet count per company; revise bullets only where ATS or human-tone feedback requires):\n${previousContent!.experiences
+        .map(
+          (e, i) =>
+            `${i + 1}. company="${e.company}" | role="${e.role}" | dates="${e.dates}" | bullets: keep ${e.bullets.length} bullets, change only if needed for ATS or tone gaps`
+        )
+        .join("\n")}`
+    : `Template companies (${existingExperiences.length} required — copy company, role, dates exactly into each JSON experience object):\n${existingExperiences
+        .map(
+          (e, i) =>
+            `${i + 1}. company="${e.company}" | role="${e.role}" | dates="${e.dates}" | bullets: rewrite all ${e.bullets.length} bullets`
+        )
+        .join("\n")}`;
+
+  const closingInstruction = isRegenerate
+    ? `Return exactly ${previousContent!.experiences.length} objects in experiences[]. Dual-target revision: improve ATS toward ${ATS_PASS_THRESHOLD}+ AND human tone toward ${HUMAN_TONE_PASS_THRESHOLD}+ while preserving strong content. Return valid json only.`
+    : `Return exactly ${existingExperiences.length} objects in experiences[]. Rewrite title, summary, skills, and bullets only. Return valid json only.`;
+
   return [
     jobTitle && `Target job title: ${jobTitle}`,
     `Target company: ${companyName}`,
     jobDescription && `Job description:\n${jobDescription}`,
     customPrompt && `Additional instructions:\n${customPrompt}`,
     headerTitle && `Current resume title line: ${headerTitle}`,
-    `Template companies (${existingExperiences.length} required — copy company, role, dates exactly into each JSON experience object):\n${existingExperiences
-      .map(
-        (e, i) =>
-          `${i + 1}. company="${e.company}" | role="${e.role}" | dates="${e.dates}" | bullets: rewrite all ${e.bullets.length} bullets`
-      )
-      .join("\n")}`,
-    `Return exactly ${existingExperiences.length} objects in experiences[]. Rewrite title, summary, skills, and bullets only. Return valid json only.`,
+    experienceInstructions,
+    atsFeedback &&
+      previousContent &&
+      buildAtsRegeneratePromptSection(atsFeedback, previousContent),
+    humanToneFeedback && buildHumanToneRegeneratePromptSection(humanToneFeedback),
+    closingInstruction,
   ]
     .filter(Boolean)
     .join("\n\n");

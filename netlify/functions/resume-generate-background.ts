@@ -14,6 +14,9 @@ type PendingJob = {
   };
   messages: Array<{ role: "system" | "user"; content: string }>;
   createdAt: number;
+  expiresAt: number;
+  dedupeKey: string;
+  triggerStartedAt?: number;
 };
 
 type ResumeJobRecord =
@@ -27,6 +30,8 @@ type ResumeJobRecord =
       };
       text: string;
       createdAt: number;
+      expiresAt: number;
+      dedupeKey: string;
     }
   | {
       status: "error";
@@ -37,6 +42,8 @@ type ResumeJobRecord =
       };
       message: string;
       createdAt: number;
+      expiresAt: number;
+      dedupeKey: string;
     };
 
 function getJobStore() {
@@ -80,18 +87,17 @@ async function callDeepSeek(messages: unknown[]): Promise<string> {
   return content;
 }
 
-async function markJobError(jobId: string, message: string) {
+async function markJobError(jobId: string, job: PendingJob, message: string) {
   const store = getJobStore();
-  const job = (await store.get(jobId, { type: "json" })) as ResumeJobRecord | null;
-  if (!job || job.status !== "pending") {
-    return;
-  }
-
   await store.setJSON(jobId, {
     ...job,
     status: "error",
     message,
   });
+
+  if (job.dedupeKey) {
+    await store.delete(`dedupe:${job.dedupeKey}`);
+  }
 }
 
 export default async function handler(req: Request) {
@@ -102,14 +108,42 @@ export default async function handler(req: Request) {
     jobId = payload.jobId?.trim() || "";
 
     if (!jobId) {
-      throw new Error("jobId is required.");
+      return new Response(JSON.stringify({ error: "jobId is required." }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     const store = getJobStore();
     const existingJob = (await store.get(jobId, { type: "json" })) as ResumeJobRecord | null;
 
-    if (!existingJob || existingJob.status !== "pending") {
-      throw new Error("Resume job not found or already processed.");
+    if (!existingJob) {
+      return new Response(JSON.stringify({ error: "Resume job not found." }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (existingJob.status === "done") {
+      return new Response(JSON.stringify({ ok: true, status: "done" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (existingJob.status === "error") {
+      return new Response(JSON.stringify({ ok: true, status: "error" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (Date.now() > existingJob.expiresAt) {
+      await markJobError(jobId, existingJob, "Resume generation expired before processing completed.");
+      return new Response(JSON.stringify({ error: "Job expired." }), {
+        status: 410,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     const messages = existingJob.messages;
@@ -124,12 +158,29 @@ export default async function handler(req: Request) {
       status: "done",
       text,
     });
+
+    if (existingJob.dedupeKey) {
+      await store.delete(`dedupe:${existingJob.dedupeKey}`);
+    }
+
+    return new Response(JSON.stringify({ ok: true, status: "done" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Background generation failed.";
     if (jobId) {
-      await markJobError(jobId, message);
+      const store = getJobStore();
+      const job = (await store.get(jobId, { type: "json" })) as ResumeJobRecord | null;
+      if (job?.status === "pending") {
+        await markJobError(jobId, job, message);
+      }
     }
     console.error("resume-generate-background failed:", message);
+    return new Response(JSON.stringify({ error: message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 }
 

@@ -1,5 +1,9 @@
 You are a Senior ATS resume Optimizer.
 Let's make the resume matching to Job description in English. Must always follow below all,all rules of making resume.(Don't miss any rules) When new prompt with JD, remind all rules again and write.
+
+JOB title : Senior Software Engineer | {first main skill} | {second skill} | {third skill}
+Resume file name : Franco Torrez_Senior Software Engineer_{first main skill},{Second main skill},{third main skill} 
+Summary must be simple, must start with "Senior Software Engineer"
 **********Tech items part**********
 
 Initial tech items : 
@@ -16,7 +20,6 @@ Avoid "HTML/CSS, JavaScript/Typescript" style when extracting tech items.
 Output each type tech items.
 
 Make final list with 1st type item(Max 4), 2nd type item(Max 4), 3rd type item(All).
-1st,2nd type tech items must be bold. 
 Add 1st,2nd tech items at first of final list. 
 Output final list.
 
@@ -76,7 +79,6 @@ Avoid tools or platforms that are unrelated to the main tech ecosystem.)
 - All sentence and contenxt of each company experience parts must be reasonable and valid about company industry domain, my engineering level, tech item's created year, development scope of solution.
 - Must describe experience using measurable impact using units such as percentages, milliseconds, ranges, dollar amounts, user counts(in only 2 sentences in 1st-type sentences and 2 sentences in 2nd-type sentences).
 - Use the style "allowed, developed" rather than the style "verb + ing" like "allowing, deploying" in sentence context. 
--Only 1st,2nd tech items, result's number and unit must be bold font.
 
 - Follow these guidelines for avoid AI style:
 Vary sentence structure – Sometimes describe the problem, the impact, or a brief context. Mix longer, detailed bullets with shorter, punchier ones.

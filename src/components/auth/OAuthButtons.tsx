@@ -1,4 +1,4 @@
-import { getOAuthUrl } from "@/lib/auth-api";
+import { getGoogleOAuthUrl } from "@/lib/auth-api";
 
 function GoogleIcon() {
   return (
@@ -11,31 +11,20 @@ function GoogleIcon() {
   );
 }
 
-function MicrosoftIcon() {
-  return (
-    <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" aria-hidden>
-      <path fill="#F25022" d="M1 1h10v10H1z" />
-      <path fill="#7FBA00" d="M13 1h10v10H13z" />
-      <path fill="#00A4EF" d="M1 13h10v10H1z" />
-      <path fill="#FFB900" d="M13 13h10v10H13z" />
-    </svg>
-  );
-}
-
 const oauthClass =
   "w-full inline-flex items-center justify-center gap-2 font-semibold transition-all duration-200 border border-white/10 hover:border-white/25 bg-white/[0.03] hover:bg-white/[0.06] text-white px-5 py-2.5 text-sm rounded-xl";
 
 export default function OAuthButtons() {
   return (
-    <div className="space-y-3">
-      <button type="button" className={oauthClass} onClick={() => { window.location.href = getOAuthUrl("google"); }}>
-        <GoogleIcon />
-        Continue with Google
-      </button>
-      <button type="button" className={oauthClass} onClick={() => { window.location.href = getOAuthUrl("microsoft"); }}>
-        <MicrosoftIcon />
-        Continue with Microsoft
-      </button>
-    </div>
+    <button
+      type="button"
+      className={oauthClass}
+      onClick={() => {
+        window.location.href = getGoogleOAuthUrl();
+      }}
+    >
+      <GoogleIcon />
+      Continue with Google
+    </button>
   );
 }
