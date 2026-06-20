@@ -304,14 +304,6 @@ export default function ResumeGenerator({
     }
   }
 
-  async function evaluateAts(
-    resumeContent: GeneratedResumeContent,
-    options?: { openModal?: boolean; preserveScore?: boolean }
-  ): Promise<AtsScoreResult | null> {
-    const result = await evaluateResumeScores(resumeContent, options);
-    return result?.ats ?? null;
-  }
-
   async function handleGenerate(
     e?: React.FormEvent,
     options?: {

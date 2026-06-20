@@ -16,7 +16,7 @@ const SCORE_MAX = {
   experience: 18,
   summary: 9,
   format: 8,
-} as const;
+};
 
 /** Uplift applied after raw category sum so good drafts score closer to real ATS tools. */
 const ATS_ESTIMATION_MULTIPLIER = 1.06;

@@ -12,7 +12,7 @@ const SCORE_MAX = {
   buzzwordControl: 15,
   summaryVoice: 10,
   formatAuthenticity: 10,
-} as const;
+};
 
 const ACTION_VERB =
   /^(?:engineered|developed|built|designed|implemented|led|managed|delivered|optimized|migrated|architected|automated|deployed|created|improved|reduced|increased|scaled|integrated|refactored|established|streamlined|collaborated|mentored|hardened|standardized|rebuilt|wired|overhauled|tuned|secured|provisioned|constructed|replaced|extracted|containerized|introduced|instrumented|enhanced|modernized|stabilized|crafted|maintained|participated|coordinated|executed|launched|owned|spearheaded|drove|achieved|accelerated|cut|lowered|raised|boosted|generated|saved|eliminated|consolidated|unified|powered|configured|monitored|debugged|resolved|fixed|tested|validated|documented|researched|analyzed|evaluated|defined|planned|scheduled|trained|supported|facilitated|transformed|upgraded|revamped|restructured|simplified|centralized|distributed|parallelized|cached|indexed|profiled|benchmarked)\b/i;

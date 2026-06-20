@@ -4,7 +4,6 @@ import { useEffect, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { buildLoginUrl, getSafeRedirectPath } from "@/lib/auth-redirect";
-import { AUTH_LINKS } from "@/lib/constants";
 
 export function GuestGuard({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
