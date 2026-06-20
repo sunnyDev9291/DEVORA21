@@ -2,15 +2,6 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   devIndicators: false,
-  async rewrites() {
-    const backend = process.env.BACKEND_API_URL ?? "http://31.44.7.64:5000";
-    return [
-      {
-        source: "/backend/:path*",
-        destination: `${backend.replace(/\/$/, "")}/:path*`,
-      },
-    ];
-  },
   images: {
     formats: ["image/avif", "image/webp"],
   },

@@ -1,39 +1,24 @@
 /**
- * Browser auth/API calls use same-origin `/backend/*` (Netlify proxy or Next rewrite)
- * to avoid HTTPS → HTTP mixed-content blocking.
- *
- * Server-side routes (e.g. resume archive) call the VPS directly via BACKEND_API_URL.
+ * Devora21 backend API — browser and server both use https://api.devora21.com by default.
+ * Override with NEXT_PUBLIC_API_BASE_URL / BACKEND_API_URL in .env.local or Netlify.
  */
 
-const DEFAULT_VPS = "http://31.44.7.64:5000";
+export const DEFAULT_API_URL = "https://api.devora21.com";
 
 function trimTrailingSlash(url: string): string {
   return url.replace(/\/$/, "");
 }
 
-/** Direct VPS URL — server-side only (Netlify functions, SSR). */
-export const BACKEND_API_URL = trimTrailingSlash(
-  process.env.BACKEND_API_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? DEFAULT_VPS
-);
-
-function resolveClientApiBase(): string {
-  const configured = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
-
-  // Empty → same-origin proxy (required on HTTPS Netlify while VPS is HTTP-only).
-  if (!configured) return "/backend";
-
-  // Never use raw HTTP VPS URL in the browser — mixed content is blocked.
-  if (configured.startsWith("http://")) return "/backend";
-
-  return trimTrailingSlash(configured);
+function resolveApiBase(envValue: string | undefined): string {
+  const trimmed = envValue?.trim();
+  if (trimmed) return trimTrailingSlash(trimmed);
+  return DEFAULT_API_URL;
 }
 
-/**
- * Client-facing API base.
- * - Empty or `http://…` → `/backend` (Netlify proxy)
- * - `https://api.example.com` → direct HTTPS API when available
- */
-export const API_BASE_URL = resolveClientApiBase();
+/** Browser auth calls (fetch with credentials). */
+export const API_BASE_URL = resolveApiBase(process.env.NEXT_PUBLIC_API_BASE_URL);
 
-/** True when browser requests go through the same-origin proxy path. */
-export const USE_API_PROXY = API_BASE_URL === "/backend";
+/** Server-side calls (Netlify functions, resume archive route). */
+export const BACKEND_API_URL = resolveApiBase(
+  process.env.BACKEND_API_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL
+);

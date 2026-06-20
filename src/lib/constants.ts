@@ -296,7 +296,7 @@ export const AUTH_LINKS = {
   verifyEmail: "/verify-email",
 } as const;
 
-export { API_BASE_URL, BACKEND_API_URL, USE_API_PROXY } from "@/lib/api-base-url";
+export { API_BASE_URL, BACKEND_API_URL, DEFAULT_API_URL } from "@/lib/api-base-url";
 
 export const NAV_LINKS = [
   { label: "Services", href: "/services" },
