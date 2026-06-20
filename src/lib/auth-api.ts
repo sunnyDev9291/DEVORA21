@@ -3,6 +3,7 @@ import { readEmailVerified } from "@/lib/email-verification";
 import type {
   AuthResponse,
   MessageResponse,
+  OnboardingCompletePayload,
   User,
   UserProfileUpdate,
   ApiError as ApiErrorBody,
@@ -183,6 +184,11 @@ export function normalizeAuthUser(raw: unknown): User {
 
   const emailVerified = readEmailVerified(source);
 
+  const onboardingCompleted =
+    source.onboardingCompleted === true ||
+    source.onboardingComplete === true ||
+    source.profileCompleted === true;
+
   const createdAt =
     typeof source.createdAt === "string" ? source.createdAt : undefined;
 
@@ -190,6 +196,7 @@ export function normalizeAuthUser(raw: unknown): User {
     id,
     email,
     emailVerified,
+    onboardingCompleted: onboardingCompleted || undefined,
     createdAt,
     firstName: firstName || undefined,
     lastName: lastName || undefined,
@@ -233,6 +240,31 @@ export const authApi = {
       method: "PATCH",
       body: JSON.stringify(body),
     }).then((data) => ({ data: normalizeAuthUser(data) })),
+
+  /** Single batch save after all onboarding steps (name → avatar → template → prompt). */
+  completeOnboarding: async (body: OnboardingCompletePayload) => {
+    const payload: UserProfileUpdate = {
+      ...body,
+      onboardingCompleted: true,
+    };
+
+    try {
+      const data = await apiRequest<unknown>("/auth/onboarding", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      return { data: normalizeAuthUser(data) };
+    } catch (err) {
+      if (err instanceof ApiError && [404, 405, 501].includes(err.status)) {
+        const data = await apiRequest<unknown>("/auth/profile", {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        });
+        return { data: normalizeAuthUser(data) };
+      }
+      throw err;
+    }
+  },
 
   logout: () =>
     apiRequest<MessageResponse>("/auth/logout", { method: "POST" }).then((data) => ({ data })),

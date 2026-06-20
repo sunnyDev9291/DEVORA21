@@ -6,6 +6,7 @@ export interface User {
   lastName?: string;
   avatar?: string;
   emailVerified?: boolean;
+  onboardingCompleted?: boolean;
   createdAt?: string;
 }
 
@@ -15,6 +16,17 @@ export type UserProfileUpdate = {
   avatar?: string;
   resumeTemplateName?: string;
   customPrompt?: string;
+  selectedPromptId?: string;
+  onboardingCompleted?: boolean;
+};
+
+export type OnboardingCompletePayload = {
+  firstName: string;
+  lastName: string;
+  avatar?: string;
+  resumeTemplateName?: string;
+  customPrompt?: string;
+  selectedPromptId?: string;
 };
 
 export interface AuthResponse {
