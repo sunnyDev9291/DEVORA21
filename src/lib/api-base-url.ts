@@ -16,13 +16,24 @@ export const BACKEND_API_URL = trimTrailingSlash(
   process.env.BACKEND_API_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? DEFAULT_VPS
 );
 
+function resolveClientApiBase(): string {
+  const configured = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+
+  // Empty → same-origin proxy (required on HTTPS Netlify while VPS is HTTP-only).
+  if (!configured) return "/backend";
+
+  // Never use raw HTTP VPS URL in the browser — mixed content is blocked.
+  if (configured.startsWith("http://")) return "/backend";
+
+  return trimTrailingSlash(configured);
+}
+
 /**
  * Client-facing API base.
- * - Empty/unset NEXT_PUBLIC_API_BASE_URL → `/backend` (same-origin proxy)
- * - Set to https://api.example.com when the API has TLS
+ * - Empty or `http://…` → `/backend` (Netlify proxy)
+ * - `https://api.example.com` → direct HTTPS API when available
  */
-const publicBase = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
-export const API_BASE_URL = trimTrailingSlash(publicBase || "/backend");
+export const API_BASE_URL = resolveClientApiBase();
 
 /** True when browser requests go through the same-origin proxy path. */
 export const USE_API_PROXY = API_BASE_URL === "/backend";
