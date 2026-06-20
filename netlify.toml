@@ -9,3 +9,26 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
+# Same-origin proxy to VPS API (fixes HTTPS Netlify → HTTP VPS mixed-content block).
+# Uses /backend/* so Next.js /api/* routes (resume AI, chat, etc.) are untouched.
+[[redirects]]
+  from = "/backend/*"
+  to = "http://31.44.7.64:5000/:splat"
+  status = 200
+  force = true
+
+[[headers]]
+  for = "/_next/static/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/logo.png"
+  [headers.values]
+    Cache-Control = "public, max-age=604800, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/bg.jpeg"
+  [headers.values]
+    Cache-Control = "public, max-age=604800, stale-while-revalidate=86400"
+
