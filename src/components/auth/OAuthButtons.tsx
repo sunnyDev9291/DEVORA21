@@ -3,9 +3,7 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { authApi } from "@/lib/auth-api";
 import { getGoogleOAuthUrl, type GoogleOAuthIntent } from "@/lib/auth-oauth";
-import { clearAuthClientStorage } from "@/lib/auth-storage";
 
 function GoogleIcon() {
   return (
@@ -26,36 +24,49 @@ interface OAuthButtonsProps {
 }
 
 export default function OAuthButtons({ mode }: OAuthButtonsProps) {
-  const { user } = useAuth();
+  const { logout } = useAuth();
   const searchParams = useSearchParams();
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
   const label = mode === "signup" ? "Sign up with Google" : "Sign in with Google";
 
   async function handleClick() {
+    setError("");
     setBusy(true);
     try {
-      // Signup must never reuse an existing API session (prevents silent dashboard redirect).
       if (mode === "signup") {
-        clearAuthClientStorage(user?.id);
         try {
-          await authApi.logout();
+          await logout();
         } catch {
-          // Continue — user may already be logged out.
+          // Best-effort — must not block Google signup redirect.
         }
       }
 
       const next = mode === "login" ? searchParams.get("next") : null;
-      window.location.href = getGoogleOAuthUrl({ intent: mode, next });
+      window.location.assign(getGoogleOAuthUrl({ intent: mode, next }));
     } catch {
       setBusy(false);
+      setError("Could not start Google sign-in. Please try again.");
     }
   }
 
   return (
-    <button type="button" className={oauthClass} disabled={busy} onClick={() => void handleClick()}>
-      <GoogleIcon />
-      {busy ? "Redirecting…" : label}
-    </button>
+    <div className="space-y-2">
+      <button type="button" className={oauthClass} disabled={busy} onClick={() => void handleClick()}>
+        <GoogleIcon />
+        {busy ? "Redirecting to Google…" : label}
+      </button>
+      {error && (
+        <p className="text-xs text-red-300" role="alert">
+          {error}
+        </p>
+      )}
+      {mode === "signup" && !busy && (
+        <p className="text-center text-[11px] text-slate-500">
+          You will choose your Google account on the next screen.
+        </p>
+      )}
+    </div>
   );
 }

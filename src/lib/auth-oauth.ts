@@ -47,9 +47,8 @@ export function getGoogleOAuthUrl(options: {
   const params = new URLSearchParams();
   params.set("intent", options.intent);
 
-  if (options.intent === "login") {
-    params.set("prompt", "select_account");
-  }
+  // Always show Google account picker — signup and login must not silently reuse a Google session.
+  params.set("prompt", "select_account");
 
   const origin = frontendOrigin();
   if (origin) {
