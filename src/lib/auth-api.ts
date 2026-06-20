@@ -3,6 +3,7 @@ import type {
   AuthResponse,
   MessageResponse,
   User,
+  UserProfileUpdate,
   ApiError as ApiErrorBody,
 } from "@/types/auth";
 
@@ -100,32 +101,81 @@ function splitFullName(name: string): { firstName: string; lastName: string } {
   };
 }
 
-/** Backend may return firstName/lastName instead of name. */
-export function normalizeAuthUser(raw: User & { firstName?: string; lastName?: string }): User {
-  if (raw.name?.trim()) return raw;
-  const combined = [raw.firstName, raw.lastName].filter(Boolean).join(" ").trim();
-  return { ...raw, name: combined || raw.email };
+/** Backend may return firstName/lastName/avatar instead of name. */
+export function normalizeAuthUser(
+  raw: User & {
+    firstName?: string;
+    lastName?: string;
+    avatarUrl?: string;
+    picture?: string;
+  }
+): User {
+  const avatar = raw.avatar?.trim() || raw.avatarUrl?.trim() || raw.picture?.trim();
+
+  let firstName = raw.firstName?.trim() ?? "";
+  let lastName = raw.lastName?.trim() ?? "";
+
+  if (!firstName && !lastName && raw.name?.trim()) {
+    const split = splitFullName(raw.name);
+    firstName = split.firstName;
+    lastName = split.lastName;
+  }
+
+  const name =
+    raw.name?.trim() ||
+    [firstName, lastName].filter(Boolean).join(" ").trim() ||
+    raw.email;
+
+  return {
+    id: raw.id,
+    email: raw.email,
+    emailVerified: raw.emailVerified,
+    createdAt: raw.createdAt,
+    firstName: firstName || undefined,
+    lastName: lastName || undefined,
+    name,
+    avatar: avatar || undefined,
+  };
 }
 
 export const authApi = {
   getMe: () =>
-    apiRequest<User & { firstName?: string; lastName?: string }>("/auth/me").then((data) => ({
+    apiRequest<User & { firstName?: string; lastName?: string; avatarUrl?: string; picture?: string }>(
+      "/auth/me"
+    ).then((data) => ({
       data: normalizeAuthUser(data),
     })),
 
   login: (email: string, password: string) =>
-    apiRequest<AuthResponse & { user: User & { firstName?: string; lastName?: string } }>("/auth/login", {
+    apiRequest<
+      AuthResponse & {
+        user: User & { firstName?: string; lastName?: string; avatarUrl?: string; picture?: string };
+      }
+    >("/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }).then((data) => ({ data: { ...data, user: normalizeAuthUser(data.user) } })),
 
   register: (name: string, email: string, password: string) => {
     const { firstName, lastName } = splitFullName(name);
-    return apiRequest<AuthResponse & { user: User & { firstName?: string; lastName?: string } }>("/auth/register", {
+    return apiRequest<
+      AuthResponse & {
+        user: User & { firstName?: string; lastName?: string; avatarUrl?: string; picture?: string };
+      }
+    >("/auth/register", {
       method: "POST",
       body: JSON.stringify({ email, password, firstName, lastName }),
     }).then((data) => ({ data: { ...data, user: normalizeAuthUser(data.user) } }));
   },
+
+  updateProfile: (body: UserProfileUpdate) =>
+    apiRequest<User & { firstName?: string; lastName?: string; avatarUrl?: string; picture?: string }>(
+      "/auth/profile",
+      {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }
+    ).then((data) => ({ data: normalizeAuthUser(data) })),
 
   logout: () =>
     apiRequest<MessageResponse>("/auth/logout", { method: "POST" }).then((data) => ({ data })),

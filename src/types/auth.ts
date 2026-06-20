@@ -2,9 +2,20 @@ export interface User {
   id: string;
   email: string;
   name?: string;
+  firstName?: string;
+  lastName?: string;
+  avatar?: string;
   emailVerified?: boolean;
   createdAt?: string;
 }
+
+export type UserProfileUpdate = {
+  firstName?: string;
+  lastName?: string;
+  avatar?: string;
+  resumeTemplateName?: string;
+  customPrompt?: string;
+};
 
 export interface AuthResponse {
   user: User;

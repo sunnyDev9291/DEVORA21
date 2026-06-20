@@ -4,26 +4,42 @@ import { useEffect, useState } from "react";
 import TemplatePicker from "@/components/sections/TemplatePicker";
 import ResumeGenerator from "@/components/sections/ResumeGenerator";
 import ResumeStepper from "@/components/sections/ResumeStepper";
+import { useAuth } from "@/context/AuthContext";
 import type { ResumeTemplate } from "@/lib/resume-template";
-
-const STORAGE_KEY = "devora21-selected-resume-template";
+import { LEGACY_TEMPLATE_STORAGE_KEY, loadStoredProfile, saveStoredProfile } from "@/lib/user-profile";
 
 export default function ResumeBuilder() {
+  const { user } = useAuth();
   const [selectedTemplate, setSelectedTemplate] = useState<ResumeTemplate | null>(null);
   const [wizardStep, setWizardStep] = useState(1);
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
 
   useEffect(() => {
-    try {
-      const saved = sessionStorage.getItem(STORAGE_KEY);
-      if (saved) setSelectedTemplate(JSON.parse(saved) as ResumeTemplate);
-    } catch {
-      // ignore invalid stored value
+    if (!user?.id) {
+      try {
+        const saved = sessionStorage.getItem(LEGACY_TEMPLATE_STORAGE_KEY);
+        if (saved) setSelectedTemplate(JSON.parse(saved) as ResumeTemplate);
+      } catch {
+        // ignore
+      }
+      setPrefsLoaded(true);
+      return;
     }
-  }, []);
+
+    const prefs = loadStoredProfile(user.id);
+    if (prefs.resumeTemplate) {
+      setSelectedTemplate(prefs.resumeTemplate);
+    }
+    setPrefsLoaded(true);
+  }, [user?.id]);
 
   function handleSelect(template: ResumeTemplate) {
     setSelectedTemplate(template);
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(template));
+    if (user?.id) {
+      saveStoredProfile(user.id, { resumeTemplate: template });
+    } else {
+      sessionStorage.setItem(LEGACY_TEMPLATE_STORAGE_KEY, JSON.stringify(template));
+    }
   }
 
   return (
@@ -42,10 +58,9 @@ export default function ResumeBuilder() {
           </div>
 
           <div className="px-6 sm:px-8 py-8 sm:py-10">
-            <ResumeGenerator
-              selectedTemplate={selectedTemplate}
-              onWizardStepChange={setWizardStep}
-            />
+            {prefsLoaded && (
+              <ResumeGenerator selectedTemplate={selectedTemplate} onWizardStepChange={setWizardStep} />
+            )}
           </div>
         </div>
       </div>

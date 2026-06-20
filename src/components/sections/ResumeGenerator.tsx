@@ -13,6 +13,8 @@ import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
 import { generateResume } from "@/lib/resume-generate-client";
 import { archiveResume } from "@/lib/resume-archive";
 import { pickBestRegenerateResult, type RegenerateEvaluation } from "@/lib/resume-ats-regenerate";
+import { useAuth } from "@/context/AuthContext";
+import { loadStoredProfile, saveStoredProfile } from "@/lib/user-profile";
 import type { GeneratedResumeContent, ResumeBuildResponse, AtsScoreResult, HumanToneScoreResult, RuleKeepScoreResult } from "@/lib/resume-types";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
@@ -52,6 +54,7 @@ export default function ResumeGenerator({
   selectedTemplate,
   onWizardStepChange,
 }: ResumeGeneratorProps) {
+  const { user } = useAuth();
   const [form, setForm] = useState({
     jobTitle: "",
     companyName: "",
@@ -92,6 +95,23 @@ export default function ResumeGenerator({
   const keywordsCacheKeyRef = useRef<string | null>(null);
   const reviewRef = useRef<HTMLDivElement>(null);
   const successBannerRef = useRef<HTMLDivElement>(null);
+  const promptPrefsLoadedRef = useRef(false);
+
+  useEffect(() => {
+    if (!user?.id || promptPrefsLoadedRef.current) return;
+    const prefs = loadStoredProfile(user.id);
+    setForm((prev) => ({ ...prev, customPrompt: prefs.customPrompt }));
+    setSelectedPromptId(prefs.selectedPromptId);
+    promptPrefsLoadedRef.current = true;
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id || !promptPrefsLoadedRef.current) return;
+    saveStoredProfile(user.id, {
+      customPrompt: form.customPrompt,
+      selectedPromptId: selectedPromptId,
+    });
+  }, [user?.id, form.customPrompt, selectedPromptId]);
 
   const wizardStep = resolveResumeWizardStep({
     hasTemplate: !!selectedTemplate,
@@ -152,7 +172,13 @@ export default function ResumeGenerator({
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
     if (e.target.name === "customPrompt") setSelectedPromptId("");
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    setForm((prev) => {
+      const next = { ...prev, [e.target.name]: e.target.value };
+      if (e.target.name === "customPrompt" && user?.id) {
+        saveStoredProfile(user.id, { customPrompt: e.target.value, selectedPromptId: "" });
+      }
+      return next;
+    });
   }
 
   async function handlePromptSelect(promptId: string, prompt?: ResumePromptOption) {
@@ -161,6 +187,7 @@ export default function ResumeGenerator({
 
     if (!promptId) {
       setForm((prev) => ({ ...prev, customPrompt: "" }));
+      if (user?.id) saveStoredProfile(user.id, { customPrompt: "", selectedPromptId: "" });
       return;
     }
 
@@ -171,7 +198,9 @@ export default function ResumeGenerator({
       const res = await fetch(prompt.file, { cache: "no-store" });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || `Failed to load prompt (${res.status}).`);
-      setForm((prev) => ({ ...prev, customPrompt: data.content ?? "" }));
+      const content = String(data.content ?? "");
+      setForm((prev) => ({ ...prev, customPrompt: content }));
+      if (user?.id) saveStoredProfile(user.id, { customPrompt: content, selectedPromptId: promptId });
     } catch (err) {
       setSelectedPromptId("");
       setError((err as Error).message || "Could not load the selected prompt.");
