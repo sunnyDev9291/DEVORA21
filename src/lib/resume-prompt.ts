@@ -51,7 +51,7 @@ Revision rules:
 - Address EVERY gap listed in ATS, human-tone, and rule-keep feedback — missing keywords, failed gates, weak categories, buzzwords, and failed rules.
 - Prefer small edits over replacing whole sentences — vary verbs, add collaboration context, remove AI buzzwords while keeping keywords.
 - If a bullet already reads naturally, matches keywords, and passes rules, return it verbatim.
-- The revised draft must NOT score below the previous ATS, human-tone, or rule-keep version.
+- The revised draft must NOT drop below pass thresholds (ATS ${ATS_PASS_THRESHOLD}+, tone ${HUMAN_TONE_PASS_THRESHOLD}+, rules ${RULE_KEEP_PASS_THRESHOLD}+). Already-strong dimensions may dip slightly; weak dimensions must improve.
 - Wrap only newly emphasized priority keywords in **bold** where truthful.`;
 
 export function buildResumeSystemPrompt(regenerate = false): string {
