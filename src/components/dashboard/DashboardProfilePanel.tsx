@@ -504,15 +504,13 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
 
       <div className="mt-8 border-t border-white/10 pt-8">
 
-        <h3 className="mb-1 text-sm font-semibold text-white">Your prompt</h3>
+        <h3 className="mb-1 text-sm font-semibold text-white">Writing prompt</h3>
 
         <p className="mb-4 text-xs text-slate-500">
 
-          Only your prompt is shown here and used in the resume builder.
+          Upload a private prompt file. Its contents are never shown in the app — only used when generating resumes.
 
         </p>
-
-        {promptFileName && <p className="mb-3 text-xs text-emerald-300">File: {promptFileName}</p>}
 
         <ProfileFileUpload
 
@@ -524,8 +522,6 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
 
           hint=".txt, .md, or .json with a content field"
 
-          fileName={promptFile?.name}
-
           uploading={uploading}
 
           disabled={saving}
@@ -534,21 +530,11 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
 
         />
 
-        <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+        <p className="mt-3 text-xs text-slate-500">
 
-          <p className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">Your prompt text</p>
+          {customPrompt || promptFileName ? "Private prompt configured." : "No prompt uploaded yet."}
 
-          {customPrompt ? (
-
-            <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-xs text-slate-300">{customPrompt}</pre>
-
-          ) : (
-
-            <p className="text-xs text-slate-500">No prompt uploaded yet.</p>
-
-          )}
-
-        </div>
+        </p>
 
       </div>
 

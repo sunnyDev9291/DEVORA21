@@ -61,7 +61,6 @@ export default function ResumeBuilder() {
               <ResumeGenerator
                 userTemplate={template}
                 userPrompt={prompt?.content ?? ""}
-                promptFileName={prompt?.fileName}
                 onWizardStepChange={setWizardStep}
               />
             )}

@@ -19,7 +19,6 @@ const ResumeChatDialog = dynamic(() => import("@/components/ui/ResumeChatDialog"
 interface ResumeGeneratorProps {
   userTemplate: UserResumeTemplateAsset | null;
   userPrompt: string;
-  promptFileName?: string;
   onWizardStepChange?: (step: number) => void;
 }
 
@@ -50,7 +49,6 @@ function downloadBlob(blob: Blob, downloadName: string) {
 export default function ResumeGenerator({
   userTemplate,
   userPrompt,
-  promptFileName,
   onWizardStepChange,
 }: ResumeGeneratorProps) {
   const [form, setForm] = useState({
@@ -545,41 +543,25 @@ export default function ResumeGenerator({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-5">
-            <div className="flex flex-col">
-              <label htmlFor="jobDescription" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                Job description
-              </label>
-              <textarea
-                id="jobDescription"
-                name="jobDescription"
-                value={form.jobDescription}
-                onChange={handleChange}
-                placeholder="Paste the full job posting for better keyword matching…"
-                className={`${inputClass} h-[260px] max-h-[260px] resize-none overflow-y-auto`}
-              />
-            </div>
-            <div className="flex flex-col">
-              <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
-                Your profile prompt
-              </label>
-              {promptFileName && (
-                <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">File: {promptFileName}</p>
-              )}
-              <div className={`${inputClass} h-[260px] max-h-[260px] overflow-y-auto whitespace-pre-wrap text-slate-600 dark:text-slate-300`}>
-                {form.customPrompt.trim() ? (
-                  form.customPrompt
-                ) : (
-                  <span className="text-slate-400 dark:text-slate-500">
-                    No prompt uploaded yet. Add one on your dashboard profile.
-                  </span>
-                )}
-              </div>
-              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                This prompt is loaded from your profile only. Update it on your dashboard.
-              </p>
-            </div>
+          <div>
+            <label htmlFor="jobDescription" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+              Job description
+            </label>
+            <textarea
+              id="jobDescription"
+              name="jobDescription"
+              value={form.jobDescription}
+              onChange={handleChange}
+              placeholder="Paste the full job posting for better keyword matching…"
+              className={`${inputClass} h-[260px] max-h-[260px] resize-none overflow-y-auto`}
+            />
           </div>
+
+          {userPrompt.trim() && (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Private writing instructions from your profile are applied automatically. Prompt content is never displayed.
+            </p>
+          )}
 
           {!userTemplate && (
             <div className="flex items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-4 py-3">

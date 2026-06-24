@@ -52,7 +52,7 @@ export const ONBOARDING_STEPS = [
   {
     id: "prompt",
     title: "Upload your writing prompt",
-    subtitle: "Upload a prompt file only you can access when generating resumes.",
+    subtitle: "Upload a prompt file — contents stay private and are never shown in the app.",
   },
 ] as const;
 
