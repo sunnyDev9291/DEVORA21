@@ -10,6 +10,10 @@ interface ModalProps {
   children: React.ReactNode;
   /** Centered overlay (default) or bottom-right panel for chat-style dialogs. */
   variant?: "center" | "panel";
+  /** Vertical placement when variant is center. */
+  align?: "center" | "top";
+  /** Render above other app modals (e.g. resume review panel). */
+  priority?: boolean;
   className?: string;
 }
 
@@ -20,6 +24,8 @@ export default function Modal({
   ariaLabel,
   children,
   variant = "center",
+  align = "center",
+  priority = false,
   className = "",
 }: ModalProps) {
   const titleId = useId();
@@ -40,6 +46,8 @@ export default function Modal({
   }, [open, onClose]);
 
   if (!open) return null;
+
+  const overlayZ = priority ? "z-[10000]" : "z-[110]";
 
   if (variant === "panel") {
     return (
@@ -82,7 +90,9 @@ export default function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      className={`fixed inset-0 ${overlayZ} flex justify-center p-4 ${
+        align === "top" ? "items-start pt-16 sm:pt-20" : "items-center"
+      }`}
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}

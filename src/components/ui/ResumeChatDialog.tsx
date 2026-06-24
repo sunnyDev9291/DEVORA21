@@ -143,7 +143,15 @@ export default function ResumeChatDialog({
       : jobTitle.trim() || "Your resume draft";
 
   return (
-    <Modal open={open} onClose={handleClose} title="Resume Q&A" variant="panel" className="max-w-[420px]">
+    <Modal
+      open={open}
+      onClose={handleClose}
+      title="Resume Q&A"
+      align="top"
+      priority
+      className="max-w-2xl h-[min(72vh,680px)]"
+    >
+      <div className="flex flex-col flex-1 min-h-0">
       <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-200 dark:border-white/[0.06] bg-blue-500/[0.06] shrink-0">
         <span className="text-xs font-medium text-blue-700 dark:text-blue-300 truncate">{targetLabel}</span>
       </div>
@@ -200,6 +208,7 @@ export default function ResumeChatDialog({
           </button>
         </div>
       </form>
+      </div>
     </Modal>
   );
 }

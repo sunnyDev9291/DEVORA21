@@ -751,17 +751,13 @@ export default function ResumeGenerator({
               {content && (
                 <button
                   type="button"
-                  onClick={() => setResumeChatOpen((open) => !open)}
-                  className={`inline-flex items-center gap-2 shrink-0 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all ${
-                    resumeChatOpen
-                      ? "border-blue-500/40 bg-blue-500/15 text-blue-700 dark:text-blue-300"
-                      : "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300 hover:bg-blue-500/15"
-                  }`}
+                  onClick={() => setResumeChatOpen(true)}
+                  className="inline-flex items-center gap-2 shrink-0 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2.5 text-sm font-semibold text-blue-700 transition-all hover:bg-blue-500/15 dark:text-blue-300"
                 >
                   <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                   </svg>
-                  {resumeChatOpen ? "Close Q&A" : "Ask about resume"}
+                  Ask about resume
                 </button>
               )}
             </div>
@@ -850,47 +846,15 @@ export default function ResumeGenerator({
         onDownload={handleDownloadPdf}
       />
 
-      {content && showReview && (
-        <>
-          <button
-            type="button"
-            onClick={() => setResumeChatOpen((open) => !open)}
-            aria-label={resumeChatOpen ? "Close resume Q&A" : "Open resume Q&A"}
-            aria-expanded={resumeChatOpen}
-            className={`fixed bottom-6 left-6 z-[101] flex items-center gap-2 text-white text-sm font-semibold pl-3.5 pr-4 h-11 rounded-full shadow-xl transition-all duration-200 hover:-translate-y-1 hover:scale-105 ${
-              resumeChatOpen
-                ? "bg-slate-700 hover:bg-slate-600 shadow-slate-700/30"
-                : "bg-blue-600 hover:bg-blue-500 shadow-blue-600/30 hover:shadow-blue-500/40"
-            }`}
-          >
-            {resumeChatOpen ? (
-              <>
-                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-                Close Q&A
-              </>
-            ) : (
-              <>
-                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-                Resume Q&A
-              </>
-            )}
-          </button>
-
-          <ResumeChatDialog
-            open={resumeChatOpen}
-            onClose={() => setResumeChatOpen(false)}
-            content={content}
-            jobTitle={form.jobTitle}
-            companyName={form.companyName}
-            jobDescription={form.jobDescription}
-            generationKey={generationKey}
-          />
-        </>
-      )}
+      <ResumeChatDialog
+        open={resumeChatOpen}
+        onClose={() => setResumeChatOpen(false)}
+        content={content}
+        jobTitle={form.jobTitle}
+        companyName={form.companyName}
+        jobDescription={form.jobDescription}
+        generationKey={generationKey}
+      />
     </>
   );
 }
