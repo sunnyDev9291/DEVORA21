@@ -94,7 +94,7 @@ export default function NavbarActions({ variant, onNavigate }: NavbarActionsProp
     <>
       <Link
         href={protectedHref(AUTH_LINKS.dashboard)}
-        className={`inline-flex items-center gap-1.5 px-2 py-1.5 2xl:gap-2 2xl:px-3 2xl:py-2 rounded-xl text-xs 2xl:text-sm font-semibold transition-all duration-200 whitespace-nowrap shrink-0 ${
+        className={`hidden lg:inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs xl:text-sm font-semibold transition-all duration-200 whitespace-nowrap ${
           pathname === AUTH_LINKS.dashboard
             ? "text-blue-600 dark:text-blue-300 bg-blue-500/10"
             : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-white/[0.06]"
@@ -104,20 +104,16 @@ export default function NavbarActions({ variant, onNavigate }: NavbarActionsProp
         <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-500/15 text-[10px] font-bold text-blue-600 dark:text-blue-300">
           {userInitial}
         </span>
-        <span className="hidden 2xl:inline max-w-[8rem] truncate">{user?.name?.split(" ")[0] ?? "Dashboard"}</span>
+        <span className="hidden xl:inline max-w-[8rem] truncate">{user?.name?.split(" ")[0] ?? "Dashboard"}</span>
+        <span className="xl:hidden">Dashboard</span>
       </Link>
       <button
         type="button"
         onClick={handleLogout}
         disabled={isLoggingOut}
-        title="Sign out"
-        aria-label={isLoggingOut ? "Signing out" : "Sign out"}
-        className="inline-flex items-center justify-center px-2 py-1.5 2xl:px-3.5 2xl:py-2 rounded-xl text-xs 2xl:text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-white/[0.06] transition-all disabled:opacity-50 shrink-0"
+        className="inline-flex items-center px-3.5 py-2 rounded-xl text-xs xl:text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-white/[0.06] transition-all disabled:opacity-50"
       >
-        <svg className="w-4 h-4 2xl:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-        </svg>
-        <span className="hidden 2xl:inline">{isLoggingOut ? "Signing out…" : "Sign out"}</span>
+        {isLoggingOut ? "Signing out…" : "Sign out"}
       </button>
     </>
   ) : (
@@ -139,9 +135,9 @@ export default function NavbarActions({ variant, onNavigate }: NavbarActionsProp
 
   if (variant === "desktop") {
     return (
-      <div className="flex items-center gap-1 2xl:gap-2 min-w-0">
+      <div className="flex items-center gap-2 xl:gap-3">
         <div
-          className="inline-flex items-center gap-0.5 p-0.5 2xl:p-1 rounded-xl bg-slate-100/90 dark:bg-white/[0.04] border border-slate-200/80 dark:border-white/[0.08] backdrop-blur-sm shrink-0"
+          className="inline-flex items-center gap-0.5 p-1 rounded-xl bg-slate-100/90 dark:bg-white/[0.04] border border-slate-200/80 dark:border-white/[0.08] backdrop-blur-sm"
           role="group"
           aria-label="Devora21 tools"
         >
@@ -156,12 +152,12 @@ export default function NavbarActions({ variant, onNavigate }: NavbarActionsProp
                 href={protectedHref(feature.href)}
                 aria-current={isActive ? "page" : undefined}
                 title={isEmailVerified ? feature.label : "Verify email to use this tool"}
-                className={`inline-flex items-center gap-1 px-2 py-1.5 2xl:gap-1.5 2xl:px-3.5 2xl:py-2 rounded-lg text-xs 2xl:text-sm font-semibold transition-all duration-200 ${
+                className={`inline-flex items-center gap-1.5 px-2.5 xl:px-3.5 py-2 rounded-lg text-xs xl:text-sm font-semibold transition-all duration-200 ${
                   isActive ? toolActiveClasses[accent] : toolIdleClasses
                 }`}
               >
-                <Icon className="w-3.5 h-3.5 2xl:w-4 2xl:h-4 flex-shrink-0" />
-                <span className="hidden 2xl:inline">{feature.shortLabel}</span>
+                <Icon className="w-3.5 h-3.5 xl:w-4 xl:h-4 flex-shrink-0" />
+                <span className="hidden xl:inline">{feature.shortLabel}</span>
               </Link>
             );
           })}
@@ -173,15 +169,11 @@ export default function NavbarActions({ variant, onNavigate }: NavbarActionsProp
           href={CONTACT_INFO.calendly}
           target="_blank"
           rel="noopener noreferrer"
-          title="Book Free Consultation"
-          aria-label="Book Free Consultation"
-          className="inline-flex items-center justify-center gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs 2xl:text-sm font-semibold px-2.5 py-2 2xl:px-5 2xl:py-2.5 rounded-xl transition-all duration-200 shadow-lg shadow-blue-600/25 hover:shadow-blue-500/35 hover:-translate-y-px whitespace-nowrap shrink-0"
+          className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs xl:text-sm font-semibold px-3.5 xl:px-5 py-2.5 rounded-xl transition-all duration-200 shadow-lg shadow-blue-600/25 hover:shadow-blue-500/35 hover:-translate-y-px whitespace-nowrap"
         >
-          <svg className="w-4 h-4 2xl:hidden flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
           <span className="hidden 2xl:inline">Book Free Consultation</span>
-          <svg className="w-3.5 h-3.5 opacity-90 hidden 2xl:block flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <span className="2xl:hidden">Book Call</span>
+          <svg className="w-3.5 h-3.5 opacity-90" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7l5 5m0 0l-5 5m5-5H6" />
           </svg>
         </a>
