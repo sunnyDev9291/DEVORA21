@@ -34,7 +34,7 @@ export default function Navbar() {
 
   return (
     <header
-      className={`fixed top-0 left-0 right-0 z-50 transition-[background-color,box-shadow,border-color] duration-300 [transform:translateZ(0)] ${
+      className={`fixed top-0 left-0 right-0 z-50 overflow-x-clip transition-[background-color,box-shadow,border-color] duration-300 [transform:translateZ(0)] ${
         scrolled
           ? "bg-white dark:bg-navy-950 border-b border-slate-200 dark:border-white/[0.06] shadow-xl shadow-black/10 dark:shadow-black/20"
           : "bg-transparent border-b border-transparent shadow-none"
@@ -44,28 +44,35 @@ export default function Navbar() {
         aria-label="Main navigation"
         className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"
       >
-        <div className="flex items-center justify-between h-16 lg:h-20">
-          <Link href="/" className="flex items-center gap-2.5 pt-6 pb-3 px-2 shrink-0" aria-label="Devora21 home">
+        <div className="flex items-center justify-between h-16 lg:h-20 min-w-0 gap-2 xl:gap-3">
+          <Link href="/" className="flex items-center gap-2 pt-6 pb-3 px-1 sm:px-2 shrink-0 min-w-0" aria-label="Devora21 home">
             <Image
               src="/logo.png"
               alt="Devora21 logo"
               width={72}
               height={72}
-              className="w-[72px] h-auto object-contain"
+              className="w-12 h-auto object-contain sm:w-14 xl:w-16 2xl:w-[72px]"
               priority
             />
-            <span className="text-2xl font-extrabold bg-gradient-to-r from-blue-500 to-violet-600 bg-clip-text text-transparent tracking-tight">
+            <span className="text-lg font-extrabold bg-gradient-to-r from-blue-500 to-violet-600 bg-clip-text text-transparent tracking-tight sm:text-xl 2xl:text-2xl">
               Devora21
             </span>
           </Link>
 
-          <ul className="hidden lg:flex items-center gap-0.5 xl:gap-1 list-none m-0 p-0 mx-4" role="list">
-            {NAV_LINKS.map((link) => (
-              <li key={link.href}>
+          <ul
+            className="hidden xl:flex items-center gap-0.5 2xl:gap-1 list-none m-0 p-0 mx-1 2xl:mx-4 flex-1 min-w-0 justify-center"
+            role="list"
+          >
+            {NAV_LINKS.map((link) => {
+              const compactHidden =
+                link.href === "/success-stories" || link.href === "/faq";
+
+              return (
+              <li key={link.href} className={compactHidden ? "hidden 2xl:block" : undefined}>
                 <Link
                   href={link.href}
                   aria-current={pathname === link.href ? "page" : undefined}
-                  className={`px-3 xl:px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap ${
+                  className={`px-2 2xl:px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap ${
                     pathname === link.href
                       ? "text-blue-600 dark:text-blue-400 bg-blue-500/10"
                       : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.05]"
@@ -74,15 +81,16 @@ export default function Navbar() {
                   {link.label}
                 </Link>
               </li>
-            ))}
+              );
+            })}
           </ul>
 
-          <div className="hidden lg:flex items-center gap-2 xl:gap-3 shrink-0">
+          <div className="hidden xl:flex items-center gap-1.5 2xl:gap-3 min-w-0 shrink">
             <ThemeToggle />
             <NavbarActions variant="desktop" />
           </div>
 
-          <div className="lg:hidden flex items-center gap-2">
+          <div className="xl:hidden flex items-center gap-2 shrink-0">
             <ThemeToggle />
             <button
               type="button"
@@ -108,7 +116,7 @@ export default function Navbar() {
 
       <div
         id="mobile-nav-menu"
-        className={`lg:hidden overflow-hidden transition-all duration-300 ${
+        className={`xl:hidden overflow-hidden transition-all duration-300 ${
           isOpen ? "max-h-[90vh] opacity-100 overflow-y-auto" : "max-h-0 opacity-0"
         }`}
         aria-hidden={!isOpen}
