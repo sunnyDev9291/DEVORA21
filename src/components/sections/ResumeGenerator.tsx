@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import ResumeThinkingProgress from "@/components/ui/ResumeThinkingProgress";
 import ResumeContentReview from "@/components/sections/ResumeContentReview";
 import { resolveResumeWizardStep } from "@/components/sections/ResumeStepper";
+import { useAuth } from "@/context/AuthContext";
 import type { UserResumeTemplateAsset } from "@/lib/profile-api";
 import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
 import { generateResume } from "@/lib/resume-generate-client";
@@ -12,6 +13,7 @@ import { archiveResume } from "@/lib/resume-archive";
 import { resumeBuilderAccessDeniedMessage } from "@/lib/resume-access";
 import { pickBestRegenerateResult, type RegenerateEvaluation } from "@/lib/resume-ats-regenerate";
 import type { GeneratedResumeContent, ResumeBuildResponse, AtsScoreResult, HumanToneScoreResult, RuleKeepScoreResult } from "@/lib/resume-types";
+import { loadStoredProfile, resolveUserNames } from "@/lib/user-profile";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
 const ResumeAtsScoreModal = dynamic(() => import("@/components/ui/ResumeAtsScoreModal"));
@@ -52,6 +54,18 @@ export default function ResumeGenerator({
   userPrompt,
   onWizardStepChange,
 }: ResumeGeneratorProps) {
+  const { user } = useAuth();
+  const chatProfile = useMemo(() => {
+    if (!user?.id) return undefined;
+    const names = resolveUserNames(user, loadStoredProfile(user.id));
+    return {
+      fullName: names.fullName,
+      firstName: names.firstName,
+      lastName: names.lastName,
+      email: user.email,
+    };
+  }, [user]);
+
   const [form, setForm] = useState({
     jobTitle: "",
     companyName: "",
@@ -757,7 +771,7 @@ export default function ResumeGenerator({
                   <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                   </svg>
-                  Ask about resume
+                  Application Q&A
                 </button>
               )}
             </div>
@@ -850,6 +864,7 @@ export default function ResumeGenerator({
         open={resumeChatOpen}
         onClose={() => setResumeChatOpen(false)}
         content={content}
+        profile={chatProfile}
         jobTitle={form.jobTitle}
         companyName={form.companyName}
         jobDescription={form.jobDescription}

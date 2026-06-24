@@ -1,4 +1,7 @@
-import { buildResumeChatSystemPrompt } from "@/lib/resume-chat-prompt";
+import {
+  buildResumeChatSystemPrompt,
+  type ResumeChatProfileContext,
+} from "@/lib/resume-chat-prompt";
 import { streamDeepSeek, type ChatMessage } from "@/lib/deepseek-stream";
 import type { GeneratedResumeContent } from "@/lib/resume-types";
 
@@ -6,6 +9,7 @@ export const runtime = "nodejs";
 
 interface ResumeChatRequest {
   content?: GeneratedResumeContent;
+  profile?: ResumeChatProfileContext;
   jobTitle?: string;
   companyName?: string;
   jobDescription?: string;
@@ -42,6 +46,7 @@ export async function POST(req: Request) {
     role: "system",
     content: buildResumeChatSystemPrompt({
       content,
+      profile: body.profile,
       jobTitle: body.jobTitle,
       companyName: body.companyName,
       jobDescription: body.jobDescription,
