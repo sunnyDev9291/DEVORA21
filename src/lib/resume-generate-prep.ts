@@ -7,7 +7,7 @@ import {
   mergeResumeWithTemplate,
   parseResumeJsonContent,
 } from "@/lib/resume-prompt";
-import type { AtsScoreResult, GeneratedResumeContent, HumanToneScoreResult, ResumeExperience } from "@/lib/resume-types";
+import type { AtsScoreResult, GeneratedResumeContent, HumanToneScoreResult, ResumeExperience, RuleKeepScoreResult } from "@/lib/resume-types";
 
 export interface ResumeGenerateRequest {
   jobTitle?: string;
@@ -20,6 +20,8 @@ export interface ResumeGenerateRequest {
   atsFeedback?: AtsScoreResult;
   /** Prior human tone evaluation — co-target during regenerate. */
   humanToneFeedback?: HumanToneScoreResult;
+  /** Prior rule keep evaluation — co-target during regenerate. */
+  ruleKeepFeedback?: RuleKeepScoreResult;
   /** Draft content from the previous generation — paired with feedback fields. */
   previousContent?: GeneratedResumeContent;
 }
@@ -105,6 +107,7 @@ export async function prepareResumeGeneration(
     existingExperiences,
     atsFeedback: body.atsFeedback,
     humanToneFeedback: body.humanToneFeedback,
+    ruleKeepFeedback: body.ruleKeepFeedback,
     previousContent: body.previousContent,
   });
 

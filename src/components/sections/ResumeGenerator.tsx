@@ -12,6 +12,7 @@ import { generateResume } from "@/lib/resume-generate-client";
 import { archiveResume } from "@/lib/resume-archive";
 import { resumeBuilderAccessDeniedMessage } from "@/lib/resume-access";
 import { pickBestRegenerateResult, type RegenerateEvaluation } from "@/lib/resume-ats-regenerate";
+import { emptyRuleKeepScore } from "@/lib/resume-rule-keep";
 import type { GeneratedResumeContent, ResumeBuildResponse, AtsScoreResult, HumanToneScoreResult, RuleKeepScoreResult } from "@/lib/resume-types";
 import { loadStoredProfile, resolveUserNames } from "@/lib/user-profile";
 
@@ -280,8 +281,9 @@ export default function ResumeGenerator({
 
       setAtsScore(data.ats);
       setHumanToneScore(data.humanTone);
-      if (data.ruleKeep) setRuleKeepScore(data.ruleKeep);
-      return { ats: data.ats, humanTone: data.humanTone };
+      const ruleKeep = data.ruleKeep ?? emptyRuleKeepScore();
+      setRuleKeepScore(ruleKeep);
+      return { ats: data.ats, humanTone: data.humanTone, ruleKeep };
     } catch (err) {
       if ((err as Error).name === "AbortError") return null;
       const message = (err as Error).message || "Could not evaluate resume scores.";
@@ -301,6 +303,7 @@ export default function ResumeGenerator({
     options?: {
       atsFeedback?: AtsScoreResult;
       humanToneFeedback?: HumanToneScoreResult;
+      ruleKeepFeedback?: RuleKeepScoreResult;
       previousContent?: GeneratedResumeContent;
     }
   ) {
@@ -338,6 +341,7 @@ export default function ResumeGenerator({
           templateBase64: userTemplate.templateBase64,
           ...(options?.atsFeedback && { atsFeedback: options.atsFeedback }),
           ...(options?.humanToneFeedback && { humanToneFeedback: options.humanToneFeedback }),
+          ...(options?.ruleKeepFeedback && { ruleKeepFeedback: options.ruleKeepFeedback }),
           ...(options?.previousContent && { previousContent: options.previousContent }),
         },
         {
@@ -359,6 +363,7 @@ export default function ResumeGenerator({
           options.previousContent,
           options.atsFeedback,
           options.humanToneFeedback,
+          options.ruleKeepFeedback ?? emptyRuleKeepScore(),
           data.content,
           (candidate) =>
             evaluateResumeScores(candidate, {
@@ -370,6 +375,7 @@ export default function ResumeGenerator({
         setContent(picked.content);
         setAtsScore(picked.score);
         setHumanToneScore(picked.humanToneScore);
+        setRuleKeepScore(picked.ruleKeepScore);
         setRegenerateNotice(picked.notice);
         if (picked.content !== options.previousContent) {
           setGenerationKey((k) => k + 1);
@@ -397,19 +403,27 @@ export default function ResumeGenerator({
     setAtsModalOpen(true);
     setAtsError("");
     setHumanToneError("");
+    setRuleKeepError("");
 
-    let scores = atsScore && humanToneScore
-      ? { ats: atsScore, humanTone: humanToneScore }
-      : null;
+    let scores =
+      atsScore && humanToneScore
+        ? {
+            ats: atsScore,
+            humanTone: humanToneScore,
+            ruleKeep: ruleKeepScore ?? emptyRuleKeepScore(),
+          }
+        : null;
 
     if (!scores) {
-      scores = await evaluateResumeScores(content, { openModal: true });
-      if (!scores) return;
+      const evaluated = await evaluateResumeScores(content, { openModal: true });
+      if (!evaluated) return;
+      scores = evaluated;
     }
 
     await handleGenerate(undefined, {
       atsFeedback: scores.ats,
       humanToneFeedback: scores.humanTone,
+      ruleKeepFeedback: scores.ruleKeep,
       previousContent: content,
     });
   }

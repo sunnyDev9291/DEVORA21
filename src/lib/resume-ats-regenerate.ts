@@ -1,5 +1,13 @@
+import { ATS_PASS_THRESHOLD } from "@/lib/resume-ats-algorithm";
+import { HUMAN_TONE_PASS_THRESHOLD } from "@/lib/resume-human-tone-algorithm";
+import { RULE_KEEP_PASS_THRESHOLD } from "@/lib/resume-rule-keep-constants";
 import { keywordPresentInText } from "@/lib/resume-ats-keywords";
-import type { AtsScoreResult, GeneratedResumeContent, HumanToneScoreResult } from "@/lib/resume-types";
+import type {
+  AtsScoreResult,
+  GeneratedResumeContent,
+  HumanToneScoreResult,
+  RuleKeepScoreResult,
+} from "@/lib/resume-types";
 
 function cloneContent(content: GeneratedResumeContent): GeneratedResumeContent {
   return {
@@ -98,12 +106,14 @@ export function applyDeterministicTonePatches(
 export type RegenerateEvaluation = {
   ats: AtsScoreResult;
   humanTone: HumanToneScoreResult;
+  ruleKeep: RuleKeepScoreResult;
 };
 
 export type RegeneratePickResult = {
   content: GeneratedResumeContent;
   score: AtsScoreResult;
   humanToneScore: HumanToneScoreResult;
+  ruleKeepScore: RuleKeepScoreResult;
   notice: string;
 };
 
@@ -111,93 +121,152 @@ type ScoredCandidate = {
   content: GeneratedResumeContent;
   ats: AtsScoreResult;
   humanTone: HumanToneScoreResult;
+  ruleKeep: RuleKeepScoreResult;
 };
 
-function meetsFloors(
-  ats: number,
-  tone: number,
-  atsFloor: number,
-  toneFloor: number
-): boolean {
-  return ats >= atsFloor && tone >= toneFloor;
+type ScoreFloors = {
+  ats: number;
+  tone: number;
+  rules: number;
+  hasRules: boolean;
+};
+
+function buildFloors(
+  baselineAts: AtsScoreResult,
+  baselineTone: HumanToneScoreResult,
+  baselineRules: RuleKeepScoreResult
+): ScoreFloors {
+  return {
+    ats: baselineAts.overall,
+    tone: baselineTone.overall,
+    rules: baselineRules.overall,
+    hasRules: baselineRules.totalRules > 0,
+  };
 }
 
-function compositeGain(
-  ats: number,
-  tone: number,
-  atsFloor: number,
-  toneFloor: number
-): number {
-  return Math.max(0, ats - atsFloor) + Math.max(0, tone - toneFloor);
+function meetsFloors(candidate: ScoredCandidate, floors: ScoreFloors): boolean {
+  if (candidate.ats.overall < floors.ats) return false;
+  if (candidate.humanTone.overall < floors.tone) return false;
+  if (floors.hasRules && candidate.ruleKeep.overall < floors.rules) return false;
+  return true;
 }
 
-function isBetterCandidate(
-  a: ScoredCandidate,
-  b: ScoredCandidate,
-  atsFloor: number,
-  toneFloor: number
+function compositeGain(candidate: ScoredCandidate, floors: ScoreFloors): number {
+  let gain =
+    Math.max(0, candidate.ats.overall - floors.ats) +
+    Math.max(0, candidate.humanTone.overall - floors.tone);
+  if (floors.hasRules) {
+    gain += Math.max(0, candidate.ruleKeep.overall - floors.rules);
+  }
+  return gain;
+}
+
+function improvementCount(candidate: ScoredCandidate, floors: ScoreFloors): number {
+  let count = 0;
+  if (candidate.ats.overall > floors.ats) count++;
+  if (candidate.humanTone.overall > floors.tone) count++;
+  if (floors.hasRules && candidate.ruleKeep.overall > floors.rules) count++;
+  return count;
+}
+
+function needsImprovement(
+  ats: AtsScoreResult,
+  tone: HumanToneScoreResult,
+  rules: RuleKeepScoreResult
 ): boolean {
-  const aOk = meetsFloors(a.ats.overall, a.humanTone.overall, atsFloor, toneFloor);
-  const bOk = meetsFloors(b.ats.overall, b.humanTone.overall, atsFloor, toneFloor);
+  if (ats.overall < ATS_PASS_THRESHOLD) return true;
+  if (tone.overall < HUMAN_TONE_PASS_THRESHOLD) return true;
+  if (rules.totalRules > 0 && rules.overall < RULE_KEEP_PASS_THRESHOLD) return true;
+  return false;
+}
+
+function isBetterCandidate(a: ScoredCandidate, b: ScoredCandidate, floors: ScoreFloors): boolean {
+  const aOk = meetsFloors(a, floors);
+  const bOk = meetsFloors(b, floors);
   if (aOk && !bOk) return true;
   if (!aOk && bOk) return false;
 
-  const aGain = compositeGain(a.ats.overall, a.humanTone.overall, atsFloor, toneFloor);
-  const bGain = compositeGain(b.ats.overall, b.humanTone.overall, atsFloor, toneFloor);
+  const aGain = compositeGain(a, floors);
+  const bGain = compositeGain(b, floors);
   if (aGain !== bGain) return aGain > bGain;
 
-  const aSum = a.ats.overall + a.humanTone.overall;
-  const bSum = b.ats.overall + b.humanTone.overall;
+  const aImproved = improvementCount(a, floors);
+  const bImproved = improvementCount(b, floors);
+  if (aImproved !== bImproved) return aImproved > bImproved;
+
+  const aSum =
+    a.ats.overall +
+    a.humanTone.overall +
+    (floors.hasRules ? a.ruleKeep.overall : 0);
+  const bSum =
+    b.ats.overall +
+    b.humanTone.overall +
+    (floors.hasRules ? b.ruleKeep.overall : 0);
   return aSum > bSum;
 }
 
-function formatScoreNotice(
-  label: string,
-  before: number,
-  after: number
-): string {
+function formatScoreNotice(label: string, before: number, after: number): string {
   if (after > before) return `${label} ${before} → ${after}`;
   if (after < before) return `${label} ${before} → ${after} (dropped)`;
   return `${label} held at ${after}`;
 }
 
 function buildImprovementNotice(
-  baselineAts: number,
-  baselineTone: number,
+  floors: ScoreFloors,
   best: ScoredCandidate,
   restored: boolean
 ): string {
-  const atsPart = formatScoreNotice("ATS", baselineAts, best.ats.overall);
-  const tonePart = formatScoreNotice("Tone", baselineTone, best.humanTone.overall);
+  const atsPart = formatScoreNotice("ATS", floors.ats, best.ats.overall);
+  const tonePart = formatScoreNotice("Tone", floors.tone, best.humanTone.overall);
+  const rulesPart = floors.hasRules
+    ? formatScoreNotice("Rules", floors.rules, best.ruleKeep.overall)
+    : null;
+  const scoreParts = [atsPart, tonePart, rulesPart].filter(Boolean).join("; ");
+
   if (restored) {
-    return `Regeneration did not improve both scores. Restored previous draft (${atsPart}; ${tonePart}).`;
+    return `Regeneration did not improve all scores. Restored previous draft (${scoreParts}).`;
   }
-  const improved =
-    best.ats.overall > baselineAts || best.humanTone.overall > baselineTone;
+
+  const improved = improvementCount(best, floors) > 0;
   if (improved) {
-    return `Scores updated — ${atsPart}; ${tonePart}.`;
+    return `Scores updated — ${scoreParts}.`;
   }
-  return `Scores held — ${atsPart}; ${tonePart}.`;
+  return `Scores held — ${scoreParts}.`;
+}
+
+function pickResult(
+  candidate: ScoredCandidate,
+  floors: ScoreFloors,
+  restored: boolean
+): RegeneratePickResult {
+  return {
+    content: candidate.content,
+    score: candidate.ats,
+    humanToneScore: candidate.humanTone,
+    ruleKeepScore: candidate.ruleKeep,
+    notice: buildImprovementNotice(floors, candidate, restored),
+  };
 }
 
 /**
- * After AI regenerate, score candidates and never accept a draft below either baseline score.
+ * After AI regenerate, score candidates and never accept a draft below any baseline score.
  * `evaluate` should reuse cached JD keywords (no AI) — pass keywordsCacheKey via /api/resume/score.
  */
 export async function pickBestRegenerateResult(
   baseline: GeneratedResumeContent,
   baselineAts: AtsScoreResult,
   baselineTone: HumanToneScoreResult,
+  baselineRules: RuleKeepScoreResult,
   aiDraft: GeneratedResumeContent,
   evaluate: (content: GeneratedResumeContent) => Promise<RegenerateEvaluation | null>
 ): Promise<RegeneratePickResult> {
-  const atsFloor = baselineAts.overall;
-  const toneFloor = baselineTone.overall;
+  const floors = buildFloors(baselineAts, baselineTone, baselineRules);
 
   const baselineCandidate: ScoredCandidate = {
     content: baseline,
     ats: baselineAts,
     humanTone: baselineTone,
+    ruleKeep: baselineRules,
   };
 
   const aiEval = await evaluate(aiDraft);
@@ -206,11 +275,17 @@ export async function pickBestRegenerateResult(
       content: baseline,
       score: baselineAts,
       humanToneScore: baselineTone,
+      ruleKeepScore: baselineRules,
       notice: "Could not re-score the revision. Kept your previous draft.",
     };
   }
 
-  let best: ScoredCandidate = { content: aiDraft, ats: aiEval.ats, humanTone: aiEval.humanTone };
+  let best: ScoredCandidate = {
+    content: aiDraft,
+    ats: aiEval.ats,
+    humanTone: aiEval.humanTone,
+    ruleKeep: aiEval.ruleKeep,
+  };
 
   if (aiEval.ats.missingKeywords.length > 0) {
     const patchedAi = applyDeterministicAtsPatches(aiDraft, aiEval.ats);
@@ -220,8 +295,9 @@ export async function pickBestRegenerateResult(
         content: patchedAi,
         ats: patchedEval.ats,
         humanTone: patchedEval.humanTone,
+        ruleKeep: patchedEval.ruleKeep,
       };
-      if (isBetterCandidate(patched, best, atsFloor, toneFloor)) best = patched;
+      if (isBetterCandidate(patched, best, floors)) best = patched;
     }
   }
 
@@ -233,35 +309,23 @@ export async function pickBestRegenerateResult(
         content: tonedAi,
         ats: tonedEval.ats,
         humanTone: tonedEval.humanTone,
+        ruleKeep: tonedEval.ruleKeep,
       };
-      if (isBetterCandidate(toned, best, atsFloor, toneFloor)) best = toned;
+      if (isBetterCandidate(toned, best, floors)) best = toned;
     }
   }
 
-  const bestMeetsFloors = meetsFloors(
-    best.ats.overall,
-    best.humanTone.overall,
-    atsFloor,
-    toneFloor
-  );
-  const bestImproves = isBetterCandidate(best, baselineCandidate, atsFloor, toneFloor);
+  const baselineNeedsWork = needsImprovement(baselineAts, baselineTone, baselineRules);
+  const bestMeetsFloors = meetsFloors(best, floors);
+  const bestImproves = isBetterCandidate(best, baselineCandidate, floors);
+  const bestHasGain = improvementCount(best, floors) > 0;
 
-  if (bestMeetsFloors && bestImproves) {
-    return {
-      content: best.content,
-      score: best.ats,
-      humanToneScore: best.humanTone,
-      notice: buildImprovementNotice(atsFloor, toneFloor, best, false),
-    };
+  if (bestMeetsFloors && bestImproves && (!baselineNeedsWork || bestHasGain)) {
+    return pickResult(best, floors, false);
   }
 
   if (bestMeetsFloors && !bestImproves) {
-    return {
-      content: baseline,
-      score: baselineAts,
-      humanToneScore: baselineTone,
-      notice: buildImprovementNotice(atsFloor, toneFloor, best, true),
-    };
+    return pickResult(baselineCandidate, floors, true);
   }
 
   const patchedBaseline = applyDeterministicAtsPatches(baseline, baselineAts);
@@ -271,33 +335,42 @@ export async function pickBestRegenerateResult(
       content: patchedBaseline,
       ats: patchedBaselineEval.ats,
       humanTone: patchedBaselineEval.humanTone,
+      ruleKeep: patchedBaselineEval.ruleKeep,
     };
-    if (isBetterCandidate(patched, best, atsFloor, toneFloor)) best = patched;
+    if (isBetterCandidate(patched, best, floors)) best = patched;
   }
 
   if (
-    meetsFloors(best.ats.overall, best.humanTone.overall, atsFloor, toneFloor) &&
-    isBetterCandidate(best, baselineCandidate, atsFloor, toneFloor)
+    meetsFloors(best, floors) &&
+    isBetterCandidate(best, baselineCandidate, floors) &&
+    (!baselineNeedsWork || improvementCount(best, floors) > 0)
   ) {
     const usedPatch = best.content !== aiDraft;
-    return {
-      content: best.content,
-      score: best.ats,
-      humanToneScore: best.humanTone,
-      notice: usedPatch
-        ? `AI revision lowered a score. Applied targeted fixes instead — ${formatScoreNotice("ATS", atsFloor, best.ats.overall)}; ${formatScoreNotice("Tone", toneFloor, best.humanTone.overall)}.`
-        : buildImprovementNotice(atsFloor, toneFloor, best, false),
-    };
+    if (usedPatch) {
+      const atsPart = formatScoreNotice("ATS", floors.ats, best.ats.overall);
+      const tonePart = formatScoreNotice("Tone", floors.tone, best.humanTone.overall);
+      const rulesPart = floors.hasRules
+        ? formatScoreNotice("Rules", floors.rules, best.ruleKeep.overall)
+        : null;
+      const scoreParts = [atsPart, tonePart, rulesPart].filter(Boolean).join("; ");
+      return {
+        ...pickResult(best, floors, false),
+        notice: `AI revision lowered a score. Applied targeted fixes instead — ${scoreParts}.`,
+      };
+    }
+    return pickResult(best, floors, false);
   }
 
   return {
-    content: baseline,
-    score: baselineAts,
-    humanToneScore: baselineTone,
+    ...pickResult(baselineCandidate, floors, true),
     notice: buildImprovementNotice(
-      atsFloor,
-      toneFloor,
-      { content: aiDraft, ats: aiEval.ats, humanTone: aiEval.humanTone },
+      floors,
+      {
+        content: aiDraft,
+        ats: aiEval.ats,
+        humanTone: aiEval.humanTone,
+        ruleKeep: aiEval.ruleKeep,
+      },
       true
     ),
   };

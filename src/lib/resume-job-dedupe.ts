@@ -12,6 +12,7 @@ export function buildResumeDedupeKey(body: ResumeGenerateRequest): string {
     previousTitle: body.previousContent?.title?.trim() ?? "",
     atsScore: body.atsFeedback?.overall ?? null,
     toneScore: body.humanToneFeedback?.overall ?? null,
+    ruleKeepScore: body.ruleKeepFeedback?.overall ?? null,
   });
 
   return createHash("sha256").update(payload).digest("hex").slice(0, 32);

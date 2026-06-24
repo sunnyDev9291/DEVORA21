@@ -1,6 +1,7 @@
 import { ATS_PASS_THRESHOLD, ATS_SCORE_MAX } from "@/lib/resume-ats-algorithm";
 import { HUMAN_TONE_PASS_THRESHOLD, HUMAN_TONE_SCORE_MAX } from "@/lib/resume-human-tone-algorithm";
-import type { AtsScoreResult, GeneratedResumeContent, HumanToneScoreResult } from "@/lib/resume-types";
+import { RULE_KEEP_PASS_THRESHOLD, RULE_KEEP_SCORE_MAX } from "@/lib/resume-rule-keep-constants";
+import type { AtsScoreResult, GeneratedResumeContent, HumanToneScoreResult, RuleKeepScoreResult } from "@/lib/resume-types";
 
 export const RESUME_AI_MODEL = "deepseek-v4-pro";
 
@@ -35,9 +36,10 @@ Rules:
 - Additional user instructions apply to summary, skills, and bullet wording only — never change employer names, roles, or dates.
 - No markdown fences, no commentary — valid json only.`;
 
-export const RESUME_REGENERATE_SYSTEM_SUFFIX = `When regeneration context is provided, this is a TARGETED REVISION pass — not a full rewrite. You must improve BOTH scores together:
-1) ATS match (keyword coverage, title, skills, format) — target ${ATS_PASS_THRESHOLD}+
+export const RESUME_REGENERATE_SYSTEM_SUFFIX = `When regeneration context is provided, this is a TARGETED REVISION pass — not a full rewrite. You must improve ALL THREE evaluation systems together using the analysis in the user message:
+1) ATS match (keyword coverage, title, skills, format, failed gates) — target ${ATS_PASS_THRESHOLD}+
 2) Human tone (natural wording, variety, collaboration cues, no buzzwords) — target ${HUMAN_TONE_PASS_THRESHOLD}+
+3) Rule Keep (private writing rules from the user's prompt — fix every failed rule category) — target ${RULE_KEEP_PASS_THRESHOLD}+
 
 Preservation rules (highest priority):
 - Start from the previous draft in the user message and keep all strong, relevant content unchanged.
@@ -46,10 +48,10 @@ Preservation rules (highest priority):
 - Copy company, role, and dates exactly from the previous draft (and template).
 
 Revision rules:
-- Address ATS gaps (missing keywords, failed gates) AND human-tone gaps (repetition, buzzwords, lack of context) with minimal edits.
+- Address EVERY gap listed in ATS, human-tone, and rule-keep feedback — missing keywords, failed gates, weak categories, buzzwords, and failed rules.
 - Prefer small edits over replacing whole sentences — vary verbs, add collaboration context, remove AI buzzwords while keeping keywords.
-- If a bullet already reads naturally and matches keywords, return it verbatim.
-- The revised draft must NOT score below the previous ATS or human-tone version.
+- If a bullet already reads naturally, matches keywords, and passes rules, return it verbatim.
+- The revised draft must NOT score below the previous ATS, human-tone, or rule-keep version.
 - Wrap only newly emphasized priority keywords in **bold** where truthful.`;
 
 export function buildResumeSystemPrompt(regenerate = false): string {
@@ -137,6 +139,33 @@ export function buildAtsRegeneratePromptSection(
     .join("\n\n");
 }
 
+export function buildRuleKeepRegeneratePromptSection(
+  feedback: RuleKeepScoreResult,
+  targetScore = RULE_KEEP_PASS_THRESHOLD
+): string {
+  if (feedback.totalRules === 0) return "";
+
+  const failed = feedback.rules.filter((r) => !r.passed);
+
+  return [
+    `RULE KEEP REVISION — previous score ${feedback.overall}/${RULE_KEEP_SCORE_MAX} (${feedback.passedRules}/${feedback.totalRules} rules passed). Target: ${targetScore}+.`,
+    `RULE FLOOR: Rule Keep MUST stay at or above ${feedback.overall}. Fix every failed rule with minimal, surgical edits.`,
+    `Previous rule summary: ${feedback.summary}`,
+    failed.length > 0 &&
+      `Failed rules — address each gap in the resume text (category + auditor finding):\n${failed
+        .map((r, index) => `- Rule ${index + 1} [${r.category}]: ${r.detail}`)
+        .join("\n")}`,
+    feedback.recommendations.length > 0 &&
+      `Rule gaps to close:\n${feedback.recommendations.map((r) => `- ${r}`).join("\n")}`,
+    `Rule revision checklist:
+- Edit only title, summary, skills, or bullets needed to satisfy failed rules.
+- Do not drop ATS keywords or natural tone while fixing a rule.
+- Balance all three targets — ATS, human tone, and rule compliance.`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 export function buildResumeUserPrompt({
   jobTitle,
   companyName,
@@ -146,6 +175,7 @@ export function buildResumeUserPrompt({
   existingExperiences,
   atsFeedback,
   humanToneFeedback,
+  ruleKeepFeedback,
   previousContent,
 }: {
   jobTitle: string;
@@ -156,9 +186,10 @@ export function buildResumeUserPrompt({
   existingExperiences: GeneratedResumeContent["experiences"];
   atsFeedback?: AtsScoreResult;
   humanToneFeedback?: HumanToneScoreResult;
+  ruleKeepFeedback?: RuleKeepScoreResult;
   previousContent?: GeneratedResumeContent;
 }): string {
-  const isRegenerate = Boolean(atsFeedback && previousContent);
+  const isRegenerate = Boolean(previousContent && atsFeedback);
 
   const experienceInstructions = isRegenerate
     ? `Previous draft companies (${previousContent!.experiences.length} required — copy company, role, dates exactly from previous draft; keep same bullet count per company; revise bullets only where ATS or human-tone feedback requires):\n${previousContent!.experiences
@@ -175,7 +206,7 @@ export function buildResumeUserPrompt({
         .join("\n")}`;
 
   const closingInstruction = isRegenerate
-    ? `Return exactly ${previousContent!.experiences.length} objects in experiences[]. Dual-target revision: improve ATS toward ${ATS_PASS_THRESHOLD}+ AND human tone toward ${HUMAN_TONE_PASS_THRESHOLD}+ while preserving strong content. Return valid json only.`
+    ? `Return exactly ${previousContent!.experiences.length} objects in experiences[]. Triple-target revision: improve ATS toward ${ATS_PASS_THRESHOLD}+, human tone toward ${HUMAN_TONE_PASS_THRESHOLD}+, and rule keep toward ${RULE_KEEP_PASS_THRESHOLD}+ using every gap listed above. Return valid json only.`
     : `Return exactly ${existingExperiences.length} objects in experiences[]. Rewrite title, summary, skills, and bullets only. Return valid json only.`;
 
   return [
@@ -189,6 +220,7 @@ export function buildResumeUserPrompt({
       previousContent &&
       buildAtsRegeneratePromptSection(atsFeedback, previousContent),
     humanToneFeedback && buildHumanToneRegeneratePromptSection(humanToneFeedback),
+    ruleKeepFeedback && buildRuleKeepRegeneratePromptSection(ruleKeepFeedback),
     closingInstruction,
   ]
     .filter(Boolean)
