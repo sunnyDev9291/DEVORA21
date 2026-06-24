@@ -20,7 +20,7 @@ export default function ResumeBuilder() {
         <div className="absolute bottom-0 right-0 h-[300px] w-[500px] rounded-full bg-violet-600/6 blur-[100px]" />
       </div>
 
-      <div className="relative mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+      <div className="relative mx-auto w-full max-w-[70vw] px-4 sm:px-6 lg:px-8">
         <ResumeStepper currentStep={wizardStep} />
 
         <div className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white/90 shadow-xl shadow-slate-200/50 backdrop-blur-sm dark:border-white/[0.08] dark:bg-navy-900/80 dark:shadow-black/30">
