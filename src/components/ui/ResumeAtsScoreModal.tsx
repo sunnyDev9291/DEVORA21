@@ -7,6 +7,7 @@ import ResumeThinkingProgress from "@/components/ui/ResumeThinkingProgress";
 import { ResumeAtsScorePanel, type ResumeAtsScorePanelProps } from "@/components/ui/ResumeAtsScorePanel";
 import { ResumeHumanTonePanel } from "@/components/ui/ResumeHumanTonePanel";
 import { ResumeRuleKeepPanel } from "@/components/ui/ResumeRuleKeepPanel";
+import { EvaluationStepStack } from "@/components/ui/ResumeStepLoader";
 import { ATS_PASS_THRESHOLD } from "@/lib/resume-ats";
 import { HUMAN_TONE_PASS_THRESHOLD } from "@/lib/resume-human-tone";
 import { RULE_KEEP_PASS_THRESHOLD } from "@/lib/resume-rule-keep-constants";
@@ -149,30 +150,54 @@ export default function ResumeAtsScoreModal({
           }`}
         >
           <div className="min-h-0 overflow-y-auto overscroll-contain order-2 lg:order-1 border-t lg:border-t-0 border-slate-200 dark:border-white/[0.08]">
-            <ResumeAtsScorePanel
-              score={score}
-              loading={loading}
-              error={error}
-              onRecheck={onRecheck}
-              recheckDisabled={recheckDisabled}
-            />
-            <ResumeHumanTonePanel
-              score={humanToneScore}
-              loading={humanToneLoading}
-              error={humanToneError}
-            />
-            <ResumeRuleKeepPanel
-              score={ruleKeepScore}
-              loading={ruleKeepLoading}
-              error={ruleKeepError}
-            />
+            {loading || humanToneLoading || ruleKeepLoading ? (
+              <EvaluationStepStack className="rounded-none border-0 bg-transparent dark:bg-transparent">
+                <ResumeAtsScorePanel
+                  score={score}
+                  loading={loading}
+                  error={error}
+                  onRecheck={onRecheck}
+                  recheckDisabled={recheckDisabled}
+                />
+                <ResumeHumanTonePanel
+                  score={humanToneScore}
+                  loading={humanToneLoading}
+                  error={humanToneError}
+                />
+                <ResumeRuleKeepPanel
+                  score={ruleKeepScore}
+                  loading={ruleKeepLoading}
+                  error={ruleKeepError}
+                />
+              </EvaluationStepStack>
+            ) : (
+              <>
+                <ResumeAtsScorePanel
+                  score={score}
+                  loading={loading}
+                  error={error}
+                  onRecheck={onRecheck}
+                  recheckDisabled={recheckDisabled}
+                />
+                <ResumeHumanTonePanel
+                  score={humanToneScore}
+                  loading={humanToneLoading}
+                  error={humanToneError}
+                />
+                <ResumeRuleKeepPanel
+                  score={ruleKeepScore}
+                  loading={ruleKeepLoading}
+                  error={ruleKeepError}
+                />
+              </>
+            )}
           </div>
 
           {showContentReview && (
             <div className="relative min-h-0 overflow-y-auto overscroll-contain order-1 lg:order-2">
               {generating && (
-                <div className="sticky top-0 z-10 border-b border-blue-500/20 bg-blue-500/[0.06] px-4 py-3">
-                  <ResumeThinkingProgress phase={streamPhase} jobTitle={jobTitle ?? ""} />
+                <div className="sticky top-0 z-10 border-b border-blue-500/20 bg-blue-500/[0.04] dark:bg-blue-500/[0.06]">
+                  <ResumeThinkingProgress phase={streamPhase} jobTitle={jobTitle ?? ""} embedded />
                 </div>
               )}
               {generateError && (
