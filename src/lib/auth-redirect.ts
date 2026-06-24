@@ -1,9 +1,15 @@
 import { AUTH_LINKS } from "@/lib/constants";
 import { isUserEmailVerified } from "@/lib/email-verification";
 import { needsOnboarding } from "@/lib/onboarding";
+import { isResumeBuilderEnabled, resumeAccessPendingUrl } from "@/lib/resume-access";
 import type { User } from "@/types/auth";
 
 const ALLOWED_PREFIXES = ["/dashboard", "/resume", "/real-time-interview"];
+
+function isResumePath(path: string): boolean {
+  const pathOnly = path.split("?")[0];
+  return pathOnly === "/resume" || pathOnly.startsWith("/resume/");
+}
 
 /** Only allow internal app paths — blocks open redirects. */
 export function getSafeRedirectPath(next: string | null | undefined, fallback = AUTH_LINKS.dashboard): string {
@@ -28,7 +34,12 @@ export function getPostAuthRedirectPath(user: User, next?: string | null): strin
     return AUTH_LINKS.onboarding;
   }
 
-  return getSafeRedirectPath(next);
+  const destination = getSafeRedirectPath(next);
+  if (isResumePath(destination) && !isResumeBuilderEnabled(user)) {
+    return resumeAccessPendingUrl();
+  }
+
+  return destination;
 }
 
 export function buildLoginUrl(nextPath?: string): string {

@@ -29,14 +29,14 @@ function LoginForm() {
     formState: { errors, isSubmitting },
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "", password: "" },
+    defaultValues: { email: "", password: "", rememberMe: true },
   });
 
   const onSubmit = async (values: LoginFormValues) => {
     setServerError("");
     setIsGoogleAccount(false);
     try {
-      const user = await login(values.email, values.password);
+      const user = await login(values.email, values.password, values.rememberMe ?? true);
       router.replace(getPostAuthRedirectPath(user, searchParams.get("next")));
     } catch (error) {
       setIsGoogleAccount(isGoogleAccountAuthError(error));
@@ -69,6 +69,17 @@ function LoginForm() {
         )}
         <AuthInput label="Email" type="email" autoComplete="email" placeholder="you@example.com" error={errors.email?.message} {...register("email")} />
         <AuthInput label="Password" type="password" autoComplete="current-password" placeholder="••••••••" error={errors.password?.message} {...register("password")} />
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 rounded border-white/20 bg-navy-900 text-blue-500 focus:ring-blue-500/40"
+            {...register("rememberMe")}
+          />
+          <span className="text-sm text-slate-300">
+            Keep me signed in for 30 days
+            <span className="mt-0.5 block text-xs text-slate-500">Recommended on your personal device</span>
+          </span>
+        </label>
         <div className="flex justify-end">
           <Link href={AUTH_LINKS.forgotPassword} className="text-sm text-blue-400 hover:text-blue-300">
             Forgot password?

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { isUserEmailVerified } from "@/lib/email-verification";
 import { needsOnboarding } from "@/lib/onboarding";
+import { isResumeBuilderEnabled, resumeAccessPendingUrl } from "@/lib/resume-access";
 import { buildLoginUrl, getPostAuthRedirectPath } from "@/lib/auth-redirect";
 import { AUTH_LINKS } from "@/lib/constants";
 
@@ -41,14 +42,21 @@ interface AuthGuardProps {
   children: ReactNode;
   /** Set on /onboarding so this guard does not redirect back to onboarding. */
   skipOnboardingRedirect?: boolean;
+  /** Require resumeBuilderEnabled === true (for /resume). */
+  requireResumeBuilder?: boolean;
 }
 
-export function AuthGuard({ children, skipOnboardingRedirect = false }: AuthGuardProps) {
+export function AuthGuard({
+  children,
+  skipOnboardingRedirect = false,
+  requireResumeBuilder = false,
+}: AuthGuardProps) {
   const { user, isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const emailVerified = isUserEmailVerified(user);
   const onboardingRequired = Boolean(user && emailVerified && needsOnboarding(user));
+  const resumeAllowed = isResumeBuilderEnabled(user);
 
   useEffect(() => {
     if (isLoading) return;
@@ -65,8 +73,23 @@ export function AuthGuard({ children, skipOnboardingRedirect = false }: AuthGuar
 
     if (!skipOnboardingRedirect && onboardingRequired && pathname !== AUTH_LINKS.onboarding) {
       router.replace(AUTH_LINKS.onboarding);
+      return;
     }
-  }, [isAuthenticated, isLoading, router, pathname, emailVerified, skipOnboardingRedirect, onboardingRequired]);
+
+    if (requireResumeBuilder && !resumeAllowed) {
+      router.replace(resumeAccessPendingUrl());
+    }
+  }, [
+    isAuthenticated,
+    isLoading,
+    router,
+    pathname,
+    emailVerified,
+    skipOnboardingRedirect,
+    onboardingRequired,
+    requireResumeBuilder,
+    resumeAllowed,
+  ]);
 
   if (isLoading) {
     return <AuthLoadingSpinner />;
@@ -75,6 +98,10 @@ export function AuthGuard({ children, skipOnboardingRedirect = false }: AuthGuar
   if (!isAuthenticated || !emailVerified) return null;
 
   if (!skipOnboardingRedirect && onboardingRequired && pathname !== AUTH_LINKS.onboarding) {
+    return null;
+  }
+
+  if (requireResumeBuilder && !resumeAllowed) {
     return null;
   }
 

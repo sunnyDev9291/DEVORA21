@@ -9,6 +9,7 @@ import type { UserResumeTemplateAsset } from "@/lib/profile-api";
 import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
 import { generateResume } from "@/lib/resume-generate-client";
 import { archiveResume } from "@/lib/resume-archive";
+import { resumeBuilderAccessDeniedMessage } from "@/lib/resume-access";
 import { pickBestRegenerateResult, type RegenerateEvaluation } from "@/lib/resume-ats-regenerate";
 import type { GeneratedResumeContent, ResumeBuildResponse, AtsScoreResult, HumanToneScoreResult, RuleKeepScoreResult } from "@/lib/resume-types";
 
@@ -417,7 +418,7 @@ export default function ResumeGenerator({
       setPdfBase64(result.pdfBase64);
       setPdfFileName(result.pdfFileName);
     } catch (err) {
-      setArchiveError((err as Error).message || "Could not generate PDF from backend.");
+      setArchiveError(resumeBuilderAccessDeniedMessage(err));
     } finally {
       setArchiving(false);
     }

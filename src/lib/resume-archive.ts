@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "@/lib/api-base-url";
+import { RESUME_BUILDER_ACCESS_MESSAGE } from "@/lib/resume-access";
 
 export interface ResumeArchiveResponse {
   resumeName: string;
@@ -64,6 +65,9 @@ export async function archiveResume(payload: ResumeArchivePayload): Promise<Resu
 
   if (contentType.includes("application/pdf")) {
     if (!res.ok) {
+      if (res.status === 403) {
+        throw new Error(RESUME_BUILDER_ACCESS_MESSAGE);
+      }
       throw new Error(`Archive failed (${res.status}).`);
     }
     const pdfBlob = await res.blob();
@@ -76,6 +80,9 @@ export async function archiveResume(payload: ResumeArchivePayload): Promise<Resu
   const data = (await res.json()) as ResumeArchiveResponse & { error?: string; message?: string };
 
   if (!res.ok) {
+    if (res.status === 403) {
+      throw new Error(RESUME_BUILDER_ACCESS_MESSAGE);
+    }
     throw new Error(data.error || data.message || `Archive failed (${res.status}).`);
   }
 

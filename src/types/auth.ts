@@ -15,7 +15,7 @@ export interface User {
   emailVerified?: boolean;
 
   onboardingCompleted?: boolean;
-
+  resumeBuilderEnabled?: boolean;
   resumeTemplateFileName?: string;
 
   promptFileName?: string;

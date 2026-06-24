@@ -12,6 +12,8 @@ import UserAvatar from "@/components/ui/UserAvatar";
 
 import Button from "@/components/ui/Button";
 
+import { useAuth } from "@/context/AuthContext";
+
 import { processAvatarFile } from "@/lib/avatar-image";
 
 import { authApi, getApiErrorMessage } from "@/lib/auth-api";
@@ -57,6 +59,8 @@ interface DashboardProfilePanelProps {
 
 
 export default function DashboardProfilePanel({ user, onProfileUpdated }: DashboardProfilePanelProps) {
+
+  const { isResumeBuilderEnabled } = useAuth();
 
   const stored = loadStoredProfile(user.id);
 
@@ -570,6 +574,8 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
 
         </Button>
 
+        {isResumeBuilderEnabled && (
+
         <Link
 
           href={APP_FEATURES.resume.href}
@@ -581,6 +587,8 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
           Open resume builder
 
         </Link>
+
+        )}
 
       </div>
 

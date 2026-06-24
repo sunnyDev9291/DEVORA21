@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { profileApi, type UserPromptAsset, type UserResumeTemplateAsset } from "@/lib/profile-api";
+import { resumeBuilderAccessDeniedMessage } from "@/lib/resume-access";
 import { loadStoredProfile, saveStoredProfile } from "@/lib/user-profile";
 
 export function useUserProfileAssets(userId: string | undefined) {
@@ -43,7 +44,12 @@ export function useUserProfileAssets(userId: string | undefined) {
     let promptLoaded = false;
 
     try {
-      const remoteTemplate = await profileApi.fetchResumeTemplate().catch(() => null);
+      const remoteTemplate = await profileApi.fetchResumeTemplate().catch((err) => {
+        if (err && typeof err === "object" && "status" in err && (err as { status: number }).status === 403) {
+          throw err;
+        }
+        return null;
+      });
       if (remoteTemplate) {
         setTemplate(remoteTemplate);
         saveStoredProfile(userId, {
@@ -53,7 +59,7 @@ export function useUserProfileAssets(userId: string | undefined) {
         templateLoaded = true;
       }
     } catch (err) {
-      setError((err as Error).message || "Could not load resume template.");
+      setError(resumeBuilderAccessDeniedMessage(err));
     }
 
     try {

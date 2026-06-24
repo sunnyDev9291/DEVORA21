@@ -1,6 +1,6 @@
 import dynamic from "next/dynamic";
 import PageHero from "@/components/layout/PageHero";
-import RequireAuth from "@/components/auth/RequireAuth";
+import RequireResumeBuilder from "@/components/auth/RequireResumeBuilder";
 import { pageMetadata } from "@/lib/seo";
 import type { Metadata } from "next";
 
@@ -35,9 +35,9 @@ export default function ResumePage() {
         title="Resume Builder"
         description="Pick a template, generate an AI draft for your target job, edit every section yourself, then download a tailored .docx."
       />
-      <RequireAuth>
+      <RequireResumeBuilder>
         <ResumeBuilder />
-      </RequireAuth>
+      </RequireResumeBuilder>
     </>
   );
 }

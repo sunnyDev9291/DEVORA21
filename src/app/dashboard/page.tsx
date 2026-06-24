@@ -2,37 +2,44 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Button from "@/components/ui/Button";
 import DashboardProfilePanel from "@/components/dashboard/DashboardProfilePanel";
 import EmailVerificationBanner from "@/components/auth/EmailVerificationBanner";
+import ResumeAccessNotice from "@/components/auth/ResumeAccessNotice";
 import { AuthGuard } from "@/components/auth/AuthGuard";
 import { useAuth } from "@/context/AuthContext";
 import { getApiErrorMessage, isValidAuthUser } from "@/lib/auth-api";
 import { resolveUserNames, loadStoredProfile } from "@/lib/user-profile";
 import { AUTH_LINKS, APP_FEATURES } from "@/lib/constants";
 
-const quickActions = [
-  {
-    title: APP_FEATURES.resume.label,
-    description: APP_FEATURES.resume.description,
-    href: APP_FEATURES.resume.href,
-    accent: "border-blue-500/20 hover:border-blue-500/40 bg-blue-500/[0.06]",
-  },
-  {
-    title: APP_FEATURES.realTimeInterview.label,
-    description: APP_FEATURES.realTimeInterview.description,
-    href: APP_FEATURES.realTimeInterview.href,
-    accent: "border-violet-500/20 hover:border-violet-500/40 bg-violet-500/[0.06]",
-  },
-];
-
 export default function DashboardPage() {
-  const { user, logout, refreshUser } = useAuth();
+  const { user, logout, refreshUser, isResumeBuilderEnabled } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const notice = searchParams.get("notice");
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [error, setError] = useState("");
   const [, bumpProfileView] = useState(0);
+
+  const quickActions = [
+    ...(isResumeBuilderEnabled
+      ? [
+          {
+            title: APP_FEATURES.resume.label,
+            description: APP_FEATURES.resume.description,
+            href: APP_FEATURES.resume.href,
+            accent: "border-blue-500/20 hover:border-blue-500/40 bg-blue-500/[0.06]",
+          },
+        ]
+      : []),
+    {
+      title: APP_FEATURES.realTimeInterview.label,
+      description: APP_FEATURES.realTimeInterview.description,
+      href: APP_FEATURES.realTimeInterview.href,
+      accent: "border-violet-500/20 hover:border-violet-500/40 bg-violet-500/[0.06]",
+    },
+  ];
 
   const handleLogout = async () => {
     setError("");
@@ -68,8 +75,9 @@ export default function DashboardPage() {
           </div>
 
           {user && isValidAuthUser(user) && (
-            <div className="mt-6">
+            <div className="mt-6 space-y-4">
               <EmailVerificationBanner user={user} />
+              <ResumeAccessNotice notice={notice} />
             </div>
           )}
 

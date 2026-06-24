@@ -200,6 +200,8 @@ export function normalizeAuthUser(raw: unknown): User {
   const promptFileName =
     typeof source.promptFileName === "string" ? source.promptFileName.trim() : undefined;
 
+  const resumeBuilderEnabled = source.resumeBuilderEnabled === true;
+
   const createdAt =
     typeof source.createdAt === "string" ? source.createdAt : undefined;
 
@@ -208,6 +210,7 @@ export function normalizeAuthUser(raw: unknown): User {
     email,
     emailVerified,
     onboardingCompleted: onboardingCompleted || undefined,
+    resumeBuilderEnabled,
     resumeTemplateFileName: resumeTemplateFileName || undefined,
     promptFileName: promptFileName || undefined,
     createdAt,
@@ -228,14 +231,18 @@ export const authApi = {
       data: normalizeAuthUser(data),
     })),
 
-  login: (email: string, password: string) =>
+  login: (email: string, password: string, rememberMe = true) =>
     apiRequest<AuthResponse & Record<string, unknown>>("/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, rememberMe }),
     }).then((data) => {
       const user = normalizeAuthUser(data.user ?? data);
       return { data: { ...data, user } };
     }),
+
+  /** Extend an existing session cookie (sliding / long-lived sessions). */
+  refreshSession: () =>
+    apiRequest<MessageResponse>("/auth/refresh", { method: "POST" }).then((data) => ({ data })),
 
   register: (name: string, email: string, password: string) => {
     const { firstName, lastName } = splitFullName(name);

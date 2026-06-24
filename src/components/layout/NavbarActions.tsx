@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { APP_FEATURES, AUTH_LINKS, CONTACT_INFO } from "@/lib/constants";
 import { useAuth } from "@/context/AuthContext";
 import { getApiErrorMessage } from "@/lib/auth-api";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 function ResumeIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
@@ -41,7 +41,7 @@ const mobileAccentClasses = {
   violet: "border-violet-500/25 bg-violet-500/[0.06] hover:border-violet-500/40 hover:bg-violet-500/[0.1]",
 } as const;
 
-const features = [
+const allFeatures = [
   { key: "resume" as const, ...APP_FEATURES.resume },
   { key: "realTimeInterview" as const, ...APP_FEATURES.realTimeInterview },
 ];
@@ -54,8 +54,16 @@ interface NavbarActionsProps {
 export default function NavbarActions({ variant, onNavigate }: NavbarActionsProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, isAuthenticated, isLoading, isEmailVerified, logout } = useAuth();
+  const { user, isAuthenticated, isLoading, isEmailVerified, isResumeBuilderEnabled, logout } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const features = useMemo(
+    () =>
+      isResumeBuilderEnabled
+        ? allFeatures
+        : allFeatures.filter((feature) => feature.key !== "resume"),
+    [isResumeBuilderEnabled],
+  );
 
   const userInitial =
     (user?.name || user?.email || "U")
