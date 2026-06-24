@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import Modal from "@/components/ui/Modal";
+import ChatClearButton from "@/components/ui/ChatClearButton";
+import { useChatScroll } from "@/hooks/useChatScroll";
 import {
   RESUME_CHAT_QUICK_PROMPTS,
   type ResumeChatProfileContext,
@@ -49,23 +51,32 @@ export default function ResumeChatDialog({
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const { listRef, handleScroll, pinToBottom } = useChatScroll([messages, loading]);
 
   useEffect(() => {
     setMessages([buildWelcome()]);
     setError("");
     setInput("");
-  }, [generationKey]);
+    pinToBottom();
+  }, [generationKey, pinToBottom]);
 
   useEffect(() => {
     if (open) inputRef.current?.focus();
   }, [open]);
 
-  useEffect(() => {
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, loading]);
+  function handleClear() {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setLoading(false);
+    setError("");
+    setInput("");
+    setMessages([buildWelcome()]);
+    pinToBottom();
+  }
+
+  const hasConversation = messages.some((m) => m.id !== "welcome");
 
   async function sendMessage(text: string) {
     const trimmed = text.trim();
@@ -73,6 +84,7 @@ export default function ResumeChatDialog({
 
     setError("");
     setInput("");
+    pinToBottom();
 
     const userMsg: ResumeChatMessage = {
       id: crypto.randomUUID(),
@@ -165,16 +177,23 @@ export default function ResumeChatDialog({
       className="max-w-2xl h-[min(72vh,680px)]"
     >
       <div className="flex flex-col flex-1 min-h-0">
-        <div className="flex flex-col gap-1 px-4 py-2 border-b border-slate-200 dark:border-white/[0.06] bg-blue-500/[0.06] shrink-0">
-          <span className="text-xs font-medium text-blue-700 dark:text-blue-300 truncate">{targetLabel}</span>
-          {profileLabel && (
-            <span className="text-[11px] text-blue-600/80 dark:text-blue-300/80 truncate">
-              Profile: {profileLabel}
-            </span>
-          )}
+        <div className="flex items-start justify-between gap-3 px-4 py-2 border-b border-slate-200 dark:border-white/[0.06] bg-blue-500/[0.06] shrink-0">
+          <div className="min-w-0 flex flex-col gap-1">
+            <span className="text-xs font-medium text-blue-700 dark:text-blue-300 truncate">{targetLabel}</span>
+            {profileLabel && (
+              <span className="text-[11px] text-blue-600/80 dark:text-blue-300/80 truncate">
+                Profile: {profileLabel}
+              </span>
+            )}
+          </div>
+          <ChatClearButton onClick={handleClear} disabled={loading || !hasConversation} />
         </div>
 
-        <div ref={listRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3 min-h-0">
+        <div
+          ref={listRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto px-4 py-4 space-y-3 min-h-0"
+        >
           {messages.map((msg) => (
             <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
               <div
