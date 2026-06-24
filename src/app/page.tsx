@@ -15,6 +15,8 @@ export const metadata: Metadata = pageMetadata({
   path: "/",
 });
 
+export const revalidate = 86400;
+
 export default function HomePage() {
   return (
     <>

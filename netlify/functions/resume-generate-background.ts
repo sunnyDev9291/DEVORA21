@@ -1,20 +1,26 @@
-import type { BackgroundHandler } from "@netlify/functions";
+import type { Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
 
 const DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions";
 const DEEPSEEK_MODEL = "deepseek-v4-pro";
 const DEEPSEEK_MAX_TOKENS = 16384;
 
+type PendingJob = {
+  status: "pending";
+  templateName: string;
+  mergeContext: {
+    existingExperiences: unknown[];
+    headerTitle: string;
+  };
+  messages: Array<{ role: "system" | "user"; content: string }>;
+  createdAt: number;
+  expiresAt: number;
+  dedupeKey: string;
+  triggerStartedAt?: number;
+};
+
 type ResumeJobRecord =
-  | {
-      status: "pending";
-      templateName: string;
-      mergeContext: {
-        existingExperiences: unknown[];
-        headerTitle: string;
-      };
-      createdAt: number;
-    }
+  | PendingJob
   | {
       status: "done";
       templateName: string;
@@ -24,6 +30,8 @@ type ResumeJobRecord =
       };
       text: string;
       createdAt: number;
+      expiresAt: number;
+      dedupeKey: string;
     }
   | {
       status: "error";
@@ -34,7 +42,13 @@ type ResumeJobRecord =
       };
       message: string;
       createdAt: number;
+      expiresAt: number;
+      dedupeKey: string;
     };
+
+function getJobStore() {
+  return getStore({ name: "resume-jobs", consistency: "strong" });
+}
 
 async function callDeepSeek(messages: unknown[]): Promise<string> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
@@ -73,28 +87,68 @@ async function callDeepSeek(messages: unknown[]): Promise<string> {
   return content;
 }
 
-const handler: BackgroundHandler = async (event) => {
+async function markJobError(jobId: string, job: PendingJob, message: string) {
+  const store = getJobStore();
+  await store.setJSON(jobId, {
+    ...job,
+    status: "error",
+    message,
+  });
+
+  if (job.dedupeKey) {
+    await store.delete(`dedupe:${job.dedupeKey}`);
+  }
+}
+
+export default async function handler(req: Request) {
   let jobId = "";
-  let existingJob: ResumeJobRecord | null = null;
 
   try {
-    const payload = JSON.parse(event.body || "{}") as {
-      jobId?: string;
-      messages?: unknown[];
-    };
+    const payload = (await req.json()) as { jobId?: string };
+    jobId = payload.jobId?.trim() || "";
 
-    jobId = payload.jobId || "";
-    const messages = payload.messages;
-
-    if (!jobId || !Array.isArray(messages) || messages.length === 0) {
-      throw new Error("jobId and messages are required.");
+    if (!jobId) {
+      return new Response(JSON.stringify({ error: "jobId is required." }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
-    const store = getStore({ name: "resume-jobs", consistency: "strong" });
-    existingJob = (await store.get(jobId, { type: "json" })) as ResumeJobRecord | null;
+    const store = getJobStore();
+    const existingJob = (await store.get(jobId, { type: "json" })) as ResumeJobRecord | null;
 
-    if (!existingJob || existingJob.status !== "pending") {
-      throw new Error("Resume job not found or already processed.");
+    if (!existingJob) {
+      return new Response(JSON.stringify({ error: "Resume job not found." }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (existingJob.status === "done") {
+      return new Response(JSON.stringify({ ok: true, status: "done" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (existingJob.status === "error") {
+      return new Response(JSON.stringify({ ok: true, status: "error" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (Date.now() > existingJob.expiresAt) {
+      await markJobError(jobId, existingJob, "Resume generation expired before processing completed.");
+      return new Response(JSON.stringify({ error: "Job expired." }), {
+        status: 410,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const messages = existingJob.messages;
+    if (!Array.isArray(messages) || messages.length === 0) {
+      throw new Error("Resume job is missing AI messages.");
     }
 
     const text = await callDeepSeek(messages);
@@ -104,24 +158,32 @@ const handler: BackgroundHandler = async (event) => {
       status: "done",
       text,
     });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Background generation failed.";
 
-    if (jobId && existingJob?.status === "pending") {
-      const store = getStore({ name: "resume-jobs", consistency: "strong" });
-      await store.setJSON(jobId, {
-        ...existingJob,
-        status: "error",
-        message,
-      });
+    if (existingJob.dedupeKey) {
+      await store.delete(`dedupe:${existingJob.dedupeKey}`);
     }
 
+    return new Response(JSON.stringify({ ok: true, status: "done" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Background generation failed.";
+    if (jobId) {
+      const store = getJobStore();
+      const job = (await store.get(jobId, { type: "json" })) as ResumeJobRecord | null;
+      if (job?.status === "pending") {
+        await markJobError(jobId, job, message);
+      }
+    }
     console.error("resume-generate-background failed:", message);
+    return new Response(JSON.stringify({ error: message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-};
+}
 
-export default handler;
-
-export const config = {
-  type: "experimental_background",
+export const config: Config = {
+  background: true,
 };

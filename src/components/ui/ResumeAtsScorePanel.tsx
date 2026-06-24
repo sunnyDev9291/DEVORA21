@@ -1,7 +1,8 @@
 "use client";
 
-import { ATS_PASS_THRESHOLD } from "@/lib/resume-ats";
+import { ATS_PASS_THRESHOLD, ATS_SCORE_MAX } from "@/lib/resume-ats";
 import type { AtsScoreResult } from "@/lib/resume-types";
+import { EvaluationHeroLoader } from "@/components/ui/ResumeStepLoader";
 
 export interface ResumeAtsScorePanelProps {
   score: AtsScoreResult | null;
@@ -24,9 +25,10 @@ function scoreRingColor(overall: number): string {
 }
 
 function ScoreRing({ overall }: { overall: number }) {
+  const display = Math.min(Math.max(overall, 0), ATS_SCORE_MAX);
   const radius = 54;
   const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (overall / 100) * circumference;
+  const offset = circumference - (display / ATS_SCORE_MAX) * circumference;
 
   return (
     <div className="relative h-32 w-32 shrink-0 mx-auto sm:mx-0">
@@ -46,8 +48,8 @@ function ScoreRing({ overall }: { overall: number }) {
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className={`text-3xl font-bold tabular-nums ${scoreColor(overall)}`}>{overall}</span>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">/ 100</span>
+        <span className={`text-3xl font-bold tabular-nums ${scoreColor(display)}`}>{display}</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">/ {ATS_SCORE_MAX}</span>
       </div>
     </div>
   );
@@ -62,18 +64,11 @@ export function ResumeAtsScorePanel({
 }: ResumeAtsScorePanelProps) {
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-        <div className="h-14 w-14 rounded-2xl bg-violet-500/15 flex items-center justify-center mb-4">
-          <svg className="h-6 w-6 animate-spin text-violet-500" fill="none" viewBox="0 0 24 24" aria-hidden="true">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
-        </div>
-        <p className="text-base font-semibold text-slate-900 dark:text-white">Evaluating ATS score…</p>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-sm">
-          Strict deterministic scoring against extracted job keywords — 7 pass gates required
-        </p>
-      </div>
+      <EvaluationHeroLoader
+        title="Evaluating ATS score…"
+        description="Strict deterministic scoring against extracted job keywords — 7 pass gates required"
+        accent="violet"
+      />
     );
   }
 

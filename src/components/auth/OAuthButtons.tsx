@@ -1,4 +1,9 @@
-import { getOAuthUrl } from "@/lib/auth-api";
+"use client";
+
+import { useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
+import { getGoogleOAuthUrl, type GoogleOAuthIntent } from "@/lib/auth-oauth";
 
 function GoogleIcon() {
   return (
@@ -11,31 +16,57 @@ function GoogleIcon() {
   );
 }
 
-function MicrosoftIcon() {
-  return (
-    <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" aria-hidden>
-      <path fill="#F25022" d="M1 1h10v10H1z" />
-      <path fill="#7FBA00" d="M13 1h10v10H13z" />
-      <path fill="#00A4EF" d="M1 13h10v10H1z" />
-      <path fill="#FFB900" d="M13 13h10v10H13z" />
-    </svg>
-  );
+const oauthClass =
+  "w-full inline-flex items-center justify-center gap-2 font-semibold transition-all duration-200 border border-white/10 hover:border-white/25 bg-white/[0.03] hover:bg-white/[0.06] text-white px-5 py-2.5 text-sm rounded-xl disabled:opacity-60 disabled:pointer-events-none";
+
+interface OAuthButtonsProps {
+  mode: GoogleOAuthIntent;
 }
 
-const oauthClass =
-  "w-full inline-flex items-center justify-center gap-2 font-semibold transition-all duration-200 border border-white/10 hover:border-white/25 bg-white/[0.03] hover:bg-white/[0.06] text-white px-5 py-2.5 text-sm rounded-xl";
+export default function OAuthButtons({ mode }: OAuthButtonsProps) {
+  const { logout } = useAuth();
+  const searchParams = useSearchParams();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
-export default function OAuthButtons() {
+  const label = mode === "signup" ? "Sign up with Google" : "Sign in with Google";
+
+  async function handleClick() {
+    setError("");
+    setBusy(true);
+    try {
+      if (mode === "signup") {
+        try {
+          await logout();
+        } catch {
+          // Best-effort — must not block Google signup redirect.
+        }
+      }
+
+      const next = mode === "login" ? searchParams.get("next") : null;
+      window.location.assign(getGoogleOAuthUrl({ intent: mode, next }));
+    } catch {
+      setBusy(false);
+      setError("Could not start Google sign-in. Please try again.");
+    }
+  }
+
   return (
-    <div className="space-y-3">
-      <button type="button" className={oauthClass} onClick={() => { window.location.href = getOAuthUrl("google"); }}>
+    <div className="space-y-2">
+      <button type="button" className={oauthClass} disabled={busy} onClick={() => void handleClick()}>
         <GoogleIcon />
-        Continue with Google
+        {busy ? "Redirecting to Google…" : label}
       </button>
-      <button type="button" className={oauthClass} onClick={() => { window.location.href = getOAuthUrl("microsoft"); }}>
-        <MicrosoftIcon />
-        Continue with Microsoft
-      </button>
+      {error && (
+        <p className="text-xs text-red-300" role="alert">
+          {error}
+        </p>
+      )}
+      {mode === "signup" && !busy && (
+        <p className="text-center text-[11px] text-slate-500">
+          You will choose your Google account on the next screen.
+        </p>
+      )}
     </div>
   );
 }

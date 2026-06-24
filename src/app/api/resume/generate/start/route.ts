@@ -7,31 +7,18 @@ import {
   buildResumeNdjsonStream,
   resumeNdjsonResponse,
 } from "@/lib/resume-generate-stream";
-import { saveResumeJob } from "@/lib/resume-job-store";
+import { triggerResumeBackgroundWorker } from "@/lib/resume-background-trigger";
+import { buildResumeDedupeKey } from "@/lib/resume-job-dedupe";
+import { isNetlifyRuntime } from "@/lib/netlify-runtime";
+import {
+  createJobExpiryTimestamp,
+  deleteResumeJob,
+  getActiveJobIdForDedupe,
+  linkResumeJobDedupe,
+  saveResumeJob,
+} from "@/lib/resume-job-store";
 
 export const runtime = "nodejs";
-
-function getSiteUrl(): string {
-  return (
-    process.env.URL ||
-    process.env.DEPLOY_PRIME_URL ||
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    "http://localhost:8888"
-  );
-}
-
-async function triggerBackgroundJob(jobId: string, messages: unknown[]) {
-  const response = await fetch(`${getSiteUrl()}/.netlify/functions/resume-generate-background`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jobId, messages }),
-  });
-
-  if (response.status !== 202 && !response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(detail || `Failed to start background generation (${response.status}).`);
-  }
-}
 
 export async function POST(req: Request) {
   let body: ResumeGenerateRequest;
@@ -44,27 +31,61 @@ export async function POST(req: Request) {
   try {
     const prep = await prepareResumeGeneration(body);
 
-    if (process.env.NETLIFY === "true") {
+    if (isNetlifyRuntime()) {
+      const dedupeKey = buildResumeDedupeKey(body);
+      const existingJobId = await getActiveJobIdForDedupe(dedupeKey);
+      if (existingJobId) {
+        return Response.json({
+          mode: "async",
+          jobId: existingJobId,
+          templateName: prep.templateName,
+          triggered: true,
+          reused: true,
+        });
+      }
+
       const jobId = randomUUID();
+      const createdAt = Date.now();
+      const expiresAt = createJobExpiryTimestamp(createdAt);
       const mergeContext = {
         existingExperiences: prep.existingExperiences,
         headerTitle: prep.headerTitle,
       };
 
-      await saveResumeJob(jobId, {
-        status: "pending",
+      const pendingJob = {
+        status: "pending" as const,
         templateName: prep.templateName,
         mergeContext,
-        createdAt: Date.now(),
-      });
+        messages: prep.messages,
+        createdAt,
+        expiresAt,
+        dedupeKey,
+      };
 
-      await triggerBackgroundJob(jobId, prep.messages);
+      await saveResumeJob(jobId, pendingJob);
+      await linkResumeJobDedupe(dedupeKey, jobId, expiresAt);
+
+      try {
+        await triggerResumeBackgroundWorker(jobId);
+        await saveResumeJob(jobId, {
+          ...pendingJob,
+          triggerStartedAt: Date.now(),
+        });
+      } catch (triggerErr) {
+        await deleteResumeJob(jobId, dedupeKey);
+        const message =
+          triggerErr instanceof Error
+            ? triggerErr.message
+            : "Failed to start background resume generation.";
+        return Response.json({ error: message }, { status: 502 });
+      }
 
       return Response.json({
         mode: "async",
         jobId,
         templateName: prep.templateName,
-        mergeContext,
+        triggered: true,
+        reused: false,
       });
     }
 

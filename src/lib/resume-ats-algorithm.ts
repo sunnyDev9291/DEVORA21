@@ -1,7 +1,26 @@
 import type { AtsPassGate, AtsScoreBreakdown, AtsScoreResult, GeneratedResumeContent } from "@/lib/resume-types";
 import { keywordPresentInText, normalizeForMatch, type JobKeywords } from "@/lib/resume-ats-keywords";
 
-export const ATS_PASS_THRESHOLD = 97;
+/** Hard cap for displayed and stored ATS scores. */
+export const ATS_SCORE_MAX = 100;
+
+/** Pass threshold on the 0–100 scale (after estimation index is applied). */
+export const ATS_PASS_THRESHOLD = 95;
+
+/** Category weights — must sum to {@link ATS_SCORE_MAX}. */
+const SCORE_MAX = {
+  mustHave: 28,
+  niceToHave: 9,
+  title: 14,
+  skills: 14,
+  experience: 18,
+  summary: 9,
+  format: 8,
+};
+
+/** Uplift applied after raw category sum so good drafts score closer to real ATS tools. */
+const ATS_ESTIMATION_MULTIPLIER = 1.06;
+const ATS_ESTIMATION_BOOST = 5;
 
 export type StrictAtsComputation = {
   breakdown: AtsScoreBreakdown[];
@@ -21,6 +40,10 @@ const METRIC_PATTERN = /\d+\s*%|\d+[kKmM]\+?|\$\d|(?:by|to|from)\s+\d+/;
 
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, Math.round(n)));
+}
+
+function finalizeAtsOverall(raw: number): number {
+  return clamp(raw * ATS_ESTIMATION_MULTIPLIER + ATS_ESTIMATION_BOOST, 0, ATS_SCORE_MAX);
 }
 
 function pct(n: number, d: number): number {
@@ -45,7 +68,7 @@ function scoreMustHaveKeywords(
   keywords: JobKeywords,
   resumeText: string
 ): { score: number; matched: string[]; missing: string[]; coverage: number; notes: string } {
-  const max = 30;
+  const max = SCORE_MAX.mustHave;
   const list = keywords.mustHave;
   if (list.length === 0) {
     return { score: max, matched: [], missing: [], coverage: 1, notes: "No must-have keywords extracted from JD." };
@@ -56,10 +79,11 @@ function scoreMustHaveKeywords(
   const coverage = pct(matched.length, list.length);
 
   let score = coverage * max;
-  if (coverage < 0.95) score = Math.min(score, 28);
-  if (coverage < 0.85) score = Math.min(score, 24);
-  if (coverage < 0.7) score = Math.min(score, 18);
-  if (coverage < 0.5) score = Math.min(score, 10);
+  if (coverage >= 0.92) score = Math.min(max, score + 2);
+  if (coverage < 0.88) score = Math.min(score, max - 2);
+  if (coverage < 0.78) score = Math.min(score, max - 5);
+  if (coverage < 0.62) score = Math.min(score, max - 10);
+  if (coverage < 0.45) score = Math.min(score, max - 16);
 
   return {
     score: clamp(score, 0, max),
@@ -74,7 +98,7 @@ function scoreNiceToHaveKeywords(
   keywords: JobKeywords,
   resumeText: string
 ): { score: number; matched: string[]; coverage: number; notes: string } {
-  const max = 10;
+  const max = SCORE_MAX.niceToHave;
   const list = keywords.niceToHave;
   if (list.length === 0) {
     return { score: max, matched: [], coverage: 1, notes: "No nice-to-have keywords in JD." };
@@ -83,7 +107,8 @@ function scoreNiceToHaveKeywords(
   const matched = list.filter((k) => keywordPresentInText(k, resumeText));
   const coverage = pct(matched.length, list.length);
   let score = coverage * max;
-  if (coverage < 0.5) score = Math.min(score, 4);
+  if (coverage >= 0.75) score = Math.min(max, score + 1);
+  if (coverage < 0.45) score = Math.min(score, max - 2);
 
   return {
     score: clamp(score, 0, max),
@@ -98,7 +123,7 @@ function scoreTitleAlignment(
   resumeTitle: string,
   roleKeywords: string[]
 ): { score: number; notes: string } {
-  const max = 15;
+  const max = SCORE_MAX.title;
   if (!resumeTitle.trim()) return { score: 0, notes: "Resume title is empty." };
 
   const target = normalizeForMatch(targetTitle || roleKeywords.join(" "));
@@ -107,7 +132,7 @@ function scoreTitleAlignment(
     .map((t) => normalizeForMatch(t))
     .filter((t) => t.length > 2);
 
-  if (tokens.length === 0) return { score: 10, notes: "Title present; no target title to compare." };
+  if (tokens.length === 0) return { score: Math.round(max * 0.75), notes: "Title present; no target title to compare." };
 
   const matched = tokens.filter((t) => resume.includes(t));
   const ratio = pct(matched.length, tokens.length);
@@ -116,10 +141,11 @@ function scoreTitleAlignment(
   const targetSenior = seniority.find((s) => target.includes(s));
   const resumeSenior = seniority.find((s) => resume.includes(s));
   let penalty = 0;
-  if (targetSenior && resumeSenior && targetSenior !== resumeSenior) penalty += 5;
+  if (targetSenior && resumeSenior && targetSenior !== resumeSenior) penalty += 3;
 
   let score = ratio * max - penalty;
-  if (ratio < 0.5) score = Math.min(score, 6);
+  if (ratio >= 0.75) score = Math.min(max, score + 1);
+  if (ratio < 0.45) score = Math.min(score, max - 4);
 
   return {
     score: clamp(score, 0, max),
@@ -128,7 +154,7 @@ function scoreTitleAlignment(
 }
 
 function scoreSkillsLine(keywords: JobKeywords, skills: string): { score: number; notes: string } {
-  const max = 15;
+  const max = SCORE_MAX.skills;
   const must = keywords.mustHave;
   if (must.length === 0) return { score: max, notes: "Skills line present." };
 
@@ -136,9 +162,10 @@ function scoreSkillsLine(keywords: JobKeywords, skills: string): { score: number
   const coverage = pct(inSkills.length, must.length);
 
   let score = coverage * max;
-  if (coverage < 0.6) score = Math.min(score, 8);
+  if (coverage >= 0.85) score = Math.min(max, score + 1);
+  if (coverage < 0.55) score = Math.min(score, max - 4);
   if (!skills.includes(",") && skills.split(/\s+/).length > 6) {
-    score = Math.max(0, score - 2);
+    score = Math.max(0, score - 1);
   }
 
   return {
@@ -151,13 +178,13 @@ function scoreExperienceEvidence(
   keywords: JobKeywords,
   content: GeneratedResumeContent
 ): { score: number; notes: string } {
-  const max = 20;
+  const max = SCORE_MAX.experience;
   const bullets = allBullets(content);
   if (bullets.length === 0) return { score: 0, notes: "No experience bullets." };
 
   const must = keywords.mustHave;
   const bulletsWithMust = bullets.filter((b) => must.some((k) => keywordPresentInText(k, b)));
-  const mustCoverage = must.length ? pct(bulletsWithMust.length, Math.max(bullets.length * 0.5, 1)) : 1;
+  const mustCoverage = must.length ? pct(bulletsWithMust.length, Math.max(bullets.length * 0.45, 1)) : 1;
 
   const withMetrics = bullets.filter((b) => METRIC_PATTERN.test(b));
   const metricRatio = pct(withMetrics.length, bullets.length);
@@ -168,11 +195,12 @@ function scoreExperienceEvidence(
   });
   const respRatio = keywords.responsibilities.length
     ? pct(respMatch.length, keywords.responsibilities.length)
-    : 0.7;
+    : 0.75;
 
-  let score = mustCoverage * 10 + metricRatio * 6 + respRatio * 4;
-  if (metricRatio < 0.3) score = Math.min(score, 12);
-  if (mustCoverage < 0.4 && must.length > 0) score = Math.min(score, 10);
+  let score = mustCoverage * 9 + metricRatio * 5.5 + respRatio * 3.5;
+  if (metricRatio >= 0.35) score = Math.min(max, score + 1);
+  if (metricRatio < 0.25) score = Math.min(score, max - 4);
+  if (mustCoverage < 0.35 && must.length > 0) score = Math.min(score, max - 6);
 
   return {
     score: clamp(score, 0, max),
@@ -184,19 +212,20 @@ function scoreSummaryQuality(
   keywords: JobKeywords,
   summary: string
 ): { score: number; notes: string } {
-  const max = 10;
+  const max = SCORE_MAX.summary;
   if (!summary.trim()) return { score: 0, notes: "Summary is empty." };
 
   let score = max;
   const words = summary.split(/\s+/).length;
 
-  if (words < 25) score -= 3;
-  if (words > 120) score -= 2;
-  if (FIRST_PERSON.test(summary)) score -= 4;
+  if (words < 22) score -= 2;
+  if (words > 130) score -= 1;
+  if (FIRST_PERSON.test(summary)) score -= 3;
 
   const mustHits = keywords.mustHave.filter((k) => keywordPresentInText(k, summary)).length;
-  if (keywords.mustHave.length > 0 && mustHits === 0) score -= 3;
-  if (mustHits >= 2) score = Math.min(max, score + 1);
+  if (keywords.mustHave.length > 0 && mustHits === 0) score -= 2;
+  if (mustHits >= 2) score = Math.min(max, score + 2);
+  if (mustHits >= 1) score = Math.min(max, score + 1);
 
   return {
     score: clamp(score, 0, max),
@@ -210,7 +239,7 @@ function scoreFormatCompliance(content: GeneratedResumeContent): {
   verbRatio: number;
   issues: string[];
 } {
-  const max = 10;
+  const max = SCORE_MAX.format;
   const bullets = allBullets(content);
   const issues: string[] = [];
 
@@ -218,7 +247,7 @@ function scoreFormatCompliance(content: GeneratedResumeContent): {
 
   const verbStarts = bullets.filter((b) => ACTION_VERBS.test(b.trim())).length;
   const verbRatio = pct(verbStarts, bullets.length);
-  if (verbRatio < 0.8) issues.push(`${Math.round(verbRatio * 100)}% bullets start with action verbs (need 80%+)`);
+  if (verbRatio < 0.75) issues.push(`${Math.round(verbRatio * 100)}% bullets start with action verbs (target 75%+)`);
 
   const emDash = bullets.filter((b) => /—/.test(b)).length;
   if (emDash > 0) issues.push(`${emDash} bullet(s) contain em-dash (—)`);
@@ -230,11 +259,12 @@ function scoreFormatCompliance(content: GeneratedResumeContent): {
   if (bracketStyle > 0) issues.push(`${bracketStyle} bullet(s) use bracket-prefix style`);
 
   let score = max;
-  if (verbRatio < 0.8) score -= (0.8 - verbRatio) * 10;
-  if (verbRatio < 0.6) score -= 2;
-  score -= emDash * 1.5;
-  score -= firstPersonBullets * 2;
-  score -= bracketStyle * 2;
+  if (verbRatio < 0.75) score -= (0.75 - verbRatio) * 8;
+  if (verbRatio < 0.55) score -= 1;
+  score -= emDash * 1;
+  score -= firstPersonBullets * 1.5;
+  score -= bracketStyle * 1.5;
+  if (verbRatio >= 0.85) score = Math.min(max, score + 1);
 
   return {
     score: clamp(score, 0, max),
@@ -260,16 +290,17 @@ export function computeStrictAtsScore(
   const format = scoreFormatCompliance(content);
 
   const breakdown: AtsScoreBreakdown[] = [
-    { category: "Must-have keywords", score: must.score, maxScore: 30, notes: must.notes },
-    { category: "Nice-to-have keywords", score: nice.score, maxScore: 10, notes: nice.notes },
-    { category: "Title alignment", score: title.score, maxScore: 15, notes: title.notes },
-    { category: "Skills line coverage", score: skills.score, maxScore: 15, notes: skills.notes },
-    { category: "Experience evidence", score: experience.score, maxScore: 20, notes: experience.notes },
-    { category: "Summary quality", score: summary.score, maxScore: 10, notes: summary.notes },
-    { category: "ATS format compliance", score: format.score, maxScore: 10, notes: format.notes },
+    { category: "Must-have keywords", score: must.score, maxScore: SCORE_MAX.mustHave, notes: must.notes },
+    { category: "Nice-to-have keywords", score: nice.score, maxScore: SCORE_MAX.niceToHave, notes: nice.notes },
+    { category: "Title alignment", score: title.score, maxScore: SCORE_MAX.title, notes: title.notes },
+    { category: "Skills line coverage", score: skills.score, maxScore: SCORE_MAX.skills, notes: skills.notes },
+    { category: "Experience evidence", score: experience.score, maxScore: SCORE_MAX.experience, notes: experience.notes },
+    { category: "Summary quality", score: summary.score, maxScore: SCORE_MAX.summary, notes: summary.notes },
+    { category: "ATS format compliance", score: format.score, maxScore: SCORE_MAX.format, notes: format.notes },
   ];
 
-  const overall = breakdown.reduce((s, b) => s + b.score, 0);
+  const rawOverall = breakdown.reduce((s, b) => s + b.score, 0);
+  const overall = finalizeAtsOverall(rawOverall);
   const matchedKeywords = unique([...must.matched, ...nice.matched]);
   const missingKeywords = must.missing.slice(0, 12);
 
@@ -277,31 +308,31 @@ export function computeStrictAtsScore(
     {
       name: `Overall score ≥ ${ATS_PASS_THRESHOLD}`,
       passed: overall >= ATS_PASS_THRESHOLD,
-      detail: `Score: ${overall}/100`,
+      detail: `Score: ${overall}/${ATS_SCORE_MAX}`,
     },
     {
-      name: "Must-have keyword coverage ≥ 95%",
-      passed: must.coverage >= 0.95 || keywords.mustHave.length === 0,
+      name: "Must-have keyword coverage ≥ 90%",
+      passed: must.coverage >= 0.9 || keywords.mustHave.length === 0,
       detail: `${Math.round(must.coverage * 100)}% (${must.matched.length}/${keywords.mustHave.length || "—"})`,
     },
     {
-      name: "Title alignment ≥ 12/15",
-      passed: title.score >= 12,
-      detail: `${title.score}/15`,
+      name: `Title alignment ≥ ${Math.round(SCORE_MAX.title * 0.72)}/${SCORE_MAX.title}`,
+      passed: title.score >= Math.round(SCORE_MAX.title * 0.72),
+      detail: `${title.score}/${SCORE_MAX.title}`,
     },
     {
-      name: "Skills line ≥ 10/15",
-      passed: skills.score >= 10,
-      detail: `${skills.score}/15`,
+      name: `Skills line ≥ ${Math.round(SCORE_MAX.skills * 0.65)}/${SCORE_MAX.skills}`,
+      passed: skills.score >= Math.round(SCORE_MAX.skills * 0.65),
+      detail: `${skills.score}/${SCORE_MAX.skills}`,
     },
     {
-      name: "Experience evidence ≥ 14/20",
-      passed: experience.score >= 14,
-      detail: `${experience.score}/20`,
+      name: `Experience evidence ≥ ${Math.round(SCORE_MAX.experience * 0.65)}/${SCORE_MAX.experience}`,
+      passed: experience.score >= Math.round(SCORE_MAX.experience * 0.65),
+      detail: `${experience.score}/${SCORE_MAX.experience}`,
     },
     {
-      name: "80%+ bullets start with action verbs",
-      passed: format.verbRatio >= 0.8,
+      name: "75%+ bullets start with action verbs",
+      passed: format.verbRatio >= 0.75,
       detail: `${Math.round(format.verbRatio * 100)}%`,
     },
     {
@@ -333,33 +364,33 @@ export function buildStrictRecommendations(
 ): string[] {
   const recs: string[] = [];
 
-  if (computation.mustHaveCoverage < 0.95 && keywords.mustHave.length > 0) {
+  if (computation.mustHaveCoverage < 0.9 && keywords.mustHave.length > 0) {
     const top = computation.missingKeywords.slice(0, 4);
     recs.push(`Add must-have keywords to skills and bullets: ${top.join(", ")}.`);
   }
 
   const titleBreakdown = computation.breakdown.find((b) => b.category === "Title alignment");
-  if (titleBreakdown && titleBreakdown.score < 12) {
+  if (titleBreakdown && titleBreakdown.score < Math.round(SCORE_MAX.title * 0.72)) {
     recs.push(`Align resume title with target role — include seniority and core stack from the job title.`);
   }
 
   const skillsBreakdown = computation.breakdown.find((b) => b.category === "Skills line coverage");
-  if (skillsBreakdown && skillsBreakdown.score < 10) {
+  if (skillsBreakdown && skillsBreakdown.score < Math.round(SCORE_MAX.skills * 0.65)) {
     recs.push(`Front-load the skillsets line with must-have JD technologies (bold priority terms first).`);
   }
 
   const expBreakdown = computation.breakdown.find((b) => b.category === "Experience evidence");
-  if (expBreakdown && expBreakdown.score < 14) {
+  if (expBreakdown && expBreakdown.score < Math.round(SCORE_MAX.experience * 0.65)) {
     recs.push(`Add quantified metrics (%, time saved, scale) and weave must-have tech into more bullets.`);
   }
 
   const summaryBreakdown = computation.breakdown.find((b) => b.category === "Summary quality");
-  if (summaryBreakdown && summaryBreakdown.score < 8) {
+  if (summaryBreakdown && summaryBreakdown.score < Math.round(SCORE_MAX.summary * 0.75)) {
     recs.push(`Expand summary to 2–4 sentences with must-have keywords; remove first-person pronouns.`);
   }
 
   const formatBreakdown = computation.breakdown.find((b) => b.category === "ATS format compliance");
-  if (formatBreakdown && formatBreakdown.score < 8) {
+  if (formatBreakdown && formatBreakdown.score < Math.round(SCORE_MAX.format * 0.75)) {
     recs.push(`Rewrite bullets to start with strong past-tense verbs; remove em-dashes and bracket prefixes.`);
   }
 
@@ -380,10 +411,10 @@ export function buildStrictSummary(
   passed: boolean
 ): string {
   if (passed) {
-    return `Strict ATS evaluation passed (${computation.overall}/100) — must-have coverage, title, skills, and format meet the ${ATS_PASS_THRESHOLD}% bar.`;
+    return `Strict ATS evaluation passed (${computation.overall}/${ATS_SCORE_MAX}) — must-have coverage, title, skills, and format meet the ${ATS_PASS_THRESHOLD}% bar.`;
   }
   const failed = computation.gates.filter((g) => !g.passed).map((g) => g.name);
-  return `Score ${computation.overall}/100 — failed ${failed.length} gate(s): ${failed.slice(0, 2).join("; ")}${failed.length > 2 ? "…" : ""}.`;
+  return `Score ${computation.overall}/${ATS_SCORE_MAX} — failed ${failed.length} gate(s): ${failed.slice(0, 2).join("; ")}${failed.length > 2 ? "…" : ""}.`;
 }
 
 export function toAtsScoreResult(
@@ -392,7 +423,7 @@ export function toAtsScoreResult(
 ): AtsScoreResult {
   const passed = computation.gates.every((g) => g.passed);
   return {
-    overall: computation.overall,
+    overall: clamp(computation.overall, 0, ATS_SCORE_MAX),
     passed,
     breakdown: computation.breakdown,
     matchedKeywords: computation.matchedKeywords.slice(0, 15),

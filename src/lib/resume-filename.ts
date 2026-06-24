@@ -1,11 +1,101 @@
 import type { GeneratedResumeContent } from "@/lib/resume-types";
 
+function stripMarkdownBold(value: string): string {
+  return value.replace(/\*\*/g, "").trim();
+}
+
 function slugifyJobTitle(jobTitle: string): string {
   return jobTitle
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
+}
+
+function sanitizeResumeFileBaseName(name: string): string {
+  return name
+    .replace(/\*\*/g, "")
+    .replace(/[\\/:*?"<>|]/g, "")
+    .replace(/_{2,}/g, "_")
+    .replace(/,\s*,+/g, ",")
+    .replace(/,\s*$/g, "")
+    .replace(/^\s*,/g, "")
+    .trim();
+}
+
+/** Lines like `Resume file name : Franco Torrez_Senior Software Engineer_{first main skill},…` */
+export function extractResumeFileNamePatternFromPrompt(customPrompt: string): string | null {
+  const match = customPrompt.match(
+    /(?:^|\n)\s*resume\s+file\s*name\s*:\s*(.+?)(?:\s*$|\s*\n)/im
+  );
+  return match?.[1]?.trim() || null;
+}
+
+function parseSkillTokens(skills: string): string[] {
+  return skills
+    .split(/[,;]/)
+    .map((s) => stripMarkdownBold(s))
+    .map((s) => s.replace(/[\\/:*?"<>|]/g, "").trim())
+    .filter(Boolean);
+}
+
+/** Up to three main skills — title pipe segments first, then skills field. */
+export function extractMainSkillsFromContent(
+  title: string,
+  skills: string
+): [string, string, string] {
+  const pipeParts = title
+    .split("|")
+    .map((s) => stripMarkdownBold(s.trim()))
+    .filter(Boolean);
+
+  const collected: string[] = [];
+  if (pipeParts.length > 1) {
+    collected.push(...pipeParts.slice(1));
+  }
+
+  for (const skill of parseSkillTokens(skills)) {
+    if (collected.length >= 3) break;
+    if (!collected.some((s) => s.toLowerCase() === skill.toLowerCase())) {
+      collected.push(skill);
+    }
+  }
+
+  return [collected[0] ?? "", collected[1] ?? "", collected[2] ?? ""];
+}
+
+export function resolveResumeFileNameFromPrompt(
+  pattern: string,
+  context: {
+    jobTitle: string;
+    content: Pick<GeneratedResumeContent, "title" | "skills">;
+  }
+): string {
+  const [firstSkill, secondSkill, thirdSkill] = extractMainSkillsFromContent(
+    context.content.title,
+    context.content.skills
+  );
+  const titleHeadline =
+    stripMarkdownBold(context.content.title.split("|")[0]?.trim() ?? "") ||
+    context.jobTitle.trim();
+
+  const replacements: Array<[RegExp, string]> = [
+    [/\{\s*first\s+main\s+skill\s*\}/gi, firstSkill],
+    [/\{\s*second\s+main\s+skill\s*\}/gi, secondSkill],
+    [/\{\s*third\s+main\s+skill\s*\}/gi, thirdSkill],
+    [/\{\s*first\s+skill\s*\}/gi, firstSkill],
+    [/\{\s*second\s+skill\s*\}/gi, secondSkill],
+    [/\{\s*third\s+skill\s*\}/gi, thirdSkill],
+    [/\{\s*job\s+title\s*\}/gi, context.jobTitle.trim() || titleHeadline],
+    [/\{\s*resume\s+title\s*\}/gi, titleHeadline],
+  ];
+
+  let resolved = pattern;
+  for (const [regex, value] of replacements) {
+    resolved = resolved.replace(regex, value);
+  }
+
+  return sanitizeResumeFileBaseName(resolved);
 }
 
 /** Skills from resume title pipes, or fall back to the skillsets field. */
@@ -35,8 +125,18 @@ export function extractResumeTitleSkills(
 export function buildExpectedResumeBaseName(
   templateName: string,
   jobTitle: string,
-  content: Pick<GeneratedResumeContent, "title" | "skills">
+  content: Pick<GeneratedResumeContent, "title" | "skills">,
+  customPrompt?: string
 ): string {
+  const pattern = customPrompt?.trim()
+    ? extractResumeFileNamePatternFromPrompt(customPrompt)
+    : null;
+
+  if (pattern) {
+    const fromPrompt = resolveResumeFileNameFromPrompt(pattern, { jobTitle, content });
+    if (fromPrompt) return fromPrompt;
+  }
+
   const name = templateName.trim().replace(/[^a-zA-Z0-9_-]/g, "") || "resume";
   const role = slugifyJobTitle(jobTitle) || "role";
   const skillPart = extractResumeTitleSkills(content.title, content.skills);
@@ -47,7 +147,8 @@ export function buildExpectedResumeBaseName(
 export function buildExpectedResumeFileName(
   templateName: string,
   jobTitle: string,
-  content: Pick<GeneratedResumeContent, "title" | "skills">
+  content: Pick<GeneratedResumeContent, "title" | "skills">,
+  customPrompt?: string
 ): string {
-  return `${buildExpectedResumeBaseName(templateName, jobTitle, content)}.docx`;
+  return `${buildExpectedResumeBaseName(templateName, jobTitle, content, customPrompt)}.docx`;
 }

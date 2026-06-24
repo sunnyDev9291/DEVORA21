@@ -1,24 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import AuthLayout, { AuthDivider, AuthFooterLink } from "@/components/auth/AuthLayout";
-import OAuthButtons from "@/components/auth/OAuthButtons";
+import GoogleOAuthSection from "@/components/auth/GoogleOAuthSection";
 import AuthInput from "@/components/auth/AuthInput";
 import Button from "@/components/ui/Button";
 import { GuestGuard } from "@/components/auth/AuthGuard";
 import { useAuth } from "@/context/AuthContext";
-import { getApiErrorMessage } from "@/lib/auth-api";
+import { getLoginErrorMessage, isGoogleAccountAuthError } from "@/lib/auth-password";
+import { getPostAuthRedirectPath } from "@/lib/auth-redirect";
 import { AUTH_LINKS } from "@/lib/constants";
 import { loginSchema, type LoginFormValues } from "@/lib/auth-schemas";
 
-export default function LoginPage() {
+function LoginForm() {
   const { login } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [serverError, setServerError] = useState("");
+  const [isGoogleAccount, setIsGoogleAccount] = useState(false);
 
   const {
     register,
@@ -26,50 +29,82 @@ export default function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "", password: "" },
+    defaultValues: { email: "", password: "", rememberMe: true },
   });
 
   const onSubmit = async (values: LoginFormValues) => {
     setServerError("");
+    setIsGoogleAccount(false);
     try {
-      await login(values.email, values.password);
-      router.replace(AUTH_LINKS.dashboard);
+      const user = await login(values.email, values.password, values.rememberMe ?? true);
+      router.replace(getPostAuthRedirectPath(user, searchParams.get("next")));
     } catch (error) {
-      setServerError(getApiErrorMessage(error, "Login failed. Please try again."));
+      setIsGoogleAccount(isGoogleAccountAuthError(error));
+      setServerError(getLoginErrorMessage(error));
     }
   };
 
   return (
+    <AuthLayout
+      title="Welcome back"
+      subtitle="Sign in with Google, or use email below"
+      footer={
+        <>
+          Don&apos;t have an account? <AuthFooterLink href={AUTH_LINKS.register}>Create one</AuthFooterLink>
+        </>
+      }
+    >
+      <GoogleOAuthSection mode="login" page="login" />
+      <AuthDivider />
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
+        {serverError && (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300" role="alert">
+            {serverError}
+            {isGoogleAccount && (
+              <p className="mt-2 text-xs text-red-200">
+                Use the <span className="font-semibold">Sign in with Google</span> button above.
+              </p>
+            )}
+          </div>
+        )}
+        <AuthInput label="Email" type="email" autoComplete="email" placeholder="you@example.com" error={errors.email?.message} {...register("email")} />
+        <AuthInput label="Password" type="password" autoComplete="current-password" placeholder="••••••••" error={errors.password?.message} {...register("password")} />
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 rounded border-white/20 bg-navy-900 text-blue-500 focus:ring-blue-500/40"
+            {...register("rememberMe")}
+          />
+          <span className="text-sm text-slate-300">
+            Keep me signed in for 30 days
+            <span className="mt-0.5 block text-xs text-slate-500">Recommended on your personal device</span>
+          </span>
+        </label>
+        <div className="flex justify-end">
+          <Link href={AUTH_LINKS.forgotPassword} className="text-sm text-blue-400 hover:text-blue-300">
+            Forgot password?
+          </Link>
+        </div>
+        <Button type="submit" className="w-full" disabled={isSubmitting}>
+          {isSubmitting ? "Signing in…" : "Sign in with email"}
+        </Button>
+      </form>
+    </AuthLayout>
+  );
+}
+
+export default function LoginPage() {
+  return (
     <GuestGuard>
-      <AuthLayout
-        title="Welcome back"
-        subtitle="Sign in to your Devora21 account"
-        footer={
-          <>
-            Don&apos;t have an account? <AuthFooterLink href={AUTH_LINKS.register}>Create one</AuthFooterLink>
-          </>
+      <Suspense
+        fallback={
+          <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center bg-navy-950">
+            <div className="h-10 w-10 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+          </div>
         }
       >
-        <OAuthButtons />
-        <AuthDivider />
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
-          {serverError && (
-            <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300" role="alert">
-              {serverError}
-            </div>
-          )}
-          <AuthInput label="Email" type="email" autoComplete="email" placeholder="you@example.com" error={errors.email?.message} {...register("email")} />
-          <AuthInput label="Password" type="password" autoComplete="current-password" placeholder="••••••••" error={errors.password?.message} {...register("password")} />
-          <div className="flex justify-end">
-            <Link href={AUTH_LINKS.forgotPassword} className="text-sm text-blue-400 hover:text-blue-300">
-              Forgot password?
-            </Link>
-          </div>
-          <Button type="submit" className="w-full" disabled={isSubmitting}>
-            {isSubmitting ? "Signing in…" : "Sign in"}
-          </Button>
-        </form>
-      </AuthLayout>
+        <LoginForm />
+      </Suspense>
     </GuestGuard>
   );
 }

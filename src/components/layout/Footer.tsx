@@ -116,7 +116,7 @@ export default function Footer() {
 
         <div className="pt-8 border-t border-white/[0.06] flex flex-col sm:flex-row items-center justify-between gap-3">
           <p className="text-slate-500 dark:text-slate-600 text-sm">
-            <small>© {new Date().getFullYear()} Devora21. All rights reserved.</small>
+            <small>© 2026 Devora21. All rights reserved.</small>
           </p>
           <p className="text-slate-400 dark:text-slate-700 text-sm">
             <small>Built for engineers, by engineers.</small>

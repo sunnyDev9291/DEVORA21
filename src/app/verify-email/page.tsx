@@ -2,14 +2,19 @@
 
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import AuthLayout from "@/components/auth/AuthLayout";
 import Button from "@/components/ui/Button";
+import { useAuth } from "@/context/AuthContext";
 import { authApi, getApiErrorMessage } from "@/lib/auth-api";
 import { AUTH_LINKS } from "@/lib/constants";
+import { getPostAuthRedirectPath } from "@/lib/auth-redirect";
 import { useSearchParams } from "next/navigation";
 
 function VerifyEmailContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const { user, refreshUser, markEmailVerified } = useAuth();
   const token = searchParams.get("token") ?? "";
   const [state, setState] = useState<"loading" | "success" | "error">("loading");
   const [message, setMessage] = useState("");
@@ -25,8 +30,11 @@ function VerifyEmailContent() {
 
     authApi
       .verifyEmail(token)
-      .then(({ data }) => {
+      .then(async ({ data }) => {
         if (!cancelled) {
+          markEmailVerified();
+          await refreshUser();
+          markEmailVerified();
           setState("success");
           setMessage(data.message || "Your email has been verified successfully.");
         }
@@ -41,7 +49,7 @@ function VerifyEmailContent() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, refreshUser, markEmailVerified]);
 
   return (
     <AuthLayout
@@ -59,9 +67,13 @@ function VerifyEmailContent() {
         {state === "success" && (
           <>
             <p className="text-sm text-slate-300">{message}</p>
-            <Link href={AUTH_LINKS.dashboard}>
-              <Button className="w-full">Go to dashboard</Button>
-            </Link>
+            <Button
+              type="button"
+              className="w-full"
+              onClick={() => router.replace(user ? getPostAuthRedirectPath(user) : AUTH_LINKS.onboarding)}
+            >
+              Continue setup
+            </Button>
           </>
         )}
         {state === "error" && (

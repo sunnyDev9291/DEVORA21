@@ -4,7 +4,7 @@ import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import SkipLink from "@/components/layout/SkipLink";
-import ChatWidgets from "@/components/ui/ChatWidgets";
+import DeferredChatWidgets from "@/components/layout/DeferredChatWidgets";
 import ThemeProvider from "@/providers/ThemeProvider";
 import { AuthProvider } from "@/context/AuthContext";
 import JsonLd from "@/components/seo/JsonLd";
@@ -63,8 +63,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="scroll-smooth dark">
-      <body className={`${inter.className} bg-slate-50 dark:bg-navy-950 text-slate-900 dark:text-slate-100 transition-colors duration-300`}>
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem("theme");if(t==="light")document.documentElement.classList.remove("dark");else document.documentElement.classList.add("dark");}catch(e){}})();`,
+          }}
+        />
+      </head>
+      <body className={`${inter.className} bg-slate-50 dark:bg-navy-950 text-slate-900 dark:text-slate-100`}>
         <JsonLd data={[organizationJsonLd(), websiteJsonLd()]} />
         <ThemeProvider>
           <AuthProvider>
@@ -72,7 +79,7 @@ export default function RootLayout({
             <Navbar />
             <main id="main-content">{children}</main>
             <Footer />
-            <ChatWidgets />
+            <DeferredChatWidgets />
           </AuthProvider>
         </ThemeProvider>
       </body>

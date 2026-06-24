@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { APP_FEATURES, AUTH_LINKS, CONTACT_INFO } from "@/lib/constants";
 import { useAuth } from "@/context/AuthContext";
 import { getApiErrorMessage } from "@/lib/auth-api";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 function ResumeIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
@@ -41,7 +41,7 @@ const mobileAccentClasses = {
   violet: "border-violet-500/25 bg-violet-500/[0.06] hover:border-violet-500/40 hover:bg-violet-500/[0.1]",
 } as const;
 
-const features = [
+const allFeatures = [
   { key: "resume" as const, ...APP_FEATURES.resume },
   { key: "realTimeInterview" as const, ...APP_FEATURES.realTimeInterview },
 ];
@@ -54,8 +54,24 @@ interface NavbarActionsProps {
 export default function NavbarActions({ variant, onNavigate }: NavbarActionsProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { isAuthenticated, isLoading, logout } = useAuth();
+  const { user, isAuthenticated, isLoading, isEmailVerified, isResumeBuilderEnabled, logout } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const features = useMemo(
+    () =>
+      isResumeBuilderEnabled
+        ? allFeatures
+        : allFeatures.filter((feature) => feature.key !== "resume"),
+    [isResumeBuilderEnabled],
+  );
+
+  const userInitial =
+    (user?.name || user?.email || "U")
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? "")
+      .join("") || "U";
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -69,19 +85,27 @@ export default function NavbarActions({ variant, onNavigate }: NavbarActionsProp
     }
   };
 
+  const protectedHref = (href: string) =>
+    isAuthenticated && !isEmailVerified ? AUTH_LINKS.verifyEmailPending : href;
+
   const authButtonsDesktop = isLoading ? (
     <div className="h-9 w-24 animate-pulse rounded-xl bg-slate-200/50 dark:bg-white/[0.06]" aria-hidden />
   ) : isAuthenticated ? (
     <>
       <Link
-        href={AUTH_LINKS.dashboard}
-        className={`inline-flex items-center px-3.5 py-2 rounded-xl text-xs xl:text-sm font-semibold transition-all duration-200 whitespace-nowrap ${
+        href={protectedHref(AUTH_LINKS.dashboard)}
+        className={`hidden lg:inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs xl:text-sm font-semibold transition-all duration-200 whitespace-nowrap ${
           pathname === AUTH_LINKS.dashboard
             ? "text-blue-600 dark:text-blue-300 bg-blue-500/10"
             : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-white/[0.06]"
         }`}
+        title={isEmailVerified ? "Account dashboard" : "Verify email to open dashboard"}
       >
-        Dashboard
+        <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-500/15 text-[10px] font-bold text-blue-600 dark:text-blue-300">
+          {userInitial}
+        </span>
+        <span className="hidden xl:inline max-w-[8rem] truncate">{user?.name?.split(" ")[0] ?? "Dashboard"}</span>
+        <span className="xl:hidden">Dashboard</span>
       </Link>
       <button
         type="button"
@@ -125,9 +149,9 @@ export default function NavbarActions({ variant, onNavigate }: NavbarActionsProp
             return (
               <Link
                 key={feature.key}
-                href={feature.href}
+                href={protectedHref(feature.href)}
                 aria-current={isActive ? "page" : undefined}
-                title={feature.label}
+                title={isEmailVerified ? feature.label : "Verify email to use this tool"}
                 className={`inline-flex items-center gap-1.5 px-2.5 xl:px-3.5 py-2 rounded-lg text-xs xl:text-sm font-semibold transition-all duration-200 ${
                   isActive ? toolActiveClasses[accent] : toolIdleClasses
                 }`}
@@ -166,11 +190,11 @@ export default function NavbarActions({ variant, onNavigate }: NavbarActionsProp
         ) : isAuthenticated ? (
           <>
             <Link
-              href={AUTH_LINKS.dashboard}
+              href={protectedHref(AUTH_LINKS.dashboard)}
               onClick={onNavigate}
               className="flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-white hover:bg-white/[0.08] transition-colors"
             >
-              Dashboard
+              {isEmailVerified ? "Dashboard" : "Verify email"}
             </Link>
             <button
               type="button"
@@ -211,7 +235,7 @@ export default function NavbarActions({ variant, onNavigate }: NavbarActionsProp
           return (
             <Link
               key={feature.key}
-              href={feature.href}
+              href={protectedHref(feature.href)}
               onClick={onNavigate}
               aria-current={isActive ? "page" : undefined}
               className={`flex items-start gap-3 rounded-2xl border p-4 transition-all ${

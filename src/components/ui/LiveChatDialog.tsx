@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import Modal from "@/components/ui/Modal";
+import ChatClearButton from "@/components/ui/ChatClearButton";
+import { useChatScroll } from "@/hooks/useChatScroll";
 import { CONTACT_INFO } from "@/lib/constants";
 
 export type LiveChatMessage = {
@@ -26,16 +28,21 @@ export default function LiveChatDialog({ open, onClose }: LiveChatDialogProps) {
   const [messages, setMessages] = useState<LiveChatMessage[]>([WELCOME]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const { listRef, handleScroll, pinToBottom } = useChatScroll([messages, sending]);
 
   useEffect(() => {
     if (open) inputRef.current?.focus();
   }, [open]);
 
-  useEffect(() => {
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, sending]);
+  function handleClear() {
+    setSending(false);
+    setInput("");
+    setMessages([WELCOME]);
+    pinToBottom();
+  }
+
+  const hasConversation = messages.some((m) => m.id !== "welcome");
 
   function handleSend(e?: React.FormEvent) {
     e?.preventDefault();
@@ -44,6 +51,7 @@ export default function LiveChatDialog({ open, onClose }: LiveChatDialogProps) {
 
     setInput("");
     setSending(true);
+    pinToBottom();
 
     const userMsg: LiveChatMessage = {
       id: crypto.randomUUID(),
@@ -80,15 +88,24 @@ export default function LiveChatDialog({ open, onClose }: LiveChatDialogProps) {
 
   return (
     <Modal open={open} onClose={onClose} title="Live Chat" variant="panel">
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-200 dark:border-white/[0.06] bg-slate-50 dark:bg-white/[0.02] shrink-0">
-        <span className="relative flex h-2.5 w-2.5">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
-        </span>
-        <span className="text-xs text-slate-500 dark:text-slate-400">Devora21 Team · typically replies within hours</span>
+      <div className="flex items-center justify-between gap-2 px-4 py-2 border-b border-slate-200 dark:border-white/[0.06] bg-slate-50 dark:bg-white/[0.02] shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="relative flex h-2.5 w-2.5 shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
+          </span>
+          <span className="text-xs text-slate-500 dark:text-slate-400 truncate">
+            Devora21 Team · typically replies within hours
+          </span>
+        </div>
+        <ChatClearButton onClick={handleClear} disabled={sending || !hasConversation} />
       </div>
 
-      <div ref={listRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3 min-h-0">
+      <div
+        ref={listRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto px-4 py-4 space-y-3 min-h-0"
+      >
         {messages.map((msg) => (
           <div
             key={msg.id}

@@ -1,4 +1,6 @@
-import AnimatedCounter from "@/components/ui/AnimatedCounter";
+import dynamic from "next/dynamic";
+
+const AnimatedCounter = dynamic(() => import("@/components/ui/AnimatedCounter"));
 
 const stats = [
   {

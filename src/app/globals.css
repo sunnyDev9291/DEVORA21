@@ -22,13 +22,19 @@
   --bg-card: #0F172A;
 }
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
-  transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 html {
   scroll-behavior: smooth;
+}
+
+html,
+body {
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 body {
@@ -116,6 +122,31 @@ body {
 .docx-preview-dialog--modal .docx-preview-fit-host {
   flex-shrink: 0;
   line-height: 0;
+}
+
+.markdown-bold-editor {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.markdown-bold-editor:empty::before {
+  content: attr(data-placeholder);
+  color: rgb(148 163 184);
+  pointer-events: none;
+}
+
+.markdown-bold-editor strong,
+.markdown-bold-editor b {
+  font-weight: 600;
+  color: rgb(15 23 42);
+}
+
+.dark .markdown-bold-editor strong,
+.dark .markdown-bold-editor b {
+  color: rgb(248 250 252);
 }
 
 @layer utilities {

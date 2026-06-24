@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import Modal from "@/components/ui/Modal";
+import ChatClearButton from "@/components/ui/ChatClearButton";
+import { useChatScroll } from "@/hooks/useChatScroll";
 
 export type AiChatMessage = {
   id: string;
@@ -25,17 +27,25 @@ export default function AiChatDialog({ open, onClose }: AiChatDialogProps) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const { listRef, handleScroll, pinToBottom } = useChatScroll([messages, loading]);
 
   useEffect(() => {
     if (open) inputRef.current?.focus();
   }, [open]);
 
-  useEffect(() => {
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, loading]);
+  function handleClear() {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setLoading(false);
+    setError("");
+    setInput("");
+    setMessages([WELCOME]);
+    pinToBottom();
+  }
+
+  const hasConversation = messages.some((m) => m.id !== "welcome");
 
   async function handleSend(e?: React.FormEvent) {
     e?.preventDefault();
@@ -44,6 +54,7 @@ export default function AiChatDialog({ open, onClose }: AiChatDialogProps) {
 
     setError("");
     setInput("");
+    pinToBottom();
 
     const userMsg: AiChatMessage = {
       id: crypto.randomUUID(),
@@ -113,11 +124,16 @@ export default function AiChatDialog({ open, onClose }: AiChatDialogProps) {
 
   return (
     <Modal open={open} onClose={handleClose} title="DeepSeek" variant="panel">
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-200 dark:border-white/[0.06] bg-violet-500/[0.06] shrink-0">
+      <div className="flex items-center justify-between gap-2 px-4 py-2 border-b border-slate-200 dark:border-white/[0.06] bg-violet-500/[0.06] shrink-0">
         <span className="text-xs font-medium text-violet-600 dark:text-violet-400">deepseek-v4-pro</span>
+        <ChatClearButton onClick={handleClear} disabled={loading || !hasConversation} />
       </div>
 
-      <div ref={listRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3 min-h-0">
+      <div
+        ref={listRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto px-4 py-4 space-y-3 min-h-0"
+      >
         {messages.map((msg) => (
           <div
             key={msg.id}

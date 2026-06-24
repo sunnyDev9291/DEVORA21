@@ -1,15 +1,13 @@
-import { readFile } from "fs/promises";
-import path from "path";
 import { parseResumeHeaderFromDocxBuffer } from "@/lib/resume-docx";
-import { resolveExperiencesFromDocx } from "@/lib/resume-docx-ai-parse";
+import { getCachedTemplateExperiences } from "@/lib/resume-template-cache";
+import { resolveTemplateBuffer } from "@/lib/resume-template-resolve";
 import {
-  RESUME_SYSTEM_PROMPT,
+  buildResumeSystemPrompt,
   buildResumeUserPrompt,
   mergeResumeWithTemplate,
   parseResumeJsonContent,
 } from "@/lib/resume-prompt";
-import type { GeneratedResumeContent, ResumeExperience } from "@/lib/resume-types";
-import { TEMPLATES_DIR } from "@/lib/templates-dir";
+import type { AtsScoreResult, GeneratedResumeContent, HumanToneScoreResult, ResumeExperience, RuleKeepScoreResult } from "@/lib/resume-types";
 
 export interface ResumeGenerateRequest {
   jobTitle?: string;
@@ -17,6 +15,15 @@ export interface ResumeGenerateRequest {
   jobDescription?: string;
   customPrompt?: string;
   templateName?: string;
+  templateBase64?: string;
+  /** Prior ATS evaluation — used when regenerating to target a higher score. */
+  atsFeedback?: AtsScoreResult;
+  /** Prior human tone evaluation — co-target during regenerate. */
+  humanToneFeedback?: HumanToneScoreResult;
+  /** Prior rule keep evaluation — co-target during regenerate. */
+  ruleKeepFeedback?: RuleKeepScoreResult;
+  /** Draft content from the previous generation — paired with feedback fields. */
+  previousContent?: GeneratedResumeContent;
 }
 
 export interface ResumeGeneratePrep {
@@ -36,7 +43,11 @@ export type ResumeJobRecord =
       status: "pending";
       templateName: string;
       mergeContext: ResumeMergeContext;
+      messages: Array<{ role: "system" | "user"; content: string }>;
       createdAt: number;
+      expiresAt: number;
+      dedupeKey: string;
+      triggerStartedAt?: number;
     }
   | {
       status: "done";
@@ -44,6 +55,8 @@ export type ResumeJobRecord =
       mergeContext: ResumeMergeContext;
       text: string;
       createdAt: number;
+      expiresAt: number;
+      dedupeKey: string;
     }
   | {
       status: "error";
@@ -51,6 +64,8 @@ export type ResumeJobRecord =
       mergeContext: ResumeMergeContext;
       message: string;
       createdAt: number;
+      expiresAt: number;
+      dedupeKey: string;
     };
 
 export async function prepareResumeGeneration(
@@ -64,28 +79,24 @@ export async function prepareResumeGeneration(
   if (!jobTitle) throw new Error("Job title is required.");
   if (!companyName) throw new Error("Company name is required.");
 
-  const templateInput = body.templateName?.trim();
-  if (!templateInput) {
-    throw new Error("templateName is required — select a template first.");
+  const hasTemplate = Boolean(body.templateBase64?.trim() || body.templateName?.trim());
+  if (!hasTemplate) {
+    throw new Error("Upload a resume template in your profile first.");
   }
 
-  const safeName = path.basename(
-    templateInput.endsWith(".docx") ? templateInput : `${templateInput}.docx`
-  );
-  const filePath = path.join(TEMPLATES_DIR, safeName);
-  const templateName = safeName.replace(/\.docx$/i, "");
+  const { buffer: templateBuffer, templateName } = await resolveTemplateBuffer({
+    templateName: body.templateName,
+    templateBase64: body.templateBase64,
+  });
 
-  if (!path.resolve(filePath).startsWith(path.resolve(TEMPLATES_DIR))) {
-    throw new Error("Invalid template.");
-  }
-
-  const templateBuffer = await readFile(filePath);
-  const existingExperiences = await resolveExperiencesFromDocx(templateBuffer);
+  const existingExperiences = await getCachedTemplateExperiences(templateName, templateBuffer);
   const header = parseResumeHeaderFromDocxBuffer(templateBuffer);
 
   if (existingExperiences.length === 0) {
     throw new Error("No experience sections found in template.");
   }
+
+  const isRegenerate = Boolean(body.atsFeedback && body.previousContent);
 
   const userPrompt = buildResumeUserPrompt({
     jobTitle,
@@ -94,12 +105,16 @@ export async function prepareResumeGeneration(
     customPrompt,
     headerTitle: header.title,
     existingExperiences,
+    atsFeedback: body.atsFeedback,
+    humanToneFeedback: body.humanToneFeedback,
+    ruleKeepFeedback: body.ruleKeepFeedback,
+    previousContent: body.previousContent,
   });
 
   return {
     templateName,
     messages: [
-      { role: "system", content: RESUME_SYSTEM_PROMPT },
+      { role: "system", content: buildResumeSystemPrompt(isRegenerate) },
       { role: "user", content: userPrompt },
     ],
     existingExperiences,

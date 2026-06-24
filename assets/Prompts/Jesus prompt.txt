@@ -1,0 +1,117 @@
+Let's make the resume matching to Job description!
+**********Tech items part**********
+Initial tech items : 
+Node.js, React, SQL, MongoDB, Mongoose, JSON, microservice, AWS (EC2, S3, Lambda, RDS), Azure (VM, App service, AKS, Blob Storage), GCP (Compute Engine, GKE, Cloud run), REST API, GraphQL, gRPC, Git, GitHub, GitHub Actions, CI/CD, Docker Kubernetes, Jenkins, Jira, Linux, Kafka, RabbitMQ, Elasticsearch, Terraform, Agile, Scrum
+Extract all tech items from JD and insert at the first of initial tech items. (tech items must be a kind of programming language, framework, library, tool, DB, AWS, AZure,GCP),extracted tech items must be bold.
+if the tech item is in initial tech items, Don't need to insert, but must be bold.
+If it is related to AWS, Azure and Cloud, add as its sub tech in initial tech items, also must be bold
+Finally, insert (not bold)2 similiar, related, same level's tech items after each bolded items(only programming language, framework, library)
+Must avoid the duplication of tech items in final list.
+Output the final tech item list without new line.
+And then must seperate this final tech items list to serveral category.
+1st type :  the most important tech item of JD from bold items
+2nd type : the second most important 3 tech items of JD from bold items
+3rd type :  rest bold items.
+4th type : Items not in bold, derived from bold items
+5th type : rest unbold initial items
+Output the categorized tech items list.
+************Company Meta information***********
+- Teracrunch (11/2025 - 05/2026)
+Job title : Staff Software Engineer
+Industry domain : Healthcare.
+Participated Project : AI Healthcare Knowledge Assistant
+Implemented functionality : Document Ingestion Management, EHR Data Processing, PHI Redaction, Semantic Chunking, Incremental Re-indexing, Hybrid Search Management, Metadata Filtering, Citation-based Answer Generation, RAG Pipeline Optimization, API Integration, Performance Optimization.
+sentence number : 12
+sentences with 1st-type item : 2
+sentences with 2nd-type items : 2 
+sentences with 3rd-type items : 3
+sentences with 4th-type items : 2
+sentences with 5th-type items : 3
+
+- Vida Health (12/2022 - 07/2025)
+Job title : Senior Software Engineer
+Industry domain : Healthcare
+Participated Project :  Patient Management System
+Implemented functionality : Patient Profile Management, Care Program Management, Provider Dashboard Management, Appointment and Communication Management, Health Data Management, Insurance Eligibility Integration, Clinical Workflow Management, Notification Management, Reporting and Analytics, Backend API Development, Database Optimization, and System Integration.
+sentence number : 12
+sentences with 1st-type item : 3
+sentences with 2nd-type items : 1  
+sentences with 3rd-type items : 2
+sentences with 4th-type items : 3
+sentences with 5th-type items : 3
+- Digital Silk(03/2021 - 10/2022)
+Job title : Senior Software Engineer
+Industry domain : Digital Marketing.
+Participated Project : E-commerce Website Management System
+Implemented functionality : Product Catalog Management, Landing Page Management, Shopping Cart Management, Checkout and Payment Integration, Order Management, Customer Account Management, CMS Content Management, SEO Optimization, Analytics Tracking
+sentence number : 10
+sentences with 1st-type item : 1
+sentences with 2nd-type items : 2  
+sentences with 3rd-type items : 1
+sentences with 4th-type items : 2
+sentences with 5th-type items : 4
+- SDLC(04/2017 - 01/2021)
+Job title : Full Stack Engineer
+Industry domain : Ecommerce.
+Participated Project :Shopping Cart and Checkout System
+Implemented functionality : Cart Management, Product Quantity Update, Coupon and Discount Management, Shipping and Tax Calculation, Checkout and Payment Processing
+sentence number : 9
+sentences with 1st-type item : 0
+sentences with 2nd-type items : 1  
+sentences with 3rd-type items : 2
+sentences with 4th-type items : 3
+sentences with 5th-type items : 3
+- TMA Solutions(06/2015 - 02/2017)
+Job title : Software Developer
+Industry domain : IT Services
+Participated Project : Telecom Network Management System
+Implemented functionality : Implemented user and role management, network device management, service provisioning workflows, fault and alarm monitoring, performance dashboards, customer account features, billing integration, reporting modules
+sentence number : 9
+sentences with 1st-type item : 1
+sentences with 2nd-type items : 0  
+sentences with 3rd-type items : 4
+sentences with 4th-type items : 2
+sentences with 5th-type items : 2
+
+***********Experience sentence part***********
+- All sentences must be written as functionality implementation explanation - focused. 
+Each sentence shows a feature I implemented using one of the technical item list as the main item in the sentence, based on company metadata.
+Before writing the sentence, think exactly 2 deep technical items that belong to the ecosystem of the main tech item. These must be:
+• frameworks  
+• libraries  
+• modules  
+• APIs  
+• hooks  
+• pipelines  
+• architectural patterns  
+• advanced approaches used to implement the functionality
+The deep items must be directly related to the main tech ecosystem.
+Examples
+React → React Hooks, Redux Toolkit, Context API, Suspense, React Query  
+Node.js → Express middleware, Node streams, Worker Threads, EventEmitter  
+Python → FastAPI dependency injection, asyncio event loop, Pydantic validation  
+GraphQL → Apollo Server resolvers, schema stitching, DataLoader batching  
+AWS → Lambda layers, Step Functions orchestration, API Gateway authorizers  
+Step 3 — Use those 3 deep technical items to construct the experience sentence.
+IMPORTANT RULES
+1.Do NOT use only the main tech item of the sentence.  
+   The sentence must show depth through the main items and 2 deep items.
+2. The deep items must belong to the same technology ecosystem as the main tech item.
+3. Avoid infrastructure tools or platforms that are unrelated to the main tech ecosystem.
+4. Even if two sentences have the same main tech item, the deep technical items MUST be completely different.
+ - When writing 3rd,4th,5th main item's sentence, must avoid same tech item duplication in whole experience context.
+  - Don't align the tech items one by one in sentence. Must disperse the tech items in sentence with reasonable context. 
+- All sentences of all company experience parts must contain over 25 vocabularies absolutely. This is very important.
+-Sentence must start with Verb not "I"
+- Mustn't use any label for seperating each sentence, must use only blank line for seperating each sentence, also don't output doc source name as sentence reference.
+- Must avoid the expression "Led, Mentored", so avoid the role as Tech lead.
+- Each sentence must use absolutely different expression, verbs from another sentences.
+- Each sentence must use many natural idiom and phrase of Native English speaker rather than writing styled offical vocabularies.
+- All sentence and contenxt of each company experience parts must be reasonable and valid about company industry domain, my engineering level, tech item's created year, development scope of solution.
+ - Must describe experience using measurable impact using units such as percentages, milliseconds, ranges, dollar amounts, user counts(in only  half number of whole experience sentences).
+ -Use the style "allowed, developed" rather than the style "verb + ing" like "allowing, deploying" in sentence context. 
+ -main tech item, tech deep items of each sentence must be bold font. 
+Before make final content, must check the ATS score.
+If it is <97%, must re-think and re-make the content until passing over 97% contunuesly while above all rules.
+If it is over 97%, it will be final output.
+After output final resume content, output ATS-score.

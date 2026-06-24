@@ -14,8 +14,17 @@ export default function Navbar() {
   const pathname = usePathname();
 
   useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener("scroll", handleScroll);
+    let ticking = false;
+    const handleScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        setScrolled(window.scrollY > 20);
+        ticking = false;
+      });
+    };
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
@@ -25,10 +34,10 @@ export default function Navbar() {
 
   return (
     <header
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+      className={`fixed top-0 left-0 right-0 z-50 transition-[background-color,box-shadow,border-color] duration-300 [transform:translateZ(0)] ${
         scrolled
-          ? "bg-white/95 dark:bg-navy-950/95 backdrop-blur-md border-b border-slate-200 dark:border-white/[0.06] shadow-xl shadow-black/10 dark:shadow-black/20"
-          : "bg-transparent"
+          ? "bg-white dark:bg-navy-950 border-b border-slate-200 dark:border-white/[0.06] shadow-xl shadow-black/10 dark:shadow-black/20"
+          : "bg-transparent border-b border-transparent shadow-none"
       }`}
     >
       <nav
@@ -40,8 +49,8 @@ export default function Navbar() {
             <Image
               src="/logo.png"
               alt="Devora21 logo"
-              width={200}
-              height={200}
+              width={72}
+              height={72}
               className="w-[72px] h-auto object-contain"
               priority
             />

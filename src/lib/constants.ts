@@ -292,10 +292,14 @@ export const AUTH_LINKS = {
   register: "/register",
   dashboard: "/dashboard",
   forgotPassword: "/forgot-password",
+  resetPassword: "/reset-password",
+  verifyEmail: "/verify-email",
+  verifyEmailPending: "/verify-email/pending",
+  oauthComplete: "/auth/oauth/complete",
+  onboarding: "/onboarding",
 } as const;
 
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://31.44.7.64:5000";
+export { API_BASE_URL, BACKEND_API_URL, DEFAULT_API_URL } from "@/lib/api-base-url";
 
 export const NAV_LINKS = [
   { label: "Services", href: "/services" },

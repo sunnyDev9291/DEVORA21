@@ -5,9 +5,10 @@ interface PageHeroProps {
   title: string;
   description: string;
   children?: React.ReactNode;
+  priority?: boolean;
 }
 
-export default function PageHero({ title, description, children }: PageHeroProps) {
+export default function PageHero({ title, description, children, priority = false }: PageHeroProps) {
   return (
     <header className="relative pt-32 pb-20 overflow-hidden min-h-[480px] flex items-center">
       <div className="absolute inset-0" aria-hidden="true">
@@ -15,9 +16,10 @@ export default function PageHero({ title, description, children }: PageHeroProps
           src="/bg.jpeg"
           alt={HERO_IMAGE_ALT}
           fill
+          sizes="100vw"
           className="object-cover object-center"
-          priority
-          quality={80}
+          priority={priority}
+          quality={75}
         />
         <div className="absolute inset-0 bg-slate-900/60 dark:bg-navy-950/80" />
       </div>
