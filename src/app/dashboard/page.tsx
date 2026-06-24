@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Button from "@/components/ui/Button";
 import DashboardProfilePanel from "@/components/dashboard/DashboardProfilePanel";
@@ -21,6 +21,10 @@ function DashboardContent() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [error, setError] = useState("");
   const [, bumpProfileView] = useState(0);
+
+  useEffect(() => {
+    void refreshUser();
+  }, [refreshUser]);
 
   const quickActions = [
     ...(isResumeBuilderEnabled

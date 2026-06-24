@@ -1,5 +1,5 @@
 import { API_BASE_URL } from "@/lib/api-base-url";
-import { readEmailVerified } from "@/lib/email-verification";
+import { readEmailVerified, mergeEmailVerifiedState } from "@/lib/email-verification";
 import type {
   AuthResponse,
   MessageResponse,
@@ -147,12 +147,51 @@ function splitFullName(name: string): { firstName: string; lastName: string } {
 
 function toRawUserRecord(raw: unknown): Record<string, unknown> {
   if (!raw || typeof raw !== "object") return {};
-  const obj = raw as Record<string, unknown>;
+
+  let obj = raw as Record<string, unknown>;
+
+  const data = obj.data;
+  if (data && typeof data === "object") {
+    obj = { ...obj, ...(data as Record<string, unknown>) };
+  }
+
   const nested = obj.user;
   if (nested && typeof nested === "object") {
-    return nested as Record<string, unknown>;
+    return { ...obj, ...(nested as Record<string, unknown>) };
   }
+
   return obj;
+}
+
+/** Read resume builder flag from common backend field names. Undefined when absent. */
+function readResumeBuilderEnabled(raw: Record<string, unknown>): boolean | undefined {
+  const keys = [
+    "resumeBuilderEnabled",
+    "resume_builder_enabled",
+    "resumeBuilderAccess",
+    "resume_builder_access",
+  ] as const;
+
+  for (const key of keys) {
+    if (!(key in raw)) continue;
+    const value = raw[key];
+    if (value === true || value === "true" || value === 1) return true;
+    if (value === false || value === "false" || value === 0) return false;
+  }
+
+  return undefined;
+}
+
+export function mergeAuthUserState(previous: User | null, next: User): User {
+  let merged = mergeEmailVerifiedState(previous, next);
+
+  if (previous && previous.id === next.id && next.resumeBuilderEnabled === undefined) {
+    if (previous.resumeBuilderEnabled !== undefined) {
+      merged = { ...merged, resumeBuilderEnabled: previous.resumeBuilderEnabled };
+    }
+  }
+
+  return merged;
 }
 
 /** Backend may return firstName/lastName/avatar instead of name, or nest under `user`. */
@@ -200,7 +239,7 @@ export function normalizeAuthUser(raw: unknown): User {
   const promptFileName =
     typeof source.promptFileName === "string" ? source.promptFileName.trim() : undefined;
 
-  const resumeBuilderEnabled = source.resumeBuilderEnabled === true;
+  const resumeBuilderEnabled = readResumeBuilderEnabled(source);
 
   const createdAt =
     typeof source.createdAt === "string" ? source.createdAt : undefined;
@@ -210,7 +249,7 @@ export function normalizeAuthUser(raw: unknown): User {
     email,
     emailVerified,
     onboardingCompleted: onboardingCompleted || undefined,
-    resumeBuilderEnabled,
+    ...(resumeBuilderEnabled !== undefined ? { resumeBuilderEnabled } : {}),
     resumeTemplateFileName: resumeTemplateFileName || undefined,
     promptFileName: promptFileName || undefined,
     createdAt,

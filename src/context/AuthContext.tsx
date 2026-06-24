@@ -22,13 +22,13 @@ import {
 
 } from "react";
 
-import { authApi, getApiErrorMessage, isValidAuthUser } from "@/lib/auth-api";
+import { authApi, getApiErrorMessage, isValidAuthUser, mergeAuthUserState } from "@/lib/auth-api";
 
 import { fetchSessionUser, SESSION_KEEPALIVE_MS } from "@/lib/auth-session";
 
 import { clearAuthClientStorage } from "@/lib/auth-storage";
 
-import { isUserEmailVerified, mergeEmailVerifiedState } from "@/lib/email-verification";
+import { isUserEmailVerified } from "@/lib/email-verification";
 
 import { isResumeBuilderEnabled } from "@/lib/resume-access";
 
@@ -92,7 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (!next || !isValidAuthUser(next)) return null;
 
-      return mergeEmailVerifiedState(previous, next);
+      return mergeAuthUserState(previous, next);
 
     });
 
