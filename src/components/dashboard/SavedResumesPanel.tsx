@@ -18,16 +18,37 @@ type SavedResumesPanelProps = {
 };
 
 type BidDateParts = {
-  dateKey: string;
-  dateLabel: string;
+  yearKey: string;
+  monthKey: string;
+  dayKey: string;
+  yearLabel: string;
+  monthLabel: string;
+  dayLabel: string;
   timeLabel: string;
+  dateLabel: string;
 };
 
-type DateGroup = {
-  dateKey: string;
-  dateLabel: string;
+type DayGroup = {
+  dayKey: string;
+  dayLabel: string;
   items: SavedResumeArchive[];
 };
+
+type MonthGroup = {
+  monthKey: string;
+  monthLabel: string;
+  days: DayGroup[];
+  totalCount: number;
+};
+
+type YearGroup = {
+  yearKey: string;
+  yearLabel: string;
+  months: MonthGroup[];
+  totalCount: number;
+};
+
+type PanelStyles = (typeof STYLES)["dashboard"] | (typeof STYLES)["resume"];
 
 const STYLES = {
   dashboard: {
@@ -36,13 +57,14 @@ const STYLES = {
     subtitle: "mt-1 text-sm text-slate-400",
     input:
       "w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40",
-    listWrap: "mt-5 space-y-2",
-    dateButton:
-      "flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left transition-all hover:border-blue-500/30 hover:bg-blue-500/[0.06]",
-    dateButtonOpen: "border-blue-500/35 bg-blue-500/[0.08]",
-    dateLabel: "text-sm font-semibold text-white",
-    dateMeta: "text-xs text-slate-400",
+    listWrap: "mt-5 space-y-1.5",
+    toggleButton:
+      "flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] py-2.5 text-left transition-all hover:border-blue-500/30 hover:bg-blue-500/[0.06]",
+    toggleButtonOpen: "border-blue-500/35 bg-blue-500/[0.08]",
+    toggleLabel: "text-sm font-semibold text-white",
+    toggleMeta: "ml-auto text-xs text-slate-400",
     chevron: "h-4 w-4 shrink-0 text-slate-400 transition-transform",
+    nested: "space-y-1.5 border-l border-white/10 ml-3 pl-2 sm:ml-4 sm:pl-3",
     groupPanel: "overflow-hidden rounded-xl border border-white/10",
     tableWrap: "overflow-x-auto",
     thead: "border-b border-white/10 bg-white/[0.02] text-xs uppercase tracking-wider text-slate-500",
@@ -64,14 +86,15 @@ const STYLES = {
     subtitle: "mt-1 text-sm text-slate-500 dark:text-slate-400",
     input:
       "w-full rounded-xl border border-slate-200 dark:border-white/[0.10] bg-slate-50 dark:bg-white/[0.03] px-4 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40",
-    listWrap: "mt-5 space-y-2",
-    dateButton:
-      "flex w-full items-center gap-3 rounded-xl border border-slate-200/80 bg-slate-50/80 px-4 py-3 text-left transition-all hover:border-blue-500/35 hover:bg-blue-50/80 dark:border-white/[0.08] dark:bg-white/[0.02] dark:hover:border-blue-500/30 dark:hover:bg-blue-500/[0.06]",
-    dateButtonOpen:
+    listWrap: "mt-5 space-y-1.5",
+    toggleButton:
+      "flex w-full items-center gap-3 rounded-xl border border-slate-200/80 bg-slate-50/80 py-2.5 text-left transition-all hover:border-blue-500/35 hover:bg-blue-50/80 dark:border-white/[0.08] dark:bg-white/[0.02] dark:hover:border-blue-500/30 dark:hover:bg-blue-500/[0.06]",
+    toggleButtonOpen:
       "border-blue-500/40 bg-blue-50/90 dark:border-blue-500/35 dark:bg-blue-500/[0.08]",
-    dateLabel: "text-sm font-semibold text-slate-900 dark:text-white",
-    dateMeta: "text-xs text-slate-500 dark:text-slate-400",
+    toggleLabel: "text-sm font-semibold text-slate-900 dark:text-white",
+    toggleMeta: "ml-auto text-xs text-slate-500 dark:text-slate-400",
     chevron: "h-4 w-4 shrink-0 text-slate-500 transition-transform dark:text-slate-400",
+    nested: "space-y-1.5 border-l border-slate-200/80 ml-3 pl-2 dark:border-white/10 sm:ml-4 sm:pl-3",
     groupPanel:
       "overflow-hidden rounded-xl border border-slate-200/80 dark:border-white/[0.08] animate-fade-up",
     tableWrap: "overflow-x-auto",
@@ -92,6 +115,8 @@ const STYLES = {
   },
 } as const;
 
+const TOGGLE_PAD = ["px-3", "px-3 sm:px-4", "px-3 sm:px-4"] as const;
+
 function parseBidAt(iso: string): BidDateParts | null {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return null;
@@ -101,13 +126,24 @@ function parseBidAt(iso: string): BidDateParts | null {
   const day = String(date.getDate()).padStart(2, "0");
 
   return {
-    dateKey: `${year}-${month}-${day}`,
-    dateLabel: new Intl.DateTimeFormat(undefined, {
-      year: "numeric",
+    yearKey: String(year),
+    monthKey: `${year}-${month}`,
+    dayKey: `${year}-${month}-${day}`,
+    yearLabel: String(year),
+    monthLabel: new Intl.DateTimeFormat(undefined, { month: "long" }).format(date),
+    dayLabel: new Intl.DateTimeFormat(undefined, {
+      weekday: "short",
       month: "short",
       day: "numeric",
     }).format(date),
     timeLabel: new Intl.DateTimeFormat(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(date),
+    dateLabel: new Intl.DateTimeFormat(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
       hour: "numeric",
       minute: "2-digit",
     }).format(date),
@@ -117,7 +153,7 @@ function parseBidAt(iso: string): BidDateParts | null {
 function formatBidAt(iso: string): string {
   const parts = parseBidAt(iso);
   if (!parts) return iso;
-  return `${parts.dateLabel} ${parts.timeLabel}`;
+  return `${parts.dateLabel}`;
 }
 
 function truncate(text: string, max = 140): string {
@@ -134,7 +170,9 @@ function matchesSearch(item: SavedResumeArchive, query: string): boolean {
     item.companyName,
     item.jobDescription,
     item.resumeFileName,
-    parts?.dateLabel ?? "",
+    parts?.yearLabel ?? "",
+    parts?.monthLabel ?? "",
+    parts?.dayLabel ?? "",
     parts?.timeLabel ?? "",
   ]
     .join(" ")
@@ -146,27 +184,118 @@ function sortByBidDate(items: SavedResumeArchive[]): SavedResumeArchive[] {
   return [...items].sort((a, b) => new Date(b.bidAt).getTime() - new Date(a.bidAt).getTime());
 }
 
-function groupByBidDate(items: SavedResumeArchive[]): DateGroup[] {
-  const groups = new Map<string, DateGroup>();
+function groupByYearMonthDay(items: SavedResumeArchive[]): YearGroup[] {
+  const years = new Map<string, YearGroup>();
 
-  for (const item of items) {
+  for (const item of sortByBidDate(items)) {
     const parts = parseBidAt(item.bidAt);
-    const dateKey = parts?.dateKey ?? item.bidAt;
-    const dateLabel = parts?.dateLabel ?? item.bidAt;
-    const existing = groups.get(dateKey);
-    if (existing) {
-      existing.items.push(item);
-    } else {
-      groups.set(dateKey, { dateKey, dateLabel, items: [item] });
+    if (!parts) continue;
+
+    let year = years.get(parts.yearKey);
+    if (!year) {
+      year = {
+        yearKey: parts.yearKey,
+        yearLabel: parts.yearLabel,
+        months: [],
+        totalCount: 0,
+      };
+      years.set(parts.yearKey, year);
     }
+
+    let month = year.months.find((m) => m.monthKey === parts.monthKey);
+    if (!month) {
+      month = {
+        monthKey: parts.monthKey,
+        monthLabel: parts.monthLabel,
+        days: [],
+        totalCount: 0,
+      };
+      year.months.push(month);
+    }
+
+    let day = month.days.find((d) => d.dayKey === parts.dayKey);
+    if (!day) {
+      day = { dayKey: parts.dayKey, dayLabel: parts.dayLabel, items: [] };
+      month.days.push(day);
+    }
+
+    day.items.push(item);
+    month.totalCount += 1;
+    year.totalCount += 1;
   }
 
-  return [...groups.values()]
-    .map((group) => ({
-      ...group,
-      items: sortByBidDate(group.items),
-    }))
-    .sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+  return [...years.values()]
+    .sort((a, b) => b.yearKey.localeCompare(a.yearKey))
+    .map((year) => ({
+      ...year,
+      months: [...year.months]
+        .sort((a, b) => b.monthKey.localeCompare(a.monthKey))
+        .map((month) => ({
+          ...month,
+          days: [...month.days].sort((a, b) => b.dayKey.localeCompare(a.dayKey)),
+        })),
+    }));
+}
+
+function collectExpandKeys(groups: YearGroup[]): Set<string> {
+  const keys = new Set<string>();
+  for (const year of groups) {
+    keys.add(`year:${year.yearKey}`);
+    for (const month of year.months) {
+      keys.add(`month:${month.monthKey}`);
+      for (const day of month.days) {
+        keys.add(`day:${day.dayKey}`);
+      }
+    }
+  }
+  return keys;
+}
+
+function countLabel(count: number): string {
+  return count === 1 ? "1 application" : `${count} applications`;
+}
+
+function Chevron({ open, className }: { open: boolean; className: string }) {
+  return (
+    <svg
+      className={`${className} ${open ? "rotate-90" : ""}`}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      aria-hidden="true"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+    </svg>
+  );
+}
+
+function ToggleRow({
+  label,
+  meta,
+  open,
+  level,
+  onToggle,
+  styles,
+}: {
+  label: string;
+  meta: string;
+  open: boolean;
+  level: 0 | 1 | 2;
+  onToggle: () => void;
+  styles: PanelStyles;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      className={`${styles.toggleButton} ${TOGGLE_PAD[level]} ${open ? styles.toggleButtonOpen : ""}`}
+    >
+      <Chevron open={open} className={styles.chevron} />
+      <span className={styles.toggleLabel}>{label}</span>
+      <span className={styles.toggleMeta}>{meta}</span>
+    </button>
+  );
 }
 
 function ApplicationRows({
@@ -177,13 +306,13 @@ function ApplicationRows({
   onDownload,
 }: {
   items: SavedResumeArchive[];
-  styles: (typeof STYLES)["dashboard"] | (typeof STYLES)["resume"];
+  styles: PanelStyles;
   downloadingKey: string | null;
   onPreview: (item: SavedResumeArchive) => void;
   onDownload: (item: SavedResumeArchive, format: "docx" | "pdf") => void;
 }) {
   return (
-    <div className={styles.groupPanel}>
+    <div className={`${styles.groupPanel} ml-1`}>
       <div className={styles.tableWrap}>
         <table className="min-w-full text-left text-sm">
           <thead className={styles.thead}>
@@ -258,7 +387,7 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
 
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewItem, setPreviewItem] = useState<SavedResumeArchive | null>(null);
@@ -297,20 +426,24 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
     return items.filter((item) => matchesSearch(item, query));
   }, [items, debouncedSearch]);
 
-  const dateGroups = useMemo(() => groupByBidDate(visibleItems), [visibleItems]);
+  const yearGroups = useMemo(() => groupByYearMonthDay(visibleItems), [visibleItems]);
 
   useEffect(() => {
     if (!debouncedSearch.trim()) return;
-    setExpandedDates(new Set(dateGroups.map((group) => group.dateKey)));
-  }, [debouncedSearch, dateGroups]);
+    setExpandedKeys(collectExpandKeys(yearGroups));
+  }, [debouncedSearch, yearGroups]);
 
-  function toggleDate(dateKey: string) {
-    setExpandedDates((current) => {
+  function toggleKey(key: string) {
+    setExpandedKeys((current) => {
       const next = new Set(current);
-      if (next.has(dateKey)) next.delete(dateKey);
-      else next.add(dateKey);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
+  }
+
+  function isOpen(key: string): boolean {
+    return expandedKeys.has(key);
   }
 
   async function openPreview(item: SavedResumeArchive) {
@@ -365,8 +498,8 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
         <div>
           <h2 className={styles.title}>Saved resumes</h2>
           <p className={styles.subtitle}>
-            Grouped by bid date — click a date to expand applications. Search by company, title,
-            description, or file name.
+            Browse by year, month, and day — expand each level to see applications. Search opens
+            all matching groups.
           </p>
         </div>
         <div className="w-full sm:max-w-xs">
@@ -398,47 +531,79 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
               Loading saved resumes…
             </span>
           </div>
-        ) : dateGroups.length === 0 ? (
+        ) : yearGroups.length === 0 ? (
           <div className={styles.empty}>
             {debouncedSearch
               ? "No applications match your search."
               : "No saved resumes yet. Apply a tailored resume from New resume to save one here."}
           </div>
         ) : (
-          dateGroups.map((group) => {
-            const expanded = expandedDates.has(group.dateKey);
-            const countLabel =
-              group.items.length === 1 ? "1 application" : `${group.items.length} applications`;
+          yearGroups.map((year) => {
+            const yearOpen = isOpen(`year:${year.yearKey}`);
 
             return (
-              <div key={group.dateKey} className="space-y-2">
-                <button
-                  type="button"
-                  onClick={() => toggleDate(group.dateKey)}
-                  aria-expanded={expanded}
-                  className={`${styles.dateButton} ${expanded ? styles.dateButtonOpen : ""}`}
-                >
-                  <svg
-                    className={`${styles.chevron} ${expanded ? "rotate-90" : ""}`}
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    aria-hidden="true"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                  <span className={styles.dateLabel}>{group.dateLabel}</span>
-                  <span className={styles.dateMeta}>{countLabel}</span>
-                </button>
+              <div key={year.yearKey}>
+                <ToggleRow
+                  label={year.yearLabel}
+                  meta={countLabel(year.totalCount)}
+                  open={yearOpen}
+                  level={0}
+                  onToggle={() => toggleKey(`year:${year.yearKey}`)}
+                  styles={styles}
+                />
 
-                {expanded && (
-                  <ApplicationRows
-                    items={group.items}
-                    styles={styles}
-                    downloadingKey={downloadingKey}
-                    onPreview={(item) => void openPreview(item)}
-                    onDownload={(item, format) => void handleDownload(item, format)}
-                  />
+                {yearOpen && (
+                  <div className={styles.nested}>
+                    {year.months.map((month) => {
+                      const monthOpen = isOpen(`month:${month.monthKey}`);
+
+                      return (
+                        <div key={month.monthKey}>
+                          <ToggleRow
+                            label={month.monthLabel}
+                            meta={countLabel(month.totalCount)}
+                            open={monthOpen}
+                            level={1}
+                            onToggle={() => toggleKey(`month:${month.monthKey}`)}
+                            styles={styles}
+                          />
+
+                          {monthOpen && (
+                            <div className={styles.nested}>
+                              {month.days.map((day) => {
+                                const dayOpen = isOpen(`day:${day.dayKey}`);
+
+                                return (
+                                  <div key={day.dayKey} className="space-y-1.5">
+                                    <ToggleRow
+                                      label={day.dayLabel}
+                                      meta={countLabel(day.items.length)}
+                                      open={dayOpen}
+                                      level={2}
+                                      onToggle={() => toggleKey(`day:${day.dayKey}`)}
+                                      styles={styles}
+                                    />
+
+                                    {dayOpen && (
+                                      <ApplicationRows
+                                        items={day.items}
+                                        styles={styles}
+                                        downloadingKey={downloadingKey}
+                                        onPreview={(item) => void openPreview(item)}
+                                        onDownload={(item, format) =>
+                                          void handleDownload(item, format)
+                                        }
+                                      />
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
             );
