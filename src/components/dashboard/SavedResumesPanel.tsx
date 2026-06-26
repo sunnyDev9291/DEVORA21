@@ -12,6 +12,7 @@ import {
 import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
+const Modal = dynamic(() => import("@/components/ui/Modal"), { ssr: false });
 
 type SavedResumesPanelProps = {
   variant?: "dashboard" | "resume";
@@ -23,7 +24,9 @@ type BidDateParts = {
   dayKey: string;
   yearLabel: string;
   monthLabel: string;
+  monthIndex: number;
   dayLabel: string;
+  dayNumber: number;
   timeLabel: string;
   dateLabel: string;
 };
@@ -31,12 +34,14 @@ type BidDateParts = {
 type DayGroup = {
   dayKey: string;
   dayLabel: string;
+  dayNumber: number;
   items: SavedResumeArchive[];
 };
 
 type MonthGroup = {
   monthKey: string;
   monthLabel: string;
+  monthIndex: number;
   days: DayGroup[];
   totalCount: number;
 };
@@ -50,6 +55,8 @@ type YearGroup = {
 
 type PanelStyles = (typeof STYLES)["dashboard"] | (typeof STYLES)["resume"];
 
+const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
 const STYLES = {
   dashboard: {
     section: "rounded-2xl border border-white/10 bg-navy-900/60 p-6",
@@ -57,22 +64,32 @@ const STYLES = {
     subtitle: "mt-1 text-sm text-slate-400",
     input:
       "w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40",
-    listWrap: "mt-5 space-y-1.5",
-    toggleButton:
-      "flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] py-2.5 text-left transition-all hover:border-blue-500/30 hover:bg-blue-500/[0.06]",
-    toggleButtonOpen: "border-blue-500/35 bg-blue-500/[0.08]",
-    toggleLabel: "text-sm font-semibold text-white",
-    toggleMeta: "ml-auto text-xs text-slate-400",
+    pickerSection: "mt-5 space-y-4",
+    pickerLabel: "text-xs font-semibold uppercase tracking-wider text-slate-500",
+    chipGrid: "mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6",
+    monthGrid: "mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6",
+    chip:
+      "rounded-lg border border-white/10 bg-white/[0.03] px-2 py-2 text-sm font-medium text-slate-300 transition-all hover:border-blue-500/30 hover:bg-blue-500/[0.06] disabled:cursor-not-allowed disabled:opacity-35",
+    chipSelected: "border-blue-500/50 bg-blue-500/20 text-white shadow-sm shadow-blue-500/20",
+    chipCount: "mt-0.5 block text-[10px] font-normal text-slate-500",
+    daysSection: "mt-6 space-y-2",
+    daysHeading: "text-xs font-semibold uppercase tracking-wider text-slate-500",
+    dayButton:
+      "flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left transition-all hover:border-blue-500/30 hover:bg-blue-500/[0.06]",
+    dayButtonOpen: "border-blue-500/35 bg-blue-500/[0.08]",
+    dayLabel: "text-sm font-semibold text-white",
+    dayMeta: "ml-auto text-xs text-slate-400",
     chevron: "h-4 w-4 shrink-0 text-slate-400 transition-transform",
-    nested: "space-y-1.5 border-l border-white/10 ml-3 pl-2 sm:ml-4 sm:pl-3",
-    groupPanel: "overflow-hidden rounded-xl border border-white/10",
+    groupPanel: "overflow-hidden rounded-xl border border-white/10 animate-fade-up",
     tableWrap: "overflow-x-auto",
     thead: "border-b border-white/10 bg-white/[0.02] text-xs uppercase tracking-wider text-slate-500",
     rowHover: "align-top hover:bg-white/[0.02]",
     bidTime: "whitespace-nowrap px-4 py-3 text-slate-300 tabular-nums",
     company: "px-4 py-3 font-medium text-white",
     jobTitle: "px-4 py-3 text-slate-200",
-    description: "hidden max-w-md px-4 py-3 text-slate-400 lg:table-cell",
+    description: "max-w-xs px-4 py-3 text-slate-400 md:max-w-md",
+    descLink:
+      "text-left text-xs text-blue-400 underline-offset-2 hover:text-blue-300 hover:underline line-clamp-2",
     fileLink:
       "font-mono text-xs text-blue-400 underline-offset-2 hover:text-blue-300 hover:underline",
     tbody: "divide-y divide-white/5",
@@ -86,15 +103,24 @@ const STYLES = {
     subtitle: "mt-1 text-sm text-slate-500 dark:text-slate-400",
     input:
       "w-full rounded-xl border border-slate-200 dark:border-white/[0.10] bg-slate-50 dark:bg-white/[0.03] px-4 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40",
-    listWrap: "mt-5 space-y-1.5",
-    toggleButton:
-      "flex w-full items-center gap-3 rounded-xl border border-slate-200/80 bg-slate-50/80 py-2.5 text-left transition-all hover:border-blue-500/35 hover:bg-blue-50/80 dark:border-white/[0.08] dark:bg-white/[0.02] dark:hover:border-blue-500/30 dark:hover:bg-blue-500/[0.06]",
-    toggleButtonOpen:
+    pickerSection: "mt-5 space-y-4",
+    pickerLabel: "text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400",
+    chipGrid: "mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6",
+    monthGrid: "mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6",
+    chip:
+      "rounded-lg border border-slate-200/80 bg-slate-50/80 px-2 py-2 text-sm font-medium text-slate-700 transition-all hover:border-blue-500/35 hover:bg-blue-50/80 dark:border-white/[0.08] dark:bg-white/[0.02] dark:text-slate-200 dark:hover:border-blue-500/30 dark:hover:bg-blue-500/[0.06] disabled:cursor-not-allowed disabled:opacity-35",
+    chipSelected:
+      "border-blue-500/50 bg-blue-500/15 text-blue-700 shadow-sm shadow-blue-500/15 dark:bg-blue-500/20 dark:text-white",
+    chipCount: "mt-0.5 block text-[10px] font-normal text-slate-500 dark:text-slate-400",
+    daysSection: "mt-6 space-y-2",
+    daysHeading: "text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400",
+    dayButton:
+      "flex w-full items-center gap-3 rounded-xl border border-slate-200/80 bg-slate-50/80 px-4 py-3 text-left transition-all hover:border-blue-500/35 hover:bg-blue-50/80 dark:border-white/[0.08] dark:bg-white/[0.02] dark:hover:border-blue-500/30 dark:hover:bg-blue-500/[0.06]",
+    dayButtonOpen:
       "border-blue-500/40 bg-blue-50/90 dark:border-blue-500/35 dark:bg-blue-500/[0.08]",
-    toggleLabel: "text-sm font-semibold text-slate-900 dark:text-white",
-    toggleMeta: "ml-auto text-xs text-slate-500 dark:text-slate-400",
+    dayLabel: "text-sm font-semibold text-slate-900 dark:text-white",
+    dayMeta: "ml-auto text-xs text-slate-500 dark:text-slate-400",
     chevron: "h-4 w-4 shrink-0 text-slate-500 transition-transform dark:text-slate-400",
-    nested: "space-y-1.5 border-l border-slate-200/80 ml-3 pl-2 dark:border-white/10 sm:ml-4 sm:pl-3",
     groupPanel:
       "overflow-hidden rounded-xl border border-slate-200/80 dark:border-white/[0.08] animate-fade-up",
     tableWrap: "overflow-x-auto",
@@ -104,7 +130,9 @@ const STYLES = {
     bidTime: "whitespace-nowrap px-4 py-3 text-slate-600 tabular-nums dark:text-slate-300",
     company: "px-4 py-3 font-medium text-slate-900 dark:text-white",
     jobTitle: "px-4 py-3 text-slate-700 dark:text-slate-200",
-    description: "hidden max-w-md px-4 py-3 text-slate-500 dark:text-slate-400 lg:table-cell",
+    description: "max-w-xs px-4 py-3 text-slate-500 md:max-w-md dark:text-slate-400",
+    descLink:
+      "text-left text-xs text-blue-600 underline-offset-2 hover:text-blue-500 hover:underline line-clamp-2 dark:text-blue-400 dark:hover:text-blue-300",
     fileLink:
       "font-mono text-xs text-blue-600 underline-offset-2 hover:text-blue-500 hover:underline dark:text-blue-400 dark:hover:text-blue-300",
     tbody: "divide-y divide-slate-200/80 dark:divide-white/5",
@@ -114,8 +142,6 @@ const STYLES = {
       "mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600 dark:text-red-300",
   },
 } as const;
-
-const TOGGLE_PAD = ["px-3", "px-3 sm:px-4", "px-3 sm:px-4"] as const;
 
 function parseBidAt(iso: string): BidDateParts | null {
   const date = new Date(iso);
@@ -131,11 +157,13 @@ function parseBidAt(iso: string): BidDateParts | null {
     dayKey: `${year}-${month}-${day}`,
     yearLabel: String(year),
     monthLabel: new Intl.DateTimeFormat(undefined, { month: "long" }).format(date),
+    monthIndex: date.getMonth(),
     dayLabel: new Intl.DateTimeFormat(undefined, {
       weekday: "short",
       month: "short",
       day: "numeric",
     }).format(date),
+    dayNumber: date.getDate(),
     timeLabel: new Intl.DateTimeFormat(undefined, {
       hour: "numeric",
       minute: "2-digit",
@@ -151,13 +179,12 @@ function parseBidAt(iso: string): BidDateParts | null {
 }
 
 function formatBidAt(iso: string): string {
-  const parts = parseBidAt(iso);
-  if (!parts) return iso;
-  return `${parts.dateLabel}`;
+  return parseBidAt(iso)?.dateLabel ?? iso;
 }
 
-function truncate(text: string, max = 140): string {
+function truncate(text: string, max = 100): string {
   const trimmed = text.trim();
+  if (!trimmed) return "No description";
   if (trimmed.length <= max) return trimmed;
   return `${trimmed.slice(0, max).trimEnd()}…`;
 }
@@ -207,6 +234,7 @@ function groupByYearMonthDay(items: SavedResumeArchive[]): YearGroup[] {
       month = {
         monthKey: parts.monthKey,
         monthLabel: parts.monthLabel,
+        monthIndex: parts.monthIndex,
         days: [],
         totalCount: 0,
       };
@@ -215,7 +243,12 @@ function groupByYearMonthDay(items: SavedResumeArchive[]): YearGroup[] {
 
     let day = month.days.find((d) => d.dayKey === parts.dayKey);
     if (!day) {
-      day = { dayKey: parts.dayKey, dayLabel: parts.dayLabel, items: [] };
+      day = {
+        dayKey: parts.dayKey,
+        dayLabel: parts.dayLabel,
+        dayNumber: parts.dayNumber,
+        items: [],
+      };
       month.days.push(day);
     }
 
@@ -237,20 +270,6 @@ function groupByYearMonthDay(items: SavedResumeArchive[]): YearGroup[] {
     }));
 }
 
-function collectExpandKeys(groups: YearGroup[]): Set<string> {
-  const keys = new Set<string>();
-  for (const year of groups) {
-    keys.add(`year:${year.yearKey}`);
-    for (const month of year.months) {
-      keys.add(`month:${month.monthKey}`);
-      for (const day of month.days) {
-        keys.add(`day:${day.dayKey}`);
-      }
-    }
-  }
-  return keys;
-}
-
 function countLabel(count: number): string {
   return count === 1 ? "1 application" : `${count} applications`;
 }
@@ -269,32 +288,33 @@ function Chevron({ open, className }: { open: boolean; className: string }) {
   );
 }
 
-function ToggleRow({
-  label,
-  meta,
+function JobDescriptionModal({
   open,
-  level,
-  onToggle,
-  styles,
+  onClose,
+  item,
 }: {
-  label: string;
-  meta: string;
   open: boolean;
-  level: 0 | 1 | 2;
-  onToggle: () => void;
-  styles: PanelStyles;
+  onClose: () => void;
+  item: SavedResumeArchive | null;
 }) {
+  const description = item?.jobDescription?.trim() || "No job description was saved for this application.";
+
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-expanded={open}
-      className={`${styles.toggleButton} ${TOGGLE_PAD[level]} ${open ? styles.toggleButtonOpen : ""}`}
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={item ? `${item.jobTitle} at ${item.companyName}` : "Job description"}
+      className="max-w-2xl"
     >
-      <Chevron open={open} className={styles.chevron} />
-      <span className={styles.toggleLabel}>{label}</span>
-      <span className={styles.toggleMeta}>{meta}</span>
-    </button>
+      <div className="overflow-y-auto px-6 py-5 max-h-[min(70dvh,32rem)]">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          Job description
+        </p>
+        <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-200">
+          {description}
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -304,15 +324,17 @@ function ApplicationRows({
   downloadingKey,
   onPreview,
   onDownload,
+  onJobDescription,
 }: {
   items: SavedResumeArchive[];
   styles: PanelStyles;
   downloadingKey: string | null;
   onPreview: (item: SavedResumeArchive) => void;
   onDownload: (item: SavedResumeArchive, format: "docx" | "pdf") => void;
+  onJobDescription: (item: SavedResumeArchive) => void;
 }) {
   return (
-    <div className={`${styles.groupPanel} ml-1`}>
+    <div className={styles.groupPanel}>
       <div className={styles.tableWrap}>
         <table className="min-w-full text-left text-sm">
           <thead className={styles.thead}>
@@ -320,7 +342,7 @@ function ApplicationRows({
               <th className="px-4 py-3 font-medium">Bid time</th>
               <th className="px-4 py-3 font-medium">Company</th>
               <th className="px-4 py-3 font-medium">Job title</th>
-              <th className="hidden px-4 py-3 font-medium lg:table-cell">Job description</th>
+              <th className="px-4 py-3 font-medium">Job description</th>
               <th className="px-4 py-3 font-medium">Resume</th>
               <th className="px-4 py-3 font-medium text-right">Download</th>
             </tr>
@@ -330,6 +352,7 @@ function ApplicationRows({
               const docxKey = `${item.id}:docx`;
               const pdfKey = `${item.id}:pdf`;
               const timeLabel = parseBidAt(item.bidAt)?.timeLabel ?? "—";
+              const hasDescription = Boolean(item.jobDescription?.trim());
 
               return (
                 <tr key={item.id} className={styles.rowHover}>
@@ -337,7 +360,14 @@ function ApplicationRows({
                   <td className={styles.company}>{item.companyName}</td>
                   <td className={styles.jobTitle}>{item.jobTitle}</td>
                   <td className={styles.description}>
-                    <span title={item.jobDescription}>{truncate(item.jobDescription)}</span>
+                    <button
+                      type="button"
+                      onClick={() => onJobDescription(item)}
+                      className={styles.descLink}
+                      title={hasDescription ? "View full job description" : undefined}
+                    >
+                      {hasDescription ? truncate(item.jobDescription) : "No description"}
+                    </button>
                   </td>
                   <td className="px-4 py-3">
                     <button
@@ -387,13 +417,18 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
+  const [selectedYearKey, setSelectedYearKey] = useState<string | null>(null);
+  const [selectedMonthKey, setSelectedMonthKey] = useState<string | null>(null);
+  const [expandedDayKeys, setExpandedDayKeys] = useState<Set<string>>(new Set());
 
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewItem, setPreviewItem] = useState<SavedResumeArchive | null>(null);
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
+
+  const [jobDescOpen, setJobDescOpen] = useState(false);
+  const [jobDescItem, setJobDescItem] = useState<SavedResumeArchive | null>(null);
 
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
 
@@ -428,22 +463,66 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
 
   const yearGroups = useMemo(() => groupByYearMonthDay(visibleItems), [visibleItems]);
 
-  useEffect(() => {
-    if (!debouncedSearch.trim()) return;
-    setExpandedKeys(collectExpandKeys(yearGroups));
-  }, [debouncedSearch, yearGroups]);
+  const selectedYear = useMemo(
+    () => yearGroups.find((year) => year.yearKey === selectedYearKey) ?? null,
+    [yearGroups, selectedYearKey]
+  );
 
-  function toggleKey(key: string) {
-    setExpandedKeys((current) => {
+  const selectedMonth = useMemo(
+    () => selectedYear?.months.find((month) => month.monthKey === selectedMonthKey) ?? null,
+    [selectedYear, selectedMonthKey]
+  );
+
+  useEffect(() => {
+    if (yearGroups.length === 0) {
+      setSelectedYearKey(null);
+      setSelectedMonthKey(null);
+      setExpandedDayKeys(new Set());
+      return;
+    }
+
+    const nextYear = yearGroups.some((y) => y.yearKey === selectedYearKey)
+      ? selectedYearKey!
+      : yearGroups[0].yearKey;
+
+    const year = yearGroups.find((y) => y.yearKey === nextYear)!;
+    const nextMonth = year.months.some((m) => m.monthKey === selectedMonthKey)
+      ? selectedMonthKey!
+      : (year.months[0]?.monthKey ?? null);
+
+    if (nextYear !== selectedYearKey) setSelectedYearKey(nextYear);
+    if (nextMonth !== selectedMonthKey) setSelectedMonthKey(nextMonth);
+  }, [yearGroups, selectedYearKey, selectedMonthKey]);
+
+  useEffect(() => {
+    if (!debouncedSearch.trim() || !selectedMonth) return;
+    setExpandedDayKeys(new Set(selectedMonth.days.map((day) => day.dayKey)));
+  }, [debouncedSearch, selectedMonth]);
+
+  function selectYear(yearKey: string) {
+    setSelectedYearKey(yearKey);
+    const year = yearGroups.find((y) => y.yearKey === yearKey);
+    setSelectedMonthKey(year?.months[0]?.monthKey ?? null);
+    setExpandedDayKeys(new Set());
+  }
+
+  function selectMonth(monthKey: string) {
+    setSelectedMonthKey(monthKey);
+    setExpandedDayKeys(new Set());
+  }
+
+  function toggleDay(dayKey: string) {
+    setExpandedDayKeys((current) => {
       const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (next.has(dayKey)) next.delete(dayKey);
+      else next.add(dayKey);
       return next;
     });
   }
 
-  function isOpen(key: string): boolean {
-    return expandedKeys.has(key);
+  function openJobDescription(item: SavedResumeArchive) {
+    setJobDescItem(item);
+    setJobDescOpen(true);
   }
 
   async function openPreview(item: SavedResumeArchive) {
@@ -492,14 +571,26 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
     }
   }
 
+  const monthSlots = useMemo(() => {
+    const byIndex = new Map<number, MonthGroup>();
+    for (const month of selectedYear?.months ?? []) {
+      byIndex.set(month.monthIndex, month);
+    }
+    return MONTH_SHORT.map((label, index) => ({
+      label,
+      index,
+      month: byIndex.get(index) ?? null,
+    }));
+  }, [selectedYear]);
+
   return (
     <section className={styles.section}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className={styles.title}>Saved resumes</h2>
           <p className={styles.subtitle}>
-            Browse by year, month, and day — expand each level to see applications. Search opens
-            all matching groups.
+            Pick a year and month, then expand a date to see applications. Click a job description
+            preview for the full posting.
           </p>
         </div>
         <div className="w-full sm:max-w-xs">
@@ -523,93 +614,125 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
         </div>
       )}
 
-      <div className={styles.listWrap}>
-        {loading ? (
-          <div className={styles.empty}>
-            <span className="inline-flex items-center gap-2">
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
-              Loading saved resumes…
-            </span>
+      {loading ? (
+        <div className={`${styles.empty} mt-5`}>
+          <span className="inline-flex items-center gap-2">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+            Loading saved resumes…
+          </span>
+        </div>
+      ) : yearGroups.length === 0 ? (
+        <div className={`${styles.empty} mt-5`}>
+          {debouncedSearch
+            ? "No applications match your search."
+            : "No saved resumes yet. Apply a tailored resume from New resume to save one here."}
+        </div>
+      ) : (
+        <div className={styles.pickerSection}>
+          <div>
+            <p className={styles.pickerLabel}>Year</p>
+            <div className={styles.chipGrid} role="listbox" aria-label="Select year">
+              {yearGroups.map((year) => {
+                const selected = year.yearKey === selectedYearKey;
+                return (
+                  <button
+                    key={year.yearKey}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    onClick={() => selectYear(year.yearKey)}
+                    className={`${styles.chip} ${selected ? styles.chipSelected : ""}`}
+                  >
+                    {year.yearLabel}
+                    <span className={styles.chipCount}>{year.totalCount}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        ) : yearGroups.length === 0 ? (
-          <div className={styles.empty}>
-            {debouncedSearch
-              ? "No applications match your search."
-              : "No saved resumes yet. Apply a tailored resume from New resume to save one here."}
-          </div>
-        ) : (
-          yearGroups.map((year) => {
-            const yearOpen = isOpen(`year:${year.yearKey}`);
 
-            return (
-              <div key={year.yearKey}>
-                <ToggleRow
-                  label={year.yearLabel}
-                  meta={countLabel(year.totalCount)}
-                  open={yearOpen}
-                  level={0}
-                  onToggle={() => toggleKey(`year:${year.yearKey}`)}
-                  styles={styles}
-                />
-
-                {yearOpen && (
-                  <div className={styles.nested}>
-                    {year.months.map((month) => {
-                      const monthOpen = isOpen(`month:${month.monthKey}`);
-
-                      return (
-                        <div key={month.monthKey}>
-                          <ToggleRow
-                            label={month.monthLabel}
-                            meta={countLabel(month.totalCount)}
-                            open={monthOpen}
-                            level={1}
-                            onToggle={() => toggleKey(`month:${month.monthKey}`)}
-                            styles={styles}
-                          />
-
-                          {monthOpen && (
-                            <div className={styles.nested}>
-                              {month.days.map((day) => {
-                                const dayOpen = isOpen(`day:${day.dayKey}`);
-
-                                return (
-                                  <div key={day.dayKey} className="space-y-1.5">
-                                    <ToggleRow
-                                      label={day.dayLabel}
-                                      meta={countLabel(day.items.length)}
-                                      open={dayOpen}
-                                      level={2}
-                                      onToggle={() => toggleKey(`day:${day.dayKey}`)}
-                                      styles={styles}
-                                    />
-
-                                    {dayOpen && (
-                                      <ApplicationRows
-                                        items={day.items}
-                                        styles={styles}
-                                        downloadingKey={downloadingKey}
-                                        onPreview={(item) => void openPreview(item)}
-                                        onDownload={(item, format) =>
-                                          void handleDownload(item, format)
-                                        }
-                                      />
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+          {selectedYear && (
+            <div>
+              <p className={styles.pickerLabel}>Month</p>
+              <div className={styles.monthGrid} role="listbox" aria-label="Select month">
+                {monthSlots.map(({ label, month }) => {
+                  const selected = month?.monthKey === selectedMonthKey;
+                  const disabled = !month;
+                  return (
+                    <button
+                      key={label}
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      disabled={disabled}
+                      onClick={() => month && selectMonth(month.monthKey)}
+                      className={`${styles.chip} ${selected ? styles.chipSelected : ""}`}
+                    >
+                      {label}
+                      {month ? (
+                        <span className={styles.chipCount}>{month.totalCount}</span>
+                      ) : null}
+                    </button>
+                  );
+                })}
               </div>
-            );
-          })
-        )}
-      </div>
+            </div>
+          )}
+
+          {selectedMonth && selectedMonth.days.length > 0 && (
+            <div className={styles.daysSection}>
+              <p className={styles.daysHeading}>
+                {selectedMonth.monthLabel} {selectedYear?.yearLabel} — select a date
+              </p>
+              <div className="space-y-2">
+                {selectedMonth.days.map((day) => {
+                  const dayOpen = expandedDayKeys.has(day.dayKey);
+                  return (
+                    <div key={day.dayKey}>
+                      <button
+                        type="button"
+                        onClick={() => toggleDay(day.dayKey)}
+                        aria-expanded={dayOpen}
+                        className={`${styles.dayButton} ${dayOpen ? styles.dayButtonOpen : ""}`}
+                      >
+                        <Chevron open={dayOpen} className={styles.chevron} />
+                        <span className={styles.dayLabel}>{day.dayLabel}</span>
+                        <span className={styles.dayMeta}>{countLabel(day.items.length)}</span>
+                      </button>
+
+                      {dayOpen && (
+                        <div className="mt-2">
+                          <ApplicationRows
+                            items={day.items}
+                            styles={styles}
+                            downloadingKey={downloadingKey}
+                            onPreview={(item) => void openPreview(item)}
+                            onDownload={(item, format) => void handleDownload(item, format)}
+                            onJobDescription={openJobDescription}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {selectedMonth && selectedMonth.days.length === 0 && (
+            <div className={styles.empty}>No applications in this month.</div>
+          )}
+        </div>
+      )}
+
+      <JobDescriptionModal
+        open={jobDescOpen}
+        onClose={() => {
+          setJobDescOpen(false);
+          setJobDescItem(null);
+        }}
+        item={jobDescItem}
+      />
 
       <PdfPreviewModal
         open={previewOpen}
@@ -624,9 +747,7 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
         blob={previewBlob}
         waitingForPdf={previewLoading}
         error={previewError}
-        onDownload={
-          previewItem ? () => void handleDownload(previewItem, "pdf") : undefined
-        }
+        onDownload={previewItem ? () => void handleDownload(previewItem, "pdf") : undefined}
       />
     </section>
   );
