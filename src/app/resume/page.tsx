@@ -1,6 +1,4 @@
 import dynamic from "next/dynamic";
-import PageHero from "@/components/layout/PageHero";
-import RequireResumeBuilder from "@/components/auth/RequireResumeBuilder";
 import { pageMetadata } from "@/lib/seo";
 import type { Metadata } from "next";
 
@@ -22,22 +20,12 @@ const ResumeBuilder = dynamic(() => import("@/components/sections/ResumeBuilder"
 });
 
 export const metadata: Metadata = pageMetadata({
-  title: "Resume Builder",
+  title: "New Resume",
   description:
     "Generate ATS-optimized resume content tailored to any job. Choose a template, enter a job title and description, preview and download your updated resume.",
   path: "/resume",
 });
 
 export default function ResumePage() {
-  return (
-    <>
-      <PageHero
-        title="Resume Builder"
-        description="Pick a template, generate an AI draft for your target job, edit every section yourself, then download a tailored .docx."
-      />
-      <RequireResumeBuilder>
-        <ResumeBuilder />
-      </RequireResumeBuilder>
-    </>
-  );
+  return <ResumeBuilder />;
 }

@@ -12,8 +12,54 @@ import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
 
-const inputClass =
-  "w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40";
+type SavedResumesPanelProps = {
+  variant?: "dashboard" | "resume";
+};
+
+const STYLES = {
+  dashboard: {
+    section: "rounded-2xl border border-white/10 bg-navy-900/60 p-6",
+    title: "text-lg font-semibold text-white",
+    subtitle: "mt-1 text-sm text-slate-400",
+    input:
+      "w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40",
+    tableWrap: "mt-5 overflow-x-auto rounded-xl border border-white/10",
+    thead: "border-b border-white/10 bg-white/[0.02] text-xs uppercase tracking-wider text-slate-500",
+    rowHover: "align-top hover:bg-white/[0.02]",
+    bidDate: "whitespace-nowrap px-4 py-3 text-slate-300",
+    company: "px-4 py-3 font-medium text-white",
+    jobTitle: "px-4 py-3 text-slate-200",
+    description: "hidden max-w-md px-4 py-3 text-slate-400 lg:table-cell",
+    fileLink:
+      "font-mono text-xs text-blue-400 underline-offset-2 hover:text-blue-300 hover:underline",
+    tbody: "divide-y divide-white/5",
+    empty: "px-4 py-10 text-center text-slate-400",
+    error: "mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300",
+  },
+  resume: {
+    section:
+      "overflow-hidden rounded-3xl border border-slate-200/80 bg-white/90 p-6 shadow-xl shadow-slate-200/50 backdrop-blur-sm dark:border-white/[0.08] dark:bg-navy-900/80 dark:shadow-black/30 sm:p-8",
+    title: "text-lg font-semibold text-slate-900 dark:text-white",
+    subtitle: "mt-1 text-sm text-slate-500 dark:text-slate-400",
+    input:
+      "w-full rounded-xl border border-slate-200 dark:border-white/[0.10] bg-slate-50 dark:bg-white/[0.03] px-4 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40",
+    tableWrap:
+      "mt-5 overflow-x-auto rounded-xl border border-slate-200/80 dark:border-white/[0.08]",
+    thead:
+      "border-b border-slate-200/80 bg-slate-50/80 text-xs uppercase tracking-wider text-slate-500 dark:border-white/[0.06] dark:bg-white/[0.02] dark:text-slate-400",
+    rowHover: "align-top hover:bg-slate-50/80 dark:hover:bg-white/[0.02]",
+    bidDate: "whitespace-nowrap px-4 py-3 text-slate-600 dark:text-slate-300",
+    company: "px-4 py-3 font-medium text-slate-900 dark:text-white",
+    jobTitle: "px-4 py-3 text-slate-700 dark:text-slate-200",
+    description: "hidden max-w-md px-4 py-3 text-slate-500 dark:text-slate-400 lg:table-cell",
+    fileLink:
+      "font-mono text-xs text-blue-600 underline-offset-2 hover:text-blue-500 hover:underline dark:text-blue-400 dark:hover:text-blue-300",
+    tbody: "divide-y divide-slate-200/80 dark:divide-white/5",
+    empty: "px-4 py-10 text-center text-slate-500 dark:text-slate-400",
+    error:
+      "mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600 dark:text-red-300",
+  },
+} as const;
 
 function formatBidAt(iso: string): string {
   const date = new Date(iso);
@@ -51,7 +97,8 @@ function sortByBidDate(items: SavedResumeArchive[]): SavedResumeArchive[] {
   return [...items].sort((a, b) => new Date(b.bidAt).getTime() - new Date(a.bidAt).getTime());
 }
 
-export default function SavedResumesPanel() {
+export default function SavedResumesPanel({ variant = "dashboard" }: SavedResumesPanelProps) {
+  const styles = STYLES[variant];
   const [items, setItems] = useState<SavedResumeArchive[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -134,11 +181,11 @@ export default function SavedResumesPanel() {
   }
 
   return (
-    <section className="rounded-2xl border border-white/10 bg-navy-900/60 p-6">
+    <section className={styles.section}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-white">Saved resumes</h2>
-          <p className="mt-1 text-sm text-slate-400">
+          <h2 className={styles.title}>Saved resumes</h2>
+          <p className={styles.subtitle}>
             Applications you saved — newest bids first. Search by company, title, description, or file name.
           </p>
         </div>
@@ -152,23 +199,20 @@ export default function SavedResumesPanel() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search applications…"
-            className={inputClass}
+            className={styles.input}
           />
         </div>
       </div>
 
       {error && (
-        <div
-          className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300"
-          role="alert"
-        >
+        <div className={styles.error} role="alert">
           {error}
         </div>
       )}
 
-      <div className="mt-5 overflow-x-auto rounded-xl border border-white/10">
+      <div className={styles.tableWrap}>
         <table className="min-w-full text-left text-sm">
-          <thead className="border-b border-white/10 bg-white/[0.02] text-xs uppercase tracking-wider text-slate-500">
+          <thead className={styles.thead}>
             <tr>
               <th className="px-4 py-3 font-medium">Bid date</th>
               <th className="px-4 py-3 font-medium">Company</th>
@@ -178,10 +222,10 @@ export default function SavedResumesPanel() {
               <th className="px-4 py-3 font-medium text-right">Download</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-white/5">
+          <tbody className={styles.tbody}>
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={6} className={styles.empty}>
                   <span className="inline-flex items-center gap-2">
                     <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
                     Loading saved resumes…
@@ -190,10 +234,10 @@ export default function SavedResumesPanel() {
               </tr>
             ) : visibleItems.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
+                <td colSpan={6} className={styles.empty}>
                   {debouncedSearch
                     ? "No applications match your search."
-                    : "No saved resumes yet. Apply a tailored resume from the Resume Builder to save one here."}
+                    : "No saved resumes yet. Apply a tailored resume from New resume to save one here."}
                 </td>
               </tr>
             ) : (
@@ -201,20 +245,18 @@ export default function SavedResumesPanel() {
                 const docxKey = `${item.id}:docx`;
                 const pdfKey = `${item.id}:pdf`;
                 return (
-                  <tr key={item.id} className="align-top hover:bg-white/[0.02]">
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-300">
-                      {formatBidAt(item.bidAt)}
-                    </td>
-                    <td className="px-4 py-3 font-medium text-white">{item.companyName}</td>
-                    <td className="px-4 py-3 text-slate-200">{item.jobTitle}</td>
-                    <td className="hidden max-w-md px-4 py-3 text-slate-400 lg:table-cell">
+                  <tr key={item.id} className={styles.rowHover}>
+                    <td className={styles.bidDate}>{formatBidAt(item.bidAt)}</td>
+                    <td className={styles.company}>{item.companyName}</td>
+                    <td className={styles.jobTitle}>{item.jobTitle}</td>
+                    <td className={styles.description}>
                       <span title={item.jobDescription}>{truncate(item.jobDescription)}</span>
                     </td>
                     <td className="px-4 py-3">
                       <button
                         type="button"
                         onClick={() => void openPreview(item)}
-                        className="font-mono text-xs text-blue-400 underline-offset-2 hover:text-blue-300 hover:underline"
+                        className={styles.fileLink}
                       >
                         {item.resumeFileName}
                       </button>

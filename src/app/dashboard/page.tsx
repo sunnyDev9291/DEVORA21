@@ -5,7 +5,6 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Button from "@/components/ui/Button";
 import DashboardProfilePanel from "@/components/dashboard/DashboardProfilePanel";
-import SavedResumesPanel from "@/components/dashboard/SavedResumesPanel";
 import EmailVerificationBanner from "@/components/auth/EmailVerificationBanner";
 import ResumeAccessNotice from "@/components/auth/ResumeAccessNotice";
 import { AuthGuard } from "@/components/auth/AuthGuard";
@@ -100,12 +99,6 @@ function DashboardContent() {
                 void refreshUser();
               }}
             />
-          </div>
-        )}
-
-        {user && isValidAuthUser(user) && isResumeBuilderEnabled && (
-          <div className="mt-8">
-            <SavedResumesPanel />
           </div>
         )}
 
