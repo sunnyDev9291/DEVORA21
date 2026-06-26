@@ -268,9 +268,9 @@ export const CONTACT_INFO = {
 export const APP_FEATURES = {
   resume: {
     href: "/resume",
-    label: "Resume Builder",
+    label: "Resume",
     shortLabel: "Resume",
-    description: "ATS-tailored resumes",
+    description: "Build and manage tailored resumes",
     accent: "blue",
   },
   realTimeInterview: {
