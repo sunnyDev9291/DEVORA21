@@ -3,10 +3,38 @@ import { RESUME_BUILDER_ACCESS_MESSAGE } from "@/lib/resume-access";
 import type { SavedResumeArchive, SavedResumeListResponse } from "@/lib/saved-resumes-types";
 
 function parseFileName(res: Response, fallback: string): string {
+  const custom =
+    res.headers.get("x-resume-name") ??
+    res.headers.get("x-pdf-filename") ??
+    res.headers.get("x-filename");
+  if (custom?.trim()) return custom.trim();
+
   const disposition = res.headers.get("content-disposition") ?? "";
-  const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
-  if (match?.[1]) return decodeURIComponent(match[1].replace(/"/g, ""));
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1].replace(/"/g, ""));
+    } catch {
+      return utf8Match[1].replace(/"/g, "");
+    }
+  }
+  const quotedMatch = disposition.match(/filename="([^"]+)"/i);
+  if (quotedMatch?.[1]) return quotedMatch[1];
+  const plainMatch = disposition.match(/filename=([^;]+)/i);
+  if (plainMatch?.[1]) return plainMatch[1].trim().replace(/"/g, "");
+
   return fallback;
+}
+
+function resolveArchiveFileName(
+  item: Pick<SavedResumeArchive, "resumeFileName" | "pdfFileName">,
+  format: "docx" | "pdf"
+): string {
+  if (format === "docx") return item.resumeFileName;
+  return (
+    item.pdfFileName?.trim() ||
+    item.resumeFileName.replace(/\.docx$/i, ".pdf")
+  );
 }
 
 export async function listSavedResumes(search = ""): Promise<SavedResumeArchive[]> {
@@ -36,7 +64,8 @@ export async function listSavedResumes(search = ""): Promise<SavedResumeArchive[
 
 export async function fetchSavedResumeFile(
   id: string,
-  format: "docx" | "pdf"
+  format: "docx" | "pdf",
+  preferredFileName?: string
 ): Promise<{ blob: Blob; fileName: string }> {
   const res = await fetch(`${API_BASE_URL}/resume/archives/${encodeURIComponent(id)}/${format}`, {
     method: "GET",
@@ -50,9 +79,12 @@ export async function fetchSavedResumeFile(
   }
 
   const blob = await res.blob();
-  const fallback = format === "pdf" ? "resume.pdf" : "resume.docx";
-  return { blob, fileName: parseFileName(res, fallback) };
+  const fallback = preferredFileName?.trim() || (format === "pdf" ? "resume.pdf" : "resume.docx");
+  const fileName = parseFileName(res, fallback);
+  return { blob, fileName };
 }
+
+export { resolveArchiveFileName };
 
 export function downloadBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
