@@ -14,6 +14,7 @@ import { resumeBuilderAccessDeniedMessage } from "@/lib/resume-access";
 import { pickBestRegenerateResult, type RegenerateEvaluation } from "@/lib/resume-ats-regenerate";
 import { emptyRuleKeepScore } from "@/lib/resume-rule-keep";
 import type { GeneratedResumeContent, ResumeBuildResponse, AtsScoreResult, HumanToneScoreResult, RuleKeepScoreResult } from "@/lib/resume-types";
+import { buildExpectedResumeBaseName } from "@/lib/resume-filename";
 import { loadStoredProfile, resolveUserNames } from "@/lib/user-profile";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
@@ -86,6 +87,8 @@ export default function ResumeGenerator({
   const [error, setError] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [generationKey, setGenerationKey] = useState(0);
+  const [resumeFileBaseName, setResumeFileBaseName] = useState("");
+  const [resumeNameTouched, setResumeNameTouched] = useState(false);
   const [streamPhase, setStreamPhase] = useState<ResumeGenerationPhase>("starting");
   const [atsScore, setAtsScore] = useState<AtsScoreResult | null>(null);
   const [atsLoading, setAtsLoading] = useState(false);
@@ -143,6 +146,8 @@ export default function ResumeGenerator({
     setRuleKeepError("");
     setAtsModalOpen(false);
     setResumeChatOpen(false);
+    setResumeFileBaseName("");
+    setResumeNameTouched(false);
     keywordsCacheKeyRef.current = null;
   }, [userTemplate?.fileName, userTemplate?.templateBase64]);
 
@@ -205,6 +210,8 @@ export default function ResumeGenerator({
     setRegenerateNotice("");
     setAtsModalOpen(false);
     setResumeChatOpen(false);
+    setResumeFileBaseName("");
+    setResumeNameTouched(false);
     keywordsCacheKeyRef.current = null;
   }
 
@@ -220,6 +227,29 @@ export default function ResumeGenerator({
   const targetJobLabel = `${form.jobTitle.trim()} at ${form.companyName.trim()}`;
 
   const canGenerate = !!userTemplate && !!form.jobTitle.trim() && !!form.companyName.trim();
+
+  const suggestedResumeBaseName = useMemo(() => {
+    if (!content || !userTemplate) return "";
+    return buildExpectedResumeBaseName(
+      userTemplate.fileName,
+      form.jobTitle,
+      content,
+      form.customPrompt
+    );
+  }, [content, userTemplate, form.jobTitle, form.customPrompt]);
+
+  useEffect(() => {
+    if (!resumeNameTouched && suggestedResumeBaseName) {
+      setResumeFileBaseName(suggestedResumeBaseName);
+    }
+  }, [suggestedResumeBaseName, resumeNameTouched]);
+
+  useEffect(() => {
+    setResumeNameTouched(false);
+    if (suggestedResumeBaseName) {
+      setResumeFileBaseName(suggestedResumeBaseName);
+    }
+  }, [generationKey]); // eslint-disable-line react-hooks/exhaustive-deps -- reset manual name on new generation
 
   async function evaluateResumeScores(
     resumeContent: GeneratedResumeContent,
@@ -466,6 +496,7 @@ export default function ResumeGenerator({
           jobTitle: form.jobTitle,
           customPrompt: form.customPrompt,
           content,
+          resumeFileBaseName: resumeFileBaseName.trim(),
         }),
       });
       const data = (await res.json()) as ResumeBuildResponse & { error?: string };
@@ -513,6 +544,8 @@ export default function ResumeGenerator({
     setRegenerateNotice("");
     setAtsModalOpen(false);
     setResumeChatOpen(false);
+    setResumeFileBaseName("");
+    setResumeNameTouched(false);
     keywordsCacheKeyRef.current = null;
     atsAbortRef.current?.abort();
   }
@@ -813,8 +846,16 @@ export default function ResumeGenerator({
               applying={applying}
               generating={generating}
               templateName={userTemplate?.fileName ?? ""}
-              jobTitle={form.jobTitle}
-              customPrompt={form.customPrompt}
+              resumeFileBaseName={resumeFileBaseName}
+              suggestedResumeBaseName={suggestedResumeBaseName}
+              onResumeFileBaseNameChange={(value) => {
+                setResumeNameTouched(true);
+                setResumeFileBaseName(value);
+              }}
+              onResumeFileBaseNameReset={() => {
+                setResumeNameTouched(false);
+                setResumeFileBaseName(suggestedResumeBaseName);
+              }}
               applyLabel={step === "done" ? "Re-apply changes" : "Apply to resume"}
               generationKey={generationKey}
             />
@@ -857,6 +898,16 @@ export default function ResumeGenerator({
         templateName={userTemplate?.fileName ?? ""}
         fileNameJobTitle={form.jobTitle}
         customPrompt={form.customPrompt}
+        resumeFileBaseName={resumeFileBaseName}
+        suggestedResumeBaseName={suggestedResumeBaseName}
+        onResumeFileBaseNameChange={(value) => {
+          setResumeNameTouched(true);
+          setResumeFileBaseName(value);
+        }}
+        onResumeFileBaseNameReset={() => {
+          setResumeNameTouched(false);
+          setResumeFileBaseName(suggestedResumeBaseName);
+        }}
         applyLabel={step === "done" ? "Re-apply changes" : "Apply to resume"}
         generationKey={generationKey}
         onOpenResumeChat={() => setResumeChatOpen(true)}

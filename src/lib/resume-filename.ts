@@ -12,7 +12,7 @@ function slugifyJobTitle(jobTitle: string): string {
     .replace(/^_+|_+$/g, "");
 }
 
-function sanitizeResumeFileBaseName(name: string): string {
+export function sanitizeResumeFileBaseName(name: string): string {
   return name
     .replace(/\*\*/g, "")
     .replace(/[\\/:*?"<>|]/g, "")
@@ -148,7 +148,11 @@ export function buildExpectedResumeFileName(
   templateName: string,
   jobTitle: string,
   content: Pick<GeneratedResumeContent, "title" | "skills">,
-  customPrompt?: string
+  customPrompt?: string,
+  resumeFileBaseName?: string
 ): string {
-  return `${buildExpectedResumeBaseName(templateName, jobTitle, content, customPrompt)}.docx`;
+  const base = resumeFileBaseName?.trim()
+    ? sanitizeResumeFileBaseName(resumeFileBaseName)
+    : buildExpectedResumeBaseName(templateName, jobTitle, content, customPrompt);
+  return base ? `${base}.docx` : "resume.docx";
 }

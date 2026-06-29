@@ -22,6 +22,8 @@ interface BuildRequest {
 
   customPrompt?: string;
 
+  resumeFileBaseName?: string;
+
   content?: GeneratedResumeContent;
 
 }
@@ -124,7 +126,13 @@ export async function POST(req: Request) {
 
     const customPrompt = body.customPrompt?.trim() ?? "";
 
-    const fileName = buildExpectedResumeFileName(templateName, jobTitle, content, customPrompt);
+    const fileName = buildExpectedResumeFileName(
+      templateName,
+      jobTitle,
+      content,
+      customPrompt,
+      body.resumeFileBaseName
+    );
 
 
 

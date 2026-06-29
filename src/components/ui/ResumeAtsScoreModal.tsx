@@ -36,6 +36,10 @@ interface ResumeAtsScoreModalProps extends ResumeAtsScorePanelProps {
   templateName?: string;
   fileNameJobTitle?: string;
   customPrompt?: string;
+  resumeFileBaseName?: string;
+  suggestedResumeBaseName?: string;
+  onResumeFileBaseNameChange?: (value: string) => void;
+  onResumeFileBaseNameReset?: () => void;
   applyLabel?: string;
   generationKey?: number;
   onOpenResumeChat?: () => void;
@@ -68,6 +72,10 @@ export default function ResumeAtsScoreModal({
   templateName = "",
   fileNameJobTitle,
   customPrompt = "",
+  resumeFileBaseName = "",
+  suggestedResumeBaseName = "",
+  onResumeFileBaseNameChange,
+  onResumeFileBaseNameReset,
   applyLabel,
   generationKey = 0,
   onOpenResumeChat,
@@ -219,8 +227,10 @@ export default function ResumeAtsScoreModal({
                   applying={applying}
                   generating={generating}
                   templateName={templateName}
-                  jobTitle={fileNameJobTitle ?? jobTitle ?? ""}
-                  customPrompt={customPrompt}
+                  resumeFileBaseName={resumeFileBaseName}
+                  suggestedResumeBaseName={suggestedResumeBaseName}
+                  onResumeFileBaseNameChange={onResumeFileBaseNameChange ?? (() => {})}
+                  onResumeFileBaseNameReset={onResumeFileBaseNameReset}
                   applyLabel={applyLabel}
                   generationKey={generationKey}
                   embedded

@@ -1,6 +1,6 @@
 import { ATS_PASS_THRESHOLD, ATS_SCORE_MAX } from "@/lib/resume-ats-algorithm";
 import { HUMAN_TONE_PASS_THRESHOLD, HUMAN_TONE_SCORE_MAX } from "@/lib/resume-human-tone-algorithm";
-import { RULE_KEEP_PASS_THRESHOLD, RULE_KEEP_SCORE_MAX } from "@/lib/resume-rule-keep-constants";
+import { RULE_KEEP_PASS_THRESHOLD, RULE_KEEP_SCORE_MAX, RULE_KEEP_GUARD_THRESHOLD } from "@/lib/resume-rule-keep-constants";
 import type { AtsScoreResult, GeneratedResumeContent, HumanToneScoreResult, RuleKeepScoreResult } from "@/lib/resume-types";
 
 export const RESUME_AI_MODEL = "deepseek-v4-pro";
@@ -36,23 +36,25 @@ Rules:
 - Additional user instructions apply to summary, skills, and bullet wording only — never change employer names, roles, or dates.
 - No markdown fences, no commentary — valid json only.`;
 
-export const RESUME_REGENERATE_SYSTEM_SUFFIX = `When regeneration context is provided, this is a TARGETED REVISION pass — not a full rewrite. You must improve ALL THREE evaluation systems together using the analysis in the user message:
-1) ATS match (keyword coverage, title, skills, format, failed gates) — target ${ATS_PASS_THRESHOLD}+
-2) Human tone (natural wording, variety, collaboration cues, no buzzwords) — target ${HUMAN_TONE_PASS_THRESHOLD}+
-3) Rule Keep (private writing rules from the user's prompt — fix every failed rule category) — target ${RULE_KEEP_PASS_THRESHOLD}+
+export const RESUME_REGENERATE_SYSTEM_SUFFIX = `When regeneration context is provided, this is a TARGETED REVISION pass — not a full rewrite.
 
-Preservation rules (highest priority):
-- Start from the previous draft in the user message and keep all strong, relevant content unchanged.
-- Preserve structure, metrics, achievements, and experience details wherever they already score well.
-- Do not rewrite entire sections, companies, or bullet lists from scratch.
-- Copy company, role, and dates exactly from the previous draft (and template).
+Priority order (highest first):
+1) RULE KEEP — user prompt rules are sacred. Never break a passing rule to improve ATS or tone.
+2) Preserve all text that already passes rules, tone, and ATS — return it verbatim.
+3) ATS and human tone — improve only weak dimensions using the SURGICAL EDIT PLAN zones.
+
+Targets: ATS ${ATS_PASS_THRESHOLD}+, tone ${HUMAN_TONE_PASS_THRESHOLD}+, rules ${RULE_KEEP_PASS_THRESHOLD}+.
+
+Preservation rules:
+- Start from the previous draft and keep strong content unchanged.
+- Do not rewrite entire sections, companies, or bullet lists.
+- Copy company, role, and dates exactly from the previous draft.
 
 Revision rules:
-- Address EVERY gap listed in ATS, human-tone, and rule-keep feedback — missing keywords, failed gates, weak categories, buzzwords, and failed rules.
-- Prefer small edits over replacing whole sentences — vary verbs, add collaboration context, remove AI buzzwords while keeping keywords.
-- If a bullet already reads naturally, matches keywords, and passes rules, return it verbatim.
-- The revised draft must NOT drop below pass thresholds (ATS ${ATS_PASS_THRESHOLD}+, tone ${HUMAN_TONE_PASS_THRESHOLD}+, rules ${RULE_KEEP_PASS_THRESHOLD}+). Already-strong dimensions may dip slightly; weak dimensions must improve.
-- Wrap only newly emphasized priority keywords in **bold** where truthful.`;
+- When rule keep is ${RULE_KEEP_GUARD_THRESHOLD}+, add ATS keywords ONLY to title and skills — do NOT edit summary or experience bullets for keywords.
+- Never rewrite a whole bullet — change the minimum words in the minimum field.
+- If an ATS or tone fix would break any passing rule, skip it and use skills/title only.
+- Wrap only newly emphasized priority keywords in **bold** where truthful and allowed by rules.`;
 
 export function buildResumeSystemPrompt(regenerate = false): string {
   return regenerate
@@ -94,12 +96,17 @@ export function buildHumanToneRegeneratePromptSection(
 export function buildAtsRegeneratePromptSection(
   feedback: AtsScoreResult,
   previousContent: GeneratedResumeContent,
-  targetScore = ATS_PASS_THRESHOLD
+  targetScore = ATS_PASS_THRESHOLD,
+  ruleKeepFeedback?: RuleKeepScoreResult
 ): string {
   const failedGates = feedback.gates?.filter((g) => !g.passed) ?? [];
   const weakCategories = feedback.breakdown
     .filter((b) => b.score < b.maxScore * 0.75)
     .map((b) => `- ${b.category}: ${b.score}/${b.maxScore} — ${b.notes}`);
+
+  const rulesGuarded =
+    Boolean(ruleKeepFeedback?.totalRules) &&
+    ruleKeepFeedback!.overall >= RULE_KEEP_GUARD_THRESHOLD;
 
   const previousDraft = {
     title: previousContent.title,
@@ -114,9 +121,10 @@ export function buildAtsRegeneratePromptSection(
   };
 
   return [
-    `ATS TARGETED REVISION — previous score ${feedback.overall}/${ATS_SCORE_MAX}. Target: ${targetScore}+ (strict acceptance).`,
-    `SCORE FLOOR: The revised draft MUST score at least ${feedback.overall} — never below the previous version. If a change would lower keyword coverage, format compliance, or title alignment, do not make it.`,
-    `IMPORTANT: Do NOT rewrite the entire resume. Use the previous draft below as your base. Preserve all strong and relevant content. Revise only what is necessary to close the ATS gaps listed here.`,
+    `ATS TARGETED REVISION — previous score ${feedback.overall}/${ATS_SCORE_MAX}. Target: ${targetScore}+.`,
+    rulesGuarded &&
+      `RULE GUARD ACTIVE (rule keep ${ruleKeepFeedback!.overall}/${RULE_KEEP_SCORE_MAX}): add missing keywords ONLY to the title line and skills line. Do NOT edit summary or experience bullets for ATS — those fields are protected to preserve rule compliance.`,
+    `IMPORTANT: Do NOT rewrite the entire resume. Use the previous draft below as your base.`,
     `Previous evaluation summary: ${feedback.summary}`,
     feedback.missingKeywords.length > 0 &&
       `Missing must-have keywords — add only where needed (title, summary, skills, or specific bullets; do not rewrite unaffected sections): ${feedback.missingKeywords.join(", ")}`,
@@ -146,11 +154,17 @@ export function buildRuleKeepRegeneratePromptSection(
   if (feedback.totalRules === 0) return "";
 
   const failed = feedback.rules.filter((r) => !r.passed);
+  const passed = feedback.rules.filter((r) => r.passed);
 
   return [
     `RULE KEEP REVISION — previous score ${feedback.overall}/${RULE_KEEP_SCORE_MAX} (${feedback.passedRules}/${feedback.totalRules} rules passed). Target: ${targetScore}+.`,
-    `RULE FLOOR: Rule Keep MUST stay at or above ${feedback.overall}. Fix every failed rule with minimal, surgical edits.`,
+    `RULE FLOOR (absolute): Rule keep MUST stay at or above ${feedback.overall}. No ATS or tone gain is worth breaking a passing rule.`,
     `Previous rule summary: ${feedback.summary}`,
+    passed.length > 0 &&
+      `Passing rules — do NOT edit any text that satisfies these (return those fields verbatim):\n${passed
+        .slice(0, 12)
+        .map((r, index) => `- Rule ${index + 1} [${r.category}]: ${r.detail}`)
+        .join("\n")}${passed.length > 12 ? `\n- …and ${passed.length - 12} more passing rules` : ""}`,
     failed.length > 0 &&
       `Failed rules — address each gap in the resume text (category + auditor finding):\n${failed
         .map((r, index) => `- Rule ${index + 1} [${r.category}]: ${r.detail}`)
@@ -164,6 +178,77 @@ export function buildRuleKeepRegeneratePromptSection(
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+/** Maps failing scores to exact edit zones so one fix does not rewrite unrelated fields. */
+export function buildSurgicalEditPlanSection(
+  atsFeedback?: AtsScoreResult,
+  humanToneFeedback?: HumanToneScoreResult,
+  ruleKeepFeedback?: RuleKeepScoreResult
+): string {
+  const atsPassing = !atsFeedback || atsFeedback.overall >= ATS_PASS_THRESHOLD;
+  const tonePassing = !humanToneFeedback || humanToneFeedback.overall >= HUMAN_TONE_PASS_THRESHOLD;
+  const rulesActive = Boolean(ruleKeepFeedback && ruleKeepFeedback.totalRules > 0);
+  const rulesPassing =
+    !rulesActive || (ruleKeepFeedback!.overall >= RULE_KEEP_PASS_THRESHOLD);
+
+  const rulesGuarded =
+    rulesActive && ruleKeepFeedback!.overall >= RULE_KEEP_GUARD_THRESHOLD;
+
+  const lines = [
+    "SURGICAL EDIT PLAN (mandatory) — edit ONLY the zones below. All other fields stay verbatim from the previous draft.",
+  ];
+
+  if (rulesGuarded) {
+    lines.push(
+      `RULE GUARD (${ruleKeepFeedback!.overall}/${RULE_KEEP_SCORE_MAX}): summary and ALL experience bullets are LOCKED for ATS/tone edits. Only title and skills may change for keywords. Tone fixes must be in-place word swaps inside bullets only when they do not break any passing rule.`
+    );
+  }
+
+  if (atsFeedback && !atsPassing) {
+    lines.push(
+      rulesGuarded
+        ? `ATS is below target (${atsFeedback.overall}) — add missing keywords ONLY to title and skills. Do NOT modify summary or bullets.`
+        : `ATS is below target (${atsFeedback.overall}) — edit ONLY: title, skills, summary (max one clause), and bullets missing keywords. Prefer skills/title first.`
+    );
+  } else if (atsFeedback) {
+    lines.push(
+      `ATS is already strong (${atsFeedback.overall}) — do NOT rephrase title, skills, or summary for keywords. Keep matched keywords exactly as written.`
+    );
+  }
+
+  if (humanToneFeedback && !tonePassing) {
+    lines.push(
+      rulesGuarded
+        ? `Human tone is below target (${humanToneFeedback.overall}) — with rule guard active, prefer leaving bullets unchanged. If you must edit tone, use single-word swaps in bullets that already pass all rules; never rewrite a bullet.`
+        : `Human tone is below target (${humanToneFeedback.overall}) — edit ONLY bullets with repetition, buzzwords, or weak openers. Swap verbs and add collaboration context in-place. Do NOT remove ATS keywords or metrics from edited bullets.`
+    );
+  } else if (humanToneFeedback) {
+    lines.push(
+      `Human tone is already strong (${humanToneFeedback.overall}) — do NOT rephrase bullets for style unless a rule requires it.`
+    );
+  }
+
+  if (rulesActive && ruleKeepFeedback && !rulesPassing) {
+    const failed = ruleKeepFeedback.rules.filter((r) => !r.passed);
+    lines.push(
+      `Rule keep is below target (${ruleKeepFeedback.overall}) — fix ONLY the field tied to each failed rule:\n${failed
+        .map((r, i) => `- Rule ${i + 1} [${r.category}]: ${r.detail}`)
+        .join("\n")}`
+    );
+  } else if (rulesActive && ruleKeepFeedback) {
+    lines.push(
+      `Rule keep is already strong (${ruleKeepFeedback.overall}) — do not edit fields for rules that already pass.`
+    );
+  }
+
+  lines.push(
+    rulesGuarded
+      ? `Conflict resolution: rule keep wins over ATS and tone. With rule guard active, ATS keywords go in title/skills only; do not edit summary or bullets unless fixing a specific failed rule in that field.`
+      : `Conflict resolution: if improving one score would hurt another, use this order — (1) preserve passing rules, (2) skills/title for ATS keywords, (3) in-place bullet word swaps for tone, (4) smallest rule fix in the cited field only. Never replace a full bullet or summary paragraph.`
+  );
+
+  return lines.join("\n\n");
 }
 
 export function buildResumeUserPrompt({
@@ -206,8 +291,12 @@ export function buildResumeUserPrompt({
         .join("\n")}`;
 
   const closingInstruction = isRegenerate
-    ? `Return exactly ${previousContent!.experiences.length} objects in experiences[]. Triple-target revision: improve ATS toward ${ATS_PASS_THRESHOLD}+, human tone toward ${HUMAN_TONE_PASS_THRESHOLD}+, and rule keep toward ${RULE_KEEP_PASS_THRESHOLD}+ using every gap listed above. Return valid json only.`
+    ? `Return exactly ${previousContent!.experiences.length} objects in experiences[]. Surgical triple-target revision only — improve weak scores using the edit zones above; leave all other text unchanged. Return valid json only.`
     : `Return exactly ${existingExperiences.length} objects in experiences[]. Rewrite title, summary, skills, and bullets only. Return valid json only.`;
+
+  const surgicalPlan =
+    isRegenerate &&
+    buildSurgicalEditPlanSection(atsFeedback, humanToneFeedback, ruleKeepFeedback);
 
   return [
     jobTitle && `Target job title: ${jobTitle}`,
@@ -216,11 +305,12 @@ export function buildResumeUserPrompt({
     customPrompt && `Additional instructions:\n${customPrompt}`,
     headerTitle && `Current resume title line: ${headerTitle}`,
     experienceInstructions,
+    surgicalPlan,
+    ruleKeepFeedback && buildRuleKeepRegeneratePromptSection(ruleKeepFeedback),
     atsFeedback &&
       previousContent &&
-      buildAtsRegeneratePromptSection(atsFeedback, previousContent),
+      buildAtsRegeneratePromptSection(atsFeedback, previousContent, ATS_PASS_THRESHOLD, ruleKeepFeedback),
     humanToneFeedback && buildHumanToneRegeneratePromptSection(humanToneFeedback),
-    ruleKeepFeedback && buildRuleKeepRegeneratePromptSection(ruleKeepFeedback),
     closingInstruction,
   ]
     .filter(Boolean)
