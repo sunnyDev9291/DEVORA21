@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { GeneratedResumeContent, ResumeExperience } from "@/lib/resume-types";
-import { buildExpectedResumeBaseName } from "@/lib/resume-filename";
+import { sanitizeResumeFileBaseName } from "@/lib/resume-filename";
 import MarkdownBoldTextarea from "@/components/ui/MarkdownBoldTextarea";
 
 interface ResumeContentReviewProps {
@@ -13,8 +13,10 @@ interface ResumeContentReviewProps {
   applying: boolean;
   generating?: boolean;
   templateName: string;
-  jobTitle?: string;
-  customPrompt?: string;
+  resumeFileBaseName: string;
+  suggestedResumeBaseName: string;
+  onResumeFileBaseNameChange: (value: string) => void;
+  onResumeFileBaseNameReset?: () => void;
   applyLabel?: string;
   generationKey: number;
   /** Compact layout for side-by-side use inside the ATS modal */
@@ -32,8 +34,10 @@ export default function ResumeContentReview({
   applying,
   generating = false,
   templateName,
-  jobTitle = "",
-  customPrompt = "",
+  resumeFileBaseName,
+  suggestedResumeBaseName,
+  onResumeFileBaseNameChange,
+  onResumeFileBaseNameReset,
   applyLabel = "Apply to Resume",
   generationKey,
   embedded = false,
@@ -72,15 +76,16 @@ export default function ResumeContentReview({
 
   const canApply =
     reviewConfirmed &&
+    resumeFileBaseName.trim() &&
     content.title.trim() &&
     content.summary.trim() &&
     content.skills.trim() &&
     content.experiences.every((exp) => exp.company.trim() && exp.role.trim() && exp.bullets.some((b) => b.trim()));
 
-  const expectedResumeName = useMemo(
-    () => buildExpectedResumeBaseName(templateName, jobTitle, content, customPrompt),
-    [templateName, jobTitle, content, customPrompt]
-  );
+  const showNameReset =
+    Boolean(onResumeFileBaseNameReset) &&
+    suggestedResumeBaseName &&
+    resumeFileBaseName.trim() !== suggestedResumeBaseName.trim();
 
   return (
     <div className={embedded ? "space-y-4" : "space-y-6"}>
@@ -270,17 +275,35 @@ export default function ResumeContentReview({
         </div>
       </div>
 
-      {expectedResumeName && (
-        <div className="rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.02] px-5 py-4">
-          <p className="text-xs font-medium text-slate-500 mb-1">Expected resume name</p>
-          <p className="text-sm font-mono font-semibold text-slate-900 dark:text-white break-all">
-            {expectedResumeName}
-          </p>
-          <p className="text-xs text-slate-400 mt-1">
-            Updates as you edit title and skills · saved as <span className="font-mono">{expectedResumeName}.docx</span>
-          </p>
+      <div className="rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.02] px-5 py-4">
+        <label htmlFor="resume-file-name" className="text-xs font-medium text-slate-500 mb-2 block">
+          Expected resume name
+        </label>
+        <input
+          id="resume-file-name"
+          type="text"
+          value={resumeFileBaseName}
+          onChange={(e) => onResumeFileBaseNameChange(sanitizeResumeFileBaseName(e.target.value))}
+          className={`${fieldClass} font-mono`}
+          placeholder="Franco_Torrez_Senior_Software_Engineer_React,AWS"
+          spellCheck={false}
+          autoComplete="off"
+        />
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
+          <span>
+            Saved as <span className="font-mono text-slate-500 dark:text-slate-300">{resumeFileBaseName.trim() || "resume"}.docx</span>
+          </span>
+          {showNameReset && (
+            <button
+              type="button"
+              onClick={onResumeFileBaseNameReset}
+              className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
+            >
+              Reset to suggested
+            </button>
+          )}
         </div>
-      )}
+      </div>
 
       <div className={`${embedded ? "rounded-2xl border border-slate-200 dark:border-white/[0.10] bg-slate-50/80 dark:bg-white/[0.02] p-4" : "sticky bottom-4 z-10 rounded-2xl border border-slate-200 dark:border-white/[0.10] bg-white/95 dark:bg-navy-900/95 backdrop-blur-md shadow-xl shadow-slate-200/50 dark:shadow-black/40 p-5"}`}>
         <label className="flex items-start gap-3 cursor-pointer mb-4">
