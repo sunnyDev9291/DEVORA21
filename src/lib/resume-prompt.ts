@@ -48,10 +48,11 @@ Preservation rules (highest priority):
 - Copy company, role, and dates exactly from the previous draft (and template).
 
 Revision rules:
-- Address EVERY gap listed in ATS, human-tone, and rule-keep feedback — missing keywords, failed gates, weak categories, buzzwords, and failed rules.
-- Prefer small edits over replacing whole sentences — vary verbs, add collaboration context, remove AI buzzwords while keeping keywords.
-- If a bullet already reads naturally, matches keywords, and passes rules, return it verbatim.
-- The revised draft must NOT drop below pass thresholds (ATS ${ATS_PASS_THRESHOLD}+, tone ${HUMAN_TONE_PASS_THRESHOLD}+, rules ${RULE_KEEP_PASS_THRESHOLD}+). Already-strong dimensions may dip slightly; weak dimensions must improve.
+- Address gaps listed in ATS, human-tone, and rule-keep feedback using the SURGICAL EDIT PLAN zones only.
+- Never rewrite a whole section, company block, or bullet list — change the minimum words in the minimum fields.
+- If a bullet already passes ATS, tone, and rules, return it character-for-character unchanged.
+- When scores conflict: add keywords via title/skills first; fix tone with in-place word swaps (keep metrics and tech terms); fix rules in the single field cited by the failed rule.
+- The revised draft must NOT drop below pass thresholds (ATS ${ATS_PASS_THRESHOLD}+, tone ${HUMAN_TONE_PASS_THRESHOLD}+, rules ${RULE_KEEP_PASS_THRESHOLD}+).
 - Wrap only newly emphasized priority keywords in **bold** where truthful.`;
 
 export function buildResumeSystemPrompt(regenerate = false): string {
@@ -166,6 +167,62 @@ export function buildRuleKeepRegeneratePromptSection(
     .join("\n\n");
 }
 
+/** Maps failing scores to exact edit zones so one fix does not rewrite unrelated fields. */
+export function buildSurgicalEditPlanSection(
+  atsFeedback?: AtsScoreResult,
+  humanToneFeedback?: HumanToneScoreResult,
+  ruleKeepFeedback?: RuleKeepScoreResult
+): string {
+  const atsPassing = !atsFeedback || atsFeedback.overall >= ATS_PASS_THRESHOLD;
+  const tonePassing = !humanToneFeedback || humanToneFeedback.overall >= HUMAN_TONE_PASS_THRESHOLD;
+  const rulesActive = Boolean(ruleKeepFeedback && ruleKeepFeedback.totalRules > 0);
+  const rulesPassing =
+    !rulesActive || (ruleKeepFeedback!.overall >= RULE_KEEP_PASS_THRESHOLD);
+
+  const lines = [
+    "SURGICAL EDIT PLAN (mandatory) — edit ONLY the zones below. All other fields stay verbatim from the previous draft.",
+  ];
+
+  if (atsFeedback && !atsPassing) {
+    lines.push(
+      `ATS is below target (${atsFeedback.overall}) — edit ONLY: title line, skills line, summary (at most one short clause), and specific bullets missing keywords. Do NOT rewrite bullets that already contain must-have keywords. Prefer adding keywords to skills/title before touching bullets.`
+    );
+  } else if (atsFeedback) {
+    lines.push(
+      `ATS is already strong (${atsFeedback.overall}) — do NOT rephrase title, skills, or summary for keywords. Keep matched keywords exactly as written.`
+    );
+  }
+
+  if (humanToneFeedback && !tonePassing) {
+    lines.push(
+      `Human tone is below target (${humanToneFeedback.overall}) — edit ONLY bullets with repetition, buzzwords, or weak openers. Swap verbs and add collaboration context in-place. Do NOT remove ATS keywords or metrics from edited bullets.`
+    );
+  } else if (humanToneFeedback) {
+    lines.push(
+      `Human tone is already strong (${humanToneFeedback.overall}) — do NOT rephrase bullets for style unless a rule requires it.`
+    );
+  }
+
+  if (rulesActive && ruleKeepFeedback && !rulesPassing) {
+    const failed = ruleKeepFeedback.rules.filter((r) => !r.passed);
+    lines.push(
+      `Rule keep is below target (${ruleKeepFeedback.overall}) — fix ONLY the field tied to each failed rule:\n${failed
+        .map((r, i) => `- Rule ${i + 1} [${r.category}]: ${r.detail}`)
+        .join("\n")}`
+    );
+  } else if (rulesActive && ruleKeepFeedback) {
+    lines.push(
+      `Rule keep is already strong (${ruleKeepFeedback.overall}) — do not edit fields for rules that already pass.`
+    );
+  }
+
+  lines.push(
+    `Conflict resolution: if improving one score would hurt another, use this order — (1) skills/title for ATS keywords, (2) in-place bullet word swaps for tone, (3) smallest rule fix in the cited field only. Never replace a full bullet or summary paragraph.`
+  );
+
+  return lines.join("\n\n");
+}
+
 export function buildResumeUserPrompt({
   jobTitle,
   companyName,
@@ -206,8 +263,12 @@ export function buildResumeUserPrompt({
         .join("\n")}`;
 
   const closingInstruction = isRegenerate
-    ? `Return exactly ${previousContent!.experiences.length} objects in experiences[]. Triple-target revision: improve ATS toward ${ATS_PASS_THRESHOLD}+, human tone toward ${HUMAN_TONE_PASS_THRESHOLD}+, and rule keep toward ${RULE_KEEP_PASS_THRESHOLD}+ using every gap listed above. Return valid json only.`
+    ? `Return exactly ${previousContent!.experiences.length} objects in experiences[]. Surgical triple-target revision only — improve weak scores using the edit zones above; leave all other text unchanged. Return valid json only.`
     : `Return exactly ${existingExperiences.length} objects in experiences[]. Rewrite title, summary, skills, and bullets only. Return valid json only.`;
+
+  const surgicalPlan =
+    isRegenerate &&
+    buildSurgicalEditPlanSection(atsFeedback, humanToneFeedback, ruleKeepFeedback);
 
   return [
     jobTitle && `Target job title: ${jobTitle}`,
@@ -216,6 +277,7 @@ export function buildResumeUserPrompt({
     customPrompt && `Additional instructions:\n${customPrompt}`,
     headerTitle && `Current resume title line: ${headerTitle}`,
     experienceInstructions,
+    surgicalPlan,
     atsFeedback &&
       previousContent &&
       buildAtsRegeneratePromptSection(atsFeedback, previousContent),
