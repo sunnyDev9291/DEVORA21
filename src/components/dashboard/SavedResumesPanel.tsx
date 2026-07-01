@@ -91,7 +91,8 @@ const STYLES = {
     descLink:
       "text-left text-xs text-blue-400 underline-offset-2 hover:text-blue-300 hover:underline line-clamp-2",
     fileName:
-      "block max-w-[12rem] truncate text-left font-mono text-xs text-blue-400 underline-offset-2 hover:text-blue-300 hover:underline",
+      "block text-left font-mono text-xs leading-relaxed whitespace-normal break-all text-blue-400 underline-offset-2 hover:text-blue-300 hover:underline",
+    fileNameCell: "min-w-[14rem] px-4 py-3 align-top whitespace-normal",
     actionsCell:
       "sticky right-0 z-[1] whitespace-nowrap bg-navy-900/95 px-4 py-3 shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.45)] group-hover:bg-white/[0.04]",
     actionsHead:
@@ -139,7 +140,8 @@ const STYLES = {
     descLink:
       "text-left text-xs text-blue-600 underline-offset-2 hover:text-blue-500 hover:underline line-clamp-2 dark:text-blue-400 dark:hover:text-blue-300",
     fileName:
-      "block max-w-[12rem] truncate text-left font-mono text-xs text-blue-600 underline-offset-2 hover:text-blue-500 hover:underline dark:text-blue-400 dark:hover:text-blue-300",
+      "block text-left font-mono text-xs leading-relaxed whitespace-normal break-all text-blue-600 underline-offset-2 hover:text-blue-500 hover:underline dark:text-blue-400 dark:hover:text-blue-300",
+    fileNameCell: "min-w-[14rem] px-4 py-3 align-top whitespace-normal",
     actionsCell:
       "sticky right-0 z-[1] whitespace-nowrap bg-white/95 px-4 py-3 shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.08)] group-hover:bg-slate-50/95 dark:bg-navy-900/95 dark:shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.45)] dark:group-hover:bg-white/[0.04]",
     actionsHead:
@@ -379,12 +381,11 @@ function ApplicationRows({
                       {hasDescription ? truncate(item.jobDescription) : "No description"}
                     </button>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className={styles.fileNameCell}>
                     <button
                       type="button"
                       onClick={() => onPreview(item)}
                       className={styles.fileName}
-                      title={`Preview ${item.resumeFileName}`}
                     >
                       {item.resumeFileName}
                     </button>
