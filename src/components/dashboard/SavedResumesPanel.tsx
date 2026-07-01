@@ -90,8 +90,12 @@ const STYLES = {
     description: "max-w-xs px-4 py-3 text-slate-400 md:max-w-md",
     descLink:
       "text-left text-xs text-blue-400 underline-offset-2 hover:text-blue-300 hover:underline line-clamp-2",
-    fileLink:
-      "font-mono text-xs text-blue-400 underline-offset-2 hover:text-blue-300 hover:underline",
+    fileName: "max-w-[10rem] truncate font-mono text-xs text-slate-400",
+    actionsCell:
+      "sticky right-0 z-[1] whitespace-nowrap bg-navy-900/95 px-4 py-3 shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.45)] group-hover:bg-white/[0.04]",
+    actionsHead:
+      "sticky right-0 z-[1] bg-white/[0.02] px-4 py-3 text-right font-medium shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.45)]",
+    actionGroup: "flex flex-wrap items-center justify-end gap-2",
     tbody: "divide-y divide-white/5",
     empty: "rounded-xl border border-white/10 px-4 py-10 text-center text-slate-400",
     error: "mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300",
@@ -133,8 +137,12 @@ const STYLES = {
     description: "max-w-xs px-4 py-3 text-slate-500 md:max-w-md dark:text-slate-400",
     descLink:
       "text-left text-xs text-blue-600 underline-offset-2 hover:text-blue-500 hover:underline line-clamp-2 dark:text-blue-400 dark:hover:text-blue-300",
-    fileLink:
-      "font-mono text-xs text-blue-600 underline-offset-2 hover:text-blue-500 hover:underline dark:text-blue-400 dark:hover:text-blue-300",
+    fileName: "max-w-[10rem] truncate font-mono text-xs text-slate-500 dark:text-slate-400",
+    actionsCell:
+      "sticky right-0 z-[1] whitespace-nowrap bg-white/95 px-4 py-3 shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.08)] group-hover:bg-slate-50/95 dark:bg-navy-900/95 dark:shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.45)] dark:group-hover:bg-white/[0.04]",
+    actionsHead:
+      "sticky right-0 z-[1] bg-slate-50/95 px-4 py-3 text-right font-medium shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.08)] dark:bg-white/[0.02] dark:shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.45)]",
+    actionGroup: "flex flex-wrap items-center justify-end gap-2",
     tbody: "divide-y divide-slate-200/80 dark:divide-white/5",
     empty:
       "rounded-xl border border-slate-200/80 px-4 py-10 text-center text-slate-500 dark:border-white/[0.08] dark:text-slate-400",
@@ -343,8 +351,8 @@ function ApplicationRows({
               <th className="px-4 py-3 font-medium">Company</th>
               <th className="px-4 py-3 font-medium">Job title</th>
               <th className="px-4 py-3 font-medium">Job description</th>
-              <th className="px-4 py-3 font-medium">Resume</th>
-              <th className="px-4 py-3 font-medium text-right">Download</th>
+              <th className="px-4 py-3 font-medium">File name</th>
+              <th className={styles.actionsHead}>Actions</th>
             </tr>
           </thead>
           <tbody className={styles.tbody}>
@@ -355,7 +363,7 @@ function ApplicationRows({
               const hasDescription = Boolean(item.jobDescription?.trim());
 
               return (
-                <tr key={item.id} className={styles.rowHover}>
+                <tr key={item.id} className={`group ${styles.rowHover}`}>
                   <td className={styles.bidTime}>{timeLabel}</td>
                   <td className={styles.company}>{item.companyName}</td>
                   <td className={styles.jobTitle}>{item.jobTitle}</td>
@@ -370,16 +378,20 @@ function ApplicationRows({
                     </button>
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => onPreview(item)}
-                      className={styles.fileLink}
-                    >
+                    <span className={styles.fileName} title={item.resumeFileName}>
                       {item.resumeFileName}
-                    </button>
+                    </span>
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex justify-end gap-2">
+                  <td className={styles.actionsCell}>
+                    <div className={styles.actionGroup}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onPreview(item)}
+                      >
+                        Preview
+                      </Button>
                       <Button
                         type="button"
                         variant="outline"

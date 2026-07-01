@@ -24,6 +24,8 @@ interface BuildRequest {
 
   resumeFileBaseName?: string;
 
+  profileName?: string;
+
   content?: GeneratedResumeContent;
 
 }
@@ -131,7 +133,8 @@ export async function POST(req: Request) {
       jobTitle,
       content,
       customPrompt,
-      body.resumeFileBaseName
+      body.resumeFileBaseName,
+      body.profileName
     );
 
 

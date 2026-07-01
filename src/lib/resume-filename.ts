@@ -23,6 +23,37 @@ export function sanitizeResumeFileBaseName(name: string): string {
     .trim();
 }
 
+/** True when a template slug is a generic upload name, not a person's name. */
+export function isGenericTemplateNamePrefix(name: string): boolean {
+  const normalized = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return (
+    !normalized ||
+    normalized === "resume" ||
+    normalized === "cv" ||
+    normalized === "template" ||
+    normalized === "original" ||
+    normalized === "originaldocx" ||
+    normalized.startsWith("untitled")
+  );
+}
+
+/** Prefer profile full name; fall back to non-generic template basename. */
+export function resolveResumeNamePrefix(profileName?: string, templateName?: string): string {
+  const profile = profileName?.trim();
+  if (profile) {
+    return sanitizeResumeFileBaseName(profile);
+  }
+
+  const fromTemplate = sanitizeResumeFileBaseName(
+    (templateName ?? "").trim().replace(/\.docx$/i, "")
+  );
+  if (fromTemplate && !isGenericTemplateNamePrefix(fromTemplate)) {
+    return fromTemplate;
+  }
+
+  return "resume";
+}
+
 /** Lines like `Resume file name : Franco Torrez_Senior Software Engineer_{first main skill},…` */
 export function extractResumeFileNamePatternFromPrompt(customPrompt: string): string | null {
   const match = customPrompt.match(
@@ -126,7 +157,8 @@ export function buildExpectedResumeBaseName(
   templateName: string,
   jobTitle: string,
   content: Pick<GeneratedResumeContent, "title" | "skills">,
-  customPrompt?: string
+  customPrompt?: string,
+  profileName?: string
 ): string {
   const pattern = customPrompt?.trim()
     ? extractResumeFileNamePatternFromPrompt(customPrompt)
@@ -137,7 +169,7 @@ export function buildExpectedResumeBaseName(
     if (fromPrompt) return fromPrompt;
   }
 
-  const name = templateName.trim().replace(/[^a-zA-Z0-9_-]/g, "") || "resume";
+  const name = resolveResumeNamePrefix(profileName, templateName);
   const role = slugifyJobTitle(jobTitle) || "role";
   const skillPart = extractResumeTitleSkills(content.title, content.skills);
 
@@ -149,10 +181,11 @@ export function buildExpectedResumeFileName(
   jobTitle: string,
   content: Pick<GeneratedResumeContent, "title" | "skills">,
   customPrompt?: string,
-  resumeFileBaseName?: string
+  resumeFileBaseName?: string,
+  profileName?: string
 ): string {
   const base = resumeFileBaseName?.trim()
     ? sanitizeResumeFileBaseName(resumeFileBaseName)
-    : buildExpectedResumeBaseName(templateName, jobTitle, content, customPrompt);
+    : buildExpectedResumeBaseName(templateName, jobTitle, content, customPrompt, profileName);
   return base ? `${base}.docx` : "resume.docx";
 }
