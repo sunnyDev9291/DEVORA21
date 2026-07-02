@@ -35,7 +35,6 @@ interface ResumeAtsScoreModalProps extends ResumeAtsScorePanelProps {
   generateError?: string;
   regenerateNotice?: string;
   templateName?: string;
-  fileNameJobTitle?: string;
   customPrompt?: string;
   resumeFileBaseName?: string;
   suggestedResumeBaseName?: string;
@@ -71,7 +70,6 @@ export default function ResumeAtsScoreModal({
   generateError = "",
   regenerateNotice = "",
   templateName = "",
-  fileNameJobTitle,
   customPrompt = "",
   resumeFileBaseName = "",
   suggestedResumeBaseName = "",

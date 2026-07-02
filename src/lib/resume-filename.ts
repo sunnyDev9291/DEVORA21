@@ -4,6 +4,11 @@ function stripMarkdownBold(value: string): string {
   return value.replace(/\*\*/g, "").trim();
 }
 
+/** Headline role from generated resume title (text before the first `|`). */
+export function extractResumeTitleHeadline(title: string): string {
+  return stripMarkdownBold(title.split("|")[0]?.trim() ?? "");
+}
+
 function slugifyJobTitle(jobTitle: string): string {
   return jobTitle
     .trim()
@@ -98,7 +103,6 @@ export function extractMainSkillsFromContent(
 export function resolveResumeFileNameFromPrompt(
   pattern: string,
   context: {
-    jobTitle: string;
     content: Pick<GeneratedResumeContent, "title" | "skills">;
   }
 ): string {
@@ -106,9 +110,7 @@ export function resolveResumeFileNameFromPrompt(
     context.content.title,
     context.content.skills
   );
-  const titleHeadline =
-    stripMarkdownBold(context.content.title.split("|")[0]?.trim() ?? "") ||
-    context.jobTitle.trim();
+  const titleHeadline = extractResumeTitleHeadline(context.content.title);
 
   const replacements: Array<[RegExp, string]> = [
     [/\{\s*first\s+main\s+skill\s*\}/gi, firstSkill],
@@ -117,9 +119,9 @@ export function resolveResumeFileNameFromPrompt(
     [/\{\s*first\s+skill\s*\}/gi, firstSkill],
     [/\{\s*second\s+skill\s*\}/gi, secondSkill],
     [/\{\s*third\s+skill\s*\}/gi, thirdSkill],
-    [/\{\s*job\s+title\s*\}/gi, context.jobTitle.trim() || titleHeadline],
+    [/\{\s*job\s+title\s*\}/gi, titleHeadline],
     [/\{\s*resume\s+title\s*\}/gi, titleHeadline],
-    [/\{\s*role\s*\}/gi, slugifyJobTitle(context.jobTitle) || titleHeadline.replace(/\s+/g, "_")],
+    [/\{\s*role\s*\}/gi, slugifyJobTitle(titleHeadline) || titleHeadline.replace(/\s+/g, "_")],
   ];
 
   let resolved = pattern;
@@ -156,7 +158,6 @@ export function extractResumeTitleSkills(
 
 export function buildExpectedResumeBaseName(
   templateName: string,
-  jobTitle: string,
   content: Pick<GeneratedResumeContent, "title" | "skills">,
   customPrompt?: string,
   profileName?: string
@@ -166,12 +167,12 @@ export function buildExpectedResumeBaseName(
     : null;
 
   if (pattern) {
-    const fromPrompt = resolveResumeFileNameFromPrompt(pattern, { jobTitle, content });
+    const fromPrompt = resolveResumeFileNameFromPrompt(pattern, { content });
     if (fromPrompt) return fromPrompt;
   }
 
   const name = resolveResumeNamePrefix(profileName, templateName);
-  const role = slugifyJobTitle(jobTitle) || "role";
+  const role = slugifyJobTitle(extractResumeTitleHeadline(content.title)) || "role";
   const skillPart = extractResumeTitleSkills(content.title, content.skills);
 
   return skillPart ? `${name}_${role}_${skillPart}` : `${name}_${role}`;
@@ -179,7 +180,6 @@ export function buildExpectedResumeBaseName(
 
 export function buildExpectedResumeFileName(
   templateName: string,
-  jobTitle: string,
   content: Pick<GeneratedResumeContent, "title" | "skills">,
   customPrompt?: string,
   resumeFileBaseName?: string,
@@ -187,6 +187,6 @@ export function buildExpectedResumeFileName(
 ): string {
   const base = resumeFileBaseName?.trim()
     ? sanitizeResumeFileBaseName(resumeFileBaseName)
-    : buildExpectedResumeBaseName(templateName, jobTitle, content, customPrompt, profileName);
+    : buildExpectedResumeBaseName(templateName, content, customPrompt, profileName);
   return base ? `${base}.docx` : "resume.docx";
 }

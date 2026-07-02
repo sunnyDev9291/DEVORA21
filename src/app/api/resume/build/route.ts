@@ -22,8 +22,6 @@ interface BuildRequest {
 
   templateBase64?: string;
 
-  jobTitle?: string;
-
   customPrompt?: string;
 
   resumeFileBaseName?: string;
@@ -135,13 +133,10 @@ export async function POST(req: Request) {
 
     const docxBase64 = updatedBuffer.toString("base64");
 
-    const jobTitle = body.jobTitle?.trim() ?? "";
-
     const customPrompt = body.customPrompt?.trim() ?? "";
 
     const fileName = buildExpectedResumeFileName(
       templateName,
-      jobTitle,
       processedContent,
       customPrompt,
       body.resumeFileBaseName,

@@ -1,5 +1,9 @@
 import PizZip from "pizzip";
 import {
+  boldSkillTermsInText,
+  extractSkillTerms,
+} from "@/lib/resume-content-postprocess";
+import {
   buildProjectExperienceParagraphs,
   detectProjectTemplateLayout,
   parseProjectExperiencesFromDocxBuffer,
@@ -666,6 +670,8 @@ export function applyContentToDocx(
   const expEnd = eduIdx === -1 ? paragraphs.length : eduIdx;
   const originalExperienceParagraphs = paragraphs.slice(expIdx + 1, expEnd);
   const layout = content.layout ?? detectResumeTemplateLayout(buffer);
+  const skillTerms = extractSkillTerms(content.skills);
+  const boldExpText = (text: string) => boldSkillTermsInText(text, skillTerms);
 
   let experienceParagraphs: string[] = [];
 
@@ -674,7 +680,8 @@ export function applyContentToDocx(
     experienceParagraphs = buildProjectExperienceParagraphs(
       { ...content, layout: "projects" },
       jobTemplates as ProjectJobTemplate[],
-      setParagraphText
+      setParagraphText,
+      skillTerms
     );
   } else {
     const headerSample = getParagraphText(paragraphs[expIdx + 1] ?? "").trim();
@@ -698,19 +705,19 @@ export function applyContentToDocx(
 
       if (useCombinedHeaders) {
         const headerText = exp.dates
-          ? `${exp.role}, ${exp.company}, ${exp.dates}`
-          : `${exp.role}, ${exp.company}`;
+          ? `${boldExpText(exp.role)}, ${exp.company}, ${exp.dates}`
+          : `${boldExpText(exp.role)}, ${exp.company}`;
         experienceParagraphs.push(setParagraphText(style.headerTemplate, headerText));
       } else {
         experienceParagraphs.push(setParagraphText(style.headerTemplate, exp.company));
-        const roleDates = exp.dates ? `${exp.role}    ${exp.dates}` : exp.role;
+        const roleDates = exp.dates ? `${boldExpText(exp.role)}    ${exp.dates}` : boldExpText(exp.role);
         experienceParagraphs.push(
           setParagraphText(style.roleTemplate ?? defaultRoleTemplate, roleDates)
         );
       }
 
       for (const bullet of exp.bullets) {
-        experienceParagraphs.push(setParagraphText(style.bulletTemplate, bullet));
+        experienceParagraphs.push(setParagraphText(style.bulletTemplate, boldExpText(bullet)));
       }
     }
   }

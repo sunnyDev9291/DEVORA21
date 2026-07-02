@@ -6,6 +6,7 @@ import {
   getParagraphTextWithBold,
   type DocxParagraph,
 } from "@/lib/resume-docx";
+import { boldSkillTermsInText, extractSkillTerms } from "@/lib/resume-content-postprocess";
 
 const SECTION_HEADERS = {
   experience:
@@ -418,8 +419,10 @@ function formatBoldBarInlineField(sampleText: string, field: ProjectFieldKey, va
 function applyProjectToParagraphGroup(
   paragraphGroups: string[][],
   project: ResumeProject,
-  setParagraphText: (xml: string, text: string) => string
+  setParagraphText: (xml: string, text: string) => string,
+  skillTerms: string[]
 ): string[] {
+  const bold = (text: string) => boldSkillTermsInText(text, skillTerms);
   const out: string[] = [];
 
   for (const group of paragraphGroups) {
@@ -432,10 +435,10 @@ function applyProjectToParagraphGroup(
       const nameText = hasPrefix ? `Project: ${project.name}` : project.name;
       const rendered =
         paragraphXmlHasBoldRun(group[0]) && !hasPrefix
-          ? `**${project.name}**`
+          ? bold(project.name)
           : hasPrefix
-            ? `**Project:** ${project.name}`
-            : nameText;
+            ? `**Project:** ${bold(project.name)}`
+            : bold(nameText);
       out.push(setParagraphText(group[0], rendered.trim()));
       for (let i = 1; i < group.length; i += 1) out.push(group[i]);
       continue;
@@ -443,7 +446,7 @@ function applyProjectToParagraphGroup(
 
     if (classified.kind === "field" && classified.field) {
       const field = classified.field;
-      const value = project[field];
+      const value = bold(project[field]);
       if (group.length === 1) {
         out.push(
           setParagraphText(group[0], formatBoldBarInlineField(sampleText, field, value))
@@ -466,8 +469,11 @@ function applyProjectToParagraphGroup(
 export function buildProjectExperienceParagraphs(
   content: GeneratedResumeContent,
   jobTemplates: ProjectJobTemplate[],
-  setParagraphText: (xml: string, text: string) => string
+  setParagraphText: (xml: string, text: string) => string,
+  skillTerms?: string[]
 ): string[] {
+  const terms = skillTerms?.length ? skillTerms : extractSkillTerms(content.skills);
+  const bold = (text: string) => boldSkillTermsInText(text, terms);
   const experienceParagraphs: string[] = [];
 
   for (let jobIndex = 0; jobIndex < content.experiences.length; jobIndex += 1) {
@@ -479,11 +485,11 @@ export function buildProjectExperienceParagraphs(
       const text = getParagraphText(headerXml);
       if (parseCombinedExperienceLine(text)) {
         const headerText = exp.dates
-          ? `${exp.role}, ${exp.company}, ${exp.dates}`
-          : `${exp.role}, ${exp.company}`;
+          ? `${bold(exp.role)}, ${exp.company}, ${exp.dates}`
+          : `${bold(exp.role)}, ${exp.company}`;
         experienceParagraphs.push(setParagraphText(headerXml, headerText));
       } else if (parseRoleDatesLine(text)) {
-        const roleDates = exp.dates ? `${exp.role}    ${exp.dates}` : exp.role;
+        const roleDates = exp.dates ? `${bold(exp.role)}    ${exp.dates}` : bold(exp.role);
         experienceParagraphs.push(setParagraphText(headerXml, roleDates));
       } else {
         experienceParagraphs.push(setParagraphText(headerXml, exp.company));
@@ -498,7 +504,7 @@ export function buildProjectExperienceParagraphs(
         template.projectParagraphGroups[template.projectParagraphGroups.length - 1] ??
         [];
       experienceParagraphs.push(
-        ...applyProjectToParagraphGroup(paragraphGroups, project, setParagraphText)
+        ...applyProjectToParagraphGroup(paragraphGroups, project, setParagraphText, terms)
       );
     }
   }

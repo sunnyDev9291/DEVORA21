@@ -36,9 +36,9 @@ export function extractSkillTerms(skills: string): string[] {
 
     const segment = line.includes(":") ? line.split(":").slice(1).join(":") : line;
 
-    for (const part of segment.split(/[,;]/)) {
+    for (const part of segment.split(/[,;|/]|\s+·\s+|\s+and\s+/i)) {
 
-      const token = part.trim();
+      const token = part.trim().replace(/^[-•]+\s*/, "");
 
       if (token.length >= 2) terms.add(token);
 
@@ -271,7 +271,7 @@ export function applyResumeContentPostProcess(
 
         return {
           company: template?.company ?? exp.company,
-          role: exp.role,
+          role: boldSkillTermsInText(exp.role, skillTerms),
           dates: template?.dates ?? exp.dates,
           bullets: [],
           projects,
@@ -283,7 +283,7 @@ export function applyResumeContentPostProcess(
 
       return {
         company: template?.company ?? exp.company,
-        role: exp.role,
+        role: boldSkillTermsInText(exp.role, skillTerms),
         dates: template?.dates ?? exp.dates,
         bullets: bullets.map((bullet) => boldSkillTermsInText(bullet, skillTerms)),
       };

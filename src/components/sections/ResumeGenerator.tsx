@@ -14,7 +14,7 @@ import { resumeBuilderAccessDeniedMessage } from "@/lib/resume-access";
 import { pickBestRegenerateResult, type RegenerateEvaluation } from "@/lib/resume-ats-regenerate";
 import { emptyRuleKeepScore } from "@/lib/resume-rule-keep";
 import type { GeneratedResumeContent, ResumeBuildResponse, AtsScoreResult, HumanToneScoreResult, RuleKeepScoreResult } from "@/lib/resume-types";
-import { buildExpectedResumeBaseName } from "@/lib/resume-filename";
+import { buildExpectedResumeBaseName, extractResumeTitleHeadline } from "@/lib/resume-filename";
 import { loadStoredProfile, resolveUserNames } from "@/lib/user-profile";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
@@ -232,12 +232,11 @@ export default function ResumeGenerator({
     if (!content || !userTemplate) return "";
     return buildExpectedResumeBaseName(
       userTemplate.fileName,
-      form.jobTitle,
       content,
       form.customPrompt,
       chatProfile?.fullName
     );
-  }, [content, userTemplate, form.jobTitle, form.customPrompt, chatProfile?.fullName]);
+  }, [content, userTemplate, form.customPrompt, chatProfile?.fullName]);
 
   useEffect(() => {
     if (!resumeNameTouched && suggestedResumeBaseName) {
@@ -468,7 +467,7 @@ export default function ResumeGenerator({
     try {
       const docxBlob = base64ToBlob(docxB64, DOCX_MIME);
       const result = await archiveResume({
-        jobTitle: form.jobTitle,
+        jobTitle: content ? extractResumeTitleHeadline(content.title) : form.jobTitle,
         companyName: form.companyName,
         jobDescription: form.jobDescription,
         docxBlob,
@@ -494,7 +493,6 @@ export default function ResumeGenerator({
         body: JSON.stringify({
           templateName: userTemplate.fileName,
           templateBase64: userTemplate.templateBase64,
-          jobTitle: form.jobTitle,
           customPrompt: form.customPrompt,
           content,
           resumeFileBaseName: resumeFileBaseName.trim(),
@@ -898,7 +896,6 @@ export default function ResumeGenerator({
         generateError={error}
         regenerateNotice={regenerateNotice}
         templateName={userTemplate?.fileName ?? ""}
-        fileNameJobTitle={form.jobTitle}
         customPrompt={form.customPrompt}
         resumeFileBaseName={resumeFileBaseName}
         suggestedResumeBaseName={suggestedResumeBaseName}
