@@ -240,8 +240,18 @@ export default function ResumeContentReview({
                         <p className="text-sm font-semibold text-slate-900 dark:text-white px-1">{exp.company}</p>
                       </div>
                       <div>
-                        <p className="text-xs font-medium text-slate-500 mb-1">Role <span className="font-normal text-slate-400">(from template)</span></p>
-                        <p className="text-sm text-slate-800 dark:text-slate-200 px-1">{exp.role}</p>
+                        <p className="text-xs font-medium text-slate-500 mb-1">
+                          Role / title <span className="font-normal text-slate-400">(tailored to JD)</span>
+                        </p>
+                        <MarkdownBoldTextarea
+                          id={`exp-${index}-role`}
+                          value={exp.role}
+                          onChange={(role) => updateExperience(index, { role })}
+                          className={fieldClass}
+                          rows={1}
+                          placeholder="Senior Java Engineer | Spring Boot"
+                          aria-label={`Role for ${exp.company}`}
+                        />
                       </div>
                       <div>
                         <p className="text-xs font-medium text-slate-500 mb-1">Dates <span className="font-normal text-slate-400">(from template)</span></p>

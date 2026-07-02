@@ -390,6 +390,31 @@ function fieldLabelPrefix(text: string, field: ProjectFieldKey): string {
   return `${labels[field]}: `;
 }
 
+function paragraphXmlHasBoldRun(pXml: string): boolean {
+  const runs = pXml.match(/<w:r[\s\S]*?<\/w:r>/g) ?? [];
+  return runs.some(
+    (run) => /<w:t[\s\S]*?<\/w:t>/.test(run) && /<w:b(?:\s[^>]*)?\/>|<w:b(?:\s[^>]*)?>/.test(run)
+  );
+}
+
+/** Inline BAR line: bold label + plain value, matching template Word styling. */
+function formatBoldBarInlineField(sampleText: string, field: ProjectFieldKey, value: string): string {
+  const classified = classifyParagraph(sampleText);
+  let label = fieldLabelPrefix(sampleText, field).trim();
+  if (label.endsWith(":")) label = label.slice(0, -1);
+  if (!label) {
+    const labels: Record<ProjectFieldKey, string> = {
+      businessChallenge: "Business Challenge",
+      assignedResponsibility: "Assigned Responsibility",
+      action: "Action",
+      result: "Result",
+    };
+    label = labels[field];
+  }
+  const trimmedValue = value.trim();
+  return trimmedValue ? `**${label}:** ${trimmedValue}` : `**${label}:**`;
+}
+
 function applyProjectToParagraphGroup(
   paragraphGroups: string[][],
   project: ResumeProject,
@@ -405,7 +430,13 @@ function applyProjectToParagraphGroup(
     if (classified.kind === "project_name") {
       const hasPrefix = /^projects?\s*:/i.test(sampleText);
       const nameText = hasPrefix ? `Project: ${project.name}` : project.name;
-      out.push(setParagraphText(group[0], nameText.trim()));
+      const rendered =
+        paragraphXmlHasBoldRun(group[0]) && !hasPrefix
+          ? `**${project.name}**`
+          : hasPrefix
+            ? `**Project:** ${project.name}`
+            : nameText;
+      out.push(setParagraphText(group[0], rendered.trim()));
       for (let i = 1; i < group.length; i += 1) out.push(group[i]);
       continue;
     }
@@ -414,9 +445,12 @@ function applyProjectToParagraphGroup(
       const field = classified.field;
       const value = project[field];
       if (group.length === 1) {
-        out.push(setParagraphText(group[0], `${fieldLabelPrefix(sampleText, field)}${value}`.trim()));
+        out.push(
+          setParagraphText(group[0], formatBoldBarInlineField(sampleText, field, value))
+        );
       } else {
-        out.push(setParagraphText(group[0], sampleText.trim() || fieldLabelPrefix(sampleText, field).replace(/:?\s*$/, "")));
+        // Label line keeps template XML (bold label styling preserved).
+        out.push(group[0]);
         out.push(setParagraphText(group[1], value));
         for (let i = 2; i < group.length; i += 1) out.push(group[i]);
       }

@@ -45,14 +45,15 @@ Content rules:
 - summary: match template style; ATS-friendly; no first-person pronouns.
 - skills: only concrete technical items (languages, frameworks, DBs, tools, cloud); group by category when template does; no process/buzzword phrases.
 - experiences: MUST include exactly the same number of companies as the template, in the same order.
-- Copy company, role, and dates EXACTLY from the template list.
+- Copy company and dates EXACTLY from the template list.
+- Rewrite each experience role/title line for the target JD (truthful; same employer and dates).
 - Return exactly the bullet count per company specified in the template list.
 - Additional user instructions apply to summary, skills, and bullet wording only.
 - No markdown fences, no commentary — valid json only.`;
 
 export const RESUME_PROJECTS_SYSTEM_PROMPT = `You are a Senior ATS resume optimizer for software engineers.
-Rewrite the professional title line, summary, skills, and experience project blocks for a target job description.
-Keep the same companies, roles, date ranges, and project names from the template — do not invent new employers or projects.
+Rewrite the professional title line, summary, skills, experience role lines, and experience project blocks for a target job description.
+Keep the same companies, date ranges, and project names from the template — do not invent new employers or projects.
 
 Return ONLY valid json with this exact shape:
 {
@@ -93,9 +94,11 @@ Content rules:
 - summary: match template style; ATS-friendly; no first-person pronouns.
 - skills: only concrete technical items; group by category when template does.
 - experiences: MUST include exactly the same number of companies as the template, in the same order.
-- Copy company, role, dates, and project names EXACTLY from the template list.
+- Copy company and dates EXACTLY from the template list.
+- Rewrite each experience role/title line for the target JD (truthful; same employer and dates).
 - Return exactly the project count per company specified in the template list.
-- Rewrite ONLY the BAR fields (businessChallenge, assignedResponsibility, action, result) — never rename projects or employers.
+- Copy project names EXACTLY from the template — do not rename projects.
+- Rewrite ONLY the BAR field values (businessChallenge, assignedResponsibility, action, result) — do NOT include label prefixes like "Business Challenge:" in JSON values.
 - No markdown fences, no commentary — valid json only.`;
 
 export const RESUME_REGENERATE_SYSTEM_SUFFIX = `When regeneration context is provided, this is a TARGETED REVISION pass — not a full rewrite.
@@ -371,23 +374,23 @@ function formatTemplateExperienceLine(
   layout: ResumeTemplateLayout,
   mode: "template" | "regenerate"
 ): string {
-  const prefix = `${index + 1}. company="${e.company}" | role="${e.role}" | dates="${e.dates}"`;
+  const prefix = `${index + 1}. company="${e.company}" (FIXED) | dates="${e.dates}" (FIXED) | template role="${e.role}"`;
   if (isProjectLayout(layout) || e.projects?.length) {
     const projects = e.projects ?? [];
     const projectList = projects
-      .map((p, i) => `project ${i + 1} name="${p.name}" (FIXED — copy exactly)`)
+      .map((p, i) => `project ${i + 1} name="${p.name}" (FIXED)`)
       .join("; ");
     const verb =
       mode === "regenerate"
-        ? `rewrite BAR fields only for ${projects.length} projects; keep names/company/role/dates unchanged`
-        : `rewrite BAR fields for all ${projects.length} projects; keep names/company/role/dates exactly`;
+        ? `rewrite role + BAR field values for ${projects.length} projects (JD-tailored)`
+        : `rewrite role for JD; rewrite BAR values for all ${projects.length} projects`;
     return `${prefix} | ${projectList} | ${verb}`;
   }
   const count = e.bullets.length;
   const verb =
     mode === "regenerate"
-      ? `bullets: keep ${count} bullets, change only if needed for ATS or tone gaps`
-      : `bullets: rewrite all ${count} bullets`;
+      ? `rewrite role if needed; bullets: keep ${count}, change only for ATS/tone gaps`
+      : `rewrite role for JD; rewrite all ${count} bullets`;
   return `${prefix} | ${verb}`;
 }
 
@@ -675,7 +678,7 @@ export function mergeResumeWithTemplate(
 
         return {
           company: existing.company,
-          role: existing.role,
+          role: generated?.role?.trim() || existing.role,
           dates: existing.dates,
           bullets: [],
           projects,
@@ -693,7 +696,7 @@ export function mergeResumeWithTemplate(
 
       return {
         company: existing.company,
-        role: existing.role,
+        role: generated?.role?.trim() || existing.role,
         dates: existing.dates,
         bullets: normalized,
       };

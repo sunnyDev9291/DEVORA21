@@ -259,35 +259,22 @@ export function applyResumeContentPostProcess(
 
 
         return {
-
-          company: exp.company,
-
+          company: template?.company ?? exp.company,
           role: exp.role,
-
-          dates: exp.dates,
-
+          dates: template?.dates ?? exp.dates,
           bullets: [],
-
           projects,
-
         };
-
       }
 
-
-
       const targetCount = template?.bullets.length ?? exp.bullets.length;
-
       const bullets = normalizeBulletsToCount(exp.bullets, targetCount, template?.bullets ?? []);
 
-
-
       return {
-
-        ...exp,
-
+        company: template?.company ?? exp.company,
+        role: exp.role,
+        dates: template?.dates ?? exp.dates,
         bullets: bullets.map((bullet) => boldSkillTermsInText(bullet, skillTerms)),
-
       };
 
     }),

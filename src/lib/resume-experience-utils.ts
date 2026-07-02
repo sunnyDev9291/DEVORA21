@@ -35,13 +35,31 @@ export function emptyResumeProject(): ResumeProject {
   };
 }
 
+export function stripBarLabelFromValue(value: string, field: keyof ResumeProject): string {
+  if (field === "name") return value.trim();
+  const patterns: Record<string, RegExp> = {
+    businessChallenge: /^(?:business\s+)?challenge\s*:?\s*/i,
+    assignedResponsibility: /^(?:assigned\s+)?responsibilit(?:y|ies)\s*:?\s*/i,
+    action: /^actions?\s*:?\s*/i,
+    result: /^results?\s*:?\s*/i,
+  };
+  return value.replace(patterns[field] ?? /^$/, "").trim();
+}
+
 export function normalizeResumeProject(raw: Partial<ResumeProject> | undefined): ResumeProject {
-  return {
+  const base = {
     name: String(raw?.name ?? "").trim(),
     businessChallenge: String(raw?.businessChallenge ?? "").trim(),
     assignedResponsibility: String(raw?.assignedResponsibility ?? "").trim(),
     action: String(raw?.action ?? "").trim(),
     result: String(raw?.result ?? "").trim(),
+  };
+  return {
+    name: base.name,
+    businessChallenge: stripBarLabelFromValue(base.businessChallenge, "businessChallenge"),
+    assignedResponsibility: stripBarLabelFromValue(base.assignedResponsibility, "assignedResponsibility"),
+    action: stripBarLabelFromValue(base.action, "action"),
+    result: stripBarLabelFromValue(base.result, "result"),
   };
 }
 
