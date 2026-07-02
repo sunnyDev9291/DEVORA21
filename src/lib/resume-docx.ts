@@ -50,6 +50,118 @@ function escapeXml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/** True when run properties include Latin bold (`<w:b/>`), not `<w:bCs/>` alone. */
+function hasLatinBold(rPr: string): boolean {
+  const tag = rPr.match(/<w:b(?!Cs)\b[^>]*\/?>/)?.[0] ?? "";
+  if (!tag) return false;
+  return !/w:val="(?:0|false)"/.test(tag);
+}
+
+function runHasBoldStyle(rPr: string): boolean {
+  return hasLatinBold(rPr) || /<w:bCs\b/.test(rPr);
+}
+
+function stripBoldRunProperties(rPr: string): string {
+  return rPr
+    .replace(/<w:b(?!Cs)\b[^/]*\/>/g, "")
+    .replace(/<w:b(?!Cs)\b[^>]*>[\s\S]*?<\/w:b>/g, "")
+    .replace(/<w:bCs\b[^/]*\/>/g, "")
+    .replace(/<w:bCs\b[^>]*>[\s\S]*?<\/w:bCs>/g, "");
+}
+
+function ensureLatinBoldRunProperties(rPr: string): string {
+  if (hasLatinBold(rPr)) return rPr;
+  if (!rPr) return "<w:rPr><w:b/></w:rPr>";
+  return rPr.replace("</w:rPr>", "<w:b/></w:rPr>");
+}
+
+function extractBoldAndPlainRunProperties(pXml: string): { boldRPr: string; plainRPr: string } {
+  const runs = pXml.match(/<w:r[\s\S]*?<\/w:r>/g) ?? [];
+  let boldRPr = "";
+  let plainRPr = "";
+
+  for (const run of runs) {
+    if (!/<w:t[\s\S]*?<\/w:t>/.test(run)) continue;
+    const rPr = run.match(/<w:rPr>[\s\S]*?<\/w:rPr>/)?.[0] ?? "";
+    if (!rPr) continue;
+    if (runHasBoldStyle(rPr) && !boldRPr) boldRPr = rPr;
+    if (!runHasBoldStyle(rPr) && !plainRPr) plainRPr = rPr;
+  }
+
+  if (!boldRPr) {
+    const fromPara = pXml.match(/<w:pPr>[\s\S]*?<w:rPr>[\s\S]*?<\/w:rPr>/)?.[0];
+    const paraRPr = fromPara?.match(/<w:rPr>[\s\S]*?<\/w:rPr>/)?.[0] ?? "";
+    if (runHasBoldStyle(paraRPr)) boldRPr = paraRPr;
+  }
+
+  if (!plainRPr && boldRPr) plainRPr = stripBoldRunProperties(boldRPr);
+  if (!boldRPr && plainRPr) boldRPr = ensureLatinBoldRunProperties(plainRPr);
+  if (!boldRPr) boldRPr = "<w:rPr><w:b/></w:rPr>";
+  if (!plainRPr) plainRPr = stripBoldRunProperties(boldRPr) || "<w:rPr></w:rPr>";
+
+  return {
+    boldRPr: ensureLatinBoldRunProperties(boldRPr),
+    plainRPr,
+  };
+}
+
+function buildRunsFromMarkdownText(pXml: string, text: string, style?: { boldRPr: string; plainRPr: string }): string {
+  const { boldRPr, plainRPr } = style ?? extractBoldAndPlainRunProperties(pXml);
+
+  const parts = text.split(/(\*\*[^*]+\*\*)/g).filter((part) => part.length > 0);
+  if (parts.length === 0) {
+    return `<w:r>${plainRPr}<w:t xml:space="preserve"></w:t></w:r>`;
+  }
+
+  return parts
+    .map((part) => {
+      const boldMatch = /^\*\*([^*]+)\*\*$/.exec(part);
+      const content = boldMatch ? boldMatch[1] : part;
+      const rPr = boldMatch ? ensureLatinBoldRunProperties(boldRPr) : plainRPr;
+      return `<w:r>${rPr}<w:t xml:space="preserve">${escapeXml(content)}</w:t></w:r>`;
+    })
+    .join("");
+}
+
+/** Skill lines: bold category label only; values use template plain styling (+ optional ** term ** markers). */
+function parseSkillCategoryLine(line: string): { label: string; value: string } | null {
+  const trimmed = line.trim();
+  const markdown = trimmed.match(/^\*\*([^*:]+):\*\*\s*(.*)$/);
+  if (markdown) {
+    const label = markdown[1].trim();
+    const value = markdown[2].trim();
+    return label ? { label, value } : null;
+  }
+  const plain = trimmed.match(/^([^:]+):\s*(.*)$/);
+  if (plain) {
+    const label = plain[1].replace(/\*\*/g, "").trim();
+    const value = plain[2].trim();
+    return label ? { label, value } : null;
+  }
+  return null;
+}
+
+function setSkillLineParagraphText(pXml: string, line: string): string {
+  const trimmed = line.trim();
+  const open = pXml.match(/^(<w:p[^>]*>)/)?.[1] ?? "<w:p>";
+  const pPr = pXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] ?? "";
+  const styles = extractBoldAndPlainRunProperties(pXml);
+  const parsed = parseSkillCategoryLine(trimmed);
+
+  if (!parsed) {
+    return `${open}${pPr}${buildRunsFromMarkdownText(pXml, trimmed, styles)}</w:p>`;
+  }
+
+  const { label, value } = parsed;
+  const boldLabelRPr = ensureLatinBoldRunProperties(styles.boldRPr);
+  const labelRun = `<w:r>${boldLabelRPr}<w:t xml:space="preserve">${escapeXml(`${label}:`)}</w:t></w:r>`;
+  const valueRuns = value
+    ? `<w:r>${styles.plainRPr}<w:t xml:space="preserve"> </w:t></w:r>${buildRunsFromMarkdownText(pXml, value, styles)}`
+    : "";
+
+  return `${open}${pPr}${labelRun}${valueRuns}</w:p>`;
+}
+
 export function getParagraphText(pXml: string): string {
   const raw = (pXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [])
     .map((t) => t.replace(/<w:t[^>]*>/, "").replace(/<\/w:t>/, ""))
@@ -203,44 +315,6 @@ function extractExperienceStyleBlocks(
   }
 
   return blocks;
-}
-
-function extractBaseRunProperties(pXml: string): string {
-  const fromRun = pXml.match(/<w:r[^>]*>[\s\S]*?<w:rPr>[\s\S]*?<\/w:rPr>/)?.[0];
-  if (fromRun) {
-    const rPr = fromRun.match(/<w:rPr>[\s\S]*?<\/w:rPr>/)?.[0];
-    if (rPr) return rPr;
-  }
-  const fromPara = pXml.match(/<w:pPr>[\s\S]*?<w:rPr>[\s\S]*?<\/w:rPr>/)?.[0];
-  if (fromPara) {
-    const rPr = fromPara.match(/<w:rPr>[\s\S]*?<\/w:rPr>/)?.[0];
-    if (rPr) return rPr;
-  }
-  return "";
-}
-
-function buildRunsFromMarkdownText(pXml: string, text: string): string {
-  const baseRPr = extractBaseRunProperties(pXml);
-  const boldRPr =
-    baseRPr && baseRPr.includes("<w:b")
-      ? baseRPr
-      : baseRPr
-        ? baseRPr.replace("</w:rPr>", "<w:b/></w:rPr>")
-        : "<w:rPr><w:b/></w:rPr>";
-
-  const parts = text.split(/(\*\*[^*]+\*\*)/g).filter((part) => part.length > 0);
-  if (parts.length === 0) {
-    return `<w:r>${baseRPr}<w:t xml:space="preserve"></w:t></w:r>`;
-  }
-
-  return parts
-    .map((part) => {
-      const boldMatch = /^\*\*([^*]+)\*\*$/.exec(part);
-      const content = boldMatch ? boldMatch[1] : part;
-      const rPr = boldMatch ? boldRPr || "<w:rPr><w:b/></w:rPr>" : baseRPr;
-      return `<w:r>${rPr}<w:t xml:space="preserve">${escapeXml(content)}</w:t></w:r>`;
-    })
-    .join("");
 }
 
 function findSectionIndex(paragraphs: string[], pattern: RegExp): number {
@@ -572,7 +646,7 @@ function buildSkillsParagraphs(
 
   const skillParagraphs = lines.map((line, index) => {
     const template = contentTemplates[index] ?? fallback;
-    return setParagraphText(template, line);
+    return setSkillLineParagraphText(template, line);
   });
 
   if (emptyTemplates.length > 0) {
