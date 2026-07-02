@@ -12,6 +12,8 @@ import UserAvatar from "@/components/ui/UserAvatar";
 
 import Button from "@/components/ui/Button";
 
+import ResumeTemplatePreviewButton from "@/components/ui/ResumeTemplatePreviewButton";
+
 import { useAuth } from "@/context/AuthContext";
 
 import { processAvatarFile } from "@/lib/avatar-image";
@@ -478,7 +480,20 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
 
         {resumeTemplateFileName && (
 
-          <p className="mb-3 text-xs text-emerald-300">Current: {resumeTemplateFileName}</p>
+          <div className="mb-3 flex flex-wrap items-center gap-3">
+
+            <p className="text-xs text-emerald-300">Current: {resumeTemplateFileName}</p>
+
+            <ResumeTemplatePreviewButton
+              fileName={resumeTemplateFile?.name || resumeTemplateFileName}
+              templateFile={resumeTemplateFile}
+              templateBase64={
+                resumeTemplateFile ? undefined : loadStoredProfile(user.id).resumeTemplateBase64
+              }
+              size="sm"
+            />
+
+          </div>
 
         )}
 

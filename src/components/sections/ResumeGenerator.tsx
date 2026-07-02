@@ -234,9 +234,10 @@ export default function ResumeGenerator({
       userTemplate.fileName,
       form.jobTitle,
       content,
-      form.customPrompt
+      form.customPrompt,
+      chatProfile?.fullName
     );
-  }, [content, userTemplate, form.jobTitle, form.customPrompt]);
+  }, [content, userTemplate, form.jobTitle, form.customPrompt, chatProfile?.fullName]);
 
   useEffect(() => {
     if (!resumeNameTouched && suggestedResumeBaseName) {
@@ -497,6 +498,7 @@ export default function ResumeGenerator({
           customPrompt: form.customPrompt,
           content,
           resumeFileBaseName: resumeFileBaseName.trim(),
+          profileName: chatProfile?.fullName,
         }),
       });
       const data = (await res.json()) as ResumeBuildResponse & { error?: string };

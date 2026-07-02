@@ -3,6 +3,7 @@
 import Link from "next/link";
 import ResumeGenerator from "@/components/sections/ResumeGenerator";
 import ResumeStepper from "@/components/sections/ResumeStepper";
+import ResumeTemplatePreviewButton from "@/components/ui/ResumeTemplatePreviewButton";
 import { useAuth } from "@/context/AuthContext";
 import { useUserProfileAssets } from "@/hooks/useUserProfileAssets";
 import { AUTH_LINKS } from "@/lib/constants";
@@ -31,15 +32,22 @@ export default function ResumeBuilder() {
             {loading ? (
               <p className="mt-2 text-sm text-slate-500">Loading your profile template…</p>
             ) : template ? (
-              <div className="mt-2">
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white">{template.fileName}</h3>
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  This is your uploaded resume template. Update it from your{" "}
-                  <Link href={AUTH_LINKS.dashboard} className="text-blue-500 hover:text-blue-400">
-                    dashboard profile
-                  </Link>
-                  .
-                </p>
+              <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white break-all">{template.fileName}</h3>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    This is your uploaded resume template. Update it from your{" "}
+                    <Link href={AUTH_LINKS.dashboard} className="text-blue-500 hover:text-blue-400">
+                      dashboard profile
+                    </Link>
+                    .
+                  </p>
+                </div>
+                <ResumeTemplatePreviewButton
+                  fileName={template.fileName}
+                  templateBase64={template.templateBase64}
+                  className="shrink-0 self-start"
+                />
               </div>
             ) : (
               <div className="mt-2">
