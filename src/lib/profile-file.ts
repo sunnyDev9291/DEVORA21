@@ -84,3 +84,9 @@ export function base64ToArrayBuffer(base64: string): ArrayBuffer {
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
   return bytes.buffer;
 }
+
+export const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+export function base64ToDocxBlob(base64: string): Blob {
+  return new Blob([base64ToArrayBuffer(base64)], { type: DOCX_MIME });
+}

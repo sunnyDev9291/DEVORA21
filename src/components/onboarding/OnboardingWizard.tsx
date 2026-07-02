@@ -14,6 +14,8 @@ import ProfileFileUpload from "@/components/profile/ProfileFileUpload";
 
 import Button from "@/components/ui/Button";
 
+import ResumeTemplatePreviewButton from "@/components/ui/ResumeTemplatePreviewButton";
+
 import UserAvatar from "@/components/ui/UserAvatar";
 
 import { useAuth } from "@/context/AuthContext";
@@ -566,25 +568,37 @@ export default function OnboardingWizard({ user }: OnboardingWizardProps) {
 
           {step === "resume" && (
 
-            <ProfileFileUpload
+            <div className="space-y-4">
 
-              id="onb-resume-template"
+              <ProfileFileUpload
 
-              accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                id="onb-resume-template"
 
-              label="Upload your resume template"
+                accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
-              hint="Use a .docx file as your base layout. Only your file is stored on your profile."
+                label="Upload your resume template"
 
-              fileName={resumeTemplateFile?.name}
+                hint="Use a .docx file as your base layout. Only your file is stored on your profile."
 
-              uploading={uploading}
+                fileName={resumeTemplateFile?.name}
 
-              disabled={saving}
+                uploading={uploading}
 
-              onFile={handleResumeTemplateFile}
+                disabled={saving}
 
-            />
+                onFile={handleResumeTemplateFile}
+
+              />
+
+              {resumeTemplateFile && (
+                <ResumeTemplatePreviewButton
+                  fileName={resumeTemplateFile.name}
+                  templateFile={resumeTemplateFile}
+                  size="sm"
+                />
+              )}
+
+            </div>
 
           )}
 
