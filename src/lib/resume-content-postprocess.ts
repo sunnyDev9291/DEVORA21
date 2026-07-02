@@ -97,7 +97,23 @@ export function boldSkillTermsInText(text: string, terms: string[]): string {
 
 
   return result.replace(/\*\*\*\*([^*]+)\*\*\*\*/g, "**$1**");
+}
 
+/** Bold grouped skill category labels (e.g. **Languages:** Java, Python). */
+export function boldSkillCategoryLabels(skills: string): string {
+  return skills
+    .split(/\n+/)
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed || !trimmed.includes(":")) return trimmed;
+      const colonIdx = trimmed.indexOf(":");
+      const label = trimmed.slice(0, colonIdx).replace(/\*\*/g, "").trim();
+      const value = trimmed.slice(colonIdx + 1).trim();
+      if (!label) return trimmed;
+      return value ? `**${label}:** ${value}` : `**${label}:**`;
+    })
+    .filter(Boolean)
+    .join("\n");
 }
 
 
@@ -201,18 +217,13 @@ export function applyResumeContentPostProcess(
 ): GeneratedResumeContent {
 
   const skillTerms = extractSkillTerms(content.skills);
-
   const projectMode = isProjectLayout(layout);
-
-
+  const skillsWithCategories = boldSkillCategoryLabels(content.skills);
 
   return {
-
     ...content,
-
     layout: projectMode ? "projects" : "bullets",
-
-    skills: boldSkillTermsInText(content.skills, skillTerms),
+    skills: boldSkillTermsInText(skillsWithCategories, skillTerms),
 
     experiences: content.experiences.map((exp, index) => {
 

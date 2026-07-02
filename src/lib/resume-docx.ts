@@ -529,6 +529,60 @@ function applySectionParagraphs(
   }
 }
 
+const SKILLS_EXPERIENCE_GAP_AFTER_TWIPS = 40;
+
+function setParagraphSpacing(pXml: string, beforeTwips: number, afterTwips: number): string {
+  const spacingTag = `<w:spacing w:before="${beforeTwips}" w:after="${afterTwips}"/>`;
+  if (/<w:pPr[\s\S]*?<\/w:pPr>/.test(pXml)) {
+    if (/<w:spacing[^/]*\/>/.test(pXml)) {
+      return pXml.replace(/<w:spacing[^/]*\/>/, spacingTag);
+    }
+    return pXml.replace(/<w:pPr([^>]*)>/, `<w:pPr$1>${spacingTag}`);
+  }
+  const open = pXml.match(/^(<w:p[^>]*>)/)?.[1] ?? "<w:p>";
+  const rest = pXml.slice(open.length);
+  return `${open}<w:pPr>${spacingTag}</w:pPr>${rest}`;
+}
+
+/** One compact skill line per category; drops trailing blank skill slots before Experience. */
+function buildSkillsParagraphs(
+  paragraphs: string[],
+  skillsIndices: number[],
+  skillsContent: string
+): string[] {
+  const lines = skillsContent
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0 || skillsIndices.length === 0) return [];
+
+  const contentTemplates = skillsIndices
+    .filter((index) => getParagraphText(paragraphs[index]).trim())
+    .map((index) => paragraphs[index]);
+  const emptyTemplates = skillsIndices
+    .filter((index) => !getParagraphText(paragraphs[index]).trim())
+    .map((index) => paragraphs[index]);
+  const fallback =
+    contentTemplates[contentTemplates.length - 1] ??
+    paragraphs[skillsIndices[skillsIndices.length - 1]];
+
+  const skillParagraphs = lines.map((line, index) => {
+    const template = contentTemplates[index] ?? fallback;
+    return setParagraphText(template, line);
+  });
+
+  if (emptyTemplates.length > 0) {
+    const spacer = setParagraphSpacing(
+      setParagraphText(emptyTemplates[emptyTemplates.length - 1], ""),
+      0,
+      SKILLS_EXPERIENCE_GAP_AFTER_TWIPS
+    );
+    skillParagraphs.push(spacer);
+  }
+
+  return skillParagraphs;
+}
+
 export function parseExperiencesFromDocxBuffer(buffer: Buffer) {
   const paragraphs = getDocxParagraphs(buffer);
   const expIdx = paragraphs.findIndex((p) => SECTION_HEADERS.experience.test(p.text));
@@ -606,7 +660,8 @@ export function applyContentToDocx(
   const summaryIndices = collectSectionParagraphIndices(paragraphs, summaryIdx, skillsIdx);
   const skillsIndices = collectSectionParagraphIndices(paragraphs, skillsIdx, expIdx);
   applySectionParagraphs(paragraphs, summaryIndices, content.summary);
-  applySectionParagraphs(paragraphs, skillsIndices, content.skills);
+  const skillParagraphs = buildSkillsParagraphs(paragraphs, skillsIndices, content.skills);
+  const skillsContentStart = skillsIndices.length > 0 ? skillsIndices[0] : skillsIdx + 1;
 
   const expEnd = eduIdx === -1 ? paragraphs.length : eduIdx;
   const originalExperienceParagraphs = paragraphs.slice(expIdx + 1, expEnd);
@@ -662,8 +717,12 @@ export function applyContentToDocx(
 
   applyPageBreaksFromTemplate(experienceParagraphs, originalExperienceParagraphs);
 
+  const experienceHeaderParagraph = setParagraphSpacing(paragraphs[expIdx], 0, 0);
+
   const updatedParagraphs = [
-    ...paragraphs.slice(0, expIdx + 1),
+    ...paragraphs.slice(0, skillsContentStart),
+    ...skillParagraphs,
+    experienceHeaderParagraph,
     ...experienceParagraphs,
     ...paragraphs.slice(expEnd),
   ];

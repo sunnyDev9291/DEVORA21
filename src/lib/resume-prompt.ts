@@ -36,6 +36,7 @@ Template fidelity (critical):
 - Follow ALL rules in the user's Additional instructions — they override generic defaults.
 
 Bold in JSON (required for Word rendering):
+- Wrap every skill category label with **double asterisks** before the colon (e.g. **Languages:** **Java**, **Python**).
 - Wrap every concrete tech term in the skills field with **double asterisks** (e.g. **Java**, **Spring Boot**).
 - Wrap every skillset/tech term in experience bullets with **double asterisks** when it appears (e.g. built **React** hooks with **Redux Toolkit**).
 - User rules that say "no symbols" mean no bracket labels like [C-Java/...] — **bold markers are required**, not forbidden.
@@ -86,6 +87,7 @@ Template fidelity (critical):
 - Follow ALL rules in the user's Additional instructions — they override generic defaults.
 
 Bold in JSON (required for Word rendering):
+- Wrap every skill category label with **double asterisks** before the colon (e.g. **Languages:** **Java**, **Python**).
 - Wrap every concrete tech term in the skills field with **double asterisks** (e.g. **Java**, **Spring Boot**).
 - Wrap skillset/tech terms in project fields (challenge, responsibility, action, result) with **double asterisks** when they appear.
 
