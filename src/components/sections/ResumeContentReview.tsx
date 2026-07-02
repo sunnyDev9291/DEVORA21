@@ -25,7 +25,6 @@ interface ResumeContentReviewProps {
 }
 
 const PROJECT_FIELDS: Array<{ key: keyof ResumeProject; label: string }> = [
-  { key: "name", label: "Project name" },
   { key: "businessChallenge", label: "Business Challenge" },
   { key: "assignedResponsibility", label: "Assigned Responsibility" },
   { key: "action", label: "Action" },
@@ -259,6 +258,12 @@ export default function ResumeContentReview({
                             <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">
                               Project {projectIndex + 1}
                             </p>
+                            <div>
+                              <p className="text-xs font-medium text-slate-500 mb-1">
+                                Project name <span className="font-normal text-slate-400">(from template)</span>
+                              </p>
+                              <p className="text-sm font-semibold text-slate-900 dark:text-white px-1">{project.name}</p>
+                            </div>
                             {PROJECT_FIELDS.map(({ key, label }) => (
                               <div key={`${index}-${projectIndex}-${key}`}>
                                 <p className="text-xs font-medium text-slate-500 mb-1">{label}</p>
@@ -267,7 +272,7 @@ export default function ResumeContentReview({
                                   value={project[key]}
                                   onChange={(value) => updateProject(index, projectIndex, { [key]: value })}
                                   className={`${fieldClass} min-h-[72px] resize-y leading-relaxed`}
-                                  rows={key === "name" ? 1 : 2}
+                                  rows={2}
                                   placeholder={label}
                                   aria-label={`${label} for project ${projectIndex + 1} at ${exp.company}`}
                                 />

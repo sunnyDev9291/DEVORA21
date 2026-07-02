@@ -222,6 +222,7 @@ function parseProjectBlock(lines: DocxParagraph[]): {
         currentProject[classified.field] = classified.inlineValue;
         currentGroup.push([line.xml]);
         pendingField = null;
+        currentField = null;
       } else {
         pendingField = classified.field;
         currentGroup.push([line.xml]);
@@ -234,10 +235,12 @@ function parseProjectBlock(lines: DocxParagraph[]): {
       const last = currentGroup[currentGroup.length - 1];
       if (last) last.push(line.xml);
       pendingField = null;
+      currentField = null;
       continue;
     }
 
-    if (classified.kind === "other" && isLikelyProjectTitle(line.text) && !currentProject.name) {
+    // Project titles are plain lines (no "Project:" prefix) — detect before currentField absorbs them.
+    if (classified.kind === "other" && isLikelyProjectTitle(line.text)) {
       flushProject();
       currentProject.name = line.text.trim();
       currentGroup.push([line.xml]);

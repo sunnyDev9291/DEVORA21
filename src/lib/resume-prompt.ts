@@ -95,6 +95,7 @@ Content rules:
 - experiences: MUST include exactly the same number of companies as the template, in the same order.
 - Copy company, role, dates, and project names EXACTLY from the template list.
 - Return exactly the project count per company specified in the template list.
+- Rewrite ONLY the BAR fields (businessChallenge, assignedResponsibility, action, result) — never rename projects or employers.
 - No markdown fences, no commentary — valid json only.`;
 
 export const RESUME_REGENERATE_SYSTEM_SUFFIX = `When regeneration context is provided, this is a TARGETED REVISION pass — not a full rewrite.
@@ -372,12 +373,15 @@ function formatTemplateExperienceLine(
 ): string {
   const prefix = `${index + 1}. company="${e.company}" | role="${e.role}" | dates="${e.dates}"`;
   if (isProjectLayout(layout) || e.projects?.length) {
-    const count = e.projects?.length ?? 0;
+    const projects = e.projects ?? [];
+    const projectList = projects
+      .map((p, i) => `project ${i + 1} name="${p.name}" (FIXED — copy exactly)`)
+      .join("; ");
     const verb =
       mode === "regenerate"
-        ? `projects: keep ${count} projects, change only if needed for ATS or tone gaps`
-        : `projects: rewrite all ${count} projects (name + BAR fields)`;
-    return `${prefix} | ${verb}`;
+        ? `rewrite BAR fields only for ${projects.length} projects; keep names/company/role/dates unchanged`
+        : `rewrite BAR fields for all ${projects.length} projects; keep names/company/role/dates exactly`;
+    return `${prefix} | ${projectList} | ${verb}`;
   }
   const count = e.bullets.length;
   const verb =
@@ -656,15 +660,18 @@ export function mergeResumeWithTemplate(
           generated?.projects,
           existing.projects?.length ?? 0,
           existing.projects ?? []
-        ).map((project, projectIndex) => ({
-          ...normalizeResumeProject(existing.projects?.[projectIndex]),
-          name: existing.projects?.[projectIndex]?.name || project.name,
-          businessChallenge: project.businessChallenge || existing.projects?.[projectIndex]?.businessChallenge || "",
-          assignedResponsibility:
-            project.assignedResponsibility || existing.projects?.[projectIndex]?.assignedResponsibility || "",
-          action: project.action || existing.projects?.[projectIndex]?.action || "",
-          result: project.result || existing.projects?.[projectIndex]?.result || "",
-        }));
+        ).map((project, projectIndex) => {
+          const templateProject = existing.projects?.[projectIndex];
+          return {
+            name: templateProject?.name ?? project.name,
+            businessChallenge:
+              project.businessChallenge || templateProject?.businessChallenge || "",
+            assignedResponsibility:
+              project.assignedResponsibility || templateProject?.assignedResponsibility || "",
+            action: project.action || templateProject?.action || "",
+            result: project.result || templateProject?.result || "",
+          };
+        });
 
         return {
           company: existing.company,

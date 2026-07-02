@@ -47,9 +47,14 @@ function escapeXml(text: string): string {
 }
 
 export function getParagraphText(pXml: string): string {
-  return (pXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [])
+  const raw = (pXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [])
     .map((t) => t.replace(/<w:t[^>]*>/, "").replace(/<\/w:t>/, ""))
     .join("");
+  return raw
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"');
 }
 
 /** Plain text with **bold** markers from Word run properties. */
