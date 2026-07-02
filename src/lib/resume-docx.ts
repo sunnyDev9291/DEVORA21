@@ -243,6 +243,65 @@ function buildRunsFromMarkdownText(pXml: string, text: string): string {
     .join("");
 }
 
+/** Latin bold (`<w:b/>`) — templates often only set `<w:bCs/>`, which does not bold category labels. */
+function hasLatinBold(rPr: string): boolean {
+  const tag = rPr.match(/<w:b(?!Cs)\b[^>]*\/?>/)?.[0] ?? "";
+  if (!tag) return false;
+  return !/w:val="(?:0|false)"/.test(tag);
+}
+
+function ensureLatinBoldRunProperties(rPr: string): string {
+  if (hasLatinBold(rPr)) return rPr;
+  if (!rPr) return "<w:rPr><w:b/></w:rPr>";
+  return rPr.replace("</w:rPr>", "<w:b/></w:rPr>");
+}
+
+function stripBoldRunProperties(rPr: string): string {
+  return rPr
+    .replace(/<w:b(?!Cs)\b[^/]*\/>/g, "")
+    .replace(/<w:b(?!Cs)\b[^>]*>[\s\S]*?<\/w:b>/g, "")
+    .replace(/<w:bCs\b[^/]*\/>/g, "")
+    .replace(/<w:bCs\b[^>]*>[\s\S]*?<\/w:bCs>/g, "");
+}
+
+function parseSkillCategoryLine(line: string): { label: string; value: string } | null {
+  const trimmed = line.trim();
+  const markdown = trimmed.match(/^\*\*([^*:]+):\*\*\s*(.*)$/);
+  if (markdown) {
+    const label = markdown[1].trim();
+    const value = markdown[2].replace(/\*\*/g, "").trim();
+    return label ? { label, value } : null;
+  }
+  const plain = trimmed.match(/^([^:]+):\s*(.*)$/);
+  if (plain) {
+    const label = plain[1].replace(/\*\*/g, "").trim();
+    const value = plain[2].replace(/\*\*/g, "").trim();
+    return label ? { label, value } : null;
+  }
+  return null;
+}
+
+/** Skills section: bold category label only; values keep template plain styling. */
+function setSkillLineParagraphText(pXml: string, line: string): string {
+  const trimmed = line.trim();
+  const parsed = parseSkillCategoryLine(trimmed);
+  if (!parsed) return setParagraphText(pXml, trimmed);
+
+  const open = pXml.match(/^(<w:p[^>]*>)/)?.[1] ?? "<w:p>";
+  const pPr = pXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] ?? "";
+  const baseRPr = extractBaseRunProperties(pXml);
+  const boldLabelRPr = ensureLatinBoldRunProperties(baseRPr);
+  const plainRPr = stripBoldRunProperties(baseRPr) || baseRPr;
+
+  const { label, value } = parsed;
+  const labelRun = `<w:r>${boldLabelRPr}<w:t xml:space="preserve">${escapeXml(`${label}:`)}</w:t></w:r>`;
+  const valueRun = value
+    ? `<w:r>${plainRPr}<w:t xml:space="preserve"> ${escapeXml(value)}</w:t></w:r>`
+    : "";
+
+  return `${open}${pPr}${labelRun}${valueRun}</w:p>`;
+}
+
 function findSectionIndex(paragraphs: string[], pattern: RegExp): number {
   return paragraphs.findIndex((p) => pattern.test(getParagraphText(p).trim()));
 }
@@ -572,7 +631,7 @@ function buildSkillsParagraphs(
 
   const skillParagraphs = lines.map((line, index) => {
     const template = contentTemplates[index] ?? fallback;
-    return setParagraphText(template, line);
+    return setSkillLineParagraphText(template, line);
   });
 
   if (emptyTemplates.length > 0) {
