@@ -13,7 +13,7 @@ import { archiveResume } from "@/lib/resume-archive";
 import { resumeBuilderAccessDeniedMessage } from "@/lib/resume-access";
 import { pickBestRegenerateResult, type RegenerateEvaluation } from "@/lib/resume-ats-regenerate";
 import { emptyRuleKeepScore } from "@/lib/resume-rule-keep";
-import type { GeneratedResumeContent, ResumeBuildResponse, AtsScoreResult, HumanToneScoreResult, RuleKeepScoreResult } from "@/lib/resume-types";
+import type { GeneratedResumeContent, ResumeBuildResponse, AtsScoreResult, RuleKeepScoreResult } from "@/lib/resume-types";
 import { buildExpectedResumeBaseName, extractResumeTitleHeadline } from "@/lib/resume-filename";
 import { loadStoredProfile, resolveUserNames } from "@/lib/user-profile";
 
@@ -93,9 +93,6 @@ export default function ResumeGenerator({
   const [atsScore, setAtsScore] = useState<AtsScoreResult | null>(null);
   const [atsLoading, setAtsLoading] = useState(false);
   const [atsError, setAtsError] = useState("");
-  const [humanToneScore, setHumanToneScore] = useState<HumanToneScoreResult | null>(null);
-  const [humanToneLoading, setHumanToneLoading] = useState(false);
-  const [humanToneError, setHumanToneError] = useState("");
   const [ruleKeepScore, setRuleKeepScore] = useState<RuleKeepScoreResult | null>(null);
   const [ruleKeepLoading, setRuleKeepLoading] = useState(false);
   const [ruleKeepError, setRuleKeepError] = useState("");
@@ -140,8 +137,6 @@ export default function ResumeGenerator({
     setStreamPhase("starting");
     setAtsScore(null);
     setAtsError("");
-    setHumanToneScore(null);
-    setHumanToneError("");
     setRuleKeepScore(null);
     setRuleKeepError("");
     setAtsModalOpen(false);
@@ -203,8 +198,6 @@ export default function ResumeGenerator({
     setStreamPhase("starting");
     setAtsScore(null);
     setAtsError("");
-    setHumanToneScore(null);
-    setHumanToneError("");
     setRuleKeepScore(null);
     setRuleKeepError("");
     setRegenerateNotice("");
@@ -264,14 +257,11 @@ export default function ResumeGenerator({
     atsAbortRef.current = controller;
 
     setAtsLoading(true);
-    setHumanToneLoading(true);
     setRuleKeepLoading(true);
     setAtsError("");
-    setHumanToneError("");
     setRuleKeepError("");
     if (!options?.preserveScore) {
       setAtsScore(null);
-      setHumanToneScore(null);
       setRuleKeepScore(null);
     }
     if (options?.openModal !== false) {
@@ -310,10 +300,9 @@ export default function ResumeGenerator({
       }
 
       setAtsScore(data.ats);
-      setHumanToneScore(data.humanTone);
       const ruleKeep = data.ruleKeep ?? emptyRuleKeepScore();
       setRuleKeepScore(ruleKeep);
-      return { ats: data.ats, humanTone: data.humanTone, ruleKeep };
+      return { ats: data.ats, ruleKeep };
     } catch (err) {
       if ((err as Error).name === "AbortError") return null;
       const message = (err as Error).message || "Could not evaluate resume scores.";
@@ -322,7 +311,6 @@ export default function ResumeGenerator({
     } finally {
       if (!controller.signal.aborted) {
         setAtsLoading(false);
-        setHumanToneLoading(false);
         setRuleKeepLoading(false);
       }
     }
@@ -332,7 +320,6 @@ export default function ResumeGenerator({
     e?: React.FormEvent,
     options?: {
       atsFeedback?: AtsScoreResult;
-      humanToneFeedback?: HumanToneScoreResult;
       ruleKeepFeedback?: RuleKeepScoreResult;
       previousContent?: GeneratedResumeContent;
     }
@@ -370,7 +357,6 @@ export default function ResumeGenerator({
           templateName: userTemplate.fileName,
           templateBase64: userTemplate.templateBase64,
           ...(options?.atsFeedback && { atsFeedback: options.atsFeedback }),
-          ...(options?.humanToneFeedback && { humanToneFeedback: options.humanToneFeedback }),
           ...(options?.ruleKeepFeedback && { ruleKeepFeedback: options.ruleKeepFeedback }),
           ...(options?.previousContent && { previousContent: options.previousContent }),
         },
@@ -388,11 +374,10 @@ export default function ResumeGenerator({
       setFileName("");
       setStep("review");
 
-      if (options?.previousContent && options?.atsFeedback && options?.humanToneFeedback) {
+      if (options?.previousContent && options?.atsFeedback) {
         const picked = await pickBestRegenerateResult(
           options.previousContent,
           options.atsFeedback,
-          options.humanToneFeedback,
           options.ruleKeepFeedback ?? emptyRuleKeepScore(),
           data.content,
           (candidate) =>
@@ -404,7 +389,6 @@ export default function ResumeGenerator({
         );
         setContent(picked.content);
         setAtsScore(picked.score);
-        setHumanToneScore(picked.humanToneScore);
         setRuleKeepScore(picked.ruleKeepScore);
         setRegenerateNotice(picked.notice);
         if (picked.content !== options.previousContent) {
@@ -432,14 +416,12 @@ export default function ResumeGenerator({
 
     setAtsModalOpen(true);
     setAtsError("");
-    setHumanToneError("");
     setRuleKeepError("");
 
     let scores =
-      atsScore && humanToneScore
+      atsScore
         ? {
             ats: atsScore,
-            humanTone: humanToneScore,
             ruleKeep: ruleKeepScore ?? emptyRuleKeepScore(),
           }
         : null;
@@ -452,7 +434,6 @@ export default function ResumeGenerator({
 
     await handleGenerate(undefined, {
       atsFeedback: scores.ats,
-      humanToneFeedback: scores.humanTone,
       ruleKeepFeedback: scores.ruleKeep,
       previousContent: content,
     });
@@ -537,8 +518,6 @@ export default function ResumeGenerator({
     setError("");
     setAtsScore(null);
     setAtsError("");
-    setHumanToneScore(null);
-    setHumanToneError("");
     setRuleKeepScore(null);
     setRuleKeepError("");
     setRegenerateNotice("");
@@ -783,7 +762,7 @@ export default function ResumeGenerator({
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-              {(atsScore || humanToneScore || ruleKeepScore || atsLoading || humanToneLoading || ruleKeepLoading) && (
+              {(atsScore || ruleKeepScore || atsLoading || ruleKeepLoading) && (
                 <button
                   type="button"
                   onClick={() => setAtsModalOpen(true)}
@@ -798,15 +777,13 @@ export default function ResumeGenerator({
                   <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                   </svg>
-                  {atsLoading || humanToneLoading || ruleKeepLoading
+                  {atsLoading || ruleKeepLoading
                     ? "Scoring…"
-                    : atsScore && humanToneScore
+                    : atsScore
                       ? ruleKeepScore && ruleKeepScore.totalRules > 0
-                        ? `ATS ${atsScore.overall} · Tone ${humanToneScore.overall} · Rules ${ruleKeepScore.overall}`
-                        : `ATS ${atsScore.overall} · Tone ${humanToneScore.overall}`
-                      : atsScore
-                        ? `ATS ${atsScore.overall}/100`
-                        : "Score report"}
+                        ? `ATS ${atsScore.overall} · Rules ${ruleKeepScore.overall}`
+                        : `ATS ${atsScore.overall}/100`
+                      : "Score report"}
                 </button>
               )}
               {content && (
@@ -879,10 +856,7 @@ export default function ResumeGenerator({
         loading={atsLoading}
         error={atsError}
         onRecheck={content ? () => evaluateResumeScores(content) : undefined}
-        recheckDisabled={atsLoading || humanToneLoading || ruleKeepLoading || generating || applying || !content}
-        humanToneScore={humanToneScore}
-        humanToneLoading={humanToneLoading}
-        humanToneError={humanToneError}
+        recheckDisabled={atsLoading || ruleKeepLoading || generating || applying || !content}
         ruleKeepScore={ruleKeepScore}
         ruleKeepLoading={ruleKeepLoading}
         ruleKeepError={ruleKeepError}

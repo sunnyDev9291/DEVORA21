@@ -3,19 +3,16 @@ import {
   computeStrictAtsScore,
   toAtsScoreResult,
 } from "@/lib/resume-ats-algorithm";
-import { evaluateHumanToneScore } from "@/lib/resume-human-tone";
 import { getCachedJobKeywords } from "@/lib/resume-keywords-cache";
 import { emptyRuleKeepScore, evaluateRuleKeepScore } from "@/lib/resume-rule-keep";
 import type {
   AtsScoreResult,
   GeneratedResumeContent,
-  HumanToneScoreResult,
   RuleKeepScoreResult,
 } from "@/lib/resume-types";
 
 export type ResumeScoreResult = {
   ats: AtsScoreResult;
-  humanTone: HumanToneScoreResult;
   ruleKeep: RuleKeepScoreResult;
   keywordsCacheKey: string;
 };
@@ -58,7 +55,6 @@ export async function evaluateResumeScoreBundle({
   ]);
 
   const ats = evaluateAtsWithKeywords(content, jobTitle, keywords);
-  const humanTone = evaluateHumanToneScore(content);
 
-  return { ats, humanTone, ruleKeep, keywordsCacheKey: cacheKey };
+  return { ats, ruleKeep, keywordsCacheKey: cacheKey };
 }

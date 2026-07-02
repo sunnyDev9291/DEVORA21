@@ -9,7 +9,6 @@ import {
 import type {
   AtsScoreResult,
   GeneratedResumeContent,
-  HumanToneScoreResult,
   ResumeExperience,
   ResumeTemplateLayout,
   RuleKeepScoreResult,
@@ -24,8 +23,6 @@ export interface ResumeGenerateRequest {
   templateBase64?: string;
   /** Prior ATS evaluation — used when regenerating to target a higher score. */
   atsFeedback?: AtsScoreResult;
-  /** Prior human tone evaluation — co-target during regenerate. */
-  humanToneFeedback?: HumanToneScoreResult;
   /** Prior rule keep evaluation — co-target during regenerate. */
   ruleKeepFeedback?: RuleKeepScoreResult;
   /** Draft content from the previous generation — paired with feedback fields. */

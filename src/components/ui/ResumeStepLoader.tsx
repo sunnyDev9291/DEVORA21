@@ -77,7 +77,7 @@ interface EvaluationRowLoaderProps {
   className?: string;
 }
 
-/** Compact row loader — matches human tone / rule keep rows. */
+/** Compact row loader — matches rule keep score rows. */
 export function EvaluationRowLoader({
   title,
   description,

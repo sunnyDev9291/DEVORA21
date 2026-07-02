@@ -5,23 +5,18 @@ import { createPortal } from "react-dom";
 import ResumeContentReview from "@/components/sections/ResumeContentReview";
 import ResumeThinkingProgress from "@/components/ui/ResumeThinkingProgress";
 import { ResumeAtsScorePanel, type ResumeAtsScorePanelProps } from "@/components/ui/ResumeAtsScorePanel";
-import { ResumeHumanTonePanel } from "@/components/ui/ResumeHumanTonePanel";
 import { ResumeRuleKeepPanel } from "@/components/ui/ResumeRuleKeepPanel";
 import { EvaluationStepStack } from "@/components/ui/ResumeStepLoader";
 import { ResumeScoringInstructionsPanel } from "@/components/ui/ResumeScoringInstructionsPanel";
 import { ATS_PASS_THRESHOLD } from "@/lib/resume-ats";
-import { HUMAN_TONE_PASS_THRESHOLD } from "@/lib/resume-human-tone";
 import { RULE_KEEP_PASS_THRESHOLD } from "@/lib/resume-rule-keep-constants";
-import type { GeneratedResumeContent, HumanToneScoreResult, RuleKeepScoreResult } from "@/lib/resume-types";
+import type { GeneratedResumeContent, RuleKeepScoreResult } from "@/lib/resume-types";
 import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
 
 interface ResumeAtsScoreModalProps extends ResumeAtsScorePanelProps {
   open: boolean;
   onClose: () => void;
   jobTitle?: string;
-  humanToneScore?: HumanToneScoreResult | null;
-  humanToneLoading?: boolean;
-  humanToneError?: string;
   ruleKeepScore?: RuleKeepScoreResult | null;
   ruleKeepLoading?: boolean;
   ruleKeepError?: string;
@@ -54,9 +49,6 @@ export default function ResumeAtsScoreModal({
   error,
   onRecheck,
   recheckDisabled,
-  humanToneScore = null,
-  humanToneLoading = false,
-  humanToneError = "",
   ruleKeepScore = null,
   ruleKeepLoading = false,
   ruleKeepError = "",
@@ -134,7 +126,7 @@ export default function ResumeAtsScoreModal({
             <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
               {jobTitle
                 ? `Target: ${jobTitle}`
-                : `ATS ${ATS_PASS_THRESHOLD}%+ · Tone ${HUMAN_TONE_PASS_THRESHOLD}%+ · Rules ${RULE_KEEP_PASS_THRESHOLD}%+`}
+                : `ATS ${ATS_PASS_THRESHOLD}%+ · Rules ${RULE_KEEP_PASS_THRESHOLD}%+`}
             </p>
           </div>
           <button
@@ -158,7 +150,7 @@ export default function ResumeAtsScoreModal({
         >
           <div className="min-h-0 overflow-y-auto overscroll-contain order-2 lg:order-1 border-t lg:border-t-0 border-slate-200 dark:border-white/[0.08]">
             <ResumeScoringInstructionsPanel customPrompt={customPrompt} defaultExpanded={Boolean(customPrompt.trim())} />
-            {loading || humanToneLoading || ruleKeepLoading ? (
+            {loading || ruleKeepLoading ? (
               <EvaluationStepStack className="rounded-none border-0 bg-transparent dark:bg-transparent">
                 <ResumeAtsScorePanel
                   score={score}
@@ -166,11 +158,6 @@ export default function ResumeAtsScoreModal({
                   error={error}
                   onRecheck={onRecheck}
                   recheckDisabled={recheckDisabled}
-                />
-                <ResumeHumanTonePanel
-                  score={humanToneScore}
-                  loading={humanToneLoading}
-                  error={humanToneError}
                 />
                 <ResumeRuleKeepPanel
                   score={ruleKeepScore}
@@ -187,11 +174,6 @@ export default function ResumeAtsScoreModal({
                   error={error}
                   onRecheck={onRecheck}
                   recheckDisabled={recheckDisabled}
-                />
-                <ResumeHumanTonePanel
-                  score={humanToneScore}
-                  loading={humanToneLoading}
-                  error={humanToneError}
                 />
                 <ResumeRuleKeepPanel
                   score={ruleKeepScore}

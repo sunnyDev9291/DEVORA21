@@ -71,18 +71,6 @@ export type AtsScoreResult = {
   algorithm?: string;
 };
 
-export type HumanToneScoreResult = {
-  overall: number;
-  passed: boolean;
-  breakdown: AtsScoreBreakdown[];
-  recommendations: string[];
-  summary: string;
-  gates?: AtsPassGate[];
-  /** Detected AI-style buzzwords or phrases. */
-  flags?: string[];
-  algorithm?: string;
-};
-
 export type RuleKeepCheck = {
   id: string;
   rule: string;

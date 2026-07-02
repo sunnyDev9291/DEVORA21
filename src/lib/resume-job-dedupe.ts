@@ -11,7 +11,6 @@ export function buildResumeDedupeKey(body: ResumeGenerateRequest): string {
     regenerate: Boolean(body.atsFeedback && body.previousContent),
     previousTitle: body.previousContent?.title?.trim() ?? "",
     atsScore: body.atsFeedback?.overall ?? null,
-    toneScore: body.humanToneFeedback?.overall ?? null,
     ruleKeepScore: body.ruleKeepFeedback?.overall ?? null,
   });
 
