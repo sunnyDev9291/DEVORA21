@@ -1,12 +1,17 @@
 import { completeDeepSeek } from "@/lib/deepseek-stream";
-import type { GeneratedResumeContent } from "@/lib/resume-types";
+import { detectResumeTemplateLayout } from "@/lib/resume-docx";
+import {
+  parseProjectExperiencesFromDocxBuffer,
+  validateParsedProjectExperiences,
+} from "@/lib/resume-docx-project";
+import type { GeneratedResumeContent, ResumeTemplateLayout } from "@/lib/resume-types";
 import {
   extractExperienceSectionPlainText,
   parseExperiencesFromDocxBuffer,
   validateParsedExperiences,
 } from "@/lib/resume-docx";
 
-const AI_PARSE_SYSTEM = `You extract work experience from resume text.
+const AI_PARSE_BULLETS_SYSTEM = `You extract work experience from resume text.
 Return ONLY valid json:
 {
   "experiences": [
@@ -22,17 +27,56 @@ Rules:
 - preserve order from top to bottom
 - do not invent employers`;
 
-export async function parseExperiencesWithAI(
-  buffer: Buffer
+const AI_PARSE_PROJECTS_SYSTEM = `You extract work experience from resume text that uses project blocks (not bullets).
+Return ONLY valid json:
+{
+  "experiences": [
+    {
+      "company": "string",
+      "role": "string",
+      "dates": "string",
+      "projects": [
+        {
+          "name": "string",
+          "businessChallenge": "string",
+          "assignedResponsibility": "string",
+          "action": "string",
+          "result": "string"
+        }
+      ]
+    }
+  ]
+}
+
+Rules:
+- company = employer name only
+- role = job title
+- dates = employment range exactly as written
+- Each project block has: name, Business Challenge, Assigned Responsibility, Action, Result
+- Labels may appear as "Project:", "Business Challenge:", "Assigned Responsibility:", "Action:", "Result:" — extract values only
+- preserve order from top to bottom
+- do not invent employers or projects`;
+
+export type TemplateParseResult = {
+  layout: ResumeTemplateLayout;
+  experiences: GeneratedResumeContent["experiences"];
+};
+
+async function parseExperiencesWithAI(
+  buffer: Buffer,
+  layout: ResumeTemplateLayout
 ): Promise<GeneratedResumeContent["experiences"]> {
   const sectionText = extractExperienceSectionPlainText(buffer);
   if (!sectionText.trim()) {
     throw new Error("Experience section is empty or missing.");
   }
 
+  const system =
+    layout === "projects" ? AI_PARSE_PROJECTS_SYSTEM : AI_PARSE_BULLETS_SYSTEM;
+
   const raw = await completeDeepSeek(
     [
-      { role: "system", content: AI_PARSE_SYSTEM },
+      { role: "system", content: system },
       {
         role: "user",
         content: `Extract all jobs from this EXPERIENCE section:\n\n${sectionText}`,
@@ -53,6 +97,22 @@ export async function parseExperiencesWithAI(
     throw new Error("AI found no experience entries in the template.");
   }
 
+  if (layout === "projects") {
+    return parsed.experiences.map((e) => ({
+      company: String(e.company ?? "").trim(),
+      role: String(e.role ?? "").trim(),
+      dates: String(e.dates ?? "").trim(),
+      bullets: [],
+      projects: (e.projects ?? []).map((p) => ({
+        name: String(p.name ?? "").trim(),
+        businessChallenge: String(p.businessChallenge ?? "").trim(),
+        assignedResponsibility: String(p.assignedResponsibility ?? "").trim(),
+        action: String(p.action ?? "").trim(),
+        result: String(p.result ?? "").trim(),
+      })),
+    }));
+  }
+
   return parsed.experiences.map((e) => ({
     company: String(e.company ?? "").trim(),
     role: String(e.role ?? "").trim(),
@@ -61,18 +121,36 @@ export async function parseExperiencesWithAI(
   }));
 }
 
+function validateByLayout(
+  layout: ResumeTemplateLayout,
+  experiences: GeneratedResumeContent["experiences"]
+) {
+  return layout === "projects"
+    ? validateParsedProjectExperiences(experiences)
+    : validateParsedExperiences(experiences);
+}
+
+function parseStructural(
+  buffer: Buffer,
+  layout: ResumeTemplateLayout
+): GeneratedResumeContent["experiences"] {
+  if (layout === "projects") {
+    return parseProjectExperiencesFromDocxBuffer(buffer).experiences;
+  }
+  return parseExperiencesFromDocxBuffer(buffer);
+}
+
 /** Structural Word parse first; AI fallback when validation fails. */
-export async function resolveExperiencesFromDocx(
-  buffer: Buffer
-): Promise<GeneratedResumeContent["experiences"]> {
-  const structural = parseExperiencesFromDocxBuffer(buffer);
-  const structuralCheck = validateParsedExperiences(structural);
-  if (structuralCheck.ok) return structural;
+export async function resolveTemplateFromDocx(buffer: Buffer): Promise<TemplateParseResult> {
+  const layout = detectResumeTemplateLayout(buffer);
+  const structural = parseStructural(buffer, layout);
+  const structuralCheck = validateByLayout(layout, structural);
+  if (structuralCheck.ok) return { layout, experiences: structural };
 
   try {
-    const aiParsed = await parseExperiencesWithAI(buffer);
-    const aiCheck = validateParsedExperiences(aiParsed);
-    if (aiCheck.ok) return aiParsed;
+    const aiParsed = await parseExperiencesWithAI(buffer, layout);
+    const aiCheck = validateByLayout(layout, aiParsed);
+    if (aiCheck.ok) return { layout, experiences: aiParsed };
     throw new Error(aiCheck.errors.join(" "));
   } catch (err) {
     const detail = err instanceof Error ? err.message : "AI parse failed";
@@ -82,4 +160,12 @@ export async function resolveExperiencesFromDocx(
         : detail
     );
   }
+}
+
+/** @deprecated Use resolveTemplateFromDocx — experiences only. */
+export async function resolveExperiencesFromDocx(
+  buffer: Buffer
+): Promise<GeneratedResumeContent["experiences"]> {
+  const { experiences } = await resolveTemplateFromDocx(buffer);
+  return experiences;
 }

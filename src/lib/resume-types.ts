@@ -1,14 +1,29 @@
+export type ResumeProject = {
+  name: string;
+  businessChallenge: string;
+  assignedResponsibility: string;
+  action: string;
+  result: string;
+};
+
+/** bullets = achievement lines; projects = BAR-style project blocks per company */
+export type ResumeTemplateLayout = "bullets" | "projects";
+
 export type ResumeExperience = {
   company: string;
   role: string;
   dates: string;
+  /** Used when layout is bullets (or as ATS fallback text). */
   bullets: string[];
+  /** Used when layout is projects — one block per project under the company. */
+  projects?: ResumeProject[];
 };
 
 export type GeneratedResumeContent = {
   title: string;
   summary: string;
   skills: string;
+  layout?: ResumeTemplateLayout;
   experiences: ResumeExperience[];
 };
 

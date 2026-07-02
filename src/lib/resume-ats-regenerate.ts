@@ -2,6 +2,7 @@ import { ATS_PASS_THRESHOLD } from "@/lib/resume-ats-algorithm";
 import { HUMAN_TONE_PASS_THRESHOLD } from "@/lib/resume-human-tone-algorithm";
 import { RULE_KEEP_PASS_THRESHOLD, RULE_KEEP_GUARD_THRESHOLD } from "@/lib/resume-rule-keep-constants";
 import { keywordPresentInText } from "@/lib/resume-ats-keywords";
+import { flattenContentExperienceText } from "@/lib/resume-experience-utils";
 import type {
   AtsScoreResult,
   GeneratedResumeContent,
@@ -15,6 +16,7 @@ function cloneContent(content: GeneratedResumeContent): GeneratedResumeContent {
     experiences: content.experiences.map((e) => ({
       ...e,
       bullets: [...e.bullets],
+      projects: e.projects?.map((p) => ({ ...p })),
     })),
   };
 }
@@ -24,7 +26,8 @@ function resumePlainText(content: GeneratedResumeContent): string {
     content.title,
     content.summary,
     content.skills,
-    ...content.experiences.flatMap((e) => [e.role, e.company, ...e.bullets]),
+    ...content.experiences.flatMap((e) => [e.role, e.company]),
+    ...flattenContentExperienceText(content),
   ].join("\n");
 }
 
@@ -100,10 +103,24 @@ export function applyDeterministicTonePatches(
 
   result.summary = scrub(result.summary);
   if (!options?.lockExperienceFields) {
-    result.experiences = result.experiences.map((e) => ({
-      ...e,
-      bullets: e.bullets.map((b) => scrub(b)).filter(Boolean),
-    }));
+    result.experiences = result.experiences.map((e) => {
+      if (e.projects?.length) {
+        return {
+          ...e,
+          projects: e.projects.map((p) => ({
+            name: scrub(p.name),
+            businessChallenge: scrub(p.businessChallenge),
+            assignedResponsibility: scrub(p.assignedResponsibility),
+            action: scrub(p.action),
+            result: scrub(p.result),
+          })),
+        };
+      }
+      return {
+        ...e,
+        bullets: e.bullets.map((b) => scrub(b)).filter(Boolean),
+      };
+    });
   }
 
   return result;

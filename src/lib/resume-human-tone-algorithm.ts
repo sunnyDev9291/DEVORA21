@@ -1,4 +1,5 @@
 import type { GeneratedResumeContent, HumanToneScoreResult } from "@/lib/resume-types";
+import { flattenContentExperienceText } from "@/lib/resume-experience-utils";
 
 export const HUMAN_TONE_SCORE_MAX = 100;
 /** Strong natural tone — separate from ATS pass threshold. */
@@ -61,7 +62,7 @@ function pct(n: number, d: number): number {
 }
 
 function allBullets(content: GeneratedResumeContent): string[] {
-  return content.experiences.flatMap((e) => e.bullets);
+  return flattenContentExperienceText(content);
 }
 
 function bulletWordCounts(bullets: string[]): number[] {

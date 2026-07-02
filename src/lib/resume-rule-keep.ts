@@ -39,12 +39,21 @@ function resumePayload(content: GeneratedResumeContent): string {
       title: content.title,
       summary: content.summary,
       skills: content.skills,
-      experiences: content.experiences.map((e) => ({
-        company: e.company,
-        role: e.role,
-        dates: e.dates,
-        bullets: e.bullets,
-      })),
+      experiences: content.experiences.map((e) =>
+        e.projects?.length
+          ? {
+              company: e.company,
+              role: e.role,
+              dates: e.dates,
+              projects: e.projects,
+            }
+          : {
+              company: e.company,
+              role: e.role,
+              dates: e.dates,
+              bullets: e.bullets,
+            }
+      ),
     },
     null,
     2

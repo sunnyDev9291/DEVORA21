@@ -22,7 +22,7 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
       };
 
       try {
-        const { messages, existingExperiences, headerTitle, templateName } = prep;
+        const { messages, existingExperiences, headerTitle, templateName, templateLayout } = prep;
 
         let thinking = "";
         let output = "";
@@ -62,11 +62,11 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
 
         let content;
         try {
-          content = finalizeResumeContent(modelText, existingExperiences, headerTitle);
+          content = finalizeResumeContent(modelText, existingExperiences, headerTitle, templateLayout);
         } catch {
           enqueue({ type: "phase", phase: "finalizing" });
           modelText = await completeDeepSeek(messages, RESUME_MAX_TOKENS, { jsonObject: true });
-          content = finalizeResumeContent(modelText, existingExperiences, headerTitle);
+          content = finalizeResumeContent(modelText, existingExperiences, headerTitle, templateLayout);
         }
         enqueue({ type: "done", content, templateName });
         controller.close();

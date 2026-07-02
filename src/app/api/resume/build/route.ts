@@ -1,10 +1,11 @@
 import { applyContentToDocx } from "@/lib/resume-docx";
 
 import { applyResumeContentPostProcess } from "@/lib/resume-content-postprocess";
+import { isProjectLayout } from "@/lib/resume-experience-utils";
 
 import { buildExpectedResumeFileName } from "@/lib/resume-filename";
 
-import { getCachedTemplateExperiences } from "@/lib/resume-template-cache";
+import { getCachedTemplateParse } from "@/lib/resume-template-cache";
 
 import { resolveTemplateBuffer } from "@/lib/resume-template-resolve";
 import type { GeneratedResumeContent } from "@/lib/resume-types";
@@ -35,44 +36,49 @@ interface BuildRequest {
 
 
 
-function validateContent(content: GeneratedResumeContent): GeneratedResumeContent {
-
+function validateContent(
+  content: GeneratedResumeContent,
+  layout: GeneratedResumeContent["layout"] = "bullets"
+): GeneratedResumeContent {
   if (!content.title?.trim() || !content.summary?.trim() || !content.skills?.trim()) {
-
     throw new Error("Resume title, summary, and skills are required.");
-
   }
-
   if (!Array.isArray(content.experiences) || content.experiences.length === 0) {
-
     throw new Error("At least one experience entry is required.");
-
   }
 
-
+  const projectMode = isProjectLayout(layout ?? content.layout);
 
   return {
-
     title: content.title.trim(),
-
     summary: content.summary.trim(),
-
     skills: content.skills.trim(),
-
-    experiences: content.experiences.map((e) => ({
-
-      company: String(e.company ?? "").trim(),
-
-      role: String(e.role ?? "").trim(),
-
-      dates: String(e.dates ?? "").trim(),
-
-      bullets: (e.bullets ?? []).map((b) => String(b).trim()).filter(Boolean),
-
-    })),
-
+    layout: projectMode ? "projects" : "bullets",
+    experiences: content.experiences.map((e) => {
+      if (projectMode) {
+        const projects = (e.projects ?? []).map((p) => ({
+          name: String(p.name ?? "").trim(),
+          businessChallenge: String(p.businessChallenge ?? "").trim(),
+          assignedResponsibility: String(p.assignedResponsibility ?? "").trim(),
+          action: String(p.action ?? "").trim(),
+          result: String(p.result ?? "").trim(),
+        }));
+        return {
+          company: String(e.company ?? "").trim(),
+          role: String(e.role ?? "").trim(),
+          dates: String(e.dates ?? "").trim(),
+          bullets: [],
+          projects,
+        };
+      }
+      return {
+        company: String(e.company ?? "").trim(),
+        role: String(e.role ?? "").trim(),
+        dates: String(e.dates ?? "").trim(),
+        bullets: (e.bullets ?? []).map((b) => String(b).trim()).filter(Boolean),
+      };
+    }),
   };
-
 }
 
 
@@ -111,18 +117,19 @@ export async function POST(req: Request) {
 
   try {
 
-    const content = validateContent(body.content);
-
     const { buffer: templateBuffer, templateName } = await resolveTemplateBuffer({
-
       templateName: body.templateName,
-
       templateBase64: body.templateBase64,
-
     });
 
-    const templateExperiences = await getCachedTemplateExperiences(templateName, templateBuffer);
-    const processedContent = applyResumeContentPostProcess(content, templateExperiences);
+    const { experiences: templateExperiences, layout: templateLayout } =
+      await getCachedTemplateParse(templateName, templateBuffer);
+    const content = validateContent(body.content, templateLayout);
+    const processedContent = applyResumeContentPostProcess(
+      content,
+      templateExperiences,
+      templateLayout
+    );
 
     const updatedBuffer = applyContentToDocx(templateBuffer, processedContent);
 

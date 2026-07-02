@@ -1,22 +1,41 @@
-import type { GeneratedResumeContent } from "@/lib/resume-types";
+import type { GeneratedResumeContent, ResumeTemplateLayout } from "@/lib/resume-types";
 import { getCachedValue, setCachedValue } from "@/lib/server-cache";
-import { resolveExperiencesFromDocx } from "@/lib/resume-docx-ai-parse";
+import {
+  resolveTemplateFromDocx,
+  type TemplateParseResult,
+} from "@/lib/resume-docx-ai-parse";
 
 function templateCacheKey(templateName: string): string {
-  return `template-exp:${templateName.trim().toLowerCase()}`;
+  return `template-parse:${templateName.trim().toLowerCase()}`;
+}
+
+export async function getCachedTemplateParse(
+  templateName: string,
+  buffer: Buffer
+): Promise<TemplateParseResult> {
+  const key = templateCacheKey(templateName);
+  const cached = await getCachedValue<TemplateParseResult>(key);
+  if (cached?.experiences?.length) {
+    return cached;
+  }
+
+  const parsed = await resolveTemplateFromDocx(buffer);
+  await setCachedValue(key, parsed);
+  return parsed;
+}
+
+export async function getCachedTemplateLayout(
+  templateName: string,
+  buffer: Buffer
+): Promise<ResumeTemplateLayout> {
+  const { layout } = await getCachedTemplateParse(templateName, buffer);
+  return layout;
 }
 
 export async function getCachedTemplateExperiences(
   templateName: string,
   buffer: Buffer
 ): Promise<GeneratedResumeContent["experiences"]> {
-  const key = templateCacheKey(templateName);
-  const cached = await getCachedValue<GeneratedResumeContent["experiences"]>(key);
-  if (cached?.length) {
-    return cached;
-  }
-
-  const experiences = await resolveExperiencesFromDocx(buffer);
-  await setCachedValue(key, experiences);
+  const { experiences } = await getCachedTemplateParse(templateName, buffer);
   return experiences;
 }

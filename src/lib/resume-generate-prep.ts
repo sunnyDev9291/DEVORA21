@@ -1,11 +1,19 @@
 import { parseResumeHeaderFromDocxBuffer, parseTemplateContentSamples } from "@/lib/resume-docx";
-import { getCachedTemplateExperiences } from "@/lib/resume-template-cache";
+import { getCachedTemplateParse } from "@/lib/resume-template-cache";
 import { resolveTemplateBuffer } from "@/lib/resume-template-resolve";
 import {
   buildResumeSystemPrompt,
   buildResumeUserPrompt,
   finalizeResumeContent,
-} from "@/lib/resume-prompt";import type { AtsScoreResult, GeneratedResumeContent, HumanToneScoreResult, ResumeExperience, RuleKeepScoreResult } from "@/lib/resume-types";
+} from "@/lib/resume-prompt";
+import type {
+  AtsScoreResult,
+  GeneratedResumeContent,
+  HumanToneScoreResult,
+  ResumeExperience,
+  ResumeTemplateLayout,
+  RuleKeepScoreResult,
+} from "@/lib/resume-types";
 
 export interface ResumeGenerateRequest {
   jobTitle?: string;
@@ -28,11 +36,13 @@ export interface ResumeGeneratePrep {
   templateName: string;
   messages: Array<{ role: "system" | "user"; content: string }>;
   existingExperiences: ResumeExperience[];
+  templateLayout: ResumeTemplateLayout;
   headerTitle: string;
 }
 
 export interface ResumeMergeContext {
   existingExperiences: ResumeExperience[];
+  templateLayout: ResumeTemplateLayout;
   headerTitle: string;
 }
 
@@ -87,7 +97,8 @@ export async function prepareResumeGeneration(
     templateBase64: body.templateBase64,
   });
 
-  const existingExperiences = await getCachedTemplateExperiences(templateName, templateBuffer);
+  const { experiences: existingExperiences, layout: templateLayout } =
+    await getCachedTemplateParse(templateName, templateBuffer);
   const header = parseResumeHeaderFromDocxBuffer(templateBuffer);
   const templateSamples = parseTemplateContentSamples(templateBuffer);
 
@@ -104,6 +115,7 @@ export async function prepareResumeGeneration(
     customPrompt,
     headerTitle: header.title,
     existingExperiences,
+    templateLayout,
     atsFeedback: body.atsFeedback,
     humanToneFeedback: body.humanToneFeedback,
     ruleKeepFeedback: body.ruleKeepFeedback,
@@ -114,10 +126,11 @@ export async function prepareResumeGeneration(
   return {
     templateName,
     messages: [
-      { role: "system", content: buildResumeSystemPrompt(isRegenerate) },
+      { role: "system", content: buildResumeSystemPrompt(isRegenerate, templateLayout) },
       { role: "user", content: userPrompt },
     ],
     existingExperiences,
+    templateLayout,
     headerTitle: header.title,
   };
 }
@@ -129,6 +142,7 @@ export function finalizeResumeContentFromModel(
   return finalizeResumeContent(
     modelText,
     mergeContext.existingExperiences,
-    mergeContext.headerTitle
+    mergeContext.headerTitle,
+    mergeContext.templateLayout
   );
 }

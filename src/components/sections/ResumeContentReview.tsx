@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { GeneratedResumeContent, ResumeExperience } from "@/lib/resume-types";
+import type { GeneratedResumeContent, ResumeExperience, ResumeProject } from "@/lib/resume-types";
+import { isProjectLayout } from "@/lib/resume-experience-utils";
 import { sanitizeResumeFileBaseName } from "@/lib/resume-filename";
 import MarkdownBoldTextarea from "@/components/ui/MarkdownBoldTextarea";
 
@@ -22,6 +23,14 @@ interface ResumeContentReviewProps {
   /** Compact layout for side-by-side use inside the ATS modal */
   embedded?: boolean;
 }
+
+const PROJECT_FIELDS: Array<{ key: keyof ResumeProject; label: string }> = [
+  { key: "name", label: "Project name" },
+  { key: "businessChallenge", label: "Business Challenge" },
+  { key: "assignedResponsibility", label: "Assigned Responsibility" },
+  { key: "action", label: "Action" },
+  { key: "result", label: "Result" },
+];
 
 const fieldClass =
   "w-full bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.10] hover:border-slate-300 dark:hover:border-white/[0.16] focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-4 py-3 text-slate-900 dark:text-white text-sm outline-none transition-all";
@@ -72,7 +81,28 @@ export default function ResumeContentReview({
     updateExperience(expIndex, { bullets });
   }
 
-  const bulletFieldClass = `${fieldClass} flex-1 min-h-[72px] resize-y leading-relaxed`;
+  function updateProject(expIndex: number, projectIndex: number, patch: Partial<ResumeProject>) {
+    const projects = (content.experiences[expIndex].projects ?? []).map((project, i) =>
+      i === projectIndex ? { ...project, ...patch } : project
+    );
+    updateExperience(expIndex, { projects });
+  }
+
+  const projectMode = isProjectLayout(content.layout);
+
+  const experienceValid = (exp: ResumeExperience) => {
+    if (!exp.company.trim() || !exp.role.trim()) return false;
+    if (projectMode || exp.projects?.length) {
+      return (exp.projects ?? []).some(
+        (p) =>
+          p.name.trim() &&
+          (p.businessChallenge.trim() || p.action.trim()) &&
+          p.assignedResponsibility.trim() &&
+          p.result.trim()
+      );
+    }
+    return exp.bullets.some((b) => b.trim());
+  };
 
   const canApply =
     reviewConfirmed &&
@@ -80,7 +110,7 @@ export default function ResumeContentReview({
     content.title.trim() &&
     content.summary.trim() &&
     content.skills.trim() &&
-    content.experiences.every((exp) => exp.company.trim() && exp.role.trim() && exp.bullets.some((b) => b.trim()));
+    content.experiences.every(experienceValid);
 
   const showNameReset =
     Boolean(onResumeFileBaseNameReset) &&
@@ -194,7 +224,9 @@ export default function ResumeContentReview({
                         : exp.company || "Company"}
                     </p>
                     <p className="text-xs text-slate-500 mt-0.5 truncate">
-                      {exp.bullets.length} bullet{exp.bullets.length === 1 ? "" : "s"}
+                      {projectMode || exp.projects?.length
+                        ? `${exp.projects?.length ?? 0} project${(exp.projects?.length ?? 0) === 1 ? "" : "s"}`
+                        : `${exp.bullets.length} bullet${exp.bullets.length === 1 ? "" : "s"}`}
                     </p>
                   </div>
                   <svg className={`w-5 h-5 text-slate-400 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -217,56 +249,85 @@ export default function ResumeContentReview({
                         <p className="text-sm text-slate-800 dark:text-slate-200 px-1">{exp.dates}</p>
                       </div>
                     </div>
-                    <div>
-                      <p className="text-xs font-medium text-slate-500 mb-2">
-                        Achievement bullets <span className="font-normal text-slate-400">({exp.bullets.length})</span>
-                      </p>
-                      <div className="space-y-3">
-                        {exp.bullets.map((bullet, bulletIndex) => (
+                    {projectMode || exp.projects?.length ? (
+                      <div className="space-y-4">
+                        {(exp.projects ?? []).map((project, projectIndex) => (
                           <div
-                            key={`exp-${index}-bullet-${bulletIndex}`}
-                            className="flex gap-3 items-start rounded-xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/80 dark:bg-white/[0.02] p-3"
+                            key={`exp-${index}-project-${projectIndex}`}
+                            className="rounded-xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/80 dark:bg-white/[0.02] p-4 space-y-3"
                           >
-                            <span
-                              className="shrink-0 w-7 h-7 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300 flex items-center justify-center text-xs font-bold mt-1.5"
-                              aria-hidden="true"
-                            >
-                              {bulletIndex + 1}
-                            </span>
-                            <MarkdownBoldTextarea
-                              id={`exp-${index}-bullet-${bulletIndex}`}
-                              value={bullet}
-                              onChange={(value) => updateBullet(index, bulletIndex, value)}
-                              className={bulletFieldClass}
-                              rows={2}
-                              placeholder={`Achievement ${bulletIndex + 1}`}
-                              aria-label={`Bullet ${bulletIndex + 1} for ${exp.company}`}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => copyBullet(`${index}-${bulletIndex}`, bullet)}
-                              title="Copy bullet"
-                              className="shrink-0 mt-1.5 w-7 h-7 rounded-lg flex items-center justify-center border transition-all
-                                border-slate-200 dark:border-white/[0.10]
-                                bg-white dark:bg-white/[0.04]
-                                text-slate-400 hover:text-blue-600 dark:hover:text-blue-400
-                                hover:border-blue-400 dark:hover:border-blue-500
-                                hover:bg-blue-50 dark:hover:bg-blue-500/10"
-                            >
-                              {copiedKey === `${index}-${bulletIndex}` ? (
-                                <svg className="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                                </svg>
-                              ) : (
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                </svg>
-                              )}
-                            </button>
+                            <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+                              Project {projectIndex + 1}
+                            </p>
+                            {PROJECT_FIELDS.map(({ key, label }) => (
+                              <div key={`${index}-${projectIndex}-${key}`}>
+                                <p className="text-xs font-medium text-slate-500 mb-1">{label}</p>
+                                <MarkdownBoldTextarea
+                                  id={`exp-${index}-project-${projectIndex}-${key}`}
+                                  value={project[key]}
+                                  onChange={(value) => updateProject(index, projectIndex, { [key]: value })}
+                                  className={`${fieldClass} min-h-[72px] resize-y leading-relaxed`}
+                                  rows={key === "name" ? 1 : 2}
+                                  placeholder={label}
+                                  aria-label={`${label} for project ${projectIndex + 1} at ${exp.company}`}
+                                />
+                              </div>
+                            ))}
                           </div>
                         ))}
                       </div>
-                    </div>
+                    ) : (
+                      <div>
+                        <p className="text-xs font-medium text-slate-500 mb-2">
+                          Achievement bullets <span className="font-normal text-slate-400">({exp.bullets.length})</span>
+                        </p>
+                        <div className="space-y-3">
+                          {exp.bullets.map((bullet, bulletIndex) => (
+                            <div
+                              key={`exp-${index}-bullet-${bulletIndex}`}
+                              className="flex gap-3 items-start rounded-xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/80 dark:bg-white/[0.02] p-3"
+                            >
+                              <span
+                                className="shrink-0 w-7 h-7 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300 flex items-center justify-center text-xs font-bold mt-1.5"
+                                aria-hidden="true"
+                              >
+                                {bulletIndex + 1}
+                              </span>
+                              <MarkdownBoldTextarea
+                                id={`exp-${index}-bullet-${bulletIndex}`}
+                                value={bullet}
+                                onChange={(value) => updateBullet(index, bulletIndex, value)}
+                                className={`${fieldClass} flex-1 min-h-[72px] resize-y leading-relaxed`}
+                                rows={2}
+                                placeholder={`Achievement ${bulletIndex + 1}`}
+                                aria-label={`Bullet ${bulletIndex + 1} for ${exp.company}`}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => copyBullet(`${index}-${bulletIndex}`, bullet)}
+                                title="Copy bullet"
+                                className="shrink-0 mt-1.5 w-7 h-7 rounded-lg flex items-center justify-center border transition-all
+                                  border-slate-200 dark:border-white/[0.10]
+                                  bg-white dark:bg-white/[0.04]
+                                  text-slate-400 hover:text-blue-600 dark:hover:text-blue-400
+                                  hover:border-blue-400 dark:hover:border-blue-500
+                                  hover:bg-blue-50 dark:hover:bg-blue-500/10"
+                              >
+                                {copiedKey === `${index}-${bulletIndex}` ? (
+                                  <svg className="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                ) : (
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                  </svg>
+                                )}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

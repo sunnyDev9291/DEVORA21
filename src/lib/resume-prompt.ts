@@ -3,7 +3,8 @@ import { HUMAN_TONE_PASS_THRESHOLD, HUMAN_TONE_SCORE_MAX } from "@/lib/resume-hu
 import { RULE_KEEP_PASS_THRESHOLD, RULE_KEEP_SCORE_MAX, RULE_KEEP_GUARD_THRESHOLD } from "@/lib/resume-rule-keep-constants";
 import type { TemplateContentSamples } from "@/lib/resume-docx";
 import { applyResumeContentPostProcess } from "@/lib/resume-content-postprocess";
-import type { AtsScoreResult, GeneratedResumeContent, HumanToneScoreResult, RuleKeepScoreResult } from "@/lib/resume-types";
+import { isProjectLayout, normalizeResumeExperience, normalizeResumeProject } from "@/lib/resume-experience-utils";
+import type { AtsScoreResult, GeneratedResumeContent, HumanToneScoreResult, ResumeTemplateLayout, RuleKeepScoreResult } from "@/lib/resume-types";
 
 export const RESUME_AI_MODEL = "deepseek-v4-pro";
 
@@ -49,6 +50,53 @@ Content rules:
 - Additional user instructions apply to summary, skills, and bullet wording only.
 - No markdown fences, no commentary — valid json only.`;
 
+export const RESUME_PROJECTS_SYSTEM_PROMPT = `You are a Senior ATS resume optimizer for software engineers.
+Rewrite the professional title line, summary, skills, and experience project blocks for a target job description.
+Keep the same companies, roles, date ranges, and project names from the template — do not invent new employers or projects.
+
+Return ONLY valid json with this exact shape:
+{
+  "title": "string",
+  "summary": "string",
+  "skills": "string (one line OR multiple lines separated by \\n for category groups)",
+  "experiences": [
+    {
+      "company": "string",
+      "role": "string",
+      "dates": "MM/YYYY – MM/YYYY",
+      "projects": [
+        {
+          "name": "string",
+          "businessChallenge": "string",
+          "assignedResponsibility": "string",
+          "action": "string",
+          "result": "string"
+        }
+      ]
+    }
+  ]
+}
+
+Template fidelity (critical):
+- Mirror the TEMPLATE STYLE REFERENCE summary voice, length, and structure.
+- Mirror the template skills format exactly (grouped categories with "Category: item, item" OR comma list — same layout as template).
+- Mirror template project style: field lengths, verb openings, technical density, and tone from sample projects.
+- Each project must include all four BAR fields: businessChallenge, assignedResponsibility, action, result.
+- Follow ALL rules in the user's Additional instructions — they override generic defaults.
+
+Bold in JSON (required for Word rendering):
+- Wrap every concrete tech term in the skills field with **double asterisks** (e.g. **Java**, **Spring Boot**).
+- Wrap skillset/tech terms in project fields (challenge, responsibility, action, result) with **double asterisks** when they appear.
+
+Content rules:
+- title: one headline line tailored to the JD (pipe-separated keywords OK).
+- summary: match template style; ATS-friendly; no first-person pronouns.
+- skills: only concrete technical items; group by category when template does.
+- experiences: MUST include exactly the same number of companies as the template, in the same order.
+- Copy company, role, dates, and project names EXACTLY from the template list.
+- Return exactly the project count per company specified in the template list.
+- No markdown fences, no commentary — valid json only.`;
+
 export const RESUME_REGENERATE_SYSTEM_SUFFIX = `When regeneration context is provided, this is a TARGETED REVISION pass — not a full rewrite.
 
 Priority order (highest first):
@@ -91,14 +139,31 @@ export function buildTemplateStyleSection(samples?: TemplateContentSamples): str
         .join("\n")}`
     );
   }
+  if (samples.sampleProjects.length > 0) {
+    parts.push(
+      `Template experience projects (style reference — match field lengths, tone, and **bold** tech terms):\n${samples.sampleProjects
+        .map((p, i) =>
+          [
+            `${i + 1}. Project: ${p.name}`,
+            `   Business Challenge: ${p.businessChallenge}`,
+            `   Assigned Responsibility: ${p.assignedResponsibility}`,
+            `   Action: ${p.action}`,
+            `   Result: ${p.result}`,
+          ].join("\n")
+        )
+        .join("\n\n")}`
+    );
+  }
 
   return parts.length > 1 ? parts.join("\n\n") : "";
 }
 
-export function buildResumeSystemPrompt(regenerate = false): string {
-  return regenerate
-    ? `${RESUME_SYSTEM_PROMPT}\n\n${RESUME_REGENERATE_SYSTEM_SUFFIX}`
-    : RESUME_SYSTEM_PROMPT;
+export function buildResumeSystemPrompt(
+  regenerate = false,
+  layout: ResumeTemplateLayout = "bullets"
+): string {
+  const base = isProjectLayout(layout) ? RESUME_PROJECTS_SYSTEM_PROMPT : RESUME_SYSTEM_PROMPT;
+  return regenerate ? `${base}\n\n${RESUME_REGENERATE_SYSTEM_SUFFIX}` : base;
 }
 
 export function buildHumanToneRegeneratePromptSection(
@@ -151,12 +216,21 @@ export function buildAtsRegeneratePromptSection(
     title: previousContent.title,
     summary: previousContent.summary,
     skills: previousContent.skills,
-    experiences: previousContent.experiences.map((e) => ({
-      company: e.company,
-      role: e.role,
-      dates: e.dates,
-      bullets: e.bullets,
-    })),
+    experiences: previousContent.experiences.map((e) =>
+      isProjectLayout(previousContent.layout) || e.projects?.length
+        ? {
+            company: e.company,
+            role: e.role,
+            dates: e.dates,
+            projects: e.projects,
+          }
+        : {
+            company: e.company,
+            role: e.role,
+            dates: e.dates,
+            bullets: e.bullets,
+          }
+    ),
   };
 
   return [
@@ -290,6 +364,29 @@ export function buildSurgicalEditPlanSection(
   return lines.join("\n\n");
 }
 
+function formatTemplateExperienceLine(
+  e: GeneratedResumeContent["experiences"][number],
+  index: number,
+  layout: ResumeTemplateLayout,
+  mode: "template" | "regenerate"
+): string {
+  const prefix = `${index + 1}. company="${e.company}" | role="${e.role}" | dates="${e.dates}"`;
+  if (isProjectLayout(layout) || e.projects?.length) {
+    const count = e.projects?.length ?? 0;
+    const verb =
+      mode === "regenerate"
+        ? `projects: keep ${count} projects, change only if needed for ATS or tone gaps`
+        : `projects: rewrite all ${count} projects (name + BAR fields)`;
+    return `${prefix} | ${verb}`;
+  }
+  const count = e.bullets.length;
+  const verb =
+    mode === "regenerate"
+      ? `bullets: keep ${count} bullets, change only if needed for ATS or tone gaps`
+      : `bullets: rewrite all ${count} bullets`;
+  return `${prefix} | ${verb}`;
+}
+
 export function buildResumeUserPrompt({
   jobTitle,
   companyName,
@@ -297,6 +394,7 @@ export function buildResumeUserPrompt({
   customPrompt,
   headerTitle,
   existingExperiences,
+  templateLayout = "bullets",
   atsFeedback,
   humanToneFeedback,
   ruleKeepFeedback,
@@ -309,6 +407,7 @@ export function buildResumeUserPrompt({
   customPrompt: string;
   headerTitle: string;
   existingExperiences: GeneratedResumeContent["experiences"];
+  templateLayout?: ResumeTemplateLayout;
   atsFeedback?: AtsScoreResult;
   humanToneFeedback?: HumanToneScoreResult;
   ruleKeepFeedback?: RuleKeepScoreResult;
@@ -316,24 +415,20 @@ export function buildResumeUserPrompt({
   templateSamples?: TemplateContentSamples;
 }): string {
   const isRegenerate = Boolean(previousContent && atsFeedback);
+  const layout = previousContent?.layout ?? templateLayout;
+  const projectMode = isProjectLayout(layout);
 
   const experienceInstructions = isRegenerate
-    ? `Previous draft companies (${previousContent!.experiences.length} required — copy company, role, dates exactly from previous draft; keep same bullet count per company; revise bullets only where ATS or human-tone feedback requires):\n${previousContent!.experiences
-        .map(
-          (e, i) =>
-            `${i + 1}. company="${e.company}" | role="${e.role}" | dates="${e.dates}" | bullets: keep ${e.bullets.length} bullets, change only if needed for ATS or tone gaps`
-        )
+    ? `Previous draft companies (${previousContent!.experiences.length} required — copy company, role, dates exactly from previous draft; keep same ${projectMode ? "project" : "bullet"} count per company; revise ${projectMode ? "project fields" : "bullets"} only where ATS or human-tone feedback requires):\n${previousContent!.experiences
+        .map((e, i) => formatTemplateExperienceLine(e, i, layout, "regenerate"))
         .join("\n")}`
     : `Template companies (${existingExperiences.length} required — copy company, role, dates exactly into each JSON experience object):\n${existingExperiences
-        .map(
-          (e, i) =>
-            `${i + 1}. company="${e.company}" | role="${e.role}" | dates="${e.dates}" | bullets: rewrite all ${e.bullets.length} bullets`
-        )
+        .map((e, i) => formatTemplateExperienceLine(e, i, layout, "template"))
         .join("\n")}`;
 
   const closingInstruction = isRegenerate
     ? `Return exactly ${previousContent!.experiences.length} objects in experiences[]. Surgical triple-target revision only — improve weak scores using the edit zones above; leave all other text unchanged. Return valid json only.`
-    : `Return exactly ${existingExperiences.length} objects in experiences[]. Rewrite title, summary, skills, and bullets only. Return valid json only.`;
+    : `Return exactly ${existingExperiences.length} objects in experiences[]. Rewrite title, summary, skills, and ${projectMode ? "project BAR fields" : "bullets"} only. Return valid json only.`;
 
   const surgicalPlan =
     isRegenerate &&
@@ -462,7 +557,10 @@ function tryParseResumeJson(jsonText: string): GeneratedResumeContent | null {
   return null;
 }
 
-export function parseResumeJsonContent(raw: string): GeneratedResumeContent {
+export function parseResumeJsonContent(
+  raw: string,
+  layout: ResumeTemplateLayout = "bullets"
+): GeneratedResumeContent {
   const jsonText = extractResumeJsonRaw(raw);
   if (!jsonText) {
     throw new Error("AI returned no resume content. Please try again.");
@@ -473,26 +571,44 @@ export function parseResumeJsonContent(raw: string): GeneratedResumeContent {
     throw new Error("AI returned invalid JSON. Try again or shorten the job description.");
   }
 
+  const projectMode = isProjectLayout(layout);
+
   return {
     title: String(parsed.title).trim(),
     summary: String(parsed.summary).trim(),
     skills: String(parsed.skills).trim(),
-    experiences: parsed.experiences.map((e) => ({
-      company: String(e.company ?? "").trim(),
-      role: String(e.role ?? "").trim(),
-      dates: String(e.dates ?? "").trim(),
-      bullets: (e.bullets ?? []).map((b) => String(b).trim()).filter(Boolean),
-    })),
+    layout: projectMode ? "projects" : "bullets",
+    experiences: parsed.experiences.map((e) =>
+      normalizeResumeExperience(
+        projectMode
+          ? {
+              company: e.company,
+              role: e.role,
+              dates: e.dates,
+              bullets: [],
+              projects: (e.projects ?? []).map((p) => normalizeResumeProject(p)),
+            }
+          : {
+              company: e.company,
+              role: e.role,
+              dates: e.dates,
+              bullets: (e.bullets ?? []).map((b) => String(b).trim()).filter(Boolean),
+            },
+        layout
+      )
+    ),
   };
 }
 
 function matchExperienceByCompany(
   parsedExperiences: GeneratedResumeContent["experiences"],
   existing: GeneratedResumeContent["experiences"][number],
-  index: number
+  index: number,
+  layout: ResumeTemplateLayout
 ) {
   const byIndex = parsedExperiences[index];
-  if (byIndex?.bullets?.length) return byIndex;
+  const projectMode = isProjectLayout(layout) || (existing.projects?.length ?? 0) > 0;
+  if (projectMode ? byIndex?.projects?.length : byIndex?.bullets?.length) return byIndex;
 
   const key = existing.company.toLowerCase();
   return parsedExperiences.find(
@@ -503,17 +619,62 @@ function matchExperienceByCompany(
   );
 }
 
+function normalizeProjectsToCount(
+  projects: GeneratedResumeContent["experiences"][number]["projects"],
+  targetCount: number,
+  fallback: NonNullable<GeneratedResumeContent["experiences"][number]["projects"]>
+) {
+  const normalized = (projects ?? []).map((p) => normalizeResumeProject(p));
+  if (targetCount <= 0) return [];
+  if (normalized.length === targetCount) return normalized;
+  if (normalized.length > targetCount) return normalized.slice(0, targetCount);
+  const out = [...normalized];
+  while (out.length < targetCount) {
+    out.push(normalizeResumeProject(fallback[out.length] ?? fallback[fallback.length - 1]));
+  }
+  return out;
+}
+
 export function mergeResumeWithTemplate(
   parsed: GeneratedResumeContent,
   existingExperiences: GeneratedResumeContent["experiences"],
-  fallbackTitle: string
+  fallbackTitle: string,
+  layout: ResumeTemplateLayout = "bullets"
 ): GeneratedResumeContent {
+  const projectMode = isProjectLayout(layout);
+
   return {
     title: parsed.title || fallbackTitle,
     summary: parsed.summary,
     skills: parsed.skills,
+    layout: projectMode ? "projects" : "bullets",
     experiences: existingExperiences.map((existing, i) => {
-      const generated = matchExperienceByCompany(parsed.experiences, existing, i);
+      const generated = matchExperienceByCompany(parsed.experiences, existing, i, layout);
+
+      if (projectMode || existing.projects?.length) {
+        const projects = normalizeProjectsToCount(
+          generated?.projects,
+          existing.projects?.length ?? 0,
+          existing.projects ?? []
+        ).map((project, projectIndex) => ({
+          ...normalizeResumeProject(existing.projects?.[projectIndex]),
+          name: existing.projects?.[projectIndex]?.name || project.name,
+          businessChallenge: project.businessChallenge || existing.projects?.[projectIndex]?.businessChallenge || "",
+          assignedResponsibility:
+            project.assignedResponsibility || existing.projects?.[projectIndex]?.assignedResponsibility || "",
+          action: project.action || existing.projects?.[projectIndex]?.action || "",
+          result: project.result || existing.projects?.[projectIndex]?.result || "",
+        }));
+
+        return {
+          company: existing.company,
+          role: existing.role,
+          dates: existing.dates,
+          bullets: [],
+          projects,
+        };
+      }
+
       const bullets = generated?.bullets?.length ? generated.bullets : existing.bullets;
       const target = existing.bullets.length;
       const normalized =
@@ -536,11 +697,12 @@ export function mergeResumeWithTemplate(
 export function finalizeResumeContent(
   modelText: string,
   existingExperiences: GeneratedResumeContent["experiences"],
-  fallbackTitle: string
+  fallbackTitle: string,
+  layout: ResumeTemplateLayout = "bullets"
 ): GeneratedResumeContent {
-  const parsed = parseResumeJsonContent(modelText);
-  const merged = mergeResumeWithTemplate(parsed, existingExperiences, fallbackTitle);
-  return applyResumeContentPostProcess(merged, existingExperiences);
+  const parsed = parseResumeJsonContent(modelText, layout);
+  const merged = mergeResumeWithTemplate(parsed, existingExperiences, fallbackTitle, layout);
+  return applyResumeContentPostProcess(merged, existingExperiences, layout);
 }
 
 export type ResumeGenerationPhase =
@@ -557,6 +719,7 @@ export function detectResumeGenerationPhase(
   output: string
 ): ResumeGenerationPhase {
   const text = output;
+  if (/"projects"/.test(text) || /"businessChallenge"/.test(text)) return "experiences";
   if (/"bullets"/.test(text) || /"experiences"\s*:\s*\[/.test(text)) return "experiences";
   if (/"skills"/.test(text)) return "skills";
   if (/"summary"/.test(text)) return "summary";
@@ -571,6 +734,6 @@ export const RESUME_PHASE_LABELS: Record<ResumeGenerationPhase, string> = {
   title: "Crafting resume title",
   summary: "Writing professional summary",
   skills: "Building skillsets",
-  experiences: "Tailoring experience bullets",
+  experiences: "Tailoring experience content",
   finalizing: "Finalizing your draft",
 };

@@ -1,5 +1,11 @@
 import PizZip from "pizzip";
-import type { GeneratedResumeContent } from "@/lib/resume-types";
+import {
+  buildProjectExperienceParagraphs,
+  detectProjectTemplateLayout,
+  parseProjectExperiencesFromDocxBuffer,
+  type ProjectJobTemplate,
+} from "@/lib/resume-docx-project";
+import type { GeneratedResumeContent, ResumeTemplateLayout } from "@/lib/resume-types";
 
 const SECTION_HEADERS = {
   summary: /^(SUMMARY|Summary|PROFESSIONAL SUMMARY|Professional Summary)$/i,
@@ -40,7 +46,7 @@ function escapeXml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function getParagraphText(pXml: string): string {
+export function getParagraphText(pXml: string): string {
   return (pXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [])
     .map((t) => t.replace(/<w:t[^>]*>/, "").replace(/<\/w:t>/, ""))
     .join("");
@@ -103,7 +109,7 @@ function applyPageBreaksFromTemplate(
   }
 }
 
-function setParagraphText(pXml: string, text: string): string {
+export function setParagraphText(pXml: string, text: string): string {
   if (!/\*\*[^*]+\*\*/.test(text)) {
     const preserved = replaceSingleRunParagraphText(pXml, text);
     if (preserved) return preserved;
@@ -397,10 +403,22 @@ export function parseResumeHeaderFromDocxBuffer(buffer: Buffer) {
 }
 
 export type TemplateContentSamples = {
+  layout: ResumeTemplateLayout;
   summary: string;
   skills: string;
   sampleBullets: string[];
+  sampleProjects: Array<{
+    name: string;
+    businessChallenge: string;
+    assignedResponsibility: string;
+    action: string;
+    result: string;
+  }>;
 };
+
+export function detectResumeTemplateLayout(buffer: Buffer): ResumeTemplateLayout {
+  return detectProjectTemplateLayout(buffer) ? "projects" : "bullets";
+}
 
 function collectSectionParagraphIndices(
   paragraphs: string[],
@@ -427,8 +445,10 @@ export function parseTemplateContentSamples(buffer: Buffer): TemplateContentSamp
   const expIdx = findSectionIndex(paragraphXml, SECTION_HEADERS.experience);
   const eduIdx = findSectionIndex(paragraphXml, SECTION_HEADERS.education);
 
+  const layout = detectResumeTemplateLayout(buffer);
+
   if (summaryIdx === -1 || skillsIdx === -1 || expIdx === -1) {
-    return { summary: "", skills: "", sampleBullets: [] };
+    return { layout, summary: "", skills: "", sampleBullets: [], sampleProjects: [] };
   }
 
   const summaryIndices = collectSectionParagraphIndices(paragraphXml, summaryIdx, skillsIdx);
@@ -446,15 +466,32 @@ export function parseTemplateContentSamples(buffer: Buffer): TemplateContentSamp
 
   const expEnd = eduIdx === -1 ? paragraphXml.length : eduIdx;
   const sampleBullets: string[] = [];
-  for (let i = expIdx + 1; i < expEnd && sampleBullets.length < 4; i += 1) {
-    const text = getParagraphText(paragraphXml[i]).trim();
-    if (!text || isSectionHeader(text)) continue;
-    if (isListParagraph(paragraphXml[i]) && text.length >= 40) {
-      sampleBullets.push(getParagraphTextWithBold(paragraphXml[i]));
+  const sampleProjects: TemplateContentSamples["sampleProjects"] = [];
+
+  if (layout === "projects") {
+    try {
+      const { jobTemplates } = parseProjectExperiencesFromDocxBuffer(buffer);
+      for (const job of jobTemplates) {
+        for (const project of job.projects) {
+          if (sampleProjects.length >= 2) break;
+          sampleProjects.push({ ...project });
+        }
+        if (sampleProjects.length >= 2) break;
+      }
+    } catch {
+      // fall through with empty samples
+    }
+  } else {
+    for (let i = expIdx + 1; i < expEnd && sampleBullets.length < 4; i += 1) {
+      const text = getParagraphText(paragraphXml[i]).trim();
+      if (!text || isSectionHeader(text)) continue;
+      if (isListParagraph(paragraphXml[i]) && text.length >= 40) {
+        sampleBullets.push(getParagraphTextWithBold(paragraphXml[i]));
+      }
     }
   }
 
-  return { summary, skills, sampleBullets };
+  return { layout, summary, skills, sampleBullets, sampleProjects };
 }
 
 function applySectionParagraphs(
@@ -568,41 +605,53 @@ export function applyContentToDocx(
 
   const expEnd = eduIdx === -1 ? paragraphs.length : eduIdx;
   const originalExperienceParagraphs = paragraphs.slice(expIdx + 1, expEnd);
-  const headerSample = getParagraphText(paragraphs[expIdx + 1] ?? "").trim();
-  const useCombinedHeaders = parseCombinedExperienceLine(headerSample) !== null;
-  const styleBlocks = extractExperienceStyleBlocks(originalExperienceParagraphs, useCombinedHeaders);
-  const defaultHeaderTemplate = paragraphs[expIdx + 1];
-  const defaultRoleTemplate = paragraphs[expIdx + 2];
-  const defaultBulletTemplate = useCombinedHeaders
-    ? paragraphs[expIdx + 2] ?? paragraphs[expIdx + 1]
-    : paragraphs[expIdx + 3] ?? paragraphs[expIdx + 2];
+  const layout = content.layout ?? detectResumeTemplateLayout(buffer);
 
-  const experienceParagraphs: string[] = [];
-  for (let jobIndex = 0; jobIndex < content.experiences.length; jobIndex += 1) {
-    const exp = content.experiences[jobIndex];
-    const style =
-      styleBlocks[jobIndex] ??
-      styleBlocks[styleBlocks.length - 1] ?? {
-        headerTemplate: defaultHeaderTemplate,
-        roleTemplate: useCombinedHeaders ? undefined : defaultRoleTemplate,
-        bulletTemplate: defaultBulletTemplate,
-      };
+  let experienceParagraphs: string[] = [];
 
-    if (useCombinedHeaders) {
-      const headerText = exp.dates
-        ? `${exp.role}, ${exp.company}, ${exp.dates}`
-        : `${exp.role}, ${exp.company}`;
-      experienceParagraphs.push(setParagraphText(style.headerTemplate, headerText));
-    } else {
-      experienceParagraphs.push(setParagraphText(style.headerTemplate, exp.company));
-      const roleDates = exp.dates ? `${exp.role}    ${exp.dates}` : exp.role;
-      experienceParagraphs.push(
-        setParagraphText(style.roleTemplate ?? defaultRoleTemplate, roleDates)
-      );
-    }
+  if (layout === "projects") {
+    const { jobTemplates } = parseProjectExperiencesFromDocxBuffer(buffer);
+    experienceParagraphs = buildProjectExperienceParagraphs(
+      { ...content, layout: "projects" },
+      jobTemplates as ProjectJobTemplate[],
+      setParagraphText
+    );
+  } else {
+    const headerSample = getParagraphText(paragraphs[expIdx + 1] ?? "").trim();
+    const useCombinedHeaders = parseCombinedExperienceLine(headerSample) !== null;
+    const styleBlocks = extractExperienceStyleBlocks(originalExperienceParagraphs, useCombinedHeaders);
+    const defaultHeaderTemplate = paragraphs[expIdx + 1];
+    const defaultRoleTemplate = paragraphs[expIdx + 2];
+    const defaultBulletTemplate = useCombinedHeaders
+      ? paragraphs[expIdx + 2] ?? paragraphs[expIdx + 1]
+      : paragraphs[expIdx + 3] ?? paragraphs[expIdx + 2];
 
-    for (const bullet of exp.bullets) {
-      experienceParagraphs.push(setParagraphText(style.bulletTemplate, bullet));
+    for (let jobIndex = 0; jobIndex < content.experiences.length; jobIndex += 1) {
+      const exp = content.experiences[jobIndex];
+      const style =
+        styleBlocks[jobIndex] ??
+        styleBlocks[styleBlocks.length - 1] ?? {
+          headerTemplate: defaultHeaderTemplate,
+          roleTemplate: useCombinedHeaders ? undefined : defaultRoleTemplate,
+          bulletTemplate: defaultBulletTemplate,
+        };
+
+      if (useCombinedHeaders) {
+        const headerText = exp.dates
+          ? `${exp.role}, ${exp.company}, ${exp.dates}`
+          : `${exp.role}, ${exp.company}`;
+        experienceParagraphs.push(setParagraphText(style.headerTemplate, headerText));
+      } else {
+        experienceParagraphs.push(setParagraphText(style.headerTemplate, exp.company));
+        const roleDates = exp.dates ? `${exp.role}    ${exp.dates}` : exp.role;
+        experienceParagraphs.push(
+          setParagraphText(style.roleTemplate ?? defaultRoleTemplate, roleDates)
+        );
+      }
+
+      for (const bullet of exp.bullets) {
+        experienceParagraphs.push(setParagraphText(style.bulletTemplate, bullet));
+      }
     }
   }
 

@@ -1,4 +1,5 @@
 import type { AtsPassGate, AtsScoreBreakdown, AtsScoreResult, GeneratedResumeContent } from "@/lib/resume-types";
+import { flattenContentExperienceText } from "@/lib/resume-experience-utils";
 import { keywordPresentInText, normalizeForMatch, type JobKeywords } from "@/lib/resume-ats-keywords";
 
 /** Hard cap for displayed and stored ATS scores. */
@@ -52,16 +53,18 @@ function pct(n: number, d: number): number {
 }
 
 function resumePlainText(content: GeneratedResumeContent): string {
+  const experienceText = flattenContentExperienceText(content);
   return [
     content.title,
     content.summary,
     content.skills,
-    ...content.experiences.flatMap((e) => [e.role, e.company, ...e.bullets]),
+    ...content.experiences.flatMap((e) => [e.role, e.company]),
+    ...experienceText,
   ].join("\n");
 }
 
 function allBullets(content: GeneratedResumeContent): string[] {
-  return content.experiences.flatMap((e) => e.bullets);
+  return flattenContentExperienceText(content);
 }
 
 function scoreMustHaveKeywords(

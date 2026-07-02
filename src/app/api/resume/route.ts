@@ -2,7 +2,7 @@ import { completeDeepSeek } from "@/lib/deepseek-stream";
 
 import { parseResumeHeaderFromDocxBuffer, parseTemplateContentSamples } from "@/lib/resume-docx";
 
-import { getCachedTemplateExperiences } from "@/lib/resume-template-cache";
+import { getCachedTemplateParse } from "@/lib/resume-template-cache";
 
 import { resolveTemplateBuffer } from "@/lib/resume-template-resolve";
 
@@ -101,7 +101,8 @@ export async function POST(req: Request) {
 
 
 
-    const existingExperiences = await getCachedTemplateExperiences(templateName, templateBuffer);
+    const { experiences: existingExperiences, layout: templateLayout } =
+      await getCachedTemplateParse(templateName, templateBuffer);
 
     const header = parseResumeHeaderFromDocxBuffer(templateBuffer);
     const templateSamples = parseTemplateContentSamples(templateBuffer);
@@ -113,19 +114,20 @@ export async function POST(req: Request) {
       customPrompt,
       headerTitle: header.title,
       existingExperiences,
+      templateLayout,
       templateSamples,
     });
 
     const aiRaw = await completeDeepSeek(
       [
-        { role: "system", content: buildResumeSystemPrompt(false) },
+        { role: "system", content: buildResumeSystemPrompt(false, templateLayout) },
         { role: "user", content: userPrompt },
       ],
       RESUME_MAX_TOKENS,
       { jsonObject: true }
     );
 
-    const content = finalizeResumeContent(aiRaw, existingExperiences, header.title);
+    const content = finalizeResumeContent(aiRaw, existingExperiences, header.title, templateLayout);
 
 
 
