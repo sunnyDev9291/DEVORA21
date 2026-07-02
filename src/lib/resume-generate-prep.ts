@@ -1,4 +1,4 @@
-import { parseResumeHeaderFromDocxBuffer, parseTemplateContentSamples } from "@/lib/resume-docx";
+import { parseResumeHeaderFromDocxBuffer } from "@/lib/resume-docx";
 import { getCachedTemplateParse } from "@/lib/resume-template-cache";
 import { resolveTemplateBuffer } from "@/lib/resume-template-resolve";
 import {
@@ -100,27 +100,20 @@ export async function prepareResumeGeneration(
   const { experiences: existingExperiences, layout: templateLayout } =
     await getCachedTemplateParse(templateName, templateBuffer);
   const header = parseResumeHeaderFromDocxBuffer(templateBuffer);
-  const templateSamples = parseTemplateContentSamples(templateBuffer);
 
   if (existingExperiences.length === 0) {
     throw new Error("No experience sections found in template.");
   }
 
-  const isRegenerate = Boolean(body.atsFeedback && body.previousContent);
+  const isRegenerate = Boolean(body.previousContent);
 
   const userPrompt = buildResumeUserPrompt({
     jobTitle,
-    companyName,
     jobDescription,
     customPrompt,
-    headerTitle: header.title,
     existingExperiences,
     templateLayout,
-    atsFeedback: body.atsFeedback,
-    humanToneFeedback: body.humanToneFeedback,
-    ruleKeepFeedback: body.ruleKeepFeedback,
-    previousContent: body.previousContent,
-    templateSamples,
+    previousContent: isRegenerate ? body.previousContent : undefined,
   });
 
   return {

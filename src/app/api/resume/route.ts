@@ -1,6 +1,6 @@
 import { completeDeepSeek } from "@/lib/deepseek-stream";
 
-import { parseResumeHeaderFromDocxBuffer, parseTemplateContentSamples } from "@/lib/resume-docx";
+import { parseResumeHeaderFromDocxBuffer } from "@/lib/resume-docx";
 
 import { getCachedTemplateParse } from "@/lib/resume-template-cache";
 
@@ -105,17 +105,13 @@ export async function POST(req: Request) {
       await getCachedTemplateParse(templateName, templateBuffer);
 
     const header = parseResumeHeaderFromDocxBuffer(templateBuffer);
-    const templateSamples = parseTemplateContentSamples(templateBuffer);
 
     const userPrompt = buildResumeUserPrompt({
       jobTitle,
-      companyName,
       jobDescription,
       customPrompt,
-      headerTitle: header.title,
       existingExperiences,
       templateLayout,
-      templateSamples,
     });
 
     const aiRaw = await completeDeepSeek(
