@@ -8,6 +8,7 @@ import { ResumeAtsScorePanel, type ResumeAtsScorePanelProps } from "@/components
 import { ResumeHumanTonePanel } from "@/components/ui/ResumeHumanTonePanel";
 import { ResumeRuleKeepPanel } from "@/components/ui/ResumeRuleKeepPanel";
 import { EvaluationStepStack } from "@/components/ui/ResumeStepLoader";
+import { ResumeScoringInstructionsPanel } from "@/components/ui/ResumeScoringInstructionsPanel";
 import { ATS_PASS_THRESHOLD } from "@/lib/resume-ats";
 import { HUMAN_TONE_PASS_THRESHOLD } from "@/lib/resume-human-tone";
 import { RULE_KEEP_PASS_THRESHOLD } from "@/lib/resume-rule-keep-constants";
@@ -158,6 +159,7 @@ export default function ResumeAtsScoreModal({
           }`}
         >
           <div className="min-h-0 overflow-y-auto overscroll-contain order-2 lg:order-1 border-t lg:border-t-0 border-slate-200 dark:border-white/[0.08]">
+            <ResumeScoringInstructionsPanel customPrompt={customPrompt} defaultExpanded={Boolean(customPrompt.trim())} />
             {loading || humanToneLoading || ruleKeepLoading ? (
               <EvaluationStepStack className="rounded-none border-0 bg-transparent dark:bg-transparent">
                 <ResumeAtsScorePanel
@@ -176,6 +178,7 @@ export default function ResumeAtsScoreModal({
                   score={ruleKeepScore}
                   loading={ruleKeepLoading}
                   error={ruleKeepError}
+                  customPrompt={customPrompt}
                 />
               </EvaluationStepStack>
             ) : (
@@ -196,6 +199,7 @@ export default function ResumeAtsScoreModal({
                   score={ruleKeepScore}
                   loading={ruleKeepLoading}
                   error={ruleKeepError}
+                  customPrompt={customPrompt}
                 />
               </>
             )}
