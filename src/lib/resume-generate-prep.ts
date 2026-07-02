@@ -1,13 +1,11 @@
-import { parseResumeHeaderFromDocxBuffer } from "@/lib/resume-docx";
+import { parseResumeHeaderFromDocxBuffer, parseTemplateContentSamples } from "@/lib/resume-docx";
 import { getCachedTemplateExperiences } from "@/lib/resume-template-cache";
 import { resolveTemplateBuffer } from "@/lib/resume-template-resolve";
 import {
   buildResumeSystemPrompt,
   buildResumeUserPrompt,
-  mergeResumeWithTemplate,
-  parseResumeJsonContent,
-} from "@/lib/resume-prompt";
-import type { AtsScoreResult, GeneratedResumeContent, HumanToneScoreResult, ResumeExperience, RuleKeepScoreResult } from "@/lib/resume-types";
+  finalizeResumeContent,
+} from "@/lib/resume-prompt";import type { AtsScoreResult, GeneratedResumeContent, HumanToneScoreResult, ResumeExperience, RuleKeepScoreResult } from "@/lib/resume-types";
 
 export interface ResumeGenerateRequest {
   jobTitle?: string;
@@ -91,6 +89,7 @@ export async function prepareResumeGeneration(
 
   const existingExperiences = await getCachedTemplateExperiences(templateName, templateBuffer);
   const header = parseResumeHeaderFromDocxBuffer(templateBuffer);
+  const templateSamples = parseTemplateContentSamples(templateBuffer);
 
   if (existingExperiences.length === 0) {
     throw new Error("No experience sections found in template.");
@@ -109,6 +108,7 @@ export async function prepareResumeGeneration(
     humanToneFeedback: body.humanToneFeedback,
     ruleKeepFeedback: body.ruleKeepFeedback,
     previousContent: body.previousContent,
+    templateSamples,
   });
 
   return {
@@ -122,13 +122,12 @@ export async function prepareResumeGeneration(
   };
 }
 
-export function finalizeResumeContent(
+export function finalizeResumeContentFromModel(
   modelText: string,
   mergeContext: ResumeMergeContext
 ): GeneratedResumeContent {
-  const parsed = parseResumeJsonContent(modelText);
-  return mergeResumeWithTemplate(
-    parsed,
+  return finalizeResumeContent(
+    modelText,
     mergeContext.existingExperiences,
     mergeContext.headerTitle
   );

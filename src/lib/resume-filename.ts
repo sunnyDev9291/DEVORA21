@@ -119,6 +119,7 @@ export function resolveResumeFileNameFromPrompt(
     [/\{\s*third\s+skill\s*\}/gi, thirdSkill],
     [/\{\s*job\s+title\s*\}/gi, context.jobTitle.trim() || titleHeadline],
     [/\{\s*resume\s+title\s*\}/gi, titleHeadline],
+    [/\{\s*role\s*\}/gi, slugifyJobTitle(context.jobTitle) || titleHeadline.replace(/\s+/g, "_")],
   ];
 
   let resolved = pattern;

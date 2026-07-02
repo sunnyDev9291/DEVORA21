@@ -46,6 +46,27 @@ function getParagraphText(pXml: string): string {
     .join("");
 }
 
+/** Plain text with **bold** markers from Word run properties. */
+export function getParagraphTextWithBold(pXml: string): string {
+  const runs = pXml.match(/<w:r[\s\S]*?<\/w:r>/g) ?? [];
+  if (runs.length === 0) return getParagraphText(pXml);
+
+  let out = "";
+  for (const run of runs) {
+    const text = (run.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) ?? [])
+      .map((t) => {
+        const match = t.match(/<w:t[^>]*>([^<]*)<\/w:t>/);
+        return match?.[1] ?? "";
+      })
+      .join("");
+    if (!text) continue;
+    const isBold = /<w:b(?:\s[^>]*)?\/>|<w:b(?:\s[^>]*)?>[^<]*<\/w:b>/.test(run);
+    out += isBold ? `**${text}**` : text;
+  }
+
+  return out || getParagraphText(pXml);
+}
+
 function paragraphHasPageBreak(pXml: string): boolean {
   return /<w:lastRenderedPageBreak\b|<w:br\s[^>]*w:type="page"/.test(pXml);
 }
@@ -375,6 +396,97 @@ export function parseResumeHeaderFromDocxBuffer(buffer: Buffer) {
   return { name, title, titleParagraphIndex };
 }
 
+export type TemplateContentSamples = {
+  summary: string;
+  skills: string;
+  sampleBullets: string[];
+};
+
+function collectSectionParagraphIndices(
+  paragraphs: string[],
+  headerIdx: number,
+  endIdx: number
+): number[] {
+  const indices: number[] = [];
+  for (let i = headerIdx + 1; i < endIdx; i += 1) {
+    const text = getParagraphText(paragraphs[i]).trim();
+    if (text && !isSectionHeader(text)) indices.push(i);
+  }
+  return indices;
+}
+
+/** Extract summary, skills, and sample bullets from the template for style-matching prompts. */
+export function parseTemplateContentSamples(buffer: Buffer): TemplateContentSamples {
+  const zip = new PizZip(buffer);
+  const xml = zip.file("word/document.xml")?.asText();
+  if (!xml) throw new Error("Invalid docx: missing document.xml");
+
+  const paragraphXml = xml.match(/<w:p[\s\S]*?<\/w:p>/g) || [];
+  const summaryIdx = findSectionIndex(paragraphXml, SECTION_HEADERS.summary);
+  const skillsIdx = findSectionIndex(paragraphXml, SECTION_HEADERS.skills);
+  const expIdx = findSectionIndex(paragraphXml, SECTION_HEADERS.experience);
+  const eduIdx = findSectionIndex(paragraphXml, SECTION_HEADERS.education);
+
+  if (summaryIdx === -1 || skillsIdx === -1 || expIdx === -1) {
+    return { summary: "", skills: "", sampleBullets: [] };
+  }
+
+  const summaryIndices = collectSectionParagraphIndices(paragraphXml, summaryIdx, skillsIdx);
+  const skillsIndices = collectSectionParagraphIndices(paragraphXml, skillsIdx, expIdx);
+
+  const summary = summaryIndices
+    .map((i) => getParagraphTextWithBold(paragraphXml[i]))
+    .join("\n")
+    .trim();
+
+  const skills = skillsIndices
+    .map((i) => getParagraphTextWithBold(paragraphXml[i]))
+    .join("\n")
+    .trim();
+
+  const expEnd = eduIdx === -1 ? paragraphXml.length : eduIdx;
+  const sampleBullets: string[] = [];
+  for (let i = expIdx + 1; i < expEnd && sampleBullets.length < 4; i += 1) {
+    const text = getParagraphText(paragraphXml[i]).trim();
+    if (!text || isSectionHeader(text)) continue;
+    if (isListParagraph(paragraphXml[i]) && text.length >= 40) {
+      sampleBullets.push(getParagraphTextWithBold(paragraphXml[i]));
+    }
+  }
+
+  return { summary, skills, sampleBullets };
+}
+
+function applySectionParagraphs(
+  paragraphs: string[],
+  paragraphIndices: number[],
+  content: string
+): void {
+  if (paragraphIndices.length === 0) return;
+
+  const lines = content
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (paragraphIndices.length === 1) {
+    const merged = lines.length > 0 ? lines.join(" ") : content.trim();
+    paragraphs[paragraphIndices[0]] = setParagraphText(paragraphs[paragraphIndices[0]], merged);
+    return;
+  }
+
+  for (let i = 0; i < paragraphIndices.length; i += 1) {
+    const line = i < lines.length ? lines[i] : "";
+    paragraphs[paragraphIndices[i]] = setParagraphText(paragraphs[paragraphIndices[i]], line);
+  }
+
+  if (lines.length > paragraphIndices.length) {
+    const lastIdx = paragraphIndices[paragraphIndices.length - 1];
+    const overflow = lines.slice(paragraphIndices.length - 1).join(" ");
+    paragraphs[lastIdx] = setParagraphText(paragraphs[lastIdx], overflow);
+  }
+}
+
 export function parseExperiencesFromDocxBuffer(buffer: Buffer) {
   const paragraphs = getDocxParagraphs(buffer);
   const expIdx = paragraphs.findIndex((p) => SECTION_HEADERS.experience.test(p.text));
@@ -449,8 +561,10 @@ export function applyContentToDocx(
     );
   }
 
-  paragraphs[summaryIdx + 1] = setParagraphText(paragraphs[summaryIdx + 1], content.summary);
-  paragraphs[skillsIdx + 1] = setParagraphText(paragraphs[skillsIdx + 1], content.skills);
+  const summaryIndices = collectSectionParagraphIndices(paragraphs, summaryIdx, skillsIdx);
+  const skillsIndices = collectSectionParagraphIndices(paragraphs, skillsIdx, expIdx);
+  applySectionParagraphs(paragraphs, summaryIndices, content.summary);
+  applySectionParagraphs(paragraphs, skillsIndices, content.skills);
 
   const expEnd = eduIdx === -1 ? paragraphs.length : eduIdx;
   const originalExperienceParagraphs = paragraphs.slice(expIdx + 1, expEnd);

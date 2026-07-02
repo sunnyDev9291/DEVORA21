@@ -1,8 +1,7 @@
 import { completeDeepSeek, iterateDeepSeekStream } from "@/lib/deepseek-stream";
 import {
   detectResumeGenerationPhase,
-  mergeResumeWithTemplate,
-  parseResumeJsonContent,
+  finalizeResumeContent,
   pickResumeModelText,
   RESUME_MAX_TOKENS,
   type ResumeGenerationPhase,
@@ -61,16 +60,14 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
           return;
         }
 
-        let parsed;
+        let content;
         try {
-          parsed = parseResumeJsonContent(modelText);
+          content = finalizeResumeContent(modelText, existingExperiences, headerTitle);
         } catch {
           enqueue({ type: "phase", phase: "finalizing" });
           modelText = await completeDeepSeek(messages, RESUME_MAX_TOKENS, { jsonObject: true });
-          parsed = parseResumeJsonContent(modelText);
+          content = finalizeResumeContent(modelText, existingExperiences, headerTitle);
         }
-
-        const content = mergeResumeWithTemplate(parsed, existingExperiences, headerTitle);
         enqueue({ type: "done", content, templateName });
         controller.close();
       } catch (err) {

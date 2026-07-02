@@ -1,9 +1,12 @@
 import { applyContentToDocx } from "@/lib/resume-docx";
 
+import { applyResumeContentPostProcess } from "@/lib/resume-content-postprocess";
+
 import { buildExpectedResumeFileName } from "@/lib/resume-filename";
 
-import { resolveTemplateBuffer } from "@/lib/resume-template-resolve";
+import { getCachedTemplateExperiences } from "@/lib/resume-template-cache";
 
+import { resolveTemplateBuffer } from "@/lib/resume-template-resolve";
 import type { GeneratedResumeContent } from "@/lib/resume-types";
 
 
@@ -118,9 +121,10 @@ export async function POST(req: Request) {
 
     });
 
+    const templateExperiences = await getCachedTemplateExperiences(templateName, templateBuffer);
+    const processedContent = applyResumeContentPostProcess(content, templateExperiences);
 
-
-    const updatedBuffer = applyContentToDocx(templateBuffer, content);
+    const updatedBuffer = applyContentToDocx(templateBuffer, processedContent);
 
     const docxBase64 = updatedBuffer.toString("base64");
 
@@ -131,7 +135,7 @@ export async function POST(req: Request) {
     const fileName = buildExpectedResumeFileName(
       templateName,
       jobTitle,
-      content,
+      processedContent,
       customPrompt,
       body.resumeFileBaseName,
       body.profileName

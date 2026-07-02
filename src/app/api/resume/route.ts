@@ -1,23 +1,16 @@
 import { completeDeepSeek } from "@/lib/deepseek-stream";
 
-import { parseResumeHeaderFromDocxBuffer } from "@/lib/resume-docx";
+import { parseResumeHeaderFromDocxBuffer, parseTemplateContentSamples } from "@/lib/resume-docx";
 
 import { getCachedTemplateExperiences } from "@/lib/resume-template-cache";
 
 import { resolveTemplateBuffer } from "@/lib/resume-template-resolve";
 
 import {
-
-  RESUME_SYSTEM_PROMPT,
-
+  buildResumeSystemPrompt,
   buildResumeUserPrompt,
-
-  mergeResumeWithTemplate,
-
-  parseResumeJsonContent,
-
+  finalizeResumeContent,
   RESUME_MAX_TOKENS,
-
 } from "@/lib/resume-prompt";
 
 
@@ -111,48 +104,28 @@ export async function POST(req: Request) {
     const existingExperiences = await getCachedTemplateExperiences(templateName, templateBuffer);
 
     const header = parseResumeHeaderFromDocxBuffer(templateBuffer);
-
-
+    const templateSamples = parseTemplateContentSamples(templateBuffer);
 
     const userPrompt = buildResumeUserPrompt({
-
       jobTitle,
-
       companyName,
-
       jobDescription,
-
       customPrompt,
-
       headerTitle: header.title,
-
       existingExperiences,
-
+      templateSamples,
     });
 
-
-
     const aiRaw = await completeDeepSeek(
-
       [
-
-        { role: "system", content: RESUME_SYSTEM_PROMPT },
-
+        { role: "system", content: buildResumeSystemPrompt(false) },
         { role: "user", content: userPrompt },
-
       ],
-
       RESUME_MAX_TOKENS,
-
       { jsonObject: true }
-
     );
 
-
-
-    const parsed = parseResumeJsonContent(aiRaw);
-
-    const content = mergeResumeWithTemplate(parsed, existingExperiences, header.title);
+    const content = finalizeResumeContent(aiRaw, existingExperiences, header.title);
 
 
 

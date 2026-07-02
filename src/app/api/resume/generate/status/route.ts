@@ -1,4 +1,4 @@
-import { finalizeResumeContent } from "@/lib/resume-generate-prep";
+import { finalizeResumeContentFromModel } from "@/lib/resume-generate-prep";
 import { checkResumeJobStatus, deleteResumeJob } from "@/lib/resume-job-store";
 
 export const runtime = "nodejs";
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
       return Response.json({ status: "error", message: job.message });
     }
 
-    const content = finalizeResumeContent(job.text, job.mergeContext);
+    const content = finalizeResumeContentFromModel(job.text, job.mergeContext);
     await deleteResumeJob(jobId, job.dedupeKey);
 
     return Response.json({

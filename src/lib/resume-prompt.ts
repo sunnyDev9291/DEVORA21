@@ -1,21 +1,23 @@
 import { ATS_PASS_THRESHOLD, ATS_SCORE_MAX } from "@/lib/resume-ats-algorithm";
 import { HUMAN_TONE_PASS_THRESHOLD, HUMAN_TONE_SCORE_MAX } from "@/lib/resume-human-tone-algorithm";
 import { RULE_KEEP_PASS_THRESHOLD, RULE_KEEP_SCORE_MAX, RULE_KEEP_GUARD_THRESHOLD } from "@/lib/resume-rule-keep-constants";
+import type { TemplateContentSamples } from "@/lib/resume-docx";
+import { applyResumeContentPostProcess } from "@/lib/resume-content-postprocess";
 import type { AtsScoreResult, GeneratedResumeContent, HumanToneScoreResult, RuleKeepScoreResult } from "@/lib/resume-types";
 
 export const RESUME_AI_MODEL = "deepseek-v4-pro";
 
 export const RESUME_MAX_TOKENS = 16384;
 
-export const RESUME_SYSTEM_PROMPT = `You are an expert resume writer for software engineers.
-Rewrite the professional title line, summary, skills, and experience bullets for a target job.
+export const RESUME_SYSTEM_PROMPT = `You are a Senior ATS resume optimizer for software engineers.
+Rewrite the professional title line, summary, skills, and experience bullets for a target job description.
 Keep the same companies, roles, and date ranges from the template — do not invent new employers.
 
 Return ONLY valid json with this exact shape:
 {
   "title": "string",
   "summary": "string",
-  "skills": "comma-separated skill list",
+  "skills": "string (one line OR multiple lines separated by \\n for category groups)",
   "experiences": [
     {
       "company": "string",
@@ -26,14 +28,25 @@ Return ONLY valid json with this exact shape:
   ]
 }
 
-Rules:
-- title: one professional headline line tailored to the target job (pipe-separated keywords OK, e.g. "Senior Backend Engineer | Node.js | AWS").
-- summary: 2–4 sentences, ATS-friendly, no first-person pronouns.
-- skills: one comma-separated line, mirror job keywords where truthful.
+Template fidelity (critical):
+- Mirror the TEMPLATE STYLE REFERENCE summary voice, length, and structure.
+- Mirror the template skills format exactly (grouped categories with "Category: item, item" OR comma list — same layout as template).
+- Mirror template bullet style: sentence length, verb openings, technical density, and tone from sample bullets.
+- Follow ALL rules in the user's Additional instructions — they override generic defaults.
+
+Bold in JSON (required for Word rendering):
+- Wrap every concrete tech term in the skills field with **double asterisks** (e.g. **Java**, **Spring Boot**).
+- Wrap every skillset/tech term in experience bullets with **double asterisks** when it appears (e.g. built **React** hooks with **Redux Toolkit**).
+- User rules that say "no symbols" mean no bracket labels like [C-Java/...] — **bold markers are required**, not forbidden.
+
+Content rules:
+- title: one headline line tailored to the JD (pipe-separated keywords OK).
+- summary: match template style; ATS-friendly; no first-person pronouns.
+- skills: only concrete technical items (languages, frameworks, DBs, tools, cloud); group by category when template does; no process/buzzword phrases.
 - experiences: MUST include exactly the same number of companies as the template, in the same order.
-- For each experience entry, copy company, role, and dates EXACTLY from the template list (do not put bullet text in company/role fields).
-- Only rewrite the bullets array for each company; keep the bullet count per company as specified in the template list.
-- Additional user instructions apply to summary, skills, and bullet wording only — never change employer names, roles, or dates.
+- Copy company, role, and dates EXACTLY from the template list.
+- Return exactly the bullet count per company specified in the template list.
+- Additional user instructions apply to summary, skills, and bullet wording only.
 - No markdown fences, no commentary — valid json only.`;
 
 export const RESUME_REGENERATE_SYSTEM_SUFFIX = `When regeneration context is provided, this is a TARGETED REVISION pass — not a full rewrite.
@@ -54,7 +67,33 @@ Revision rules:
 - When rule keep is ${RULE_KEEP_GUARD_THRESHOLD}+, add ATS keywords ONLY to title and skills — do NOT edit summary or experience bullets for keywords.
 - Never rewrite a whole bullet — change the minimum words in the minimum field.
 - If an ATS or tone fix would break any passing rule, skip it and use skills/title only.
-- Wrap only newly emphasized priority keywords in **bold** where truthful and allowed by rules.`;
+- Wrap only newly emphasized priority keywords in **bold** where truthful and allowed by rules.
+- When editing bullets, keep **bold** on all skillset/tech terms that appear in the skills line.`;
+
+export function buildTemplateStyleSection(samples?: TemplateContentSamples): string {
+  if (!samples) return "";
+  const parts: string[] = [
+    "TEMPLATE STYLE REFERENCE — match this layout and voice in your JSON output (do not copy verbatim; tailor to the JD):",
+  ];
+
+  if (samples.summary) {
+    parts.push(`Template summary (style reference):\n${samples.summary}`);
+  }
+  if (samples.skills) {
+    parts.push(
+      `Template skills (format reference — use the same category grouping and **bold** tech terms):\n${samples.skills}`
+    );
+  }
+  if (samples.sampleBullets.length > 0) {
+    parts.push(
+      `Template experience bullets (style reference — match length, tone, and **bold** tech terms):\n${samples.sampleBullets
+        .map((b, i) => `${i + 1}. ${b}`)
+        .join("\n")}`
+    );
+  }
+
+  return parts.length > 1 ? parts.join("\n\n") : "";
+}
 
 export function buildResumeSystemPrompt(regenerate = false): string {
   return regenerate
@@ -262,6 +301,7 @@ export function buildResumeUserPrompt({
   humanToneFeedback,
   ruleKeepFeedback,
   previousContent,
+  templateSamples,
 }: {
   jobTitle: string;
   companyName: string;
@@ -273,6 +313,7 @@ export function buildResumeUserPrompt({
   humanToneFeedback?: HumanToneScoreResult;
   ruleKeepFeedback?: RuleKeepScoreResult;
   previousContent?: GeneratedResumeContent;
+  templateSamples?: TemplateContentSamples;
 }): string {
   const isRegenerate = Boolean(previousContent && atsFeedback);
 
@@ -302,6 +343,7 @@ export function buildResumeUserPrompt({
     jobTitle && `Target job title: ${jobTitle}`,
     `Target company: ${companyName}`,
     jobDescription && `Job description:\n${jobDescription}`,
+    !isRegenerate && buildTemplateStyleSection(templateSamples),
     customPrompt && `Additional instructions:\n${customPrompt}`,
     headerTitle && `Current resume title line: ${headerTitle}`,
     experienceInstructions,
@@ -472,14 +514,33 @@ export function mergeResumeWithTemplate(
     skills: parsed.skills,
     experiences: existingExperiences.map((existing, i) => {
       const generated = matchExperienceByCompany(parsed.experiences, existing, i);
+      const bullets = generated?.bullets?.length ? generated.bullets : existing.bullets;
+      const target = existing.bullets.length;
+      const normalized =
+        bullets.length === target
+          ? bullets
+          : bullets.length > target
+            ? bullets.slice(0, target)
+            : [...bullets, ...existing.bullets.slice(bullets.length, target)];
+
       return {
         company: existing.company,
         role: existing.role,
         dates: existing.dates,
-        bullets: generated?.bullets?.length ? generated.bullets : existing.bullets,
+        bullets: normalized,
       };
     }),
   };
+}
+
+export function finalizeResumeContent(
+  modelText: string,
+  existingExperiences: GeneratedResumeContent["experiences"],
+  fallbackTitle: string
+): GeneratedResumeContent {
+  const parsed = parseResumeJsonContent(modelText);
+  const merged = mergeResumeWithTemplate(parsed, existingExperiences, fallbackTitle);
+  return applyResumeContentPostProcess(merged, existingExperiences);
 }
 
 export type ResumeGenerationPhase =
