@@ -11,7 +11,8 @@ import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
 import { generateResume } from "@/lib/resume-generate-client";
 import { archiveResume } from "@/lib/resume-archive";
 import { resumeBuilderAccessDeniedMessage } from "@/lib/resume-access";
-import { runIterativeRegeneration, type RegenerateEvaluation } from "@/lib/resume-ats-regenerate";
+import { maximizeDeterministicAtsScore, runIterativeRegeneration, type RegenerateEvaluation } from "@/lib/resume-ats-regenerate";
+import { RESUME_PASS_THRESHOLD } from "@/lib/resume-unified-score";
 import { emptyRuleKeepScore } from "@/lib/resume-rule-keep";
 import type { ResumeScoreResult } from "@/lib/resume-score";
 import type {
@@ -402,7 +403,21 @@ export default function ResumeGenerator({
         if (generationRunRef.current !== runId) return;
         setContent(data.content);
         setGenerationKey((k) => k + 1);
-        await evaluateResumeScores(data.content);
+        const scored = await evaluateResumeScores(data.content);
+        if (scored && scored.overall < RESUME_PASS_THRESHOLD) {
+          const boosted = await maximizeDeterministicAtsScore(data.content, (candidate) =>
+            evaluateResumeScores(candidate, {
+              openModal: true,
+              preserveScore: true,
+              reuseKeywords: true,
+            })
+          );
+          if (boosted.score.overall > (scored?.overall ?? 0)) {
+            setContent(boosted.content);
+            setResumeScore(boosted.score);
+            setGenerationKey((k) => k + 1);
+          }
+        }
       }
     } catch (err) {
       if ((err as Error).name === "AbortError") return;

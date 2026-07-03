@@ -1,4 +1,5 @@
 import { parseResumeHeaderFromDocxBuffer } from "@/lib/resume-docx";
+import { getCachedJobKeywords } from "@/lib/resume-keywords-cache";
 import { getCachedTemplateParse } from "@/lib/resume-template-cache";
 import { resolveTemplateBuffer } from "@/lib/resume-template-resolve";
 import {
@@ -104,6 +105,12 @@ export async function prepareResumeGeneration(
 
   const isRegenerate = Boolean(body.previousContent);
 
+  let priorityKeywords: string[] | undefined;
+  if (!isRegenerate && jobDescription) {
+    const { keywords } = await getCachedJobKeywords(jobTitle, companyName, jobDescription);
+    priorityKeywords = keywords.mustHave.slice(0, 18);
+  }
+
   const userPrompt = buildResumeUserPrompt({
     jobTitle,
     jobDescription,
@@ -113,6 +120,7 @@ export async function prepareResumeGeneration(
     previousContent: isRegenerate ? body.previousContent : undefined,
     atsFeedback: isRegenerate ? body.atsFeedback : undefined,
     ruleKeepFeedback: isRegenerate ? body.ruleKeepFeedback : undefined,
+    priorityKeywords,
   });
 
   return {

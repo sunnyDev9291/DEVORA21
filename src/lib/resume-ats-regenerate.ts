@@ -1,5 +1,6 @@
 import { ATS_PASS_THRESHOLD } from "@/lib/resume-ats-algorithm";
 import { RULE_KEEP_PASS_THRESHOLD, RULE_KEEP_GUARD_THRESHOLD } from "@/lib/resume-rule-keep-constants";
+import { emptyRuleKeepScore } from "@/lib/resume-rule-keep";
 import { buildUnifiedResumeScore, RESUME_PASS_THRESHOLD, RESUME_SCORE_MAX } from "@/lib/resume-unified-score";
 import { keywordPresentInText } from "@/lib/resume-ats-keywords";
 import { flattenContentExperienceText } from "@/lib/resume-experience-utils";
@@ -31,6 +32,75 @@ function resumePlainText(content: GeneratedResumeContent): string {
   ].join("\n");
 }
 
+function appendKeywordsToSkills(skills: string, keywords: string[]): string {
+  if (keywords.length === 0) return skills;
+  const append = keywords.map((k) => `**${k}**`).join(", ");
+  const lines = skills
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) return append;
+
+  const targetIdx = lines.findIndex((line) => line.includes(":"));
+  const idx = targetIdx >= 0 ? targetIdx : 0;
+  const line = lines[idx];
+  lines[idx] = line.includes(":")
+    ? `${line.replace(/\s*,?\s*$/, "")}, ${append}`
+    : `${line}, ${append}`;
+  return lines.join("\n");
+}
+
+function injectKeywordIntoExperience(content: GeneratedResumeContent, keyword: string): void {
+  const exp = content.experiences[0];
+  if (!exp) return;
+
+  if (exp.bullets?.length) {
+    const bullet = exp.bullets[0].trim();
+    if (!keywordPresentInText(keyword, bullet)) {
+      exp.bullets[0] = `${bullet.replace(/\.$/, "")} with ${keyword}.`;
+    }
+    return;
+  }
+
+  const project = exp.projects?.[0];
+  if (!project) return;
+  const field = project.action?.trim() ? "action" : project.result?.trim() ? "result" : "assignedResponsibility";
+  const text = project[field].trim();
+  if (text && !keywordPresentInText(keyword, text)) {
+    project[field] = `${text.replace(/\.$/, "")} with ${keyword}.`;
+  }
+}
+
+function injectKeywordsIntoExperiences(content: GeneratedResumeContent, keywords: string[], max = 3): void {
+  let placed = 0;
+  for (const exp of content.experiences) {
+    if (placed >= max) break;
+
+    if (exp.bullets?.length) {
+      for (let i = 0; i < exp.bullets.length && placed < max; i += 1) {
+        const kw = keywords[placed];
+        if (!kw || keywordPresentInText(kw, exp.bullets[i])) continue;
+        exp.bullets[i] = `${exp.bullets[i].trim().replace(/\.$/, "")} using ${kw}.`;
+        placed += 1;
+      }
+      continue;
+    }
+
+    for (const project of exp.projects ?? []) {
+      if (placed >= max) break;
+      const kw = keywords[placed];
+      if (!kw) break;
+      const field = project.action?.trim() ? "action" : "result";
+      const text = project[field]?.trim() ?? "";
+      if (text && !keywordPresentInText(kw, text)) {
+        project[field] = `${text.replace(/\.$/, "")} using ${kw}.`;
+        placed += 1;
+      }
+    }
+  }
+}
+
 /**
  * Surgically inject missing ATS keywords without rewriting bullets or structure.
  * Safe fallback when AI revision regresses the score.
@@ -45,15 +115,16 @@ export function applyDeterministicAtsPatches(
   const missing = feedback.missingKeywords.filter((k) => !keywordPresentInText(k, text));
   if (missing.length === 0) return result;
 
-  const existingSkills = result.skills
-    .split(/[,;]/)
+  const existingSkillTokens = result.skills
+    .replace(/\*\*/g, "")
+    .split(/[,;\n]/)
     .map((s) => s.trim())
     .filter(Boolean);
   const toPrepend = missing.filter(
-    (k) => !existingSkills.some((s) => keywordPresentInText(k, s))
+    (k) => !existingSkillTokens.some((s) => keywordPresentInText(k, s))
   );
   if (toPrepend.length > 0) {
-    result.skills = [...toPrepend.map((k) => `**${k}**`), ...existingSkills].join(", ");
+    result.skills = appendKeywordsToSkills(result.skills, toPrepend);
   }
 
   const titleParts = result.title
@@ -76,6 +147,18 @@ export function applyDeterministicAtsPatches(
     if (summaryWeak && summaryMissing) {
       const trimmed = result.summary.trim().replace(/\.$/, "");
       result.summary = `${trimmed}, with proven ${summaryMissing} experience.`;
+    }
+
+    const expWeak = feedback.breakdown?.find(
+      (b) => b.category === "Experience evidence" && b.score < b.maxScore * 0.75
+    );
+    const expMissing = missing.filter(
+      (k) => !flattenContentExperienceText(result).some((line) => keywordPresentInText(k, line))
+    );
+    if (expWeak && expMissing.length > 0) {
+      injectKeywordsIntoExperiences(result, expMissing, 3);
+    } else if (expMissing.length > 0) {
+      injectKeywordIntoExperience(result, expMissing[0]);
     }
   }
 
@@ -161,6 +244,15 @@ function meetsCriterionBaselines(candidate: ScoredCandidate, baseline: ScoredCan
   if (candidate.ats.overall < baseline.ats.overall) return false;
   if (candidate.ruleKeep.overall < baseline.ruleKeep.overall) return false;
 
+  // Net ATS gain — allow small category trade-offs (common when bullets are edited).
+  if (candidate.ats.overall > baseline.ats.overall) {
+    for (const baseRule of baseline.ruleKeep.rules) {
+      const candRule = candidate.ruleKeep.rules.find((r) => r.id === baseRule.id);
+      if (baseRule.passed && candRule && !candRule.passed) return false;
+    }
+    return true;
+  }
+
   for (const baseItem of baseline.ats.breakdown) {
     const candItem = candidate.ats.breakdown.find((b) => b.category === baseItem.category);
     if (candItem && candItem.score < baseItem.score) return false;
@@ -228,6 +320,10 @@ function shouldAcceptCandidate(
 }
 
 function isBetterCandidate(a: ScoredCandidate, b: ScoredCandidate, floors: ScoreFloors): boolean {
+  const aUnified = buildUnifiedResumeScore(a.ats, a.ruleKeep).overall;
+  const bUnified = buildUnifiedResumeScore(b.ats, b.ruleKeep).overall;
+  if (aUnified !== bUnified) return aUnified > bUnified;
+
   const aStrict = meetsStrictBaselines(a, floors);
   const bStrict = meetsStrictBaselines(b, floors);
   if (aStrict && !bStrict) return true;
@@ -319,6 +415,7 @@ function buildDeterministicCandidates(
 
   if (rulesGuarded) {
     add(applyDeterministicAtsPatches(baseline, baselineAts, atsOpts));
+    add(applyDeterministicAtsPatches(aiDraft, aiAts, atsOpts));
     return out;
   }
 
@@ -373,9 +470,9 @@ export async function pickBestRegenerateResult(
     baselineRules.totalRules > 0 && baselineRules.overall >= RULE_KEEP_GUARD_THRESHOLD;
 
   if (
-    !rulesGuarded &&
     acceptableCandidate(aiScored, floors, baselineCandidate) &&
-    isBetterCandidate(aiScored, best, floors)
+    isBetterCandidate(aiScored, best, floors) &&
+    (!rulesGuarded || aiScored.ruleKeep.overall >= baselineRules.overall)
   ) {
     best = aiScored;
   }
@@ -405,7 +502,13 @@ export async function pickBestRegenerateResult(
     }
   }
 
-  if (shouldAcceptCandidate(best, baselineCandidate, floors)) {
+  const baselineUnified = buildUnifiedResumeScore(baselineAts, baselineRules).overall;
+  const bestUnified = buildUnifiedResumeScore(best.ats, best.ruleKeep).overall;
+
+  if (
+    shouldAcceptCandidate(best, baselineCandidate, floors) ||
+    (bestUnified > baselineUnified && meetsCriterionBaselines(best, baselineCandidate))
+  ) {
     const usedPatch = best.content !== aiDraft;
     if (usedPatch) {
       const atsPart = formatScoreNotice("ATS", floors.baselineAts, best.ats.overall);
@@ -447,6 +550,106 @@ export type IterativeRegenerationInput = {
   evaluate: (content: GeneratedResumeContent) => Promise<RegenerateEvaluation | null>;
 };
 
+function isMeaningfulScoreGain(
+  before: ResumeUnifiedScoreResult,
+  after: ResumeUnifiedScoreResult
+): boolean {
+  if (after.overall > before.overall) return true;
+  if (after.ats.overall > before.ats.overall && after.ruleKeep.overall >= before.ruleKeep.overall) {
+    return true;
+  }
+  if (after.ruleKeep.overall > before.ruleKeep.overall && after.ats.overall >= before.ats.overall) {
+    return true;
+  }
+  return false;
+}
+
+/** After first generation, inject missing JD keywords when the ATS score is below target. */
+export function tryApplyInitialAtsBoost(
+  content: GeneratedResumeContent,
+  ats: AtsScoreResult
+): GeneratedResumeContent {
+  if (ats.overall >= RESUME_PASS_THRESHOLD || ats.missingKeywords.length === 0) {
+    return content;
+  }
+  return applyDeterministicAtsPatches(content, ats);
+}
+
+/** Repeatedly apply deterministic ATS patches until the score stops improving. */
+export async function maximizeDeterministicAtsScore(
+  content: GeneratedResumeContent,
+  evaluate: (content: GeneratedResumeContent) => Promise<RegenerateEvaluation | null>,
+  options?: { maxRounds?: number }
+): Promise<RegeneratePickResult> {
+  const maxRounds = options?.maxRounds ?? 4;
+  let current = content;
+  let currentEval = await evaluate(current);
+
+  if (!currentEval) {
+    return {
+      content,
+      score: buildUnifiedResumeScore(
+        {
+          overall: 0,
+          passed: false,
+          breakdown: [],
+          matchedKeywords: [],
+          missingKeywords: [],
+          recommendations: [],
+          summary: "Could not score content.",
+        },
+        emptyRuleKeepScore()
+      ),
+      notice: "Could not score content for ATS boost.",
+    };
+  }
+
+  let best: RegeneratePickResult = {
+    content: current,
+    score: currentEval,
+    notice: `Score ${currentEval.overall}/${RESUME_SCORE_MAX}.`,
+  };
+
+  for (let round = 0; round < maxRounds; round += 1) {
+    const patched = applyDeterministicAtsPatches(current, currentEval.ats);
+    if (contentKey(patched) === contentKey(current)) break;
+
+    const nextEval = await evaluate(patched);
+    if (!nextEval) break;
+
+    const baselineScored: ScoredCandidate = {
+      content: current,
+      ats: currentEval.ats,
+      ruleKeep: currentEval.ruleKeep,
+    };
+    const candidateScored: ScoredCandidate = {
+      content: patched,
+      ats: nextEval.ats,
+      ruleKeep: nextEval.ruleKeep,
+    };
+
+    if (!meetsCriterionBaselines(candidateScored, baselineScored)) break;
+
+    const improved =
+      nextEval.overall > currentEval.overall ||
+      nextEval.ats.overall > currentEval.ats.overall;
+
+    if (!improved) break;
+
+    current = patched;
+    currentEval = nextEval;
+    best = {
+      content: current,
+      score: currentEval,
+      notice: `Deterministic ATS boost — overall ${currentEval.overall}/${RESUME_SCORE_MAX}.`,
+    };
+
+    if (currentEval.overall >= RESUME_PASS_THRESHOLD) break;
+  }
+
+  return best;
+}
+
 /**
  * Run regeneration iterations until overall score ≥ 94, or two consecutive iterations
  * with no overall score improvement.
@@ -475,6 +678,27 @@ export async function runIterativeRegeneration(
   }
 
   for (let iteration = 0; iteration < MAX_REGENERATION_ITERATIONS; iteration += 1) {
+    const deterministic = await maximizeDeterministicAtsScore(content, input.evaluate, { maxRounds: 3 });
+    if (
+      deterministic.score.overall > score.overall ||
+      isMeaningfulScoreGain(score, deterministic.score)
+    ) {
+      staleIterations = 0;
+      content = deterministic.content;
+      ats = deterministic.score.ats;
+      rules = deterministic.score.ruleKeep;
+      score = deterministic.score;
+      lastOverall = score.overall;
+      best = deterministic;
+
+      if (score.overall >= RESUME_PASS_THRESHOLD) {
+        return {
+          ...best,
+          notice: `${deterministic.notice} Target reached — overall score ${score.overall} (≥ ${RESUME_PASS_THRESHOLD}).`,
+        };
+      }
+    }
+
     const aiDraft = await input.generateDraft({
       previousContent: content,
       atsFeedback: ats,
@@ -483,7 +707,7 @@ export async function runIterativeRegeneration(
 
     const picked = await pickBestRegenerateResult(content, ats, rules, aiDraft, input.evaluate);
 
-    if (picked.score.overall > lastOverall) {
+    if (picked.score.overall > lastOverall || isMeaningfulScoreGain(score, picked.score)) {
       staleIterations = 0;
       content = picked.content;
       ats = picked.score.ats;

@@ -79,6 +79,7 @@ export function buildResumeUserPrompt({
   previousContent,
   atsFeedback,
   ruleKeepFeedback,
+  priorityKeywords,
 }: {
   jobTitle: string;
   jobDescription: string;
@@ -88,6 +89,8 @@ export function buildResumeUserPrompt({
   previousContent?: GeneratedResumeContent;
   atsFeedback?: AtsScoreResult;
   ruleKeepFeedback?: RuleKeepScoreResult;
+  /** Must-have JD keywords — injected on first generation to improve initial ATS match. */
+  priorityKeywords?: string[];
 }): string {
   const layout = previousContent?.layout ?? templateLayout;
   const experiences = previousContent?.experiences ?? existingExperiences;
@@ -125,9 +128,18 @@ export function buildResumeUserPrompt({
         )
       : "";
 
+  const keywordBlock =
+    !isRegenerate && priorityKeywords && priorityKeywords.length > 0
+      ? [
+          "Priority ATS keywords from the job description (include naturally in title, skills, summary, and experience):",
+          priorityKeywords.slice(0, 18).join(", "),
+        ].join("\n")
+      : "";
+
   return [
     jobTitle && `Job title:\n${jobTitle}`,
     jobDescription && `Job description:\n${jobDescription}`,
+    keywordBlock,
     instructions
       ? `Instructions:\n${instructions}`
       : "Instructions: Write all resume content tailored to the job description.",
