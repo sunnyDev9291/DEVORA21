@@ -3,6 +3,7 @@
 import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
 import ResumeContentReview from "@/components/sections/ResumeContentReview";
+import ResumeImproveProgress from "@/components/ui/ResumeImproveProgress";
 import ResumeThinkingProgress from "@/components/ui/ResumeThinkingProgress";
 import { ResumeScorePanel, type ResumeScorePanelProps } from "@/components/ui/ResumeScorePanel";
 import { ResumeScoringInstructionsPanel } from "@/components/ui/ResumeScoringInstructionsPanel";
@@ -39,6 +40,7 @@ interface ResumeAtsScoreModalProps extends ResumeScorePanelProps {
   onDismissRegenerateDiff?: () => void;
   onImprove?: (target: ResumeImproveTarget) => void;
   improvingTargetId?: string;
+  improvingTargetLabel?: string;
 }
 
 export default function ResumeAtsScoreModal({
@@ -73,6 +75,7 @@ export default function ResumeAtsScoreModal({
   onDismissRegenerateDiff,
   onImprove,
   improvingTargetId,
+  improvingTargetLabel,
 }: ResumeAtsScoreModalProps) {
   const showContentReview = !!content && !!onContentChange && !!onApply;
   const titleId = useId();
@@ -167,7 +170,14 @@ export default function ResumeAtsScoreModal({
             <div className="relative min-h-0 overflow-y-auto overscroll-contain order-1 lg:order-2">
               {generating && (
                 <div className="sticky top-0 z-10 border-b border-blue-500/20 bg-blue-500/[0.04] dark:bg-blue-500/[0.06]">
-                  <ResumeThinkingProgress phase={streamPhase} jobTitle={jobTitle ?? ""} embedded />
+                  {improvingTargetId ? (
+                    <ResumeImproveProgress
+                      phase={streamPhase}
+                      targetLabel={improvingTargetLabel}
+                    />
+                  ) : (
+                    <ResumeThinkingProgress phase={streamPhase} jobTitle={jobTitle ?? ""} embedded />
+                  )}
                 </div>
               )}
               {generateError && (

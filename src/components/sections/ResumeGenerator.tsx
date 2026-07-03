@@ -29,7 +29,7 @@ import {
   type ResumeFieldChange,
 } from "@/lib/resume-content-diff";
 import {
-  describeImproveTarget,
+  buildImproveTargetInstruction,
   type ResumeImproveTarget,
 } from "@/lib/resume-improve-target";
 import {
@@ -138,6 +138,7 @@ export default function ResumeGenerator({
   const [regenerateBaseline, setRegenerateBaseline] = useState<GeneratedResumeContent | null>(null);
   const [regenerateBaselineScore, setRegenerateBaselineScore] = useState<ResumeUnifiedScoreResult | null>(null);
   const [improvingTargetId, setImprovingTargetId] = useState("");
+  const [improvingTargetLabel, setImprovingTargetLabel] = useState("");
   const [atsModalOpen, setAtsModalOpen] = useState(false);
   const [resumeChatOpen, setResumeChatOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -183,6 +184,7 @@ export default function ResumeGenerator({
     setRegenerateBaseline(null);
     setRegenerateBaselineScore(null);
     setImprovingTargetId("");
+    setImprovingTargetLabel("");
     setAtsModalOpen(false);
     setResumeChatOpen(false);
     setResumeFileBaseName("");
@@ -246,6 +248,7 @@ export default function ResumeGenerator({
     setRegenerateBaseline(null);
     setRegenerateBaselineScore(null);
     setImprovingTargetId("");
+    setImprovingTargetLabel("");
     setAtsModalOpen(false);
     setResumeChatOpen(false);
     setResumeFileBaseName("");
@@ -460,6 +463,7 @@ export default function ResumeGenerator({
     setRegenerateBaseline(null);
     setRegenerateBaselineScore(null);
     setImprovingTargetId("");
+    setImprovingTargetLabel("");
     setGenerating(true);
     setStreamPhase("starting");
 
@@ -520,6 +524,7 @@ export default function ResumeGenerator({
     abortRef.current = controller;
     setGenerating(true);
     setImprovingTargetId(target.id);
+    setImprovingTargetLabel(target.label);
     setStreamPhase("starting");
     setError("");
     setRegenerateNotice("");
@@ -527,13 +532,7 @@ export default function ResumeGenerator({
     setRegenerateBaselineScore(baselineScore);
 
     const templateForRequest = resolveActiveUserTemplate(user?.id, activeTemplate)!;
-    const targetedInstruction = [
-      "Targeted Improve button request:",
-      describeImproveTarget(target),
-      "",
-      "Edit only the smallest necessary part of the previous draft to improve this selected score item.",
-      "Copy every unrelated field exactly from the previous draft. Do not rewrite the whole resume.",
-    ].join("\n");
+    const targetedInstruction = buildImproveTargetInstruction(target);
 
     try {
       const draft = await generateResume(
@@ -587,6 +586,7 @@ export default function ResumeGenerator({
       if (generationRunRef.current === runId) {
         setGenerating(false);
         setImprovingTargetId("");
+        setImprovingTargetLabel("");
         abortRef.current = null;
       }
     }
@@ -678,6 +678,7 @@ export default function ResumeGenerator({
     setRegenerateBaseline(null);
     setRegenerateBaselineScore(null);
     setImprovingTargetId("");
+    setImprovingTargetLabel("");
     setAtsModalOpen(false);
     setResumeChatOpen(false);
     setResumeFileBaseName("");
@@ -1065,6 +1066,7 @@ export default function ResumeGenerator({
         }}
         onImprove={handleImproveScoreItem}
         improvingTargetId={improvingTargetId}
+        improvingTargetLabel={improvingTargetLabel}
       />
 
       <PdfPreviewModal
