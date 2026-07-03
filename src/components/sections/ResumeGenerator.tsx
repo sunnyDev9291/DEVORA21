@@ -251,19 +251,26 @@ export default function ResumeGenerator({
       openModal?: boolean;
       preserveScore?: boolean;
       reuseKeywords?: boolean;
+      /** Fast ATS-only pass — skips slow rule-audit AI. */
+      atsOnly?: boolean;
+      ruleKeepSnapshot?: RuleKeepScoreResult;
+      /** Internal optimization pass — no loading UI or abort of in-flight scoring. */
+      quiet?: boolean;
     }
   ): Promise<RegenerateEvaluation | null> {
-    atsAbortRef.current?.abort();
     const controller = new AbortController();
-    atsAbortRef.current = controller;
 
-    setScoreLoading(true);
-    setScoreError("");
-    if (!options?.preserveScore) {
-      setResumeScore(null);
-    }
-    if (options?.openModal !== false) {
-      setAtsModalOpen(true);
+    if (!options?.quiet) {
+      atsAbortRef.current?.abort();
+      atsAbortRef.current = controller;
+      setScoreLoading(true);
+      setScoreError("");
+      if (!options?.preserveScore) {
+        setResumeScore(null);
+      }
+      if (options?.openModal !== false) {
+        setAtsModalOpen(true);
+      }
     }
 
     try {
@@ -278,6 +285,12 @@ export default function ResumeGenerator({
           customPrompt: form.customPrompt,
           ...(options?.reuseKeywords && keywordsCacheKeyRef.current
             ? { keywordsCacheKey: keywordsCacheKeyRef.current }
+            : {}),
+          ...(options?.atsOnly
+            ? {
+                skipRuleKeep: true,
+                cachedRuleKeep: options.ruleKeepSnapshot ?? emptyRuleKeepScore(),
+              }
             : {}),
         }),
         signal: controller.signal,
@@ -294,15 +307,19 @@ export default function ResumeGenerator({
       }
 
       const { keywordsCacheKey: _ignored, ...score } = data;
-      setResumeScore(score);
+      if (!options?.quiet) {
+        setResumeScore(score);
+      }
       return score;
     } catch (err) {
       if ((err as Error).name === "AbortError") return null;
-      const message = (err as Error).message || "Could not evaluate resume scores.";
-      setScoreError(message);
+      if (!options?.quiet) {
+        const message = (err as Error).message || "Could not evaluate resume scores.";
+        setScoreError(message);
+      }
       return null;
     } finally {
-      if (!controller.signal.aborted) {
+      if (!options?.quiet && !controller.signal.aborted) {
         setScoreLoading(false);
       }
     }
@@ -371,11 +388,15 @@ export default function ResumeGenerator({
             );
             return draft.content;
           },
-          evaluate: (candidate) =>
+          evaluate: (candidate, evalOpts) =>
             evaluateResumeScores(candidate, {
-              openModal: true,
+              openModal: !evalOpts?.atsOnly,
               preserveScore: true,
               reuseKeywords: true,
+              quiet: Boolean(evalOpts?.atsOnly),
+              atsOnly: evalOpts?.atsOnly,
+              ruleKeepSnapshot:
+                evalOpts?.ruleKeep ?? options.ruleKeepFeedback ?? emptyRuleKeepScore(),
             }),
         });
         if (generationRunRef.current !== runId) return;
@@ -405,12 +426,18 @@ export default function ResumeGenerator({
         setGenerationKey((k) => k + 1);
         const scored = await evaluateResumeScores(data.content);
         if (scored && scored.overall < RESUME_PASS_THRESHOLD) {
-          const boosted = await maximizeDeterministicAtsScore(data.content, (candidate) =>
-            evaluateResumeScores(candidate, {
-              openModal: true,
-              preserveScore: true,
-              reuseKeywords: true,
-            })
+          const boosted = await maximizeDeterministicAtsScore(
+            data.content,
+            (candidate, evalOpts) =>
+              evaluateResumeScores(candidate, {
+                openModal: false,
+                preserveScore: true,
+                reuseKeywords: true,
+                quiet: Boolean(evalOpts?.atsOnly),
+                atsOnly: evalOpts?.atsOnly,
+                ruleKeepSnapshot: evalOpts?.ruleKeep ?? scored.ruleKeep,
+              }),
+            { initialEval: scored, maxRounds: 2 }
           );
           if (boosted.score.overall > (scored?.overall ?? 0)) {
             setContent(boosted.content);

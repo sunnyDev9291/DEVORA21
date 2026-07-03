@@ -10,6 +10,7 @@ import type {
   AtsScoreResult,
   GeneratedResumeContent,
   ResumeUnifiedScoreResult,
+  RuleKeepScoreResult,
 } from "@/lib/resume-types";
 
 export type ResumeScoreResult = ResumeUnifiedScoreResult & {
@@ -33,6 +34,8 @@ export async function evaluateResumeScoreBundle({
   content,
   keywordsCacheKey,
   customPrompt,
+  skipRuleKeep,
+  cachedRuleKeep,
 }: {
   jobTitle: string;
   companyName: string;
@@ -40,6 +43,9 @@ export async function evaluateResumeScoreBundle({
   content: GeneratedResumeContent;
   keywordsCacheKey?: string;
   customPrompt?: string;
+  /** Skip slow rule-audit AI — reuse {@link cachedRuleKeep} (ATS-only optimization passes). */
+  skipRuleKeep?: boolean;
+  cachedRuleKeep?: RuleKeepScoreResult;
 }): Promise<ResumeScoreResult> {
   const prompt = customPrompt?.trim() ?? "";
 
@@ -50,7 +56,11 @@ export async function evaluateResumeScoreBundle({
       jobDescription,
       keywordsCacheKey ? { cacheKey: keywordsCacheKey } : undefined
     ),
-    prompt ? evaluateRuleKeepScore(content, prompt) : Promise.resolve(emptyRuleKeepScore()),
+    skipRuleKeep
+      ? Promise.resolve(cachedRuleKeep ?? emptyRuleKeepScore())
+      : prompt
+        ? evaluateRuleKeepScore(content, prompt)
+        : Promise.resolve(emptyRuleKeepScore()),
   ]);
 
   const ats = evaluateAtsWithKeywords(content, jobTitle, keywords);

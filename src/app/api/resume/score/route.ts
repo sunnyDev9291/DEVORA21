@@ -1,7 +1,8 @@
 import { evaluateResumeScoreBundle } from "@/lib/resume-score";
-import type { GeneratedResumeContent } from "@/lib/resume-types";
+import type { GeneratedResumeContent, RuleKeepScoreResult } from "@/lib/resume-types";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 interface ScoreRequest {
   jobTitle?: string;
@@ -12,6 +13,9 @@ interface ScoreRequest {
   keywordsCacheKey?: string;
   /** Extra instructions — rules are checked one-by-one for Rule Keep score. */
   customPrompt?: string;
+  /** Fast path: score ATS only and reuse cached rule keep (avoids timeout on boost loops). */
+  skipRuleKeep?: boolean;
+  cachedRuleKeep?: RuleKeepScoreResult;
 }
 
 export async function POST(req: Request) {
@@ -48,6 +52,8 @@ export async function POST(req: Request) {
       content,
       keywordsCacheKey,
       customPrompt: body.customPrompt,
+      skipRuleKeep: body.skipRuleKeep === true,
+      cachedRuleKeep: body.cachedRuleKeep,
     });
 
     return Response.json(result, { headers: { "Cache-Control": "no-store" } });

@@ -439,7 +439,7 @@ export async function pickBestRegenerateResult(
   baselineAts: AtsScoreResult,
   baselineRules: RuleKeepScoreResult,
   aiDraft: GeneratedResumeContent,
-  evaluate: (content: GeneratedResumeContent) => Promise<RegenerateEvaluation | null>
+  evaluate: ScoreEvaluator
 ): Promise<RegeneratePickResult> {
   const floors = buildFloors(baselineAts, baselineRules);
 
@@ -488,7 +488,10 @@ export async function pickBestRegenerateResult(
   for (const content of candidates) {
     if (contentKey(content) === contentKey(aiDraft)) continue;
 
-    const candidateEval = await evaluate(content);
+    const candidateEval = await evaluate(content, {
+      atsOnly: true,
+      ruleKeep: baselineRules,
+    });
     if (!candidateEval) continue;
 
     const scored: ScoredCandidate = {
@@ -538,6 +541,17 @@ export async function pickBestRegenerateResult(
   };
 }
 
+export type ScoreEvaluateOptions = {
+  /** Fast ATS-only pass — skips rule-audit AI (prevents 502 timeouts). */
+  atsOnly?: boolean;
+  ruleKeep?: RuleKeepScoreResult;
+};
+
+export type ScoreEvaluator = (
+  content: GeneratedResumeContent,
+  options?: ScoreEvaluateOptions
+) => Promise<RegenerateEvaluation | null>;
+
 export type IterativeRegenerationInput = {
   baselineContent: GeneratedResumeContent;
   baselineAts: AtsScoreResult;
@@ -547,7 +561,7 @@ export type IterativeRegenerationInput = {
     atsFeedback: AtsScoreResult;
     ruleKeepFeedback: RuleKeepScoreResult;
   }) => Promise<GeneratedResumeContent>;
-  evaluate: (content: GeneratedResumeContent) => Promise<RegenerateEvaluation | null>;
+  evaluate: ScoreEvaluator;
 };
 
 function isMeaningfulScoreGain(
@@ -578,12 +592,12 @@ export function tryApplyInitialAtsBoost(
 /** Repeatedly apply deterministic ATS patches until the score stops improving. */
 export async function maximizeDeterministicAtsScore(
   content: GeneratedResumeContent,
-  evaluate: (content: GeneratedResumeContent) => Promise<RegenerateEvaluation | null>,
-  options?: { maxRounds?: number }
+  evaluate: ScoreEvaluator,
+  options?: { maxRounds?: number; initialEval?: RegenerateEvaluation }
 ): Promise<RegeneratePickResult> {
-  const maxRounds = options?.maxRounds ?? 4;
+  const maxRounds = options?.maxRounds ?? 2;
   let current = content;
-  let currentEval = await evaluate(current);
+  let currentEval = options?.initialEval ?? (await evaluate(current));
 
   if (!currentEval) {
     return {
@@ -614,7 +628,10 @@ export async function maximizeDeterministicAtsScore(
     const patched = applyDeterministicAtsPatches(current, currentEval.ats);
     if (contentKey(patched) === contentKey(current)) break;
 
-    const nextEval = await evaluate(patched);
+    const nextEval = await evaluate(patched, {
+      atsOnly: true,
+      ruleKeep: currentEval.ruleKeep,
+    });
     if (!nextEval) break;
 
     const baselineScored: ScoredCandidate = {
@@ -678,7 +695,10 @@ export async function runIterativeRegeneration(
   }
 
   for (let iteration = 0; iteration < MAX_REGENERATION_ITERATIONS; iteration += 1) {
-    const deterministic = await maximizeDeterministicAtsScore(content, input.evaluate, { maxRounds: 3 });
+    const deterministic = await maximizeDeterministicAtsScore(content, input.evaluate, {
+      maxRounds: 1,
+      initialEval: score,
+    });
     if (
       deterministic.score.overall > score.overall ||
       isMeaningfulScoreGain(score, deterministic.score)
