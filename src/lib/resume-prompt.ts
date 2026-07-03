@@ -45,8 +45,15 @@ const PROJECTS_JSON_SHAPE = `{
 }`;
 
 /** Minimal system prompt — content/style rules come only from the user's instructions. */
-export function buildResumeSystemPrompt(_regenerate = false, layout: ResumeTemplateLayout = "bullets"): string {
+export function buildResumeSystemPrompt(regenerate = false, layout: ResumeTemplateLayout = "bullets"): string {
   const shape = isProjectLayout(layout) ? PROJECTS_JSON_SHAPE : BULLETS_JSON_SHAPE;
+  const regenerateRules = regenerate
+    ? [
+        "- REGENERATE MODE: Start from the previous draft JSON in the user message. Change only fields needed to fix weak scores.",
+        "- Copy every unchanged field verbatim from the previous draft (same wording, punctuation, and formatting).",
+        "- Do not rewrite high-scoring sections, summaries, or experience sentences unless the evaluation block flags them.",
+      ]
+    : [];
   return [
     "Return ONLY valid JSON matching this shape:",
     shape,
@@ -59,6 +66,7 @@ export function buildResumeSystemPrompt(_regenerate = false, layout: ResumeTempl
     "- Do not invent employers or projects.",
     "- All wording, tone, and formatting rules come ONLY from the user Instructions in the user message.",
     "- No markdown fences or commentary.",
+    ...regenerateRules,
   ].join("\n");
 }
 
@@ -362,22 +370,56 @@ function normalizeProjectsToCount(
   return out;
 }
 
+function normalizeCompareText(text: string): string {
+  return text.replace(/\*\*/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/** During regenerate, prefer the previous draft unless AI clearly changed a field. */
+export function pickRegenerateText(
+  aiText: string,
+  baselineText: string | undefined,
+  templateText: string | undefined
+): string {
+  const ai = aiText.trim();
+  const baseline = (baselineText ?? "").trim();
+  const template = (templateText ?? "").trim();
+
+  if (!ai) return baseline || template;
+  if (baseline && normalizeCompareText(ai) === normalizeCompareText(baseline)) return baseline;
+  if (
+    baseline &&
+    template &&
+    normalizeCompareText(ai) === normalizeCompareText(template) &&
+    normalizeCompareText(baseline) !== normalizeCompareText(template)
+  ) {
+    return baseline;
+  }
+  return ai;
+}
+
 export function mergeResumeWithTemplate(
   parsed: GeneratedResumeContent,
   existingExperiences: GeneratedResumeContent["experiences"],
   fallbackTitle: string,
-  layout: ResumeTemplateLayout = "bullets"
+  layout: ResumeTemplateLayout = "bullets",
+  baseline?: GeneratedResumeContent | null
 ): GeneratedResumeContent {
   const projectMode = isProjectLayout(layout);
+  const baselineTitle = baseline?.title?.trim();
 
   return {
-    title: parsed.title || fallbackTitle,
-    summary: parsed.summary,
-    skills: parsed.skills,
-    ...(parsed.fileName?.trim() ? { fileName: parsed.fileName.trim() } : {}),
+    title: pickRegenerateText(parsed.title || fallbackTitle, baselineTitle, fallbackTitle),
+    summary: pickRegenerateText(parsed.summary, baseline?.summary, ""),
+    skills: pickRegenerateText(parsed.skills, baseline?.skills, ""),
+    ...(parsed.fileName?.trim()
+      ? { fileName: parsed.fileName.trim() }
+      : baseline?.fileName?.trim()
+        ? { fileName: baseline.fileName.trim() }
+        : {}),
     layout: projectMode ? "projects" : "bullets",
     experiences: existingExperiences.map((existing, i) => {
       const generated = matchExperienceByCompany(parsed.experiences, existing, i, layout);
+      const baselineExp = baseline?.experiences[i];
 
       if (projectMode || existing.projects?.length) {
         const projects = normalizeProjectsToCount(
@@ -386,40 +428,59 @@ export function mergeResumeWithTemplate(
           existing.projects ?? []
         ).map((project, projectIndex) => {
           const templateProject = existing.projects?.[projectIndex];
+          const baselineProject = baselineExp?.projects?.[projectIndex];
           return {
             name: templateProject?.name ?? project.name,
-            businessChallenge:
-              project.businessChallenge || templateProject?.businessChallenge || "",
-            assignedResponsibility:
-              project.assignedResponsibility || templateProject?.assignedResponsibility || "",
-            action: project.action || templateProject?.action || "",
-            result: project.result || templateProject?.result || "",
+            businessChallenge: pickRegenerateText(
+              project.businessChallenge,
+              baselineProject?.businessChallenge,
+              templateProject?.businessChallenge
+            ),
+            assignedResponsibility: pickRegenerateText(
+              project.assignedResponsibility,
+              baselineProject?.assignedResponsibility,
+              templateProject?.assignedResponsibility
+            ),
+            action: pickRegenerateText(project.action, baselineProject?.action, templateProject?.action),
+            result: pickRegenerateText(project.result, baselineProject?.result, templateProject?.result),
           };
         });
 
         return {
           company: existing.company,
-          role: generated?.role?.trim() || existing.role,
+          role: pickRegenerateText(generated?.role ?? "", baselineExp?.role, existing.role),
           dates: existing.dates,
           bullets: [],
           projects,
         };
       }
 
-      const bullets = generated?.bullets?.length ? generated.bullets : existing.bullets;
+      const sourceBullets = generated?.bullets?.length
+        ? generated.bullets
+        : baselineExp?.bullets?.length
+          ? baselineExp.bullets
+          : existing.bullets;
       const target = existing.bullets.length;
       const normalized =
-        bullets.length === target
-          ? bullets
-          : bullets.length > target
-            ? bullets.slice(0, target)
-            : [...bullets, ...existing.bullets.slice(bullets.length, target)];
+        sourceBullets.length === target
+          ? sourceBullets
+          : sourceBullets.length > target
+            ? sourceBullets.slice(0, target)
+            : [...sourceBullets, ...(baselineExp?.bullets ?? existing.bullets).slice(sourceBullets.length, target)];
+
+      const bullets = normalized.map((bullet, bulletIndex) =>
+        pickRegenerateText(
+          bullet,
+          baselineExp?.bullets[bulletIndex],
+          existing.bullets[bulletIndex]
+        )
+      );
 
       return {
         company: existing.company,
-        role: generated?.role?.trim() || existing.role,
+        role: pickRegenerateText(generated?.role ?? "", baselineExp?.role, existing.role),
         dates: existing.dates,
-        bullets: normalized,
+        bullets,
       };
     }),
   };
@@ -429,10 +490,11 @@ export function finalizeResumeContent(
   modelText: string,
   existingExperiences: GeneratedResumeContent["experiences"],
   fallbackTitle: string,
-  layout: ResumeTemplateLayout = "bullets"
+  layout: ResumeTemplateLayout = "bullets",
+  baseline?: GeneratedResumeContent | null
 ): GeneratedResumeContent {
   const parsed = parseResumeJsonContent(modelText, layout);
-  const merged = mergeResumeWithTemplate(parsed, existingExperiences, fallbackTitle, layout);
+  const merged = mergeResumeWithTemplate(parsed, existingExperiences, fallbackTitle, layout, baseline);
   return applyResumeContentPostProcess(merged, existingExperiences, layout);
 }
 

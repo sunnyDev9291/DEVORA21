@@ -5,6 +5,8 @@ import type { GeneratedResumeContent, ResumeExperience, ResumeProject } from "@/
 import { isProjectLayout } from "@/lib/resume-experience-utils";
 import { sanitizeResumeFileBaseName } from "@/lib/resume-filename";
 import MarkdownBoldTextarea from "@/components/ui/MarkdownBoldTextarea";
+import ResumeRegenerateDiffPanel from "@/components/ui/ResumeRegenerateDiffPanel";
+import type { FeedbackResolution, ResumeFieldChange } from "@/lib/resume-content-diff";
 
 interface ResumeContentReviewProps {
   content: GeneratedResumeContent;
@@ -22,6 +24,10 @@ interface ResumeContentReviewProps {
   generationKey: number;
   /** Compact layout for side-by-side use inside the ATS modal */
   embedded?: boolean;
+  regenerateChanges?: ResumeFieldChange[];
+  regenerateFeedback?: FeedbackResolution | null;
+  changedFieldIds?: Set<string>;
+  onDismissRegenerateDiff?: () => void;
 }
 
 const PROJECT_FIELDS: Array<{ key: keyof ResumeProject; label: string }> = [
@@ -49,6 +55,10 @@ export default function ResumeContentReview({
   applyLabel = "Apply to Resume",
   generationKey,
   embedded = false,
+  regenerateChanges = [],
+  regenerateFeedback = null,
+  changedFieldIds,
+  onDismissRegenerateDiff,
 }: ResumeContentReviewProps) {
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [expandedExp, setExpandedExp] = useState<number | null>(null);
@@ -116,15 +126,33 @@ export default function ResumeContentReview({
     suggestedResumeBaseName &&
     resumeFileBaseName.trim() !== suggestedResumeBaseName.trim();
 
+  const changedRing = (fieldId: string) =>
+    changedFieldIds?.has(fieldId)
+      ? "ring-2 ring-amber-400/50 border-amber-400/40"
+      : "";
+
   return (
     <div className={embedded ? "space-y-4" : "space-y-6"}>
+      {(regenerateChanges.length > 0 || regenerateFeedback) && (
+        <ResumeRegenerateDiffPanel
+          changes={regenerateChanges}
+          feedback={regenerateFeedback}
+          onDismiss={onDismissRegenerateDiff}
+        />
+      )}
+
       <div className={`grid grid-cols-1 ${embedded ? "" : "lg:grid-cols-2"} gap-4`}>
         <div className={`${embedded ? "" : "lg:col-span-2"} rounded-2xl border border-blue-500/20 bg-blue-500/[0.05] px-5 py-4`}>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-blue-800 dark:text-blue-200">AI draft — edit before applying</p>
               <p className="text-xs text-blue-700/70 dark:text-blue-300/70 mt-0.5">
-                Template: <span className="font-medium">{templateName}</span> · Nothing saves until you confirm below
+                Template: <span className="font-medium">{templateName}</span>
+                {regenerateChanges.length > 0 ? (
+                  <span> · {regenerateChanges.length} change{regenerateChanges.length === 1 ? "" : "s"} from last draft</span>
+                ) : (
+                  <span> · Nothing saves until you confirm below</span>
+                )}
               </p>
             </div>
             <button
@@ -162,7 +190,7 @@ export default function ResumeContentReview({
             id="resume-title"
             value={content.title}
             onChange={(title) => onChange({ ...content, title })}
-            className={fieldClass}
+            className={`${fieldClass} ${changedRing("title")}`}
             rows={1}
             placeholder="Senior Engineer | React | AWS"
           />
@@ -177,7 +205,7 @@ export default function ResumeContentReview({
             id="resume-skills"
             value={content.skills}
             onChange={(skills) => onChange({ ...content, skills })}
-            className={`${fieldClass} min-h-[88px]`}
+            className={`${fieldClass} min-h-[88px] ${changedRing("skills")}`}
             rows={3}
             placeholder="Comma-separated skills"
           />
@@ -192,7 +220,7 @@ export default function ResumeContentReview({
             id="resume-summary"
             value={content.summary}
             onChange={(summary) => onChange({ ...content, summary })}
-            className={`${fieldClass} min-h-[120px] leading-relaxed`}
+            className={`${fieldClass} min-h-[120px] leading-relaxed ${changedRing("summary")}`}
             rows={4}
           />
         </div>
@@ -247,7 +275,7 @@ export default function ResumeContentReview({
                           id={`exp-${index}-role`}
                           value={exp.role}
                           onChange={(role) => updateExperience(index, { role })}
-                          className={fieldClass}
+                          className={`${fieldClass} ${changedRing(`exp-${index}-role`)}`}
                           rows={1}
                           placeholder="Senior Java Engineer | Spring Boot"
                           aria-label={`Role for ${exp.company}`}
@@ -281,7 +309,7 @@ export default function ResumeContentReview({
                                   id={`exp-${index}-project-${projectIndex}-${key}`}
                                   value={project[key]}
                                   onChange={(value) => updateProject(index, projectIndex, { [key]: value })}
-                                  className={`${fieldClass} min-h-[72px] resize-y leading-relaxed`}
+                                  className={`${fieldClass} min-h-[72px] resize-y leading-relaxed ${changedRing(`exp-${index}-proj-${projectIndex}-${key}`)}`}
                                   rows={2}
                                   placeholder={label}
                                   aria-label={`${label} for project ${projectIndex + 1} at ${exp.company}`}
@@ -312,7 +340,7 @@ export default function ResumeContentReview({
                                 id={`exp-${index}-bullet-${bulletIndex}`}
                                 value={bullet}
                                 onChange={(value) => updateBullet(index, bulletIndex, value)}
-                                className={`${fieldClass} flex-1 min-h-[72px] resize-y leading-relaxed`}
+                                className={`${fieldClass} flex-1 min-h-[72px] resize-y leading-relaxed ${changedRing(`exp-${index}-bullet-${bulletIndex}`)}`}
                                 rows={2}
                                 placeholder={`Achievement ${bulletIndex + 1}`}
                                 aria-label={`Bullet ${bulletIndex + 1} for ${exp.company}`}

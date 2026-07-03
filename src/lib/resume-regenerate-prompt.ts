@@ -15,8 +15,9 @@ export const ITERATIVE_OPTIMIZATION_RULES = [
   "4. Treat this as incremental optimization, not a full rewrite.",
   "5. Keep the original writing style, structure, terminology, formatting, and intent unless a change is required for the targeted improvement.",
   "6. Prefer the smallest effective edits that produce the highest score increase.",
+  "7. Copy unchanged fields exactly from the previous draft — only send new text for fields you intentionally revise.",
   "",
-  "Return the full JSON draft with only the necessary localized updates.",
+  "Return the full JSON draft. Unchanged fields must match the previous draft verbatim.",
 ].join("\n");
 
 function weakAtsCategories(ats: AtsScoreResult): string[] {

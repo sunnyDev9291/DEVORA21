@@ -43,6 +43,7 @@ export interface ResumeGeneratePrep {
   customPrompt: string;
   profileName?: string;
   skillsSample: string;
+  regenerateBaseline?: GeneratedResumeContent;
 }
 
 export interface ResumeMergeContext {
@@ -52,6 +53,8 @@ export interface ResumeMergeContext {
   customPrompt?: string;
   profileName?: string;
   skillsSample?: string;
+  /** Previous user draft — used during regenerate to preserve unchanged fields. */
+  regenerateBaseline?: GeneratedResumeContent;
 }
 
 export type ResumeJobRecord =
@@ -146,6 +149,7 @@ export async function prepareResumeGeneration(
     customPrompt,
     profileName: body.profileName?.trim() || undefined,
     skillsSample,
+    regenerateBaseline: isRegenerate ? body.previousContent : undefined,
   };
 }
 
@@ -158,7 +162,8 @@ export function finalizeResumeContentFromModel(
     modelText,
     mergeContext.existingExperiences,
     mergeContext.headerTitle,
-    mergeContext.templateLayout
+    mergeContext.templateLayout,
+    mergeContext.regenerateBaseline
   );
   const styled = applyTemplateSkillsStyle(content, mergeContext.skillsSample);
   return ensureResumeContentFileName(styled, {

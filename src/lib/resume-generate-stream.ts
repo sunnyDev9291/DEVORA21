@@ -23,7 +23,7 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
       };
 
       try {
-        const { messages, existingExperiences, headerTitle, templateName, templateLayout, customPrompt, profileName, skillsSample } =
+        const { messages, existingExperiences, headerTitle, templateName, templateLayout, customPrompt, profileName, skillsSample, regenerateBaseline } =
           prep;
 
         let thinking = "";
@@ -66,7 +66,13 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
         try {
           content = ensureResumeContentFileName(
             applyTemplateSkillsStyle(
-              finalizeResumeContent(modelText, existingExperiences, headerTitle, templateLayout),
+              finalizeResumeContent(
+                modelText,
+                existingExperiences,
+                headerTitle,
+                templateLayout,
+                regenerateBaseline
+              ),
               skillsSample
             ),
             { templateName, customPrompt, profileName }
@@ -76,7 +82,13 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
           modelText = await completeDeepSeek(messages, RESUME_MAX_TOKENS, { jsonObject: true });
           content = ensureResumeContentFileName(
             applyTemplateSkillsStyle(
-              finalizeResumeContent(modelText, existingExperiences, headerTitle, templateLayout),
+              finalizeResumeContent(
+                modelText,
+                existingExperiences,
+                headerTitle,
+                templateLayout,
+                regenerateBaseline
+              ),
               skillsSample
             ),
             { templateName, customPrompt, profileName }

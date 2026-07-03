@@ -24,6 +24,12 @@ import type {
   RuleKeepScoreResult,
 } from "@/lib/resume-types";
 import {
+  computeFeedbackResolution,
+  computeResumeContentDiff,
+  type FeedbackResolution,
+  type ResumeFieldChange,
+} from "@/lib/resume-content-diff";
+import {
   normalizeResumeFileBaseName,
   buildExpectedResumeBaseName,
   extractResumeTitleHeadline,
@@ -126,6 +132,8 @@ export default function ResumeGenerator({
   const [scoreLoading, setScoreLoading] = useState(false);
   const [scoreError, setScoreError] = useState("");
   const [regenerateNotice, setRegenerateNotice] = useState("");
+  const [regenerateBaseline, setRegenerateBaseline] = useState<GeneratedResumeContent | null>(null);
+  const [regenerateBaselineScore, setRegenerateBaselineScore] = useState<ResumeUnifiedScoreResult | null>(null);
   const [atsModalOpen, setAtsModalOpen] = useState(false);
   const [resumeChatOpen, setResumeChatOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -227,6 +235,8 @@ export default function ResumeGenerator({
     setResumeScore(null);
     setScoreError("");
     setRegenerateNotice("");
+    setRegenerateBaseline(null);
+    setRegenerateBaselineScore(null);
     setAtsModalOpen(false);
     setResumeChatOpen(false);
     setResumeFileBaseName("");
@@ -471,6 +481,8 @@ export default function ResumeGenerator({
     const runId = ++generationRunRef.current;
     setError("");
     setRegenerateNotice("");
+    setRegenerateBaseline(null);
+    setRegenerateBaselineScore(null);
     setGenerating(true);
     setStreamPhase("starting");
 
@@ -488,6 +500,15 @@ export default function ResumeGenerator({
       setStep("review");
 
       if (options?.previousContent && options?.atsFeedback) {
+        setRegenerateBaseline(options.previousContent);
+        setRegenerateBaselineScore(
+          resumeScore ??
+            buildUnifiedResumeScore(
+              options.atsFeedback,
+              options.ruleKeepFeedback ?? emptyRuleKeepScore()
+            )
+        );
+
         const picked = await runIterativeRegeneration({
           baselineContent: options.previousContent,
           baselineAts: options.atsFeedback,
@@ -672,6 +693,8 @@ export default function ResumeGenerator({
     setResumeScore(null);
     setScoreError("");
     setRegenerateNotice("");
+    setRegenerateBaseline(null);
+    setRegenerateBaselineScore(null);
     setAtsModalOpen(false);
     setResumeChatOpen(false);
     setResumeFileBaseName("");
@@ -683,6 +706,21 @@ export default function ResumeGenerator({
   const pdfBlob = useMemo(
     () => (pdfBase64 ? base64ToBlob(pdfBase64, PDF_MIME) : null),
     [pdfBase64]
+  );
+
+  const regenerateChanges = useMemo(() => {
+    if (!regenerateBaseline || !content) return [];
+    return computeResumeContentDiff(regenerateBaseline, content);
+  }, [regenerateBaseline, content]);
+
+  const regenerateFeedback = useMemo(() => {
+    if (!regenerateBaselineScore || !resumeScore) return null;
+    return computeFeedbackResolution(regenerateBaselineScore, resumeScore);
+  }, [regenerateBaselineScore, resumeScore]);
+
+  const changedFieldIds = useMemo(
+    () => new Set(regenerateChanges.map((change) => change.id)),
+    [regenerateChanges]
   );
 
   const canPreviewPdf = !!pdfBlob && !archiving;
@@ -701,7 +739,17 @@ export default function ResumeGenerator({
           </div>
         </div>
 
-        <form onSubmit={handleGenerate} className="space-y-4">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (content) {
+              void handleRegenerate();
+            } else {
+              void handleGenerate(e);
+            }
+          }}
+          className="space-y-4"
+        >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label htmlFor="jobTitle" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
@@ -984,6 +1032,13 @@ export default function ResumeGenerator({
               }}
               applyLabel={step === "done" ? "Re-apply changes" : "Apply to resume"}
               generationKey={generationKey}
+              regenerateChanges={regenerateChanges}
+              regenerateFeedback={regenerateFeedback}
+              changedFieldIds={changedFieldIds}
+              onDismissRegenerateDiff={() => {
+                setRegenerateBaseline(null);
+                setRegenerateBaselineScore(null);
+              }}
             />
           )}
         </div>
@@ -1030,6 +1085,13 @@ export default function ResumeGenerator({
         applyLabel={step === "done" ? "Re-apply changes" : "Apply to resume"}
         generationKey={generationKey}
         onOpenResumeChat={() => setResumeChatOpen(true)}
+        regenerateChanges={regenerateChanges}
+        regenerateFeedback={regenerateFeedback}
+        changedFieldIds={changedFieldIds}
+        onDismissRegenerateDiff={() => {
+          setRegenerateBaseline(null);
+          setRegenerateBaselineScore(null);
+        }}
       />
 
       <PdfPreviewModal

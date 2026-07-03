@@ -9,6 +9,7 @@ import { ResumeScoringInstructionsPanel } from "@/components/ui/ResumeScoringIns
 import { RESUME_PASS_THRESHOLD } from "@/lib/resume-unified-score";
 import type { GeneratedResumeContent } from "@/lib/resume-types";
 import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
+import type { FeedbackResolution, ResumeFieldChange } from "@/lib/resume-content-diff";
 
 interface ResumeAtsScoreModalProps extends ResumeScorePanelProps {
   open: boolean;
@@ -32,6 +33,10 @@ interface ResumeAtsScoreModalProps extends ResumeScorePanelProps {
   applyLabel?: string;
   generationKey?: number;
   onOpenResumeChat?: () => void;
+  regenerateChanges?: ResumeFieldChange[];
+  regenerateFeedback?: FeedbackResolution | null;
+  changedFieldIds?: Set<string>;
+  onDismissRegenerateDiff?: () => void;
 }
 
 export default function ResumeAtsScoreModal({
@@ -61,6 +66,10 @@ export default function ResumeAtsScoreModal({
   applyLabel,
   generationKey = 0,
   onOpenResumeChat,
+  regenerateChanges = [],
+  regenerateFeedback = null,
+  changedFieldIds,
+  onDismissRegenerateDiff,
 }: ResumeAtsScoreModalProps) {
   const showContentReview = !!content && !!onContentChange && !!onApply && !!onRegenerate;
   const titleId = useId();
@@ -182,6 +191,10 @@ export default function ResumeAtsScoreModal({
                   applyLabel={applyLabel}
                   generationKey={generationKey}
                   embedded
+                  regenerateChanges={regenerateChanges}
+                  regenerateFeedback={regenerateFeedback}
+                  changedFieldIds={changedFieldIds}
+                  onDismissRegenerateDiff={onDismissRegenerateDiff}
                 />
               </div>
             </div>
