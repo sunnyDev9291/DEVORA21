@@ -42,7 +42,7 @@ export async function POST(req: Request) {
       return Response.json({ status: "error", message: job.message });
     }
 
-    const content = finalizeResumeContentFromModel(job.text, job.mergeContext);
+    const content = finalizeResumeContentFromModel(job.text, job.mergeContext, job.templateName);
     await deleteResumeJob(jobId, job.dedupeKey);
 
     return Response.json({

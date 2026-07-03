@@ -354,11 +354,10 @@ export default function ResumeContentReview({
       <div className="rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.02] px-5 py-4">
         <label htmlFor="resume-file-name" className="text-xs font-medium text-slate-500 mb-2 block">
           Expected resume name
-          {content.title.trim() ? (
-            <span className="font-normal text-slate-400">
-              {" "}
-              · from resume title
-            </span>
+          {content.fileName?.trim() ? (
+            <span className="font-normal text-slate-400"> · from AI</span>
+          ) : content.title.trim() ? (
+            <span className="font-normal text-slate-400"> · from resume title</span>
           ) : null}
         </label>
         <input

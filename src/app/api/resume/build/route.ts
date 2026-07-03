@@ -51,6 +51,9 @@ function validateContent(
     title: content.title.trim(),
     summary: content.summary.trim(),
     skills: content.skills.trim(),
+    ...(content.fileName?.trim()
+      ? { fileName: content.fileName.trim() }
+      : {}),
     layout: projectMode ? "projects" : "bullets",
     experiences: content.experiences.map((e) => {
       if (projectMode) {

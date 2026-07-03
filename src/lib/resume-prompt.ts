@@ -1,4 +1,5 @@
 import { applyResumeContentPostProcess } from "@/lib/resume-content-postprocess";
+import { extractResumeFileNamePatternFromPrompt } from "@/lib/resume-filename";
 import { isProjectLayout, normalizeResumeExperience, normalizeResumeProject } from "@/lib/resume-experience-utils";
 import { buildRegenerationEvaluationBlock } from "@/lib/resume-regenerate-prompt";
 import { emptyRuleKeepScore } from "@/lib/resume-rule-keep";
@@ -13,6 +14,7 @@ const BULLETS_JSON_SHAPE = `{
   "title": "string",
   "summary": "string",
   "skills": "string",
+  "fileName": "string",
   "experiences": [
     { "company": "string", "role": "string", "dates": "string", "bullets": ["string"] }
   ]
@@ -22,6 +24,7 @@ const PROJECTS_JSON_SHAPE = `{
   "title": "string",
   "summary": "string",
   "skills": "string",
+  "fileName": "string",
   "experiences": [
     {
       "company": "string",
@@ -50,6 +53,7 @@ export function buildResumeSystemPrompt(_regenerate = false, layout: ResumeTempl
     "Technical output rules (not content style):",
     "- Use **double asterisks** around skill category labels (e.g. **Languages:**) and tech terms so Word can render bold.",
     "- Match the template job count, dates, project/bullet counts, and fixed project names from the user message.",
+    "- Set fileName when Instructions specify a resume file name (no .docx extension; substitute real values for placeholders).",
     "- Do not invent employers or projects.",
     "- All wording, tone, and formatting rules come ONLY from the user Instructions in the user message.",
     "- No markdown fences or commentary.",
@@ -111,6 +115,7 @@ export function buildResumeUserPrompt({
               title: previousContent.title,
               summary: previousContent.summary,
               skills: previousContent.skills,
+              fileName: previousContent.fileName,
               experiences: previousContent.experiences,
             },
             null,
@@ -136,10 +141,23 @@ export function buildResumeUserPrompt({
         ].join("\n")
       : "";
 
+  const fileNamePattern = instructions ? extractResumeFileNamePatternFromPrompt(instructions) : null;
+  const fileNameBlock = fileNamePattern
+    ? [
+        'Resume file name (required JSON field "fileName"):',
+        "Set fileName to this exact pattern with placeholders replaced using your generated title and top skills.",
+        "Do not include .docx. Example shape only:",
+        fileNamePattern,
+      ].join("\n")
+    : instructions
+      ? 'If Instructions specify a resume file name, set JSON field "fileName" to that resolved name (no .docx extension).'
+      : "";
+
   return [
     jobTitle && `Job title:\n${jobTitle}`,
     jobDescription && `Job description:\n${jobDescription}`,
     keywordBlock,
+    fileNameBlock,
     instructions
       ? `Instructions:\n${instructions}`
       : "Instructions: Write all resume content tailored to the job description.",
@@ -271,10 +289,13 @@ export function parseResumeJsonContent(
 
   const projectMode = isProjectLayout(layout);
 
+  const fileName = parsed.fileName?.trim() ? String(parsed.fileName).trim() : undefined;
+
   return {
     title: String(parsed.title).trim(),
     summary: String(parsed.summary).trim(),
     skills: String(parsed.skills).trim(),
+    ...(fileName ? { fileName } : {}),
     layout: projectMode ? "projects" : "bullets",
     experiences: parsed.experiences.map((e) =>
       normalizeResumeExperience(
@@ -345,6 +366,7 @@ export function mergeResumeWithTemplate(
     title: parsed.title || fallbackTitle,
     summary: parsed.summary,
     skills: parsed.skills,
+    ...(parsed.fileName?.trim() ? { fileName: parsed.fileName.trim() } : {}),
     layout: projectMode ? "projects" : "bullets",
     experiences: existingExperiences.map((existing, i) => {
       const generated = matchExperienceByCompany(parsed.experiences, existing, i, layout);

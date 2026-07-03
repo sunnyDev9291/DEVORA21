@@ -51,6 +51,8 @@ export async function POST(req: Request) {
         existingExperiences: prep.existingExperiences,
         templateLayout: prep.templateLayout,
         headerTitle: prep.headerTitle,
+        customPrompt: prep.customPrompt,
+        profileName: prep.profileName,
       };
 
       const pendingJob = {

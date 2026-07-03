@@ -7,6 +7,7 @@ import {
   buildResumeUserPrompt,
   finalizeResumeContent,
 } from "@/lib/resume-prompt";
+import { ensureResumeContentFileName } from "@/lib/resume-filename";
 import type {
   AtsScoreResult,
   GeneratedResumeContent,
@@ -28,6 +29,8 @@ export interface ResumeGenerateRequest {
   ruleKeepFeedback?: RuleKeepScoreResult;
   /** Draft content from the previous generation — paired with feedback fields. */
   previousContent?: GeneratedResumeContent;
+  /** Profile display name — used when AI omits fileName. */
+  profileName?: string;
 }
 
 export interface ResumeGeneratePrep {
@@ -36,12 +39,16 @@ export interface ResumeGeneratePrep {
   existingExperiences: ResumeExperience[];
   templateLayout: ResumeTemplateLayout;
   headerTitle: string;
+  customPrompt: string;
+  profileName?: string;
 }
 
 export interface ResumeMergeContext {
   existingExperiences: ResumeExperience[];
   templateLayout: ResumeTemplateLayout;
   headerTitle: string;
+  customPrompt?: string;
+  profileName?: string;
 }
 
 export type ResumeJobRecord =
@@ -132,17 +139,25 @@ export async function prepareResumeGeneration(
     existingExperiences,
     templateLayout,
     headerTitle: header.title,
+    customPrompt,
+    profileName: body.profileName?.trim() || undefined,
   };
 }
 
 export function finalizeResumeContentFromModel(
   modelText: string,
-  mergeContext: ResumeMergeContext
+  mergeContext: ResumeMergeContext,
+  templateName: string
 ): GeneratedResumeContent {
-  return finalizeResumeContent(
+  const content = finalizeResumeContent(
     modelText,
     mergeContext.existingExperiences,
     mergeContext.headerTitle,
     mergeContext.templateLayout
   );
+  return ensureResumeContentFileName(content, {
+    templateName,
+    customPrompt: mergeContext.customPrompt,
+    profileName: mergeContext.profileName,
+  });
 }

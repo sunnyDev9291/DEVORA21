@@ -23,6 +23,8 @@ export type GeneratedResumeContent = {
   title: string;
   summary: string;
   skills: string;
+  /** AI-resolved resume file base name (no .docx) — frozen after generation. */
+  fileName?: string;
   layout?: ResumeTemplateLayout;
   experiences: ResumeExperience[];
 };

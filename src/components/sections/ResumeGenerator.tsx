@@ -22,7 +22,11 @@ import type {
   AtsScoreResult,
   RuleKeepScoreResult,
 } from "@/lib/resume-types";
-import { buildExpectedResumeBaseName, extractResumeTitleHeadline } from "@/lib/resume-filename";
+import {
+  normalizeResumeFileBaseName,
+  buildExpectedResumeBaseName,
+  extractResumeTitleHeadline,
+} from "@/lib/resume-filename";
 import { loadStoredProfile, resolveUserNames } from "@/lib/user-profile";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
@@ -223,7 +227,11 @@ export default function ResumeGenerator({
   const canGenerate = !!userTemplate && !!form.jobTitle.trim() && !!form.companyName.trim();
 
   const suggestedResumeBaseName = useMemo(() => {
-    if (!content || !userTemplate) return "";
+    if (!content) return "";
+    if (content.fileName?.trim()) {
+      return normalizeResumeFileBaseName(content.fileName);
+    }
+    if (!userTemplate) return "";
     return buildExpectedResumeBaseName(
       userTemplate.fileName,
       content,
@@ -375,6 +383,7 @@ export default function ResumeGenerator({
                 ...form,
                 templateName: userTemplate!.fileName,
                 templateBase64: userTemplate!.templateBase64,
+                profileName: chatProfile?.fullName,
                 previousContent,
                 atsFeedback,
                 ruleKeepFeedback,
@@ -412,6 +421,7 @@ export default function ResumeGenerator({
             ...form,
             templateName: userTemplate.fileName,
             templateBase64: userTemplate.templateBase64,
+            profileName: chatProfile?.fullName,
           },
           {
             onPhase: (phase) => {

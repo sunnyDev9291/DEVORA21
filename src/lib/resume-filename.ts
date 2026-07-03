@@ -68,11 +68,27 @@ export function extractResumeFileNamePatternFromPrompt(customPrompt: string): st
 }
 
 function parseSkillTokens(skills: string): string[] {
-  return skills
-    .split(/[,;]/)
-    .map((s) => stripMarkdownBold(s))
-    .map((s) => s.replace(/[\\/:*?"<>|]/g, "").trim())
-    .filter(Boolean);
+  const tokens: string[] = [];
+
+  for (const line of skills.split(/\r?\n/)) {
+    const trimmed = stripMarkdownBold(line.trim());
+    if (!trimmed) continue;
+
+    const category = trimmed.match(/^(?:\*\*)?([^*:]+)(?:\*\*)?:\s*(.*)$/);
+    const valuePart = category ? category[2] : trimmed;
+
+    for (const raw of valuePart.split(/[,;]/)) {
+      const skill = stripMarkdownBold(raw)
+        .replace(/[\\/:*?"<>|]/g, "")
+        .trim();
+      if (!skill) continue;
+      if (!tokens.some((existing) => existing.toLowerCase() === skill.toLowerCase())) {
+        tokens.push(skill);
+      }
+    }
+  }
+
+  return tokens;
 }
 
 /** Up to three main skills — title pipe segments first, then skills field. */
@@ -87,7 +103,12 @@ export function extractMainSkillsFromContent(
 
   const collected: string[] = [];
   if (pipeParts.length > 1) {
-    collected.push(...pipeParts.slice(1));
+    for (const part of pipeParts.slice(1)) {
+      if (collected.length >= 3) break;
+      if (!collected.some((s) => s.toLowerCase() === part.toLowerCase())) {
+        collected.push(part);
+      }
+    }
   }
 
   for (const skill of parseSkillTokens(skills)) {
@@ -132,25 +153,22 @@ export function resolveResumeFileNameFromPrompt(
   return sanitizeResumeFileBaseName(resolved);
 }
 
-/** Skills from resume title pipes, or fall back to the skillsets field. */
+/** Up to three skills from resume title pipes, or from the skills field. */
 export function extractResumeTitleSkills(
   title: string,
-  skills: string
+  skills: string,
+  maxSkills = 3
 ): string {
   const pipeParts = title
     .split("|")
-    .map((s) => s.trim())
+    .map((s) => stripMarkdownBold(s.trim()))
     .filter(Boolean);
 
   const parts =
-    pipeParts.length > 1
-      ? pipeParts.slice(1)
-      : skills
-          .split(/[,;]/)
-          .map((s) => s.trim())
-          .filter(Boolean);
+    pipeParts.length > 1 ? pipeParts.slice(1) : parseSkillTokens(skills);
 
   return parts
+    .slice(0, maxSkills)
     .map((s) => s.replace(/[\\/:*?"<>|]/g, "").trim())
     .filter(Boolean)
     .join(",");
@@ -178,15 +196,54 @@ export function buildExpectedResumeBaseName(
   return skillPart ? `${name}_${role}_${skillPart}` : `${name}_${role}`;
 }
 
+/** Normalize AI or user-provided base name (strip .docx, unsafe chars). */
+export function normalizeResumeFileBaseName(name: string): string {
+  return sanitizeResumeFileBaseName(name.replace(/\.docx$/i, "").trim());
+}
+
+/** Prefer AI `fileName` on content; otherwise derive once from prompt/title/skills. */
+export function ensureResumeContentFileName(
+  content: GeneratedResumeContent,
+  options: {
+    templateName: string;
+    customPrompt?: string;
+    profileName?: string;
+  }
+): GeneratedResumeContent {
+  const fromAi = content.fileName?.trim();
+  if (fromAi) {
+    return { ...content, fileName: normalizeResumeFileBaseName(fromAi) };
+  }
+
+  const built = buildExpectedResumeBaseName(
+    options.templateName,
+    content,
+    options.customPrompt,
+    options.profileName
+  );
+  return built ? { ...content, fileName: built } : content;
+}
+
+export function resumeFileBaseNameFromContent(
+  content: Pick<GeneratedResumeContent, "title" | "skills" | "fileName">,
+  fallback: () => string
+): string {
+  const fromAi = content.fileName?.trim();
+  if (fromAi) return normalizeResumeFileBaseName(fromAi);
+  return fallback();
+}
+
 export function buildExpectedResumeFileName(
   templateName: string,
-  content: Pick<GeneratedResumeContent, "title" | "skills">,
+  content: Pick<GeneratedResumeContent, "title" | "skills" | "fileName">,
   customPrompt?: string,
   resumeFileBaseName?: string,
   profileName?: string
 ): string {
   const base = resumeFileBaseName?.trim()
-    ? sanitizeResumeFileBaseName(resumeFileBaseName)
-    : buildExpectedResumeBaseName(templateName, content, customPrompt, profileName);
+    ? normalizeResumeFileBaseName(resumeFileBaseName)
+    : content.fileName?.trim()
+      ? normalizeResumeFileBaseName(content.fileName)
+      : buildExpectedResumeBaseName(templateName, content, customPrompt, profileName);
   return base ? `${base}.docx` : "resume.docx";
 }

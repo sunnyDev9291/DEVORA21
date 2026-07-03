@@ -6,6 +6,7 @@ import {
   RESUME_MAX_TOKENS,
   type ResumeGenerationPhase,
 } from "@/lib/resume-prompt";
+import { ensureResumeContentFileName } from "@/lib/resume-filename";
 import type { ResumeGeneratePrep } from "@/lib/resume-generate-prep";
 
 function ndjson(data: Record<string, unknown>): string {
@@ -22,7 +23,8 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
       };
 
       try {
-        const { messages, existingExperiences, headerTitle, templateName, templateLayout } = prep;
+        const { messages, existingExperiences, headerTitle, templateName, templateLayout, customPrompt, profileName } =
+          prep;
 
         let thinking = "";
         let output = "";
@@ -62,11 +64,17 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
 
         let content;
         try {
-          content = finalizeResumeContent(modelText, existingExperiences, headerTitle, templateLayout);
+          content = ensureResumeContentFileName(
+            finalizeResumeContent(modelText, existingExperiences, headerTitle, templateLayout),
+            { templateName, customPrompt, profileName }
+          );
         } catch {
           enqueue({ type: "phase", phase: "finalizing" });
           modelText = await completeDeepSeek(messages, RESUME_MAX_TOKENS, { jsonObject: true });
-          content = finalizeResumeContent(modelText, existingExperiences, headerTitle, templateLayout);
+          content = ensureResumeContentFileName(
+            finalizeResumeContent(modelText, existingExperiences, headerTitle, templateLayout),
+            { templateName, customPrompt, profileName }
+          );
         }
         enqueue({ type: "done", content, templateName });
         controller.close();

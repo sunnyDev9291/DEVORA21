@@ -12,6 +12,7 @@ import {
   finalizeResumeContent,
   RESUME_MAX_TOKENS,
 } from "@/lib/resume-prompt";
+import { ensureResumeContentFileName } from "@/lib/resume-filename";
 
 
 
@@ -32,6 +33,8 @@ interface ResumeRequest {
   templateName?: string;
 
   templateBase64?: string;
+
+  profileName?: string;
 
 }
 
@@ -123,7 +126,10 @@ export async function POST(req: Request) {
       { jsonObject: true }
     );
 
-    const content = finalizeResumeContent(aiRaw, existingExperiences, header.title, templateLayout);
+    const content = ensureResumeContentFileName(
+      finalizeResumeContent(aiRaw, existingExperiences, header.title, templateLayout),
+      { templateName, customPrompt, profileName: body.profileName?.trim() }
+    );
 
 
 
