@@ -7,7 +7,7 @@ import {
   type ResumeGenerationPhase,
 } from "@/lib/resume-prompt";
 import { ensureResumeContentFileName } from "@/lib/resume-filename";
-import type { ResumeGeneratePrep } from "@/lib/resume-generate-prep";
+import { applyTemplateSkillsStyle, type ResumeGeneratePrep } from "@/lib/resume-generate-prep";
 
 function ndjson(data: Record<string, unknown>): string {
   return `${JSON.stringify(data)}\n`;
@@ -23,7 +23,7 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
       };
 
       try {
-        const { messages, existingExperiences, headerTitle, templateName, templateLayout, customPrompt, profileName } =
+        const { messages, existingExperiences, headerTitle, templateName, templateLayout, customPrompt, profileName, skillsSample } =
           prep;
 
         let thinking = "";
@@ -65,14 +65,20 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
         let content;
         try {
           content = ensureResumeContentFileName(
-            finalizeResumeContent(modelText, existingExperiences, headerTitle, templateLayout),
+            applyTemplateSkillsStyle(
+              finalizeResumeContent(modelText, existingExperiences, headerTitle, templateLayout),
+              skillsSample
+            ),
             { templateName, customPrompt, profileName }
           );
         } catch {
           enqueue({ type: "phase", phase: "finalizing" });
           modelText = await completeDeepSeek(messages, RESUME_MAX_TOKENS, { jsonObject: true });
           content = ensureResumeContentFileName(
-            finalizeResumeContent(modelText, existingExperiences, headerTitle, templateLayout),
+            applyTemplateSkillsStyle(
+              finalizeResumeContent(modelText, existingExperiences, headerTitle, templateLayout),
+              skillsSample
+            ),
             { templateName, customPrompt, profileName }
           );
         }

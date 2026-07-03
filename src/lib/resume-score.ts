@@ -48,15 +48,18 @@ export async function evaluateResumeScoreBundle({
   cachedRuleKeep?: RuleKeepScoreResult;
 }): Promise<ResumeScoreResult> {
   const prompt = customPrompt?.trim() ?? "";
+  const atsOnly = skipRuleKeep !== false;
 
   const [{ keywords, cacheKey }, ruleKeep] = await Promise.all([
     getCachedJobKeywords(
       jobTitle,
       companyName,
       jobDescription,
-      keywordsCacheKey ? { cacheKey: keywordsCacheKey } : undefined
+      keywordsCacheKey
+        ? { cacheKey: keywordsCacheKey, heuristicOnMiss: true }
+        : undefined
     ),
-    skipRuleKeep
+    atsOnly
       ? Promise.resolve(cachedRuleKeep ?? emptyRuleKeepScore())
       : prompt
         ? evaluateRuleKeepScore(content, prompt)
@@ -66,4 +69,14 @@ export async function evaluateResumeScoreBundle({
   const ats = evaluateAtsWithKeywords(content, jobTitle, keywords);
 
   return { ...buildUnifiedResumeScore(ats, ruleKeep), keywordsCacheKey: cacheKey };
+}
+
+/** Rule Keep audit only — run separately to avoid gateway timeouts on the main score route. */
+export async function evaluateRuleKeepScoreBundle(
+  content: GeneratedResumeContent,
+  customPrompt: string
+): Promise<RuleKeepScoreResult> {
+  const prompt = customPrompt.trim();
+  if (!prompt) return emptyRuleKeepScore();
+  return evaluateRuleKeepScore(content, prompt);
 }

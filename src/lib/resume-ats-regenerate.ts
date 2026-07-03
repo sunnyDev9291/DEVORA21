@@ -449,7 +449,10 @@ export async function pickBestRegenerateResult(
     ruleKeep: baselineRules,
   };
 
-  const aiEval = await evaluate(aiDraft);
+  const aiEval = await evaluate(aiDraft, {
+    atsOnly: true,
+    ruleKeep: baselineRules,
+  });
   if (!aiEval) {
     return {
       content: baseline,

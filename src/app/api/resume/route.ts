@@ -13,6 +13,7 @@ import {
   RESUME_MAX_TOKENS,
 } from "@/lib/resume-prompt";
 import { ensureResumeContentFileName } from "@/lib/resume-filename";
+import { applyTemplateSkillsStyle } from "@/lib/resume-generate-prep";
 
 
 
@@ -104,7 +105,7 @@ export async function POST(req: Request) {
 
 
 
-    const { experiences: existingExperiences, layout: templateLayout } =
+    const { experiences: existingExperiences, layout: templateLayout, skillsSample } =
       await getCachedTemplateParse(templateName, templateBuffer);
 
     const header = parseResumeHeaderFromDocxBuffer(templateBuffer);
@@ -115,6 +116,7 @@ export async function POST(req: Request) {
       customPrompt,
       existingExperiences,
       templateLayout,
+      templateSkillsSample: skillsSample,
     });
 
     const aiRaw = await completeDeepSeek(
@@ -127,7 +129,10 @@ export async function POST(req: Request) {
     );
 
     const content = ensureResumeContentFileName(
-      finalizeResumeContent(aiRaw, existingExperiences, header.title, templateLayout),
+      applyTemplateSkillsStyle(
+        finalizeResumeContent(aiRaw, existingExperiences, header.title, templateLayout),
+        skillsSample
+      ),
       { templateName, customPrompt, profileName: body.profileName?.trim() }
     );
 

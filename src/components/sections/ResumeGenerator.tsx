@@ -12,9 +12,10 @@ import { generateResume } from "@/lib/resume-generate-client";
 import { archiveResume } from "@/lib/resume-archive";
 import { resumeBuilderAccessDeniedMessage } from "@/lib/resume-access";
 import { maximizeDeterministicAtsScore, runIterativeRegeneration, type RegenerateEvaluation } from "@/lib/resume-ats-regenerate";
-import { RESUME_PASS_THRESHOLD } from "@/lib/resume-unified-score";
+import { buildUnifiedResumeScore, RESUME_PASS_THRESHOLD } from "@/lib/resume-unified-score";
 import { emptyRuleKeepScore } from "@/lib/resume-rule-keep";
 import type { ResumeScoreResult } from "@/lib/resume-score";
+import { buildJobKeywordsCacheKey } from "@/lib/resume-keywords-cache";
 import type {
   GeneratedResumeContent,
   ResumeBuildResponse,
@@ -112,6 +113,7 @@ export default function ResumeGenerator({
   const atsAbortRef = useRef<AbortController | null>(null);
   const generationRunRef = useRef(0);
   const keywordsCacheKeyRef = useRef<string | null>(null);
+  const ruleKeepAbortRef = useRef<AbortController | null>(null);
   const reviewRef = useRef<HTMLDivElement>(null);
   const successBannerRef = useRef<HTMLDivElement>(null);
   const promptPrefsLoadedRef = useRef(false);
@@ -253,17 +255,54 @@ export default function ResumeGenerator({
     }
   }, [generationKey]); // eslint-disable-line react-hooks/exhaustive-deps -- reset manual name on new generation
 
+  function syncKeywordsCacheKey() {
+    if (!form.jobTitle.trim() || !form.companyName.trim()) return;
+    keywordsCacheKeyRef.current = buildJobKeywordsCacheKey(
+      form.jobTitle,
+      form.companyName,
+      form.jobDescription
+    );
+  }
+
+  async function hydrateRuleKeepScores(
+    resumeContent: GeneratedResumeContent,
+    ats: AtsScoreResult
+  ) {
+    if (!form.customPrompt?.trim()) return;
+
+    ruleKeepAbortRef.current?.abort();
+    const controller = new AbortController();
+    ruleKeepAbortRef.current = controller;
+
+    try {
+      const res = await fetch("/api/resume/score/rules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: resumeContent,
+          customPrompt: form.customPrompt,
+        }),
+        signal: controller.signal,
+      });
+      const data = (await res.json()) as { ruleKeep?: RuleKeepScoreResult; error?: string };
+      if (!res.ok || !data.ruleKeep || controller.signal.aborted) return;
+      setResumeScore(buildUnifiedResumeScore(ats, data.ruleKeep));
+    } catch (err) {
+      if ((err as Error).name === "AbortError") return;
+    }
+  }
+
   async function evaluateResumeScores(
     resumeContent: GeneratedResumeContent,
     options?: {
       openModal?: boolean;
       preserveScore?: boolean;
       reuseKeywords?: boolean;
-      /** Fast ATS-only pass — skips slow rule-audit AI. */
-      atsOnly?: boolean;
       ruleKeepSnapshot?: RuleKeepScoreResult;
       /** Internal optimization pass — no loading UI or abort of in-flight scoring. */
       quiet?: boolean;
+      /** Await slow Rule Keep audit (manual recheck). Default: ATS first, rules in background. */
+      includeRuleKeep?: boolean;
     }
   ): Promise<RegenerateEvaluation | null> {
     const controller = new AbortController();
@@ -281,6 +320,8 @@ export default function ResumeGenerator({
       }
     }
 
+    syncKeywordsCacheKey();
+
     try {
       const res = await fetch("/api/resume/score", {
         method: "POST",
@@ -291,15 +332,9 @@ export default function ResumeGenerator({
           jobDescription: form.jobDescription,
           content: resumeContent,
           customPrompt: form.customPrompt,
-          ...(options?.reuseKeywords && keywordsCacheKeyRef.current
-            ? { keywordsCacheKey: keywordsCacheKeyRef.current }
-            : {}),
-          ...(options?.atsOnly
-            ? {
-                skipRuleKeep: true,
-                cachedRuleKeep: options.ruleKeepSnapshot ?? emptyRuleKeepScore(),
-              }
-            : {}),
+          skipRuleKeep: true,
+          ...(keywordsCacheKeyRef.current ? { keywordsCacheKey: keywordsCacheKeyRef.current } : {}),
+          cachedRuleKeep: options?.ruleKeepSnapshot ?? emptyRuleKeepScore(),
         }),
         signal: controller.signal,
       });
@@ -314,11 +349,41 @@ export default function ResumeGenerator({
         keywordsCacheKeyRef.current = data.keywordsCacheKey;
       }
 
-      const { keywordsCacheKey: _ignored, ...score } = data;
-      if (!options?.quiet) {
-        setResumeScore(score);
+      const { keywordsCacheKey: _ignored, ...atsScore } = data;
+
+      if (options?.includeRuleKeep && form.customPrompt?.trim()) {
+        const rulesRes = await fetch("/api/resume/score/rules", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: resumeContent,
+            customPrompt: form.customPrompt,
+          }),
+          signal: controller.signal,
+        });
+        const rulesData = (await rulesRes.json()) as {
+          ruleKeep?: RuleKeepScoreResult;
+          error?: string;
+        };
+        if (!rulesRes.ok || !rulesData.ruleKeep) {
+          throw new Error(rulesData?.error || `Rule scoring failed (${rulesRes.status}).`);
+        }
+        const merged = buildUnifiedResumeScore(atsScore.ats, rulesData.ruleKeep);
+        if (!options?.quiet) {
+          setResumeScore(merged);
+        }
+        return merged;
       }
-      return score;
+
+      if (!options?.quiet) {
+        setResumeScore(atsScore);
+      }
+
+      if (!options?.quiet && form.customPrompt?.trim()) {
+        void hydrateRuleKeepScores(resumeContent, atsScore.ats);
+      }
+
+      return atsScore;
     } catch (err) {
       if ((err as Error).name === "AbortError") return null;
       if (!options?.quiet) {
@@ -329,6 +394,32 @@ export default function ResumeGenerator({
     } finally {
       if (!options?.quiet && !controller.signal.aborted) {
         setScoreLoading(false);
+      }
+    }
+  }
+
+  async function scoreAfterFirstGenerate(resumeContent: GeneratedResumeContent) {
+    const scored = await evaluateResumeScores(resumeContent, { openModal: true });
+    if (!scored || scored.overall >= RESUME_PASS_THRESHOLD) return;
+
+    const boosted = await maximizeDeterministicAtsScore(
+      resumeContent,
+      (candidate, evalOpts) =>
+        evaluateResumeScores(candidate, {
+          openModal: false,
+          preserveScore: true,
+          quiet: true,
+          ruleKeepSnapshot: evalOpts?.ruleKeep ?? scored.ruleKeep,
+        }),
+      { initialEval: scored, maxRounds: 1 }
+    );
+
+    if (boosted.score.overall > scored.overall) {
+      setContent(boosted.content);
+      setResumeScore(boosted.score);
+      setGenerationKey((k) => k + 1);
+      if (form.customPrompt?.trim()) {
+        void hydrateRuleKeepScores(boosted.content, boosted.score.ats);
       }
     }
   }
@@ -366,6 +457,9 @@ export default function ResumeGenerator({
 
     const controller = new AbortController();
     abortRef.current = controller;
+    syncKeywordsCacheKey();
+
+    let firstGenerateContent: GeneratedResumeContent | null = null;
 
     try {
       setDocxBase64("");
@@ -399,11 +493,9 @@ export default function ResumeGenerator({
           },
           evaluate: (candidate, evalOpts) =>
             evaluateResumeScores(candidate, {
-              openModal: !evalOpts?.atsOnly,
+              openModal: false,
               preserveScore: true,
-              reuseKeywords: true,
-              quiet: Boolean(evalOpts?.atsOnly),
-              atsOnly: evalOpts?.atsOnly,
+              quiet: true,
               ruleKeepSnapshot:
                 evalOpts?.ruleKeep ?? options.ruleKeepFeedback ?? emptyRuleKeepScore(),
             }),
@@ -414,6 +506,9 @@ export default function ResumeGenerator({
         setRegenerateNotice(picked.notice);
         if (picked.content !== options.previousContent) {
           setGenerationKey((k) => k + 1);
+        }
+        if (form.customPrompt?.trim()) {
+          void hydrateRuleKeepScores(picked.content, picked.score.ats);
         }
       } else {
         const data = await generateResume(
@@ -434,27 +529,7 @@ export default function ResumeGenerator({
         if (generationRunRef.current !== runId) return;
         setContent(data.content);
         setGenerationKey((k) => k + 1);
-        const scored = await evaluateResumeScores(data.content);
-        if (scored && scored.overall < RESUME_PASS_THRESHOLD) {
-          const boosted = await maximizeDeterministicAtsScore(
-            data.content,
-            (candidate, evalOpts) =>
-              evaluateResumeScores(candidate, {
-                openModal: false,
-                preserveScore: true,
-                reuseKeywords: true,
-                quiet: Boolean(evalOpts?.atsOnly),
-                atsOnly: evalOpts?.atsOnly,
-                ruleKeepSnapshot: evalOpts?.ruleKeep ?? scored.ruleKeep,
-              }),
-            { initialEval: scored, maxRounds: 2 }
-          );
-          if (boosted.score.overall > (scored?.overall ?? 0)) {
-            setContent(boosted.content);
-            setResumeScore(boosted.score);
-            setGenerationKey((k) => k + 1);
-          }
-        }
+        firstGenerateContent = data.content;
       }
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
@@ -465,6 +540,10 @@ export default function ResumeGenerator({
         setGenerating(false);
         abortRef.current = null;
       }
+    }
+
+    if (generationRunRef.current === runId && firstGenerateContent) {
+      void scoreAfterFirstGenerate(firstGenerateContent);
     }
   }
 
@@ -901,7 +980,7 @@ export default function ResumeGenerator({
         score={resumeScore}
         loading={scoreLoading}
         error={scoreError}
-        onRecheck={content ? () => evaluateResumeScores(content) : undefined}
+        onRecheck={content ? () => evaluateResumeScores(content, { includeRuleKeep: true }) : undefined}
         recheckDisabled={scoreLoading || generating || applying || !content}
         content={content}
         onContentChange={setContent}

@@ -2,7 +2,7 @@ import { evaluateResumeScoreBundle } from "@/lib/resume-score";
 import type { GeneratedResumeContent, RuleKeepScoreResult } from "@/lib/resume-types";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 26;
 
 interface ScoreRequest {
   jobTitle?: string;
@@ -11,9 +11,8 @@ interface ScoreRequest {
   content?: GeneratedResumeContent;
   /** Reuse cached JD keywords — no AI keyword extraction. */
   keywordsCacheKey?: string;
-  /** Extra instructions — rules are checked one-by-one for Rule Keep score. */
   customPrompt?: string;
-  /** Fast path: score ATS only and reuse cached rule keep (avoids timeout on boost loops). */
+  /** ATS-only by default. Set false to run Rule Keep in the same request (slow). */
   skipRuleKeep?: boolean;
   cachedRuleKeep?: RuleKeepScoreResult;
 }
@@ -52,7 +51,7 @@ export async function POST(req: Request) {
       content,
       keywordsCacheKey,
       customPrompt: body.customPrompt,
-      skipRuleKeep: body.skipRuleKeep === true,
+      skipRuleKeep: body.skipRuleKeep !== false,
       cachedRuleKeep: body.cachedRuleKeep,
     });
 

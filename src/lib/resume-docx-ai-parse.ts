@@ -1,5 +1,5 @@
 import { completeDeepSeek } from "@/lib/deepseek-stream";
-import { detectResumeTemplateLayout } from "@/lib/resume-docx";
+import { detectResumeTemplateLayout, parseTemplateContentSamples } from "@/lib/resume-docx";
 import {
   parseProjectExperiencesFromDocxBuffer,
   validateParsedProjectExperiences,
@@ -60,6 +60,8 @@ Rules:
 export type TemplateParseResult = {
   layout: ResumeTemplateLayout;
   experiences: GeneratedResumeContent["experiences"];
+  /** Skillsets section from the template — used for style matching. */
+  skillsSample: string;
 };
 
 async function parseExperiencesWithAI(
@@ -143,14 +145,15 @@ function parseStructural(
 /** Structural Word parse first; AI fallback when validation fails. */
 export async function resolveTemplateFromDocx(buffer: Buffer): Promise<TemplateParseResult> {
   const layout = detectResumeTemplateLayout(buffer);
+  const skillsSample = parseTemplateContentSamples(buffer).skills;
   const structural = parseStructural(buffer, layout);
   const structuralCheck = validateByLayout(layout, structural);
-  if (structuralCheck.ok) return { layout, experiences: structural };
+  if (structuralCheck.ok) return { layout, experiences: structural, skillsSample };
 
   try {
     const aiParsed = await parseExperiencesWithAI(buffer, layout);
     const aiCheck = validateByLayout(layout, aiParsed);
-    if (aiCheck.ok) return { layout, experiences: aiParsed };
+    if (aiCheck.ok) return { layout, experiences: aiParsed, skillsSample };
     throw new Error(aiCheck.errors.join(" "));
   } catch (err) {
     const detail = err instanceof Error ? err.message : "AI parse failed";

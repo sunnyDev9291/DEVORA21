@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import type { GeneratedResumeContent, ResumeTemplateLayout } from "@/lib/resume-types";
 import { getCachedValue, setCachedValue } from "@/lib/server-cache";
+import { parseTemplateContentSamples } from "@/lib/resume-docx";
 import {
   resolveTemplateFromDocx,
   type TemplateParseResult,
@@ -18,7 +19,10 @@ export async function getCachedTemplateParse(
   const key = templateCacheKey(templateName, buffer);
   const cached = await getCachedValue<TemplateParseResult>(key);
   if (cached?.experiences?.length) {
-    return cached;
+    return {
+      ...cached,
+      skillsSample: cached.skillsSample ?? parseTemplateContentSamples(buffer).skills,
+    };
   }
 
   const parsed = await resolveTemplateFromDocx(buffer);

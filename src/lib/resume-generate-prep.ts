@@ -8,6 +8,7 @@ import {
   finalizeResumeContent,
 } from "@/lib/resume-prompt";
 import { ensureResumeContentFileName } from "@/lib/resume-filename";
+import { alignSkillsToTemplate } from "@/lib/resume-skills-style";
 import type {
   AtsScoreResult,
   GeneratedResumeContent,
@@ -41,6 +42,7 @@ export interface ResumeGeneratePrep {
   headerTitle: string;
   customPrompt: string;
   profileName?: string;
+  skillsSample: string;
 }
 
 export interface ResumeMergeContext {
@@ -49,6 +51,7 @@ export interface ResumeMergeContext {
   headerTitle: string;
   customPrompt?: string;
   profileName?: string;
+  skillsSample?: string;
 }
 
 export type ResumeJobRecord =
@@ -102,7 +105,7 @@ export async function prepareResumeGeneration(
     templateBase64: body.templateBase64,
   });
 
-  const { experiences: existingExperiences, layout: templateLayout } =
+  const { experiences: existingExperiences, layout: templateLayout, skillsSample } =
     await getCachedTemplateParse(templateName, templateBuffer);
   const header = parseResumeHeaderFromDocxBuffer(templateBuffer);
 
@@ -128,6 +131,7 @@ export async function prepareResumeGeneration(
     atsFeedback: isRegenerate ? body.atsFeedback : undefined,
     ruleKeepFeedback: isRegenerate ? body.ruleKeepFeedback : undefined,
     priorityKeywords,
+    templateSkillsSample: skillsSample,
   });
 
   return {
@@ -141,6 +145,7 @@ export async function prepareResumeGeneration(
     headerTitle: header.title,
     customPrompt,
     profileName: body.profileName?.trim() || undefined,
+    skillsSample,
   };
 }
 
@@ -155,9 +160,23 @@ export function finalizeResumeContentFromModel(
     mergeContext.headerTitle,
     mergeContext.templateLayout
   );
-  return ensureResumeContentFileName(content, {
+  const styled = applyTemplateSkillsStyle(content, mergeContext.skillsSample);
+  return ensureResumeContentFileName(styled, {
     templateName,
     customPrompt: mergeContext.customPrompt,
     profileName: mergeContext.profileName,
   });
 }
+
+function applyTemplateSkillsStyle(
+  content: GeneratedResumeContent,
+  skillsSample?: string
+): GeneratedResumeContent {
+  if (!skillsSample?.trim()) return content;
+  return {
+    ...content,
+    skills: alignSkillsToTemplate(content.skills, skillsSample),
+  };
+}
+
+export { applyTemplateSkillsStyle };

@@ -1,4 +1,5 @@
 import { isProjectLayout } from "@/lib/resume-experience-utils";
+import { alignSkillsToTemplate } from "@/lib/resume-skills-style";
 
 import type { GeneratedResumeContent, ResumeProject, ResumeTemplateLayout } from "@/lib/resume-types";
 
@@ -212,13 +213,18 @@ export function applyResumeContentPostProcess(
 
   templateExperiences: GeneratedResumeContent["experiences"],
 
-  layout: ResumeTemplateLayout = content.layout ?? "bullets"
+  layout: ResumeTemplateLayout = content.layout ?? "bullets",
+
+  templateSkillsSample?: string
 
 ): GeneratedResumeContent {
 
   const skillTerms = extractSkillTerms(content.skills);
   const projectMode = isProjectLayout(layout);
-  const skillsWithCategories = boldSkillCategoryLabels(content.skills);
+  const alignedSkills = templateSkillsSample?.trim()
+    ? alignSkillsToTemplate(content.skills, templateSkillsSample)
+    : content.skills;
+  const skillsWithCategories = boldSkillCategoryLabels(alignedSkills);
 
   return {
     ...content,

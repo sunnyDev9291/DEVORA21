@@ -179,8 +179,15 @@ export async function evaluateRuleKeepScore(
 
   const allChecks: Array<{ ruleIndex: number; passed: boolean; detail: string }> = [];
 
+  const batchOffsets: number[] = [];
   for (let offset = 0; offset < rules.length; offset += RULE_BATCH_SIZE) {
-    const batchChecks = await auditRuleBatch(rules, offset, content);
+    batchOffsets.push(offset);
+  }
+
+  const batchResults = await Promise.all(
+    batchOffsets.map((offset) => auditRuleBatch(rules, offset, content))
+  );
+  for (const batchChecks of batchResults) {
     allChecks.push(...batchChecks);
   }
 

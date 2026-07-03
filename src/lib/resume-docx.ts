@@ -281,11 +281,41 @@ function parseSkillCategoryLine(line: string): { label: string; value: string } 
   return null;
 }
 
-/** Skills section: bold category label only; values keep template plain styling. */
+function replaceRunText(runXml: string, text: string): string {
+  if (!/<w:t[\s\S]*?<\/w:t>/.test(runXml)) return runXml;
+  return runXml.replace(
+    /<w:t([^>]*)>[\s\S]*?<\/w:t>/,
+    `<w:t$1 xml:space="preserve">${escapeXml(text)}</w:t>`
+  );
+}
+
+/** Keep the template paragraph's bold/plain run styling when writing a category line. */
 function setSkillLineParagraphText(pXml: string, line: string): string {
   const trimmed = line.trim();
   const parsed = parseSkillCategoryLine(trimmed);
   if (!parsed) return setParagraphText(pXml, trimmed);
+
+  const runs = pXml.match(/<w:r[\s\S]*?<\/w:r>/g) ?? [];
+  if (runs.length >= 2) {
+    const { label, value } = parsed;
+    let labelAssigned = false;
+    const updatedRuns = runs.map((run) => {
+      if (!/<w:t[\s\S]*?<\/w:t>/.test(run)) return run;
+      const isBold = /<w:b(?:\s[^>]*)?\/>|<w:b(?:\s[^>]*)?>[^<]*<\/w:b>/.test(run);
+      if (isBold && !labelAssigned) {
+        labelAssigned = true;
+        return replaceRunText(run, `${label}:`);
+      }
+      if (!isBold && labelAssigned) {
+        return replaceRunText(run, value ? ` ${value}` : "");
+      }
+      return run;
+    });
+
+    const open = pXml.match(/^(<w:p[^>]*>)/)?.[1] ?? "<w:p>";
+    const pPr = pXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] ?? "";
+    return `${open}${pPr}${updatedRuns.join("")}</w:p>`;
+  }
 
   const open = pXml.match(/^(<w:p[^>]*>)/)?.[1] ?? "<w:p>";
   const pPr = pXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] ?? "";
@@ -629,7 +659,13 @@ function buildSkillsParagraphs(
     contentTemplates[contentTemplates.length - 1] ??
     paragraphs[skillsIndices[skillsIndices.length - 1]];
 
-  const skillParagraphs = lines.map((line, index) => {
+  const templateLineCount = contentTemplates.length || skillsIndices.length;
+  const normalizedLines =
+    templateLineCount > 0 && lines.length > templateLineCount
+      ? lines.slice(0, templateLineCount)
+      : lines;
+
+  const skillParagraphs = normalizedLines.map((line, index) => {
     const template = contentTemplates[index] ?? fallback;
     return setSkillLineParagraphText(template, line);
   });

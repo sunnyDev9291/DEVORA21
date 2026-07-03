@@ -123,13 +123,14 @@ export async function POST(req: Request) {
       templateBase64: body.templateBase64,
     });
 
-    const { experiences: templateExperiences, layout: templateLayout } =
+    const { experiences: templateExperiences, layout: templateLayout, skillsSample } =
       await getCachedTemplateParse(templateName, templateBuffer);
     const content = validateContent(body.content, templateLayout);
     const processedContent = applyResumeContentPostProcess(
       content,
       templateExperiences,
-      templateLayout
+      templateLayout,
+      skillsSample
     );
 
     const updatedBuffer = applyContentToDocx(templateBuffer, processedContent);

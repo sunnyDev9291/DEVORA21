@@ -1,5 +1,6 @@
 import { applyResumeContentPostProcess } from "@/lib/resume-content-postprocess";
 import { extractResumeFileNamePatternFromPrompt } from "@/lib/resume-filename";
+import { buildTemplateSkillsPromptBlock } from "@/lib/resume-skills-style";
 import { isProjectLayout, normalizeResumeExperience, normalizeResumeProject } from "@/lib/resume-experience-utils";
 import { buildRegenerationEvaluationBlock } from "@/lib/resume-regenerate-prompt";
 import { emptyRuleKeepScore } from "@/lib/resume-rule-keep";
@@ -52,7 +53,7 @@ export function buildResumeSystemPrompt(_regenerate = false, layout: ResumeTempl
     "",
     "Technical output rules (not content style):",
     "- Use **double asterisks** around skill category labels (e.g. **Languages:**) and tech terms so Word can render bold.",
-    "- Match the template job count, dates, project/bullet counts, and fixed project names from the user message.",
+    "- Match the template job count, dates, project/bullet counts, fixed project names, and skillsets line format from the user message.",
     "- Set fileName when Instructions specify a resume file name (no .docx extension; substitute real values for placeholders).",
     "- Do not invent employers or projects.",
     "- All wording, tone, and formatting rules come ONLY from the user Instructions in the user message.",
@@ -84,6 +85,7 @@ export function buildResumeUserPrompt({
   atsFeedback,
   ruleKeepFeedback,
   priorityKeywords,
+  templateSkillsSample,
 }: {
   jobTitle: string;
   jobDescription: string;
@@ -95,6 +97,8 @@ export function buildResumeUserPrompt({
   ruleKeepFeedback?: RuleKeepScoreResult;
   /** Must-have JD keywords — injected on first generation to improve initial ATS match. */
   priorityKeywords?: string[];
+  /** Skillsets section from the user's template DOCX. */
+  templateSkillsSample?: string;
 }): string {
   const layout = previousContent?.layout ?? templateLayout;
   const experiences = previousContent?.experiences ?? existingExperiences;
@@ -153,10 +157,13 @@ export function buildResumeUserPrompt({
       ? 'If Instructions specify a resume file name, set JSON field "fileName" to that resolved name (no .docx extension).'
       : "";
 
+  const templateSkillsBlock = buildTemplateSkillsPromptBlock(templateSkillsSample ?? "");
+
   return [
     jobTitle && `Job title:\n${jobTitle}`,
     jobDescription && `Job description:\n${jobDescription}`,
     keywordBlock,
+    templateSkillsBlock,
     fileNameBlock,
     instructions
       ? `Instructions:\n${instructions}`
