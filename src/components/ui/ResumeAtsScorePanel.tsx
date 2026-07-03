@@ -2,6 +2,7 @@
 
 import { ATS_PASS_THRESHOLD, ATS_SCORE_MAX } from "@/lib/resume-ats";
 import type { AtsScoreResult } from "@/lib/resume-types";
+import type { ResumeImproveTarget } from "@/lib/resume-improve-target";
 import { EvaluationHeroLoader } from "@/components/ui/ResumeStepLoader";
 
 export interface ResumeAtsScorePanelProps {
@@ -10,6 +11,10 @@ export interface ResumeAtsScorePanelProps {
   error: string;
   onRecheck?: () => void;
   recheckDisabled?: boolean;
+  /** When true, omit the hero ring and title — for use inside the unified score panel. */
+  embedded?: boolean;
+  onImprove?: (target: ResumeImproveTarget) => void;
+  improvingTargetId?: string;
 }
 
 function scoreColor(overall: number): string {
@@ -61,8 +66,11 @@ export function ResumeAtsScorePanel({
   error,
   onRecheck,
   recheckDisabled,
+  embedded = false,
+  onImprove,
+  improvingTargetId,
 }: ResumeAtsScorePanelProps) {
-  if (loading) {
+  if (loading && !embedded) {
     return (
       <EvaluationHeroLoader
         title="Evaluating ATS score…"
@@ -93,9 +101,9 @@ export function ResumeAtsScorePanel({
 
   if (!score) return null;
 
-  return (
-    <div className="overflow-hidden">
-      <div className="px-5 py-5 sm:px-6 sm:py-6">
+  const details = (
+    <>
+      {!embedded && (
         <div className="flex flex-col sm:flex-row gap-5 sm:gap-6">
           <ScoreRing overall={score.overall} />
 
@@ -115,34 +123,53 @@ export function ResumeAtsScorePanel({
             <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{score.summary}</p>
           </div>
         </div>
+      )}
 
-        <div className="mt-6 space-y-3">
-          {score.breakdown.map((item) => (
-            <div key={item.category}>
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{item.category}</span>
-                <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
-                  {item.score}/{item.maxScore}
-                </span>
-              </div>
-              <div className="h-1.5 rounded-full bg-slate-200 dark:bg-white/10 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all duration-700"
-                  style={{ width: `${item.maxScore ? (item.score / item.maxScore) * 100 : 0}%` }}
-                />
-              </div>
-              {item.notes && (
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">{item.notes}</p>
-              )}
+      <div className={embedded ? "space-y-3" : "mt-6 space-y-3"}>
+        {score.breakdown.map((item) => (
+          <div key={item.category}>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{item.category}</span>
+              <span className="flex items-center gap-2 text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                <span>{item.score}/{item.maxScore}</span>
+                {onImprove && item.score < item.maxScore && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onImprove({
+                        id: `ats-category:${item.category}`,
+                        kind: "ats-category",
+                        label: item.category,
+                        score: item.score,
+                        maxScore: item.maxScore,
+                        notes: item.notes,
+                      })
+                    }
+                    disabled={Boolean(improvingTargetId)}
+                    className="rounded-md border border-violet-500/30 px-2 py-0.5 text-[10px] font-semibold text-violet-700 hover:bg-violet-500/10 disabled:opacity-50 dark:text-violet-300"
+                  >
+                    {improvingTargetId === `ats-category:${item.category}` ? "Improving..." : "Improve"}
+                  </button>
+                )}
+              </span>
             </div>
-          ))}
-        </div>
+            <div className="h-1.5 rounded-full bg-slate-200 dark:bg-white/10 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all duration-700"
+                style={{ width: `${item.maxScore ? (item.score / item.maxScore) * 100 : 0}%` }}
+              />
+            </div>
+            {item.notes && (
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">{item.notes}</p>
+            )}
+          </div>
+        ))}
       </div>
 
       {(score.matchedKeywords.length > 0 || score.missingKeywords.length > 0) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-0 border-t border-violet-500/10">
+        <div className={`grid grid-cols-1 sm:grid-cols-2 gap-0 border-t border-violet-500/10 ${embedded ? "mt-4" : ""}`}>
           {score.matchedKeywords.length > 0 && (
-            <div className="px-5 py-4 sm:px-6 border-b sm:border-b-0 sm:border-r border-violet-500/10">
+            <div className={`${embedded ? "py-3" : "px-5 py-4 sm:px-6"} border-b sm:border-b-0 sm:border-r border-violet-500/10`}>
               <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-2">
                 Matched keywords
               </p>
@@ -159,10 +186,29 @@ export function ResumeAtsScorePanel({
             </div>
           )}
           {score.missingKeywords.length > 0 && (
-            <div className="px-5 py-4 sm:px-6">
-              <p className="text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400 mb-2">
-                Missing / weak keywords
-              </p>
+            <div className={embedded ? "py-3" : "px-5 py-4 sm:px-6"}>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                  Missing / weak keywords
+                </p>
+                {onImprove && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onImprove({
+                        id: "ats-keywords:missing",
+                        kind: "ats-keywords",
+                        label: "Missing / weak keywords",
+                        keywords: score.missingKeywords,
+                      })
+                    }
+                    disabled={Boolean(improvingTargetId)}
+                    className="rounded-md border border-amber-500/30 px-2 py-0.5 text-[10px] font-semibold text-amber-700 hover:bg-amber-500/10 disabled:opacity-50 dark:text-amber-300"
+                  >
+                    {improvingTargetId === "ats-keywords:missing" ? "Improving..." : "Improve"}
+                  </button>
+                )}
+              </div>
               <div className="flex flex-wrap gap-1.5">
                 {score.missingKeywords.map((kw) => (
                   <span
@@ -179,14 +225,31 @@ export function ResumeAtsScorePanel({
       )}
 
       {score.recommendations.length > 0 && (
-        <div className="px-5 py-4 sm:px-6 border-t border-violet-500/10 bg-slate-50/50 dark:bg-white/[0.02]">
+        <div className={`border-t border-violet-500/10 bg-slate-50/50 dark:bg-white/[0.02] ${embedded ? "py-3 mt-4" : "px-5 py-4 sm:px-6"}`}>
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-            Recommendations to improve score
+            ATS recommendations
           </p>
           <ol className="space-y-1.5 list-decimal list-inside">
             {score.recommendations.map((rec) => (
               <li key={rec} className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                {rec}
+                <span>{rec}</span>
+                {onImprove && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onImprove({
+                        id: `ats-recommendation:${rec}`,
+                        kind: "ats-recommendation",
+                        label: "ATS recommendation",
+                        recommendation: rec,
+                      })
+                    }
+                    disabled={Boolean(improvingTargetId)}
+                    className="ml-2 rounded-md border border-violet-500/30 px-2 py-0.5 text-[10px] font-semibold text-violet-700 hover:bg-violet-500/10 disabled:opacity-50 dark:text-violet-300"
+                  >
+                    {improvingTargetId === `ats-recommendation:${rec}` ? "Improving..." : "Improve"}
+                  </button>
+                )}
               </li>
             ))}
           </ol>
@@ -194,9 +257,9 @@ export function ResumeAtsScorePanel({
       )}
 
       {score.gates && score.gates.length > 0 && (
-        <div className="px-5 py-4 sm:px-6 border-t border-violet-500/10">
+        <div className={`border-t border-violet-500/10 ${embedded ? "py-3 mt-4" : "px-5 py-4 sm:px-6"}`}>
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-            Pass gates (all required for {ATS_PASS_THRESHOLD}% pass)
+            ATS pass gates (all required for {ATS_PASS_THRESHOLD}% pass)
           </p>
           <ul className="space-y-1.5">
             {score.gates.map((gate) => (
@@ -210,6 +273,24 @@ export function ResumeAtsScorePanel({
                 <span className="text-slate-600 dark:text-slate-300">
                   <span className="font-medium">{gate.name}</span>
                   <span className="text-slate-400 dark:text-slate-500"> — {gate.detail}</span>
+                  {onImprove && !gate.passed && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onImprove({
+                          id: `ats-gate:${gate.name}`,
+                          kind: "ats-gate",
+                          label: gate.name,
+                          detail: gate.detail,
+                          passed: gate.passed,
+                        })
+                      }
+                      disabled={Boolean(improvingTargetId)}
+                      className="ml-2 rounded-md border border-red-500/30 px-2 py-0.5 text-[10px] font-semibold text-red-700 hover:bg-red-500/10 disabled:opacity-50 dark:text-red-300"
+                    >
+                      {improvingTargetId === `ats-gate:${gate.name}` ? "Improving..." : "Improve"}
+                    </button>
+                  )}
                 </span>
               </li>
             ))}
@@ -221,6 +302,16 @@ export function ResumeAtsScorePanel({
           )}
         </div>
       )}
+    </>
+  );
+
+  if (embedded) {
+    return <div className="overflow-hidden">{details}</div>;
+  }
+
+  return (
+    <div className="overflow-hidden">
+      <div className="px-5 py-5 sm:px-6 sm:py-6">{details}</div>
     </div>
   );
 }

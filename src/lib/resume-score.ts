@@ -3,20 +3,17 @@ import {
   computeStrictAtsScore,
   toAtsScoreResult,
 } from "@/lib/resume-ats-algorithm";
-import { evaluateHumanToneScore } from "@/lib/resume-human-tone";
 import { getCachedJobKeywords } from "@/lib/resume-keywords-cache";
 import { emptyRuleKeepScore, evaluateRuleKeepScore } from "@/lib/resume-rule-keep";
+import { buildUnifiedResumeScore } from "@/lib/resume-unified-score";
 import type {
   AtsScoreResult,
   GeneratedResumeContent,
-  HumanToneScoreResult,
+  ResumeUnifiedScoreResult,
   RuleKeepScoreResult,
 } from "@/lib/resume-types";
 
-export type ResumeScoreResult = {
-  ats: AtsScoreResult;
-  humanTone: HumanToneScoreResult;
-  ruleKeep: RuleKeepScoreResult;
+export type ResumeScoreResult = ResumeUnifiedScoreResult & {
   keywordsCacheKey: string;
 };
 
@@ -37,6 +34,8 @@ export async function evaluateResumeScoreBundle({
   content,
   keywordsCacheKey,
   customPrompt,
+  skipRuleKeep,
+  cachedRuleKeep,
 }: {
   jobTitle: string;
   companyName: string;
@@ -44,21 +43,40 @@ export async function evaluateResumeScoreBundle({
   content: GeneratedResumeContent;
   keywordsCacheKey?: string;
   customPrompt?: string;
+  /** Skip slow rule-audit AI — reuse {@link cachedRuleKeep} (ATS-only optimization passes). */
+  skipRuleKeep?: boolean;
+  cachedRuleKeep?: RuleKeepScoreResult;
 }): Promise<ResumeScoreResult> {
   const prompt = customPrompt?.trim() ?? "";
+  const atsOnly = skipRuleKeep !== false;
 
   const [{ keywords, cacheKey }, ruleKeep] = await Promise.all([
     getCachedJobKeywords(
       jobTitle,
       companyName,
       jobDescription,
-      keywordsCacheKey ? { cacheKey: keywordsCacheKey } : undefined
+      keywordsCacheKey
+        ? { cacheKey: keywordsCacheKey, heuristicOnMiss: true }
+        : undefined
     ),
-    prompt ? evaluateRuleKeepScore(content, prompt) : Promise.resolve(emptyRuleKeepScore()),
+    atsOnly
+      ? Promise.resolve(cachedRuleKeep ?? emptyRuleKeepScore())
+      : prompt
+        ? evaluateRuleKeepScore(content, prompt)
+        : Promise.resolve(emptyRuleKeepScore()),
   ]);
 
   const ats = evaluateAtsWithKeywords(content, jobTitle, keywords);
-  const humanTone = evaluateHumanToneScore(content);
 
-  return { ats, humanTone, ruleKeep, keywordsCacheKey: cacheKey };
+  return { ...buildUnifiedResumeScore(ats, ruleKeep), keywordsCacheKey: cacheKey };
+}
+
+/** Rule Keep audit only — run separately to avoid gateway timeouts on the main score route. */
+export async function evaluateRuleKeepScoreBundle(
+  content: GeneratedResumeContent,
+  customPrompt: string
+): Promise<RuleKeepScoreResult> {
+  const prompt = customPrompt.trim();
+  if (!prompt) return emptyRuleKeepScore();
+  return evaluateRuleKeepScore(content, prompt);
 }

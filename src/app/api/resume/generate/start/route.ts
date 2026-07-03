@@ -49,7 +49,12 @@ export async function POST(req: Request) {
       const expiresAt = createJobExpiryTimestamp(createdAt);
       const mergeContext = {
         existingExperiences: prep.existingExperiences,
+        templateLayout: prep.templateLayout,
         headerTitle: prep.headerTitle,
+        customPrompt: prep.customPrompt,
+        profileName: prep.profileName,
+        skillsSample: prep.skillsSample,
+        regenerateBaseline: prep.regenerateBaseline,
       };
 
       const pendingJob = {

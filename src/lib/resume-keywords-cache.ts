@@ -65,7 +65,7 @@ export async function getCachedJobKeywords(
   jobTitle: string,
   companyName: string,
   jobDescription: string,
-  options?: { cacheKey?: string }
+  options?: { cacheKey?: string; /** Skip AI when cache key was supplied but blob is missing. */ heuristicOnMiss?: boolean }
 ): Promise<{ keywords: JobKeywords; cacheKey: string }> {
   const cacheKey =
     options?.cacheKey ??
@@ -75,6 +75,11 @@ export async function getCachedJobKeywords(
   const cached = await getCachedValue<JobKeywords>(blobKey);
   if (cached) {
     return { keywords: cached, cacheKey };
+  }
+
+  if (options?.heuristicOnMiss && options.cacheKey) {
+    const keywords = extractHeuristicKeywords(jobTitle, jobDescription, companyName);
+    return { keywords, cacheKey };
   }
 
   const keywords = await extractJobKeywordsWithAi(jobTitle, jobDescription, companyName);

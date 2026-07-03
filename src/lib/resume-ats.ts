@@ -1,4 +1,5 @@
 import type { GeneratedResumeContent, AtsScoreResult } from "@/lib/resume-types";
+import { flattenContentExperienceText } from "@/lib/resume-experience-utils";
 import { getCachedJobKeywords } from "@/lib/resume-keywords-cache";
 import { evaluateAtsWithKeywords } from "@/lib/resume-score";
 
@@ -37,7 +38,7 @@ export function resumeContentToPlainText(content: GeneratedResumeContent): strin
     content.skills,
     ...content.experiences.flatMap((exp) => [
       `${exp.role} ${exp.company} ${exp.dates}`,
-      ...exp.bullets,
     ]),
+    ...flattenContentExperienceText(content),
   ].join("\n");
 }

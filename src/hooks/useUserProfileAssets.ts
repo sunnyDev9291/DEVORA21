@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { profileApi, type UserPromptAsset, type UserResumeTemplateAsset } from "@/lib/profile-api";
 import { resumeBuilderAccessDeniedMessage } from "@/lib/resume-access";
+import {
+  fingerprintTemplateBase64,
+  PROFILE_TEMPLATE_UPDATED_EVENT,
+} from "@/lib/template-fingerprint";
 import { loadStoredProfile, saveStoredProfile } from "@/lib/user-profile";
 
 export function useUserProfileAssets(userId: string | undefined) {
@@ -12,20 +16,17 @@ export function useUserProfileAssets(userId: string | undefined) {
   const [error, setError] = useState("");
 
   const hydrateFromLocal = useCallback(() => {
-    if (!userId) return;
+    if (!userId) return null;
     const stored = loadStoredProfile(userId);
     if (stored.resumeTemplateFileName && stored.resumeTemplateBase64) {
-      setTemplate({
+      const next = {
         fileName: stored.resumeTemplateFileName,
         templateBase64: stored.resumeTemplateBase64,
-      });
+      };
+      setTemplate(next);
+      return next;
     }
-    if (stored.customPrompt) {
-      setPrompt({
-        content: stored.customPrompt,
-        fileName: stored.promptFileName,
-      });
-    }
+    return null;
   }, [userId]);
 
   const refresh = useCallback(async () => {
@@ -38,10 +39,27 @@ export function useUserProfileAssets(userId: string | undefined) {
 
     setLoading(true);
     setError("");
-    hydrateFromLocal();
 
-    let templateLoaded = false;
-    let promptLoaded = false;
+    const stored = userId ? loadStoredProfile(userId) : null;
+    const localTemplate =
+      stored?.resumeTemplateFileName && stored.resumeTemplateBase64
+        ? {
+            fileName: stored.resumeTemplateFileName,
+            templateBase64: stored.resumeTemplateBase64,
+          }
+        : null;
+    if (localTemplate) {
+      setTemplate(localTemplate);
+    }
+    if (stored?.customPrompt) {
+      setPrompt({
+        content: stored.customPrompt,
+        fileName: stored.promptFileName,
+      });
+    }
+
+    let templateLoaded = Boolean(localTemplate);
+    let promptLoaded = Boolean(stored?.customPrompt);
 
     try {
       const remoteTemplate = await profileApi.fetchResumeTemplate().catch((err) => {
@@ -51,11 +69,24 @@ export function useUserProfileAssets(userId: string | undefined) {
         return null;
       });
       if (remoteTemplate) {
-        setTemplate(remoteTemplate);
-        saveStoredProfile(userId, {
-          resumeTemplateFileName: remoteTemplate.fileName,
-          resumeTemplateBase64: remoteTemplate.templateBase64,
-        });
+        const localFingerprint = fingerprintTemplateBase64(localTemplate?.templateBase64);
+        const remoteFingerprint = fingerprintTemplateBase64(remoteTemplate.templateBase64);
+        const localIsNewerUpload = Boolean(
+          stored?.resumeTemplateUpdatedAt &&
+            localFingerprint &&
+            localFingerprint !== remoteFingerprint
+        );
+
+        if (localIsNewerUpload && localTemplate) {
+          setTemplate(localTemplate);
+        } else {
+          setTemplate(remoteTemplate);
+          saveStoredProfile(userId, {
+            resumeTemplateFileName: remoteTemplate.fileName,
+            resumeTemplateBase64: remoteTemplate.templateBase64,
+            resumeTemplateUpdatedAt: undefined,
+          });
+        }
         templateLoaded = true;
       }
     } catch (err) {
@@ -78,6 +109,12 @@ export function useUserProfileAssets(userId: string | undefined) {
 
     if (!templateLoaded && !promptLoaded) {
       hydrateFromLocal();
+      if (stored?.customPrompt) {
+        setPrompt({
+          content: stored.customPrompt,
+          fileName: stored.promptFileName,
+        });
+      }
     }
 
     setLoading(false);
@@ -86,6 +123,21 @@ export function useUserProfileAssets(userId: string | undefined) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!userId || typeof window === "undefined") return;
+
+    const syncTemplateFromStorage = () => {
+      hydrateFromLocal();
+    };
+
+    window.addEventListener(PROFILE_TEMPLATE_UPDATED_EVENT, syncTemplateFromStorage);
+    window.addEventListener("storage", syncTemplateFromStorage);
+    return () => {
+      window.removeEventListener(PROFILE_TEMPLATE_UPDATED_EVENT, syncTemplateFromStorage);
+      window.removeEventListener("storage", syncTemplateFromStorage);
+    };
+  }, [userId, hydrateFromLocal]);
 
   return { template, prompt, loading, error, refresh, setTemplate, setPrompt };
 }

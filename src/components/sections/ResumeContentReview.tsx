@@ -1,15 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { GeneratedResumeContent, ResumeExperience } from "@/lib/resume-types";
+import type { GeneratedResumeContent, ResumeExperience, ResumeProject } from "@/lib/resume-types";
+import { isProjectLayout } from "@/lib/resume-experience-utils";
 import { sanitizeResumeFileBaseName } from "@/lib/resume-filename";
 import MarkdownBoldTextarea from "@/components/ui/MarkdownBoldTextarea";
+import ResumeRegenerateDiffPanel from "@/components/ui/ResumeRegenerateDiffPanel";
+import type { FeedbackResolution, ResumeFieldChange } from "@/lib/resume-content-diff";
 
 interface ResumeContentReviewProps {
   content: GeneratedResumeContent;
   onChange: (content: GeneratedResumeContent) => void;
   onApply: () => void;
-  onRegenerate: () => void;
   applying: boolean;
   generating?: boolean;
   templateName: string;
@@ -21,7 +23,18 @@ interface ResumeContentReviewProps {
   generationKey: number;
   /** Compact layout for side-by-side use inside the ATS modal */
   embedded?: boolean;
+  regenerateChanges?: ResumeFieldChange[];
+  regenerateFeedback?: FeedbackResolution | null;
+  changedFieldIds?: Set<string>;
+  onDismissRegenerateDiff?: () => void;
 }
+
+const PROJECT_FIELDS: Array<{ key: keyof ResumeProject; label: string }> = [
+  { key: "businessChallenge", label: "Business Challenge" },
+  { key: "assignedResponsibility", label: "Assigned Responsibility" },
+  { key: "action", label: "Action" },
+  { key: "result", label: "Result" },
+];
 
 const fieldClass =
   "w-full bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.10] hover:border-slate-300 dark:hover:border-white/[0.16] focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-4 py-3 text-slate-900 dark:text-white text-sm outline-none transition-all";
@@ -30,7 +43,6 @@ export default function ResumeContentReview({
   content,
   onChange,
   onApply,
-  onRegenerate,
   applying,
   generating = false,
   templateName,
@@ -41,6 +53,10 @@ export default function ResumeContentReview({
   applyLabel = "Apply to Resume",
   generationKey,
   embedded = false,
+  regenerateChanges = [],
+  regenerateFeedback = null,
+  changedFieldIds,
+  onDismissRegenerateDiff,
 }: ResumeContentReviewProps) {
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [expandedExp, setExpandedExp] = useState<number | null>(null);
@@ -72,7 +88,28 @@ export default function ResumeContentReview({
     updateExperience(expIndex, { bullets });
   }
 
-  const bulletFieldClass = `${fieldClass} flex-1 min-h-[72px] resize-y leading-relaxed`;
+  function updateProject(expIndex: number, projectIndex: number, patch: Partial<ResumeProject>) {
+    const projects = (content.experiences[expIndex].projects ?? []).map((project, i) =>
+      i === projectIndex ? { ...project, ...patch } : project
+    );
+    updateExperience(expIndex, { projects });
+  }
+
+  const projectMode = isProjectLayout(content.layout);
+
+  const experienceValid = (exp: ResumeExperience) => {
+    if (!exp.company.trim() || !exp.role.trim()) return false;
+    if (projectMode || exp.projects?.length) {
+      return (exp.projects ?? []).some(
+        (p) =>
+          p.name.trim() &&
+          (p.businessChallenge.trim() || p.action.trim()) &&
+          p.assignedResponsibility.trim() &&
+          p.result.trim()
+      );
+    }
+    return exp.bullets.some((b) => b.trim());
+  };
 
   const canApply =
     reviewConfirmed &&
@@ -80,47 +117,44 @@ export default function ResumeContentReview({
     content.title.trim() &&
     content.summary.trim() &&
     content.skills.trim() &&
-    content.experiences.every((exp) => exp.company.trim() && exp.role.trim() && exp.bullets.some((b) => b.trim()));
+    content.experiences.every(experienceValid);
 
   const showNameReset =
     Boolean(onResumeFileBaseNameReset) &&
     suggestedResumeBaseName &&
     resumeFileBaseName.trim() !== suggestedResumeBaseName.trim();
 
+  const changedRing = (fieldId: string) =>
+    changedFieldIds?.has(fieldId)
+      ? "ring-2 ring-amber-400/50 border-amber-400/40"
+      : "";
+  const skillLineCount = content.skills.split(/\n+/).filter((line) => line.trim()).length;
+  const summaryWordCount = content.summary.split(/\s+/).filter(Boolean).length;
+
   return (
     <div className={embedded ? "space-y-4" : "space-y-6"}>
+      {(regenerateChanges.length > 0 || regenerateFeedback) && (
+        <ResumeRegenerateDiffPanel
+          changes={regenerateChanges}
+          feedback={regenerateFeedback}
+          onDismiss={onDismissRegenerateDiff}
+        />
+      )}
+
       <div className={`grid grid-cols-1 ${embedded ? "" : "lg:grid-cols-2"} gap-4`}>
         <div className={`${embedded ? "" : "lg:col-span-2"} rounded-2xl border border-blue-500/20 bg-blue-500/[0.05] px-5 py-4`}>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
             <div>
               <p className="text-sm font-semibold text-blue-800 dark:text-blue-200">AI draft — edit before applying</p>
               <p className="text-xs text-blue-700/70 dark:text-blue-300/70 mt-0.5">
-                Template: <span className="font-medium">{templateName}</span> · Nothing saves until you confirm below
+                Template: <span className="font-medium">{templateName}</span>
+                {regenerateChanges.length > 0 ? (
+                  <span> · {regenerateChanges.length} change{regenerateChanges.length === 1 ? "" : "s"} from last draft</span>
+                ) : (
+                  <span> · Nothing saves until you confirm below</span>
+                )}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={onRegenerate}
-              disabled={applying || generating}
-              className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-white/[0.05] transition-all disabled:opacity-50"
-            >
-              {generating ? (
-                <>
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Regenerating…
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  Regenerate
-                </>
-              )}
-            </button>
           </div>
         </div>
 
@@ -133,25 +167,35 @@ export default function ResumeContentReview({
             id="resume-title"
             value={content.title}
             onChange={(title) => onChange({ ...content, title })}
-            className={fieldClass}
+            className={`${fieldClass} ${changedRing("title")}`}
             rows={1}
             placeholder="Senior Engineer | React | AWS"
           />
         </div>
 
-        <div className="rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.02] p-5">
+        <div className={`${embedded ? "" : "lg:col-span-2"} rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.02] p-5`}>
           <label htmlFor="resume-skills" className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white mb-2">
             <span className="w-6 h-6 rounded-md bg-violet-500/15 text-violet-600 dark:text-violet-400 flex items-center justify-center text-xs">S</span>
             Skillsets
           </label>
+          <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+            <span>{skillLineCount} categor{skillLineCount === 1 ? "y" : "ies"}</span>
+            <span>One category per line works best</span>
+            <span>Use Ctrl/Cmd+B for bold</span>
+          </div>
           <MarkdownBoldTextarea
             id="resume-skills"
             value={content.skills}
             onChange={(skills) => onChange({ ...content, skills })}
-            className={`${fieldClass} min-h-[88px]`}
-            rows={3}
-            placeholder="Comma-separated skills"
+            className={`${fieldClass} min-h-[180px] resize-y leading-relaxed ${changedRing("skills")}`}
+            rows={6}
+            minHeight={180}
+            maxHeight={420}
+            placeholder={"Languages: C#, TypeScript\nBackend: .NET, ASP.NET Core, Web APIs\nFrontend: React"}
           />
+          <p className="mt-2 text-xs text-slate-400">
+            Keep categories JD-specific. Template styling is applied later.
+          </p>
         </div>
 
         <div className={`${embedded ? "" : "lg:col-span-2"} rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.02] p-5`}>
@@ -159,12 +203,20 @@ export default function ResumeContentReview({
             <span className="w-6 h-6 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-xs">∑</span>
             Summary
           </label>
+          <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+            <span>{summaryWordCount} words</span>
+            <span>2-4 focused sentences is easiest to review</span>
+            <span>Use Ctrl/Cmd+B for key terms</span>
+          </div>
           <MarkdownBoldTextarea
             id="resume-summary"
             value={content.summary}
             onChange={(summary) => onChange({ ...content, summary })}
-            className={`${fieldClass} min-h-[120px] leading-relaxed`}
-            rows={4}
+            className={`${fieldClass} min-h-[220px] resize-y text-[15px] leading-7 ${changedRing("summary")}`}
+            rows={8}
+            minHeight={220}
+            maxHeight={520}
+            placeholder="Write a concise, JD-targeted professional summary..."
           />
         </div>
       </div>
@@ -194,7 +246,9 @@ export default function ResumeContentReview({
                         : exp.company || "Company"}
                     </p>
                     <p className="text-xs text-slate-500 mt-0.5 truncate">
-                      {exp.bullets.length} bullet{exp.bullets.length === 1 ? "" : "s"}
+                      {projectMode || exp.projects?.length
+                        ? `${exp.projects?.length ?? 0} project${(exp.projects?.length ?? 0) === 1 ? "" : "s"}`
+                        : `${exp.bullets.length} bullet${exp.bullets.length === 1 ? "" : "s"}`}
                     </p>
                   </div>
                   <svg className={`w-5 h-5 text-slate-400 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -209,64 +263,109 @@ export default function ResumeContentReview({
                         <p className="text-sm font-semibold text-slate-900 dark:text-white px-1">{exp.company}</p>
                       </div>
                       <div>
-                        <p className="text-xs font-medium text-slate-500 mb-1">Role <span className="font-normal text-slate-400">(from template)</span></p>
-                        <p className="text-sm text-slate-800 dark:text-slate-200 px-1">{exp.role}</p>
+                        <p className="text-xs font-medium text-slate-500 mb-1">
+                          Role / title <span className="font-normal text-slate-400">(tailored to JD)</span>
+                        </p>
+                        <MarkdownBoldTextarea
+                          id={`exp-${index}-role`}
+                          value={exp.role}
+                          onChange={(role) => updateExperience(index, { role })}
+                          className={`${fieldClass} ${changedRing(`exp-${index}-role`)}`}
+                          rows={1}
+                          placeholder="Senior Java Engineer | Spring Boot"
+                          aria-label={`Role for ${exp.company}`}
+                        />
                       </div>
                       <div>
                         <p className="text-xs font-medium text-slate-500 mb-1">Dates <span className="font-normal text-slate-400">(from template)</span></p>
                         <p className="text-sm text-slate-800 dark:text-slate-200 px-1">{exp.dates}</p>
                       </div>
                     </div>
-                    <div>
-                      <p className="text-xs font-medium text-slate-500 mb-2">
-                        Achievement bullets <span className="font-normal text-slate-400">({exp.bullets.length})</span>
-                      </p>
-                      <div className="space-y-3">
-                        {exp.bullets.map((bullet, bulletIndex) => (
+                    {projectMode || exp.projects?.length ? (
+                      <div className="space-y-4">
+                        {(exp.projects ?? []).map((project, projectIndex) => (
                           <div
-                            key={`exp-${index}-bullet-${bulletIndex}`}
-                            className="flex gap-3 items-start rounded-xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/80 dark:bg-white/[0.02] p-3"
+                            key={`exp-${index}-project-${projectIndex}`}
+                            className="rounded-xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/80 dark:bg-white/[0.02] p-4 space-y-3"
                           >
-                            <span
-                              className="shrink-0 w-7 h-7 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300 flex items-center justify-center text-xs font-bold mt-1.5"
-                              aria-hidden="true"
-                            >
-                              {bulletIndex + 1}
-                            </span>
-                            <MarkdownBoldTextarea
-                              id={`exp-${index}-bullet-${bulletIndex}`}
-                              value={bullet}
-                              onChange={(value) => updateBullet(index, bulletIndex, value)}
-                              className={bulletFieldClass}
-                              rows={2}
-                              placeholder={`Achievement ${bulletIndex + 1}`}
-                              aria-label={`Bullet ${bulletIndex + 1} for ${exp.company}`}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => copyBullet(`${index}-${bulletIndex}`, bullet)}
-                              title="Copy bullet"
-                              className="shrink-0 mt-1.5 w-7 h-7 rounded-lg flex items-center justify-center border transition-all
-                                border-slate-200 dark:border-white/[0.10]
-                                bg-white dark:bg-white/[0.04]
-                                text-slate-400 hover:text-blue-600 dark:hover:text-blue-400
-                                hover:border-blue-400 dark:hover:border-blue-500
-                                hover:bg-blue-50 dark:hover:bg-blue-500/10"
-                            >
-                              {copiedKey === `${index}-${bulletIndex}` ? (
-                                <svg className="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                                </svg>
-                              ) : (
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                </svg>
-                              )}
-                            </button>
+                            <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+                              Project {projectIndex + 1}
+                            </p>
+                            <div>
+                              <p className="text-xs font-medium text-slate-500 mb-1">
+                                Project name <span className="font-normal text-slate-400">(from template)</span>
+                              </p>
+                              <p className="text-sm font-semibold text-slate-900 dark:text-white px-1">{project.name}</p>
+                            </div>
+                            {PROJECT_FIELDS.map(({ key, label }) => (
+                              <div key={`${index}-${projectIndex}-${key}`}>
+                                <p className="text-xs font-medium text-slate-500 mb-1">{label}</p>
+                                <MarkdownBoldTextarea
+                                  id={`exp-${index}-project-${projectIndex}-${key}`}
+                                  value={project[key]}
+                                  onChange={(value) => updateProject(index, projectIndex, { [key]: value })}
+                                  className={`${fieldClass} min-h-[72px] resize-y leading-relaxed ${changedRing(`exp-${index}-proj-${projectIndex}-${key}`)}`}
+                                  rows={2}
+                                  placeholder={label}
+                                  aria-label={`${label} for project ${projectIndex + 1} at ${exp.company}`}
+                                />
+                              </div>
+                            ))}
                           </div>
                         ))}
                       </div>
-                    </div>
+                    ) : (
+                      <div>
+                        <p className="text-xs font-medium text-slate-500 mb-2">
+                          Achievement bullets <span className="font-normal text-slate-400">({exp.bullets.length})</span>
+                        </p>
+                        <div className="space-y-3">
+                          {exp.bullets.map((bullet, bulletIndex) => (
+                            <div
+                              key={`exp-${index}-bullet-${bulletIndex}`}
+                              className="flex gap-3 items-start rounded-xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/80 dark:bg-white/[0.02] p-3"
+                            >
+                              <span
+                                className="shrink-0 w-7 h-7 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300 flex items-center justify-center text-xs font-bold mt-1.5"
+                                aria-hidden="true"
+                              >
+                                {bulletIndex + 1}
+                              </span>
+                              <MarkdownBoldTextarea
+                                id={`exp-${index}-bullet-${bulletIndex}`}
+                                value={bullet}
+                                onChange={(value) => updateBullet(index, bulletIndex, value)}
+                                className={`${fieldClass} flex-1 min-h-[72px] resize-y leading-relaxed ${changedRing(`exp-${index}-bullet-${bulletIndex}`)}`}
+                                rows={2}
+                                placeholder={`Achievement ${bulletIndex + 1}`}
+                                aria-label={`Bullet ${bulletIndex + 1} for ${exp.company}`}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => copyBullet(`${index}-${bulletIndex}`, bullet)}
+                                title="Copy bullet"
+                                className="shrink-0 mt-1.5 w-7 h-7 rounded-lg flex items-center justify-center border transition-all
+                                  border-slate-200 dark:border-white/[0.10]
+                                  bg-white dark:bg-white/[0.04]
+                                  text-slate-400 hover:text-blue-600 dark:hover:text-blue-400
+                                  hover:border-blue-400 dark:hover:border-blue-500
+                                  hover:bg-blue-50 dark:hover:bg-blue-500/10"
+                              >
+                                {copiedKey === `${index}-${bulletIndex}` ? (
+                                  <svg className="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                ) : (
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                  </svg>
+                                )}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -278,6 +377,11 @@ export default function ResumeContentReview({
       <div className="rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.02] px-5 py-4">
         <label htmlFor="resume-file-name" className="text-xs font-medium text-slate-500 mb-2 block">
           Expected resume name
+          {content.fileName?.trim() ? (
+            <span className="font-normal text-slate-400"> · from AI</span>
+          ) : content.title.trim() ? (
+            <span className="font-normal text-slate-400"> · from resume title</span>
+          ) : null}
         </label>
         <input
           id="resume-file-name"

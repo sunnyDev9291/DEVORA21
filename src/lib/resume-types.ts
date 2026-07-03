@@ -1,14 +1,31 @@
+export type ResumeProject = {
+  name: string;
+  businessChallenge: string;
+  assignedResponsibility: string;
+  action: string;
+  result: string;
+};
+
+/** bullets = achievement lines; projects = BAR-style project blocks per company */
+export type ResumeTemplateLayout = "bullets" | "projects";
+
 export type ResumeExperience = {
   company: string;
   role: string;
   dates: string;
+  /** Used when layout is bullets (or as ATS fallback text). */
   bullets: string[];
+  /** Used when layout is projects — one block per project under the company. */
+  projects?: ResumeProject[];
 };
 
 export type GeneratedResumeContent = {
   title: string;
   summary: string;
   skills: string;
+  /** AI-resolved resume file base name (no .docx) — frozen after generation. */
+  fileName?: string;
+  layout?: ResumeTemplateLayout;
   experiences: ResumeExperience[];
 };
 
@@ -56,18 +73,6 @@ export type AtsScoreResult = {
   algorithm?: string;
 };
 
-export type HumanToneScoreResult = {
-  overall: number;
-  passed: boolean;
-  breakdown: AtsScoreBreakdown[];
-  recommendations: string[];
-  summary: string;
-  gates?: AtsPassGate[];
-  /** Detected AI-style buzzwords or phrases. */
-  flags?: string[];
-  algorithm?: string;
-};
-
 export type RuleKeepCheck = {
   id: string;
   rule: string;
@@ -85,4 +90,14 @@ export type RuleKeepScoreResult = {
   recommendations: string[];
   summary: string;
   algorithm?: string;
+};
+
+/** Combined ATS + Rule Keep score shown as one resume quality metric. */
+export type ResumeUnifiedScoreResult = {
+  overall: number;
+  passed: boolean;
+  summary: string;
+  ats: AtsScoreResult;
+  ruleKeep: RuleKeepScoreResult;
+  hasRules: boolean;
 };

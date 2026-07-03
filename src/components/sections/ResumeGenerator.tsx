@@ -11,11 +11,47 @@ import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
 import { generateResume } from "@/lib/resume-generate-client";
 import { archiveResume } from "@/lib/resume-archive";
 import { resumeBuilderAccessDeniedMessage } from "@/lib/resume-access";
-import { pickBestRegenerateResult, type RegenerateEvaluation } from "@/lib/resume-ats-regenerate";
+import { buildUnifiedResumeScore } from "@/lib/resume-unified-score";
 import { emptyRuleKeepScore } from "@/lib/resume-rule-keep";
-import type { GeneratedResumeContent, ResumeBuildResponse, AtsScoreResult, HumanToneScoreResult, RuleKeepScoreResult } from "@/lib/resume-types";
-import { buildExpectedResumeBaseName } from "@/lib/resume-filename";
+import type { ResumeScoreResult } from "@/lib/resume-score";
+import { buildJobKeywordsCacheKey } from "@/lib/resume-keywords-cache";
+import type {
+  GeneratedResumeContent,
+  ResumeBuildResponse,
+  ResumeUnifiedScoreResult,
+  AtsScoreResult,
+  RuleKeepScoreResult,
+} from "@/lib/resume-types";
+import {
+  computeFeedbackResolution,
+  computeResumeContentDiff,
+  type FeedbackResolution,
+  type ResumeFieldChange,
+} from "@/lib/resume-content-diff";
+import {
+  buildImproveTargetInstruction,
+  type ResumeImproveTarget,
+} from "@/lib/resume-improve-target";
+import {
+  normalizeResumeFileBaseName,
+  buildExpectedResumeBaseName,
+  extractResumeTitleHeadline,
+} from "@/lib/resume-filename";
 import { loadStoredProfile, resolveUserNames } from "@/lib/user-profile";
+
+function resolveActiveUserTemplate(
+  userId: string | undefined,
+  userTemplate: UserResumeTemplateAsset | null
+): UserResumeTemplateAsset | null {
+  const stored = userId ? loadStoredProfile(userId) : null;
+  if (stored?.resumeTemplateBase64?.trim() && stored.resumeTemplateFileName?.trim()) {
+    return {
+      fileName: stored.resumeTemplateFileName,
+      templateBase64: stored.resumeTemplateBase64,
+    };
+  }
+  return userTemplate;
+}
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
 const ResumeAtsScoreModal = dynamic(() => import("@/components/ui/ResumeAtsScoreModal"));
@@ -31,6 +67,9 @@ type Step = "form" | "review" | "done";
 
 const inputClass =
   "w-full bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.10] hover:border-slate-300 dark:hover:border-white/[0.16] focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-4 py-3.5 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 dark:placeholder:text-slate-600 outline-none transition-all";
+
+// Keep the scoring code available, but disable the feature in the UI and network flow.
+const RESUME_SCORE_SYSTEM_ENABLED = false;
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const PDF_MIME = "application/pdf";
@@ -68,6 +107,11 @@ export default function ResumeGenerator({
     };
   }, [user]);
 
+  const activeTemplate = useMemo(
+    () => resolveActiveUserTemplate(user?.id, userTemplate),
+    [user?.id, userTemplate?.fileName, userTemplate?.templateBase64]
+  );
+
   const [form, setForm] = useState({
     jobTitle: "",
     companyName: "",
@@ -90,22 +134,21 @@ export default function ResumeGenerator({
   const [resumeFileBaseName, setResumeFileBaseName] = useState("");
   const [resumeNameTouched, setResumeNameTouched] = useState(false);
   const [streamPhase, setStreamPhase] = useState<ResumeGenerationPhase>("starting");
-  const [atsScore, setAtsScore] = useState<AtsScoreResult | null>(null);
-  const [atsLoading, setAtsLoading] = useState(false);
-  const [atsError, setAtsError] = useState("");
-  const [humanToneScore, setHumanToneScore] = useState<HumanToneScoreResult | null>(null);
-  const [humanToneLoading, setHumanToneLoading] = useState(false);
-  const [humanToneError, setHumanToneError] = useState("");
-  const [ruleKeepScore, setRuleKeepScore] = useState<RuleKeepScoreResult | null>(null);
-  const [ruleKeepLoading, setRuleKeepLoading] = useState(false);
-  const [ruleKeepError, setRuleKeepError] = useState("");
+  const [resumeScore, setResumeScore] = useState<ResumeUnifiedScoreResult | null>(null);
+  const [scoreLoading, setScoreLoading] = useState(false);
+  const [scoreError, setScoreError] = useState("");
   const [regenerateNotice, setRegenerateNotice] = useState("");
+  const [regenerateBaseline, setRegenerateBaseline] = useState<GeneratedResumeContent | null>(null);
+  const [regenerateBaselineScore, setRegenerateBaselineScore] = useState<ResumeUnifiedScoreResult | null>(null);
+  const [improvingTargetId, setImprovingTargetId] = useState("");
+  const [improvingTargetLabel, setImprovingTargetLabel] = useState("");
   const [atsModalOpen, setAtsModalOpen] = useState(false);
   const [resumeChatOpen, setResumeChatOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const atsAbortRef = useRef<AbortController | null>(null);
   const generationRunRef = useRef(0);
   const keywordsCacheKeyRef = useRef<string | null>(null);
+  const ruleKeepAbortRef = useRef<AbortController | null>(null);
   const reviewRef = useRef<HTMLDivElement>(null);
   const successBannerRef = useRef<HTMLDivElement>(null);
   const promptPrefsLoadedRef = useRef(false);
@@ -116,7 +159,7 @@ export default function ResumeGenerator({
   }, [userPrompt]);
 
   const wizardStep = resolveResumeWizardStep({
-    hasTemplate: !!userTemplate,
+    hasTemplate: !!activeTemplate,
     generating,
     hasDraft: !!content,
     isDone: step === "done",
@@ -138,23 +181,24 @@ export default function ResumeGenerator({
     setPreviewOpen(false);
     setError("");
     setStreamPhase("starting");
-    setAtsScore(null);
-    setAtsError("");
-    setHumanToneScore(null);
-    setHumanToneError("");
-    setRuleKeepScore(null);
-    setRuleKeepError("");
+    setResumeScore(null);
+    setScoreError("");
+    setRegenerateNotice("");
+    setRegenerateBaseline(null);
+    setRegenerateBaselineScore(null);
+    setImprovingTargetId("");
+    setImprovingTargetLabel("");
     setAtsModalOpen(false);
     setResumeChatOpen(false);
     setResumeFileBaseName("");
     setResumeNameTouched(false);
     keywordsCacheKeyRef.current = null;
-  }, [userTemplate?.fileName, userTemplate?.templateBase64]);
+  }, [activeTemplate?.fileName, activeTemplate?.templateBase64]);
 
   useEffect(() => {
     keywordsCacheKeyRef.current = null;
-    setRuleKeepScore(null);
-    setRuleKeepError("");
+    setResumeScore(null);
+    setScoreError("");
   }, [form.jobTitle, form.companyName, form.jobDescription, form.customPrompt]);
 
   useEffect(() => () => {
@@ -201,13 +245,13 @@ export default function ResumeGenerator({
     setPreviewOpen(false);
     setError("");
     setStreamPhase("starting");
-    setAtsScore(null);
-    setAtsError("");
-    setHumanToneScore(null);
-    setHumanToneError("");
-    setRuleKeepScore(null);
-    setRuleKeepError("");
+    setResumeScore(null);
+    setScoreError("");
     setRegenerateNotice("");
+    setRegenerateBaseline(null);
+    setRegenerateBaselineScore(null);
+    setImprovingTargetId("");
+    setImprovingTargetLabel("");
     setAtsModalOpen(false);
     setResumeChatOpen(false);
     setResumeFileBaseName("");
@@ -226,18 +270,21 @@ export default function ResumeGenerator({
 
   const targetJobLabel = `${form.jobTitle.trim()} at ${form.companyName.trim()}`;
 
-  const canGenerate = !!userTemplate && !!form.jobTitle.trim() && !!form.companyName.trim();
+  const canGenerate = !!activeTemplate && !!form.jobTitle.trim() && !!form.companyName.trim();
 
   const suggestedResumeBaseName = useMemo(() => {
-    if (!content || !userTemplate) return "";
+    if (!content) return "";
+    if (content.fileName?.trim()) {
+      return normalizeResumeFileBaseName(content.fileName);
+    }
+    if (!activeTemplate) return "";
     return buildExpectedResumeBaseName(
-      userTemplate.fileName,
-      form.jobTitle,
+      activeTemplate.fileName,
       content,
       form.customPrompt,
       chatProfile?.fullName
     );
-  }, [content, userTemplate, form.jobTitle, form.customPrompt, chatProfile?.fullName]);
+  }, [content, activeTemplate, form.customPrompt, chatProfile?.fullName]);
 
   useEffect(() => {
     if (!resumeNameTouched && suggestedResumeBaseName) {
@@ -252,32 +299,75 @@ export default function ResumeGenerator({
     }
   }, [generationKey]); // eslint-disable-line react-hooks/exhaustive-deps -- reset manual name on new generation
 
+  function syncKeywordsCacheKey() {
+    if (!form.jobTitle.trim() || !form.companyName.trim()) return;
+    keywordsCacheKeyRef.current = buildJobKeywordsCacheKey(
+      form.jobTitle,
+      form.companyName,
+      form.jobDescription
+    );
+  }
+
+  async function hydrateRuleKeepScores(
+    resumeContent: GeneratedResumeContent,
+    ats: AtsScoreResult
+  ) {
+    if (!RESUME_SCORE_SYSTEM_ENABLED) return;
+    if (!form.customPrompt?.trim()) return;
+
+    ruleKeepAbortRef.current?.abort();
+    const controller = new AbortController();
+    ruleKeepAbortRef.current = controller;
+
+    try {
+      const res = await fetch("/api/resume/score/rules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: resumeContent,
+          customPrompt: form.customPrompt,
+        }),
+        signal: controller.signal,
+      });
+      const data = (await res.json()) as { ruleKeep?: RuleKeepScoreResult; error?: string };
+      if (!res.ok || !data.ruleKeep || controller.signal.aborted) return;
+      setResumeScore(buildUnifiedResumeScore(ats, data.ruleKeep));
+    } catch (err) {
+      if ((err as Error).name === "AbortError") return;
+    }
+  }
+
   async function evaluateResumeScores(
     resumeContent: GeneratedResumeContent,
     options?: {
       openModal?: boolean;
       preserveScore?: boolean;
       reuseKeywords?: boolean;
+      ruleKeepSnapshot?: RuleKeepScoreResult;
+      /** Internal optimization pass — no loading UI or abort of in-flight scoring. */
+      quiet?: boolean;
+      /** Await slow Rule Keep audit (manual recheck). Default: ATS first, rules in background. */
+      includeRuleKeep?: boolean;
     }
-  ): Promise<RegenerateEvaluation | null> {
-    atsAbortRef.current?.abort();
-    const controller = new AbortController();
-    atsAbortRef.current = controller;
+  ): Promise<ResumeUnifiedScoreResult | null> {
+    if (!RESUME_SCORE_SYSTEM_ENABLED) return null;
 
-    setAtsLoading(true);
-    setHumanToneLoading(true);
-    setRuleKeepLoading(true);
-    setAtsError("");
-    setHumanToneError("");
-    setRuleKeepError("");
-    if (!options?.preserveScore) {
-      setAtsScore(null);
-      setHumanToneScore(null);
-      setRuleKeepScore(null);
+    const controller = new AbortController();
+
+    if (!options?.quiet) {
+      atsAbortRef.current?.abort();
+      atsAbortRef.current = controller;
+      setScoreLoading(true);
+      setScoreError("");
+      if (!options?.preserveScore) {
+        setResumeScore(null);
+      }
+      if (options?.openModal !== false) {
+        setAtsModalOpen(true);
+      }
     }
-    if (options?.openModal !== false) {
-      setAtsModalOpen(true);
-    }
+
+    syncKeywordsCacheKey();
 
     try {
       const res = await fetch("/api/resume/score", {
@@ -289,18 +379,14 @@ export default function ResumeGenerator({
           jobDescription: form.jobDescription,
           content: resumeContent,
           customPrompt: form.customPrompt,
-          ...(options?.reuseKeywords && keywordsCacheKeyRef.current
-            ? { keywordsCacheKey: keywordsCacheKeyRef.current }
-            : {}),
+          skipRuleKeep: true,
+          ...(keywordsCacheKeyRef.current ? { keywordsCacheKey: keywordsCacheKeyRef.current } : {}),
+          cachedRuleKeep: options?.ruleKeepSnapshot ?? emptyRuleKeepScore(),
         }),
         signal: controller.signal,
       });
 
-      const data = (await res.json()) as RegenerateEvaluation & {
-        ruleKeep?: RuleKeepScoreResult;
-        keywordsCacheKey?: string;
-        error?: string;
-      };
+      const data = (await res.json()) as ResumeScoreResult & { error?: string };
 
       if (!res.ok) {
         throw new Error(data?.error || `Scoring failed (${res.status}).`);
@@ -310,37 +396,59 @@ export default function ResumeGenerator({
         keywordsCacheKeyRef.current = data.keywordsCacheKey;
       }
 
-      setAtsScore(data.ats);
-      setHumanToneScore(data.humanTone);
-      const ruleKeep = data.ruleKeep ?? emptyRuleKeepScore();
-      setRuleKeepScore(ruleKeep);
-      return { ats: data.ats, humanTone: data.humanTone, ruleKeep };
+      const { keywordsCacheKey: _ignored, ...atsScore } = data;
+
+      if (options?.includeRuleKeep && form.customPrompt?.trim()) {
+        const rulesRes = await fetch("/api/resume/score/rules", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: resumeContent,
+            customPrompt: form.customPrompt,
+          }),
+          signal: controller.signal,
+        });
+        const rulesData = (await rulesRes.json()) as {
+          ruleKeep?: RuleKeepScoreResult;
+          error?: string;
+        };
+        if (!rulesRes.ok || !rulesData.ruleKeep) {
+          throw new Error(rulesData?.error || `Rule scoring failed (${rulesRes.status}).`);
+        }
+        const merged = buildUnifiedResumeScore(atsScore.ats, rulesData.ruleKeep);
+        if (!options?.quiet) {
+          setResumeScore(merged);
+        }
+        return merged;
+      }
+
+      if (!options?.quiet) {
+        setResumeScore(atsScore);
+      }
+
+      if (!options?.quiet && form.customPrompt?.trim()) {
+        void hydrateRuleKeepScores(resumeContent, atsScore.ats);
+      }
+
+      return atsScore;
     } catch (err) {
       if ((err as Error).name === "AbortError") return null;
-      const message = (err as Error).message || "Could not evaluate resume scores.";
-      setAtsError(message);
+      if (!options?.quiet) {
+        const message = (err as Error).message || "Could not evaluate resume scores.";
+        setScoreError(message);
+      }
       return null;
     } finally {
-      if (!controller.signal.aborted) {
-        setAtsLoading(false);
-        setHumanToneLoading(false);
-        setRuleKeepLoading(false);
+      if (!options?.quiet && !controller.signal.aborted) {
+        setScoreLoading(false);
       }
     }
   }
 
-  async function handleGenerate(
-    e?: React.FormEvent,
-    options?: {
-      atsFeedback?: AtsScoreResult;
-      humanToneFeedback?: HumanToneScoreResult;
-      ruleKeepFeedback?: RuleKeepScoreResult;
-      previousContent?: GeneratedResumeContent;
-    }
-  ) {
+  async function handleGenerate(e?: React.FormEvent) {
     e?.preventDefault();
     if (applying) return;
-    if (!userTemplate) {
+    if (!activeTemplate) {
       setError("Upload a resume template on your dashboard before generating.");
       return;
     }
@@ -358,22 +466,30 @@ export default function ResumeGenerator({
     const runId = ++generationRunRef.current;
     setError("");
     setRegenerateNotice("");
+    setRegenerateBaseline(null);
+    setRegenerateBaselineScore(null);
+    setImprovingTargetId("");
+    setImprovingTargetLabel("");
     setGenerating(true);
     setStreamPhase("starting");
 
     const controller = new AbortController();
     abortRef.current = controller;
+    syncKeywordsCacheKey();
+
+    const templateForRequest = resolveActiveUserTemplate(user?.id, activeTemplate)!;
 
     try {
+      setDocxBase64("");
+      setFileName("");
+      setStep("review");
+
       const data = await generateResume(
         {
           ...form,
-          templateName: userTemplate.fileName,
-          templateBase64: userTemplate.templateBase64,
-          ...(options?.atsFeedback && { atsFeedback: options.atsFeedback }),
-          ...(options?.humanToneFeedback && { humanToneFeedback: options.humanToneFeedback }),
-          ...(options?.ruleKeepFeedback && { ruleKeepFeedback: options.ruleKeepFeedback }),
-          ...(options?.previousContent && { previousContent: options.previousContent }),
+          templateName: templateForRequest.fileName,
+          templateBase64: templateForRequest.templateBase64,
+          profileName: chatProfile?.fullName,
         },
         {
           onPhase: (phase) => {
@@ -384,38 +500,8 @@ export default function ResumeGenerator({
       );
 
       if (generationRunRef.current !== runId) return;
-
-      setDocxBase64("");
-      setFileName("");
-      setStep("review");
-
-      if (options?.previousContent && options?.atsFeedback && options?.humanToneFeedback) {
-        const picked = await pickBestRegenerateResult(
-          options.previousContent,
-          options.atsFeedback,
-          options.humanToneFeedback,
-          options.ruleKeepFeedback ?? emptyRuleKeepScore(),
-          data.content,
-          (candidate) =>
-            evaluateResumeScores(candidate, {
-              openModal: true,
-              preserveScore: true,
-              reuseKeywords: true,
-            })
-        );
-        setContent(picked.content);
-        setAtsScore(picked.score);
-        setHumanToneScore(picked.humanToneScore);
-        setRuleKeepScore(picked.ruleKeepScore);
-        setRegenerateNotice(picked.notice);
-        if (picked.content !== options.previousContent) {
-          setGenerationKey((k) => k + 1);
-        }
-      } else {
-        setContent(data.content);
-        setGenerationKey((k) => k + 1);
-        await evaluateResumeScores(data.content);
-      }
+      setContent(data.content);
+      setGenerationKey((k) => k + 1);
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       if (generationRunRef.current !== runId) return;
@@ -428,35 +514,89 @@ export default function ResumeGenerator({
     }
   }
 
-  async function handleRegenerate() {
-    if (applying || generating || !content) return;
+  async function handleImproveScoreItem(target: ResumeImproveTarget) {
+    if (!RESUME_SCORE_SYSTEM_ENABLED) return;
+    if (applying || generating || !content || !activeTemplate) return;
 
     setAtsModalOpen(true);
-    setAtsError("");
-    setHumanToneError("");
-    setRuleKeepError("");
+    setScoreError("");
 
-    let scores =
-      atsScore && humanToneScore
-        ? {
-            ats: atsScore,
-            humanTone: humanToneScore,
-            ruleKeep: ruleKeepScore ?? emptyRuleKeepScore(),
-          }
-        : null;
+    const baselineScore =
+      resumeScore ?? (await evaluateResumeScores(content, { openModal: true, includeRuleKeep: true }));
+    if (!baselineScore) return;
 
-    if (!scores) {
-      const evaluated = await evaluateResumeScores(content, { openModal: true });
-      if (!evaluated) return;
-      scores = evaluated;
+    abortRef.current?.abort();
+    const runId = ++generationRunRef.current;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setGenerating(true);
+    setImprovingTargetId(target.id);
+    setImprovingTargetLabel(target.label);
+    setStreamPhase("starting");
+    setError("");
+    setRegenerateNotice("");
+    setRegenerateBaseline(content);
+    setRegenerateBaselineScore(baselineScore);
+
+    const templateForRequest = resolveActiveUserTemplate(user?.id, activeTemplate)!;
+    const targetedInstruction = buildImproveTargetInstruction(target);
+
+    try {
+      const draft = await generateResume(
+        {
+          ...form,
+          customPrompt: [form.customPrompt.trim(), targetedInstruction].filter(Boolean).join("\n\n"),
+          templateName: templateForRequest.fileName,
+          templateBase64: templateForRequest.templateBase64,
+          profileName: chatProfile?.fullName,
+          previousContent: content,
+          atsFeedback: baselineScore.ats,
+          ruleKeepFeedback: baselineScore.ruleKeep,
+        },
+        {
+          onPhase: (phase) => {
+            if (generationRunRef.current === runId) setStreamPhase(phase);
+          },
+          signal: controller.signal,
+        }
+      );
+
+      if (generationRunRef.current !== runId) return;
+
+      const nextScore = await evaluateResumeScores(draft.content, {
+        openModal: false,
+        preserveScore: true,
+        quiet: true,
+        includeRuleKeep: target.kind === "custom-rule",
+        ruleKeepSnapshot: target.kind === "custom-rule" ? undefined : baselineScore.ruleKeep,
+      });
+
+      if (generationRunRef.current !== runId) return;
+      setContent(draft.content);
+      setGenerationKey((k) => k + 1);
+      if (nextScore) {
+        setResumeScore(nextScore);
+        setRegenerateNotice(
+          `Improved "${target.label}" — overall ${baselineScore.overall}→${nextScore.overall}/100.`
+        );
+        if (target.kind !== "custom-rule" && form.customPrompt?.trim()) {
+          void hydrateRuleKeepScores(draft.content, nextScore.ats);
+        }
+      } else {
+        setRegenerateNotice(`Updated "${target.label}". Re-check the score to verify the improvement.`);
+      }
+    } catch (err) {
+      if ((err as Error).name === "AbortError") return;
+      if (generationRunRef.current !== runId) return;
+      setError((err as Error).message || "Could not improve this score item.");
+    } finally {
+      if (generationRunRef.current === runId) {
+        setGenerating(false);
+        setImprovingTargetId("");
+        setImprovingTargetLabel("");
+        abortRef.current = null;
+      }
     }
-
-    await handleGenerate(undefined, {
-      atsFeedback: scores.ats,
-      humanToneFeedback: scores.humanTone,
-      ruleKeepFeedback: scores.ruleKeep,
-      previousContent: content,
-    });
   }
 
   async function submitResumeArchive(docxB64: string, resumeFileName: string) {
@@ -468,7 +608,7 @@ export default function ResumeGenerator({
     try {
       const docxBlob = base64ToBlob(docxB64, DOCX_MIME);
       const result = await archiveResume({
-        jobTitle: form.jobTitle,
+        jobTitle: content ? extractResumeTitleHeadline(content.title) : form.jobTitle,
         companyName: form.companyName,
         jobDescription: form.jobDescription,
         docxBlob,
@@ -484,7 +624,10 @@ export default function ResumeGenerator({
   }
 
   async function handleApply() {
-    if (!content || !userTemplate || applying) return;
+    if (!content || !activeTemplate || applying) return;
+    const templateForRequest = resolveActiveUserTemplate(user?.id, activeTemplate);
+    if (!templateForRequest) return;
+
     setError("");
     setApplying(true);
     try {
@@ -492,9 +635,8 @@ export default function ResumeGenerator({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          templateName: userTemplate.fileName,
-          templateBase64: userTemplate.templateBase64,
-          jobTitle: form.jobTitle,
+          templateName: templateForRequest.fileName,
+          templateBase64: templateForRequest.templateBase64,
           customPrompt: form.customPrompt,
           content,
           resumeFileBaseName: resumeFileBaseName.trim(),
@@ -510,7 +652,9 @@ export default function ResumeGenerator({
       setArchiveError("");
       setPreviewOpen(true);
       void import("@/components/ui/PdfPreviewModal");
-      void evaluateResumeScores(content, { openModal: false });
+      if (RESUME_SCORE_SYSTEM_ENABLED) {
+        void evaluateResumeScores(content, { openModal: false });
+      }
       void submitResumeArchive(data.docxBase64, data.fileName);
     } catch (err) {
       setError((err as Error).message || "Failed to update resume.");
@@ -537,13 +681,13 @@ export default function ResumeGenerator({
     setArchiveError("");
     setPreviewOpen(false);
     setError("");
-    setAtsScore(null);
-    setAtsError("");
-    setHumanToneScore(null);
-    setHumanToneError("");
-    setRuleKeepScore(null);
-    setRuleKeepError("");
+    setResumeScore(null);
+    setScoreError("");
     setRegenerateNotice("");
+    setRegenerateBaseline(null);
+    setRegenerateBaselineScore(null);
+    setImprovingTargetId("");
+    setImprovingTargetLabel("");
     setAtsModalOpen(false);
     setResumeChatOpen(false);
     setResumeFileBaseName("");
@@ -555,6 +699,21 @@ export default function ResumeGenerator({
   const pdfBlob = useMemo(
     () => (pdfBase64 ? base64ToBlob(pdfBase64, PDF_MIME) : null),
     [pdfBase64]
+  );
+
+  const regenerateChanges = useMemo(() => {
+    if (!regenerateBaseline || !content) return [];
+    return computeResumeContentDiff(regenerateBaseline, content);
+  }, [regenerateBaseline, content]);
+
+  const regenerateFeedback = useMemo(() => {
+    if (!regenerateBaselineScore || !resumeScore) return null;
+    return computeFeedbackResolution(regenerateBaselineScore, resumeScore);
+  }, [regenerateBaselineScore, resumeScore]);
+
+  const changedFieldIds = useMemo(
+    () => new Set(regenerateChanges.map((change) => change.id)),
+    [regenerateChanges]
   );
 
   const canPreviewPdf = !!pdfBlob && !archiving;
@@ -627,7 +786,7 @@ export default function ResumeGenerator({
             </p>
           )}
 
-          {!userTemplate && (
+          {!activeTemplate && (
             <div className="flex items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-4 py-3">
               <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -655,7 +814,7 @@ export default function ResumeGenerator({
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
-                  Regenerate draft
+                  Generate new draft
                 </>
               ) : (
                 <>
@@ -785,14 +944,14 @@ export default function ResumeGenerator({
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-              {(atsScore || humanToneScore || ruleKeepScore || atsLoading || humanToneLoading || ruleKeepLoading) && (
+              {RESUME_SCORE_SYSTEM_ENABLED && (resumeScore || scoreLoading) && (
                 <button
                   type="button"
                   onClick={() => setAtsModalOpen(true)}
                   className={`inline-flex items-center gap-2 shrink-0 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all ${
-                    atsScore?.passed
+                    resumeScore?.passed
                       ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/15"
-                      : atsScore
+                      : resumeScore
                         ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/15"
                         : "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300"
                   }`}
@@ -800,15 +959,11 @@ export default function ResumeGenerator({
                   <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                   </svg>
-                  {atsLoading || humanToneLoading || ruleKeepLoading
+                  {scoreLoading
                     ? "Scoring…"
-                    : atsScore && humanToneScore
-                      ? ruleKeepScore && ruleKeepScore.totalRules > 0
-                        ? `ATS ${atsScore.overall} · Tone ${humanToneScore.overall} · Rules ${ruleKeepScore.overall}`
-                        : `ATS ${atsScore.overall} · Tone ${humanToneScore.overall}`
-                      : atsScore
-                        ? `ATS ${atsScore.overall}/100`
-                        : "Score report"}
+                    : resumeScore
+                      ? `Score ${resumeScore.overall}/100`
+                      : "Score report"}
                 </button>
               )}
               {content && (
@@ -826,7 +981,7 @@ export default function ResumeGenerator({
             </div>
           </div>
 
-          {atsModalOpen ? (
+          {RESUME_SCORE_SYSTEM_ENABLED && atsModalOpen ? (
             <div className="rounded-2xl border border-dashed border-violet-500/25 bg-violet-500/[0.04] px-5 py-8 text-center">
               <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
                 Your draft and ATS score are open in the review panel.
@@ -844,10 +999,9 @@ export default function ResumeGenerator({
               content={content}
               onChange={setContent}
               onApply={handleApply}
-              onRegenerate={handleRegenerate}
               applying={applying}
               generating={generating}
-              templateName={userTemplate?.fileName ?? ""}
+              templateName={activeTemplate?.fileName ?? ""}
               resumeFileBaseName={resumeFileBaseName}
               suggestedResumeBaseName={suggestedResumeBaseName}
               onResumeFileBaseNameChange={(value) => {
@@ -860,6 +1014,13 @@ export default function ResumeGenerator({
               }}
               applyLabel={step === "done" ? "Re-apply changes" : "Apply to resume"}
               generationKey={generationKey}
+              regenerateChanges={regenerateChanges}
+              regenerateFeedback={regenerateFeedback}
+              changedFieldIds={changedFieldIds}
+              onDismissRegenerateDiff={() => {
+                setRegenerateBaseline(null);
+                setRegenerateBaselineScore(null);
+              }}
             />
           )}
         </div>
@@ -873,47 +1034,51 @@ export default function ResumeGenerator({
         </div>
       )}
 
-      <ResumeAtsScoreModal
-        open={atsModalOpen}
-        onClose={() => setAtsModalOpen(false)}
-        jobTitle={targetJobLabel}
-        score={atsScore}
-        loading={atsLoading}
-        error={atsError}
-        onRecheck={content ? () => evaluateResumeScores(content) : undefined}
-        recheckDisabled={atsLoading || humanToneLoading || ruleKeepLoading || generating || applying || !content}
-        humanToneScore={humanToneScore}
-        humanToneLoading={humanToneLoading}
-        humanToneError={humanToneError}
-        ruleKeepScore={ruleKeepScore}
-        ruleKeepLoading={ruleKeepLoading}
-        ruleKeepError={ruleKeepError}
-        content={content}
-        onContentChange={setContent}
-        onApply={handleApply}
-        onRegenerate={handleRegenerate}
-        applying={applying}
-        generating={generating}
-        streamPhase={streamPhase}
-        generateError={error}
-        regenerateNotice={regenerateNotice}
-        templateName={userTemplate?.fileName ?? ""}
-        fileNameJobTitle={form.jobTitle}
-        customPrompt={form.customPrompt}
-        resumeFileBaseName={resumeFileBaseName}
-        suggestedResumeBaseName={suggestedResumeBaseName}
-        onResumeFileBaseNameChange={(value) => {
-          setResumeNameTouched(true);
-          setResumeFileBaseName(value);
-        }}
-        onResumeFileBaseNameReset={() => {
-          setResumeNameTouched(false);
-          setResumeFileBaseName(suggestedResumeBaseName);
-        }}
-        applyLabel={step === "done" ? "Re-apply changes" : "Apply to resume"}
-        generationKey={generationKey}
-        onOpenResumeChat={() => setResumeChatOpen(true)}
-      />
+      {RESUME_SCORE_SYSTEM_ENABLED && (
+        <ResumeAtsScoreModal
+          open={atsModalOpen}
+          onClose={() => setAtsModalOpen(false)}
+          jobTitle={targetJobLabel}
+          score={resumeScore}
+          loading={scoreLoading}
+          error={scoreError}
+          onRecheck={content ? () => evaluateResumeScores(content, { includeRuleKeep: true }) : undefined}
+          recheckDisabled={scoreLoading || generating || applying || !content}
+          content={content}
+          onContentChange={setContent}
+          onApply={handleApply}
+          applying={applying}
+          generating={generating}
+          streamPhase={streamPhase}
+          generateError={error}
+          regenerateNotice={regenerateNotice}
+          templateName={userTemplate?.fileName ?? ""}
+          customPrompt={form.customPrompt}
+          resumeFileBaseName={resumeFileBaseName}
+          suggestedResumeBaseName={suggestedResumeBaseName}
+          onResumeFileBaseNameChange={(value) => {
+            setResumeNameTouched(true);
+            setResumeFileBaseName(value);
+          }}
+          onResumeFileBaseNameReset={() => {
+            setResumeNameTouched(false);
+            setResumeFileBaseName(suggestedResumeBaseName);
+          }}
+          applyLabel={step === "done" ? "Re-apply changes" : "Apply to resume"}
+          generationKey={generationKey}
+          onOpenResumeChat={() => setResumeChatOpen(true)}
+          regenerateChanges={regenerateChanges}
+          regenerateFeedback={regenerateFeedback}
+          changedFieldIds={changedFieldIds}
+          onDismissRegenerateDiff={() => {
+            setRegenerateBaseline(null);
+            setRegenerateBaselineScore(null);
+          }}
+          onImprove={handleImproveScoreItem}
+          improvingTargetId={improvingTargetId}
+          improvingTargetLabel={improvingTargetLabel}
+        />
+      )}
 
       <PdfPreviewModal
         open={previewOpen}

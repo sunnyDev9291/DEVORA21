@@ -1,13 +1,21 @@
 import { parseResumeHeaderFromDocxBuffer } from "@/lib/resume-docx";
-import { getCachedTemplateExperiences } from "@/lib/resume-template-cache";
+import { getCachedJobKeywords } from "@/lib/resume-keywords-cache";
+import { getCachedTemplateParse } from "@/lib/resume-template-cache";
 import { resolveTemplateBuffer } from "@/lib/resume-template-resolve";
 import {
   buildResumeSystemPrompt,
   buildResumeUserPrompt,
-  mergeResumeWithTemplate,
-  parseResumeJsonContent,
+  finalizeResumeContent,
 } from "@/lib/resume-prompt";
-import type { AtsScoreResult, GeneratedResumeContent, HumanToneScoreResult, ResumeExperience, RuleKeepScoreResult } from "@/lib/resume-types";
+import { ensureResumeContentFileName } from "@/lib/resume-filename";
+import { formatSkillsWithTemplateStyle } from "@/lib/resume-skills-style";
+import type {
+  AtsScoreResult,
+  GeneratedResumeContent,
+  ResumeExperience,
+  ResumeTemplateLayout,
+  RuleKeepScoreResult,
+} from "@/lib/resume-types";
 
 export interface ResumeGenerateRequest {
   jobTitle?: string;
@@ -18,24 +26,35 @@ export interface ResumeGenerateRequest {
   templateBase64?: string;
   /** Prior ATS evaluation — used when regenerating to target a higher score. */
   atsFeedback?: AtsScoreResult;
-  /** Prior human tone evaluation — co-target during regenerate. */
-  humanToneFeedback?: HumanToneScoreResult;
   /** Prior rule keep evaluation — co-target during regenerate. */
   ruleKeepFeedback?: RuleKeepScoreResult;
   /** Draft content from the previous generation — paired with feedback fields. */
   previousContent?: GeneratedResumeContent;
+  /** Profile display name — used when AI omits fileName. */
+  profileName?: string;
 }
 
 export interface ResumeGeneratePrep {
   templateName: string;
   messages: Array<{ role: "system" | "user"; content: string }>;
   existingExperiences: ResumeExperience[];
+  templateLayout: ResumeTemplateLayout;
   headerTitle: string;
+  customPrompt: string;
+  profileName?: string;
+  skillsSample: string;
+  regenerateBaseline?: GeneratedResumeContent;
 }
 
 export interface ResumeMergeContext {
   existingExperiences: ResumeExperience[];
+  templateLayout: ResumeTemplateLayout;
   headerTitle: string;
+  customPrompt?: string;
+  profileName?: string;
+  skillsSample?: string;
+  /** Previous user draft — used during regenerate to preserve unchanged fields. */
+  regenerateBaseline?: GeneratedResumeContent;
 }
 
 export type ResumeJobRecord =
@@ -89,47 +108,85 @@ export async function prepareResumeGeneration(
     templateBase64: body.templateBase64,
   });
 
-  const existingExperiences = await getCachedTemplateExperiences(templateName, templateBuffer);
+  const { experiences: existingExperiences, layout: templateLayout, skillsSample } =
+    await getCachedTemplateParse(templateName, templateBuffer);
   const header = parseResumeHeaderFromDocxBuffer(templateBuffer);
 
   if (existingExperiences.length === 0) {
     throw new Error("No experience sections found in template.");
   }
 
-  const isRegenerate = Boolean(body.atsFeedback && body.previousContent);
+  const isRegenerate = Boolean(body.previousContent);
+
+  let priorityKeywords: string[] | undefined;
+  if (!isRegenerate && jobDescription) {
+    const { keywords } = await getCachedJobKeywords(jobTitle, companyName, jobDescription);
+    priorityKeywords = keywords.mustHave.slice(0, 18);
+  }
 
   const userPrompt = buildResumeUserPrompt({
     jobTitle,
-    companyName,
     jobDescription,
     customPrompt,
-    headerTitle: header.title,
     existingExperiences,
-    atsFeedback: body.atsFeedback,
-    humanToneFeedback: body.humanToneFeedback,
-    ruleKeepFeedback: body.ruleKeepFeedback,
-    previousContent: body.previousContent,
+    templateLayout,
+    previousContent: isRegenerate ? body.previousContent : undefined,
+    atsFeedback: isRegenerate ? body.atsFeedback : undefined,
+    ruleKeepFeedback: isRegenerate ? body.ruleKeepFeedback : undefined,
+    priorityKeywords,
+    templateSkillsSample: skillsSample,
   });
 
   return {
     templateName,
     messages: [
-      { role: "system", content: buildResumeSystemPrompt(isRegenerate) },
+      { role: "system", content: buildResumeSystemPrompt(isRegenerate, templateLayout) },
       { role: "user", content: userPrompt },
     ],
     existingExperiences,
+    templateLayout,
     headerTitle: header.title,
+    customPrompt,
+    profileName: body.profileName?.trim() || undefined,
+    skillsSample,
+    regenerateBaseline: isRegenerate ? body.previousContent : undefined,
   };
 }
 
-export function finalizeResumeContent(
+export function finalizeResumeContentFromModel(
   modelText: string,
-  mergeContext: ResumeMergeContext
+  mergeContext: ResumeMergeContext,
+  templateName: string
 ): GeneratedResumeContent {
-  const parsed = parseResumeJsonContent(modelText);
-  return mergeResumeWithTemplate(
-    parsed,
+  const content = finalizeResumeContent(
+    modelText,
     mergeContext.existingExperiences,
-    mergeContext.headerTitle
+    mergeContext.headerTitle,
+    mergeContext.templateLayout,
+    mergeContext.regenerateBaseline
   );
+  const styled = applyTemplateSkillsStyle(
+    content,
+    mergeContext.skillsSample,
+    mergeContext.templateLayout
+  );
+  return ensureResumeContentFileName(styled, {
+    templateName,
+    customPrompt: mergeContext.customPrompt,
+    profileName: mergeContext.profileName,
+  });
 }
+
+function applyTemplateSkillsStyle(
+  content: GeneratedResumeContent,
+  skillsSample?: string,
+  layout: ResumeTemplateLayout = content.layout ?? "bullets"
+): GeneratedResumeContent {
+  if (!skillsSample?.trim()) return content;
+  return {
+    ...content,
+    skills: formatSkillsWithTemplateStyle(content.skills, skillsSample, layout),
+  };
+}
+
+export { applyTemplateSkillsStyle };

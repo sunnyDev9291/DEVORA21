@@ -1,13 +1,13 @@
 import { completeDeepSeek, iterateDeepSeekStream } from "@/lib/deepseek-stream";
 import {
   detectResumeGenerationPhase,
-  mergeResumeWithTemplate,
-  parseResumeJsonContent,
+  finalizeResumeContent,
   pickResumeModelText,
   RESUME_MAX_TOKENS,
   type ResumeGenerationPhase,
 } from "@/lib/resume-prompt";
-import type { ResumeGeneratePrep } from "@/lib/resume-generate-prep";
+import { ensureResumeContentFileName } from "@/lib/resume-filename";
+import { applyTemplateSkillsStyle, type ResumeGeneratePrep } from "@/lib/resume-generate-prep";
 
 function ndjson(data: Record<string, unknown>): string {
   return `${JSON.stringify(data)}\n`;
@@ -23,7 +23,8 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
       };
 
       try {
-        const { messages, existingExperiences, headerTitle, templateName } = prep;
+        const { messages, existingExperiences, headerTitle, templateName, templateLayout, customPrompt, profileName, skillsSample, regenerateBaseline } =
+          prep;
 
         let thinking = "";
         let output = "";
@@ -61,16 +62,40 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
           return;
         }
 
-        let parsed;
+        let content;
         try {
-          parsed = parseResumeJsonContent(modelText);
+          content = ensureResumeContentFileName(
+            applyTemplateSkillsStyle(
+              finalizeResumeContent(
+                modelText,
+                existingExperiences,
+                headerTitle,
+                templateLayout,
+                regenerateBaseline
+              ),
+              skillsSample,
+              templateLayout
+            ),
+            { templateName, customPrompt, profileName }
+          );
         } catch {
           enqueue({ type: "phase", phase: "finalizing" });
           modelText = await completeDeepSeek(messages, RESUME_MAX_TOKENS, { jsonObject: true });
-          parsed = parseResumeJsonContent(modelText);
+          content = ensureResumeContentFileName(
+            applyTemplateSkillsStyle(
+              finalizeResumeContent(
+                modelText,
+                existingExperiences,
+                headerTitle,
+                templateLayout,
+                regenerateBaseline
+              ),
+              skillsSample,
+              templateLayout
+            ),
+            { templateName, customPrompt, profileName }
+          );
         }
-
-        const content = mergeResumeWithTemplate(parsed, existingExperiences, headerTitle);
         enqueue({ type: "done", content, templateName });
         controller.close();
       } catch (err) {

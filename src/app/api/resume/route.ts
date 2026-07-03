@@ -2,23 +2,18 @@ import { completeDeepSeek } from "@/lib/deepseek-stream";
 
 import { parseResumeHeaderFromDocxBuffer } from "@/lib/resume-docx";
 
-import { getCachedTemplateExperiences } from "@/lib/resume-template-cache";
+import { getCachedTemplateParse } from "@/lib/resume-template-cache";
 
 import { resolveTemplateBuffer } from "@/lib/resume-template-resolve";
 
 import {
-
-  RESUME_SYSTEM_PROMPT,
-
+  buildResumeSystemPrompt,
   buildResumeUserPrompt,
-
-  mergeResumeWithTemplate,
-
-  parseResumeJsonContent,
-
+  finalizeResumeContent,
   RESUME_MAX_TOKENS,
-
 } from "@/lib/resume-prompt";
+import { ensureResumeContentFileName } from "@/lib/resume-filename";
+import { applyTemplateSkillsStyle } from "@/lib/resume-generate-prep";
 
 
 
@@ -39,6 +34,8 @@ interface ResumeRequest {
   templateName?: string;
 
   templateBase64?: string;
+
+  profileName?: string;
 
 }
 
@@ -108,51 +105,37 @@ export async function POST(req: Request) {
 
 
 
-    const existingExperiences = await getCachedTemplateExperiences(templateName, templateBuffer);
+    const { experiences: existingExperiences, layout: templateLayout, skillsSample } =
+      await getCachedTemplateParse(templateName, templateBuffer);
 
     const header = parseResumeHeaderFromDocxBuffer(templateBuffer);
 
-
-
     const userPrompt = buildResumeUserPrompt({
-
       jobTitle,
-
-      companyName,
-
       jobDescription,
-
       customPrompt,
-
-      headerTitle: header.title,
-
       existingExperiences,
-
+      templateLayout,
+      templateSkillsSample: skillsSample,
     });
 
-
-
     const aiRaw = await completeDeepSeek(
-
       [
-
-        { role: "system", content: RESUME_SYSTEM_PROMPT },
-
+        { role: "system", content: buildResumeSystemPrompt(false, templateLayout) },
         { role: "user", content: userPrompt },
-
       ],
-
       RESUME_MAX_TOKENS,
-
       { jsonObject: true }
-
     );
 
-
-
-    const parsed = parseResumeJsonContent(aiRaw);
-
-    const content = mergeResumeWithTemplate(parsed, existingExperiences, header.title);
+    const content = ensureResumeContentFileName(
+      applyTemplateSkillsStyle(
+        finalizeResumeContent(aiRaw, existingExperiences, header.title, templateLayout),
+        skillsSample,
+        templateLayout
+      ),
+      { templateName, customPrompt, profileName: body.profileName?.trim() }
+    );
 
 
 

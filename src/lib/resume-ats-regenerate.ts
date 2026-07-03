@@ -1,11 +1,13 @@
 import { ATS_PASS_THRESHOLD } from "@/lib/resume-ats-algorithm";
-import { HUMAN_TONE_PASS_THRESHOLD } from "@/lib/resume-human-tone-algorithm";
 import { RULE_KEEP_PASS_THRESHOLD, RULE_KEEP_GUARD_THRESHOLD } from "@/lib/resume-rule-keep-constants";
+import { emptyRuleKeepScore } from "@/lib/resume-rule-keep";
+import { buildUnifiedResumeScore, RESUME_PASS_THRESHOLD, RESUME_SCORE_MAX } from "@/lib/resume-unified-score";
 import { keywordPresentInText } from "@/lib/resume-ats-keywords";
+import { flattenContentExperienceText } from "@/lib/resume-experience-utils";
 import type {
   AtsScoreResult,
   GeneratedResumeContent,
-  HumanToneScoreResult,
+  ResumeUnifiedScoreResult,
   RuleKeepScoreResult,
 } from "@/lib/resume-types";
 
@@ -15,6 +17,7 @@ function cloneContent(content: GeneratedResumeContent): GeneratedResumeContent {
     experiences: content.experiences.map((e) => ({
       ...e,
       bullets: [...e.bullets],
+      projects: e.projects?.map((p) => ({ ...p })),
     })),
   };
 }
@@ -24,8 +27,78 @@ function resumePlainText(content: GeneratedResumeContent): string {
     content.title,
     content.summary,
     content.skills,
-    ...content.experiences.flatMap((e) => [e.role, e.company, ...e.bullets]),
+    ...content.experiences.flatMap((e) => [e.role, e.company]),
+    ...flattenContentExperienceText(content),
   ].join("\n");
+}
+
+function appendKeywordsToSkills(skills: string, keywords: string[]): string {
+  if (keywords.length === 0) return skills;
+  const append = keywords.map((k) => `**${k}**`).join(", ");
+  const lines = skills
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) return append;
+
+  const targetIdx = lines.findIndex((line) => line.includes(":"));
+  const idx = targetIdx >= 0 ? targetIdx : 0;
+  const line = lines[idx];
+  lines[idx] = line.includes(":")
+    ? `${line.replace(/\s*,?\s*$/, "")}, ${append}`
+    : `${line}, ${append}`;
+  return lines.join("\n");
+}
+
+function injectKeywordIntoExperience(content: GeneratedResumeContent, keyword: string): void {
+  const exp = content.experiences[0];
+  if (!exp) return;
+
+  if (exp.bullets?.length) {
+    const bullet = exp.bullets[0].trim();
+    if (!keywordPresentInText(keyword, bullet)) {
+      exp.bullets[0] = `${bullet.replace(/\.$/, "")} with ${keyword}.`;
+    }
+    return;
+  }
+
+  const project = exp.projects?.[0];
+  if (!project) return;
+  const field = project.action?.trim() ? "action" : project.result?.trim() ? "result" : "assignedResponsibility";
+  const text = project[field].trim();
+  if (text && !keywordPresentInText(keyword, text)) {
+    project[field] = `${text.replace(/\.$/, "")} with ${keyword}.`;
+  }
+}
+
+function injectKeywordsIntoExperiences(content: GeneratedResumeContent, keywords: string[], max = 3): void {
+  let placed = 0;
+  for (const exp of content.experiences) {
+    if (placed >= max) break;
+
+    if (exp.bullets?.length) {
+      for (let i = 0; i < exp.bullets.length && placed < max; i += 1) {
+        const kw = keywords[placed];
+        if (!kw || keywordPresentInText(kw, exp.bullets[i])) continue;
+        exp.bullets[i] = `${exp.bullets[i].trim().replace(/\.$/, "")} using ${kw}.`;
+        placed += 1;
+      }
+      continue;
+    }
+
+    for (const project of exp.projects ?? []) {
+      if (placed >= max) break;
+      const kw = keywords[placed];
+      if (!kw) break;
+      const field = project.action?.trim() ? "action" : "result";
+      const text = project[field]?.trim() ?? "";
+      if (text && !keywordPresentInText(kw, text)) {
+        project[field] = `${text.replace(/\.$/, "")} using ${kw}.`;
+        placed += 1;
+      }
+    }
+  }
 }
 
 /**
@@ -42,15 +115,16 @@ export function applyDeterministicAtsPatches(
   const missing = feedback.missingKeywords.filter((k) => !keywordPresentInText(k, text));
   if (missing.length === 0) return result;
 
-  const existingSkills = result.skills
-    .split(/[,;]/)
+  const existingSkillTokens = result.skills
+    .replace(/\*\*/g, "")
+    .split(/[,;\n]/)
     .map((s) => s.trim())
     .filter(Boolean);
   const toPrepend = missing.filter(
-    (k) => !existingSkills.some((s) => keywordPresentInText(k, s))
+    (k) => !existingSkillTokens.some((s) => keywordPresentInText(k, s))
   );
   if (toPrepend.length > 0) {
-    result.skills = [...toPrepend.map((k) => `**${k}**`), ...existingSkills].join(", ");
+    result.skills = appendKeywordsToSkills(result.skills, toPrepend);
   }
 
   const titleParts = result.title
@@ -74,93 +148,58 @@ export function applyDeterministicAtsPatches(
       const trimmed = result.summary.trim().replace(/\.$/, "");
       result.summary = `${trimmed}, with proven ${summaryMissing} experience.`;
     }
-  }
 
-  return result;
-}
-
-/** Strip common AI buzzwords from summary and bullets — minimal tone patch. */
-export function applyDeterministicTonePatches(
-  content: GeneratedResumeContent,
-  flags: string[] = [],
-  options?: { lockExperienceFields?: boolean }
-): GeneratedResumeContent {
-  if (flags.length === 0) return content;
-
-  const result = cloneContent(content);
-  const patterns = flags.map((f) => new RegExp(`\\b${f.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "gi"));
-
-  function scrub(text: string): string {
-    let out = text;
-    for (const p of patterns) {
-      out = out.replace(p, "").replace(/\s{2,}/g, " ").trim();
+    const expWeak = feedback.breakdown?.find(
+      (b) => b.category === "Experience evidence" && b.score < b.maxScore * 0.75
+    );
+    const expMissing = missing.filter(
+      (k) => !flattenContentExperienceText(result).some((line) => keywordPresentInText(k, line))
+    );
+    if (expWeak && expMissing.length > 0) {
+      injectKeywordsIntoExperiences(result, expMissing, 3);
+    } else if (expMissing.length > 0) {
+      injectKeywordIntoExperience(result, expMissing[0]);
     }
-    return out.replace(/—/g, "-").replace(/\s+,/g, ",");
-  }
-
-  result.summary = scrub(result.summary);
-  if (!options?.lockExperienceFields) {
-    result.experiences = result.experiences.map((e) => ({
-      ...e,
-      bullets: e.bullets.map((b) => scrub(b)).filter(Boolean),
-    }));
   }
 
   return result;
 }
 
-export type RegenerateEvaluation = {
-  ats: AtsScoreResult;
-  humanTone: HumanToneScoreResult;
-  ruleKeep: RuleKeepScoreResult;
-};
+export type RegenerateEvaluation = ResumeUnifiedScoreResult;
 
 export type RegeneratePickResult = {
   content: GeneratedResumeContent;
-  score: AtsScoreResult;
-  humanToneScore: HumanToneScoreResult;
-  ruleKeepScore: RuleKeepScoreResult;
+  score: ResumeUnifiedScoreResult;
   notice: string;
 };
+
+export const MAX_REGENERATION_ITERATIONS = 6;
+export const STALE_REGENERATION_LIMIT = 2;
 
 type ScoredCandidate = {
   content: GeneratedResumeContent;
   ats: AtsScoreResult;
-  humanTone: HumanToneScoreResult;
   ruleKeep: RuleKeepScoreResult;
 };
 
 type ScoreFloors = {
   ats: number;
-  tone: number;
   rules: number;
   hasRules: boolean;
   baselineAts: number;
-  baselineTone: number;
   baselineRules: number;
 };
 
-/**
- * Passing dimensions may dip toward their pass line; failing dimensions must not regress.
- * Example: ATS 96 → 95 is OK when tone/rules were weak and improve.
- */
 function buildFloors(
   baselineAts: AtsScoreResult,
-  baselineTone: HumanToneScoreResult,
   baselineRules: RuleKeepScoreResult
 ): ScoreFloors {
   const baselineAtsScore = baselineAts.overall;
-  const baselineToneScore = baselineTone.overall;
   const baselineRulesScore = baselineRules.overall;
   const hasRules = baselineRules.totalRules > 0;
 
   return {
-    ats:
-      baselineAtsScore >= ATS_PASS_THRESHOLD ? ATS_PASS_THRESHOLD : baselineAtsScore,
-    tone:
-      baselineToneScore >= HUMAN_TONE_PASS_THRESHOLD
-        ? HUMAN_TONE_PASS_THRESHOLD
-        : baselineToneScore,
+    ats: baselineAtsScore >= ATS_PASS_THRESHOLD ? ATS_PASS_THRESHOLD : baselineAtsScore,
     rules: hasRules
       ? baselineRulesScore >= RULE_KEEP_PASS_THRESHOLD
         ? RULE_KEEP_PASS_THRESHOLD
@@ -168,22 +207,18 @@ function buildFloors(
       : 0,
     hasRules,
     baselineAts: baselineAtsScore,
-    baselineTone: baselineToneScore,
     baselineRules: baselineRulesScore,
   };
 }
 
 function meetsFloors(candidate: ScoredCandidate, floors: ScoreFloors): boolean {
   if (candidate.ats.overall < floors.ats) return false;
-  if (candidate.humanTone.overall < floors.tone) return false;
   if (floors.hasRules && candidate.ruleKeep.overall < floors.rules) return false;
   return true;
 }
 
 function compositeGain(candidate: ScoredCandidate, floors: ScoreFloors): number {
-  let gain =
-    Math.max(0, candidate.ats.overall - floors.ats) +
-    Math.max(0, candidate.humanTone.overall - floors.tone);
+  let gain = Math.max(0, candidate.ats.overall - floors.ats);
   if (floors.hasRules) {
     gain += Math.max(0, candidate.ruleKeep.overall - floors.rules);
   }
@@ -193,56 +228,68 @@ function compositeGain(candidate: ScoredCandidate, floors: ScoreFloors): number 
 function improvementCount(candidate: ScoredCandidate, floors: ScoreFloors): number {
   let count = 0;
   if (candidate.ats.overall > floors.ats) count++;
-  if (candidate.humanTone.overall > floors.tone) count++;
   if (floors.hasRules && candidate.ruleKeep.overall > floors.rules) count++;
   return count;
 }
 
 function failingDimensionGain(candidate: ScoredCandidate, floors: ScoreFloors): number {
-  let gain = 0;
-  if (floors.baselineAts < ATS_PASS_THRESHOLD) {
-    gain += candidate.ats.overall - floors.baselineAts;
+  const baselineUnified = floors.hasRules
+    ? Math.round((floors.baselineAts + floors.baselineRules) / 2)
+    : floors.baselineAts;
+  if (baselineUnified >= RESUME_PASS_THRESHOLD) return 0;
+  return buildUnifiedResumeScore(candidate.ats, candidate.ruleKeep).overall - baselineUnified;
+}
+
+function meetsCriterionBaselines(candidate: ScoredCandidate, baseline: ScoredCandidate): boolean {
+  if (candidate.ats.overall < baseline.ats.overall) return false;
+  if (candidate.ruleKeep.overall < baseline.ruleKeep.overall) return false;
+
+  // Net ATS gain — allow small category trade-offs (common when bullets are edited).
+  if (candidate.ats.overall > baseline.ats.overall) {
+    for (const baseRule of baseline.ruleKeep.rules) {
+      const candRule = candidate.ruleKeep.rules.find((r) => r.id === baseRule.id);
+      if (baseRule.passed && candRule && !candRule.passed) return false;
+    }
+    return true;
   }
-  if (floors.baselineTone < HUMAN_TONE_PASS_THRESHOLD) {
-    gain += candidate.humanTone.overall - floors.baselineTone;
+
+  for (const baseItem of baseline.ats.breakdown) {
+    const candItem = candidate.ats.breakdown.find((b) => b.category === baseItem.category);
+    if (candItem && candItem.score < baseItem.score) return false;
   }
-  if (floors.hasRules && floors.baselineRules < RULE_KEEP_PASS_THRESHOLD) {
-    gain += candidate.ruleKeep.overall - floors.baselineRules;
+
+  for (const baseRule of baseline.ruleKeep.rules) {
+    const candRule = candidate.ruleKeep.rules.find((r) => r.id === baseRule.id);
+    if (baseRule.passed && candRule && !candRule.passed) return false;
   }
-  return gain;
+
+  return true;
 }
 
 function meetsStrictBaselines(candidate: ScoredCandidate, floors: ScoreFloors): boolean {
   if (candidate.ats.overall < floors.baselineAts) return false;
-  if (candidate.humanTone.overall < floors.baselineTone) return false;
   if (floors.hasRules && candidate.ruleKeep.overall < floors.baselineRules) return false;
   return true;
 }
 
-/** Penalty when an already-passing dimension drops below its baseline. */
 function passingDimensionLoss(candidate: ScoredCandidate, floors: ScoreFloors): number {
   let loss = 0;
   if (floors.baselineAts >= ATS_PASS_THRESHOLD && candidate.ats.overall < floors.baselineAts) {
     loss += floors.baselineAts - candidate.ats.overall;
   }
-  if (
-    floors.baselineTone >= HUMAN_TONE_PASS_THRESHOLD &&
-    candidate.humanTone.overall < floors.baselineTone
-  ) {
-    loss += floors.baselineTone - candidate.humanTone.overall;
-  }
-  if (
-    floors.hasRules &&
-    candidate.ruleKeep.overall < floors.baselineRules
-  ) {
+  if (floors.hasRules && candidate.ruleKeep.overall < floors.baselineRules) {
     loss += floors.baselineRules - candidate.ruleKeep.overall;
   }
   return loss;
 }
 
-function acceptableCandidate(candidate: ScoredCandidate, floors: ScoreFloors): boolean {
+function acceptableCandidate(
+  candidate: ScoredCandidate,
+  floors: ScoreFloors,
+  baseline: ScoredCandidate
+): boolean {
+  if (!meetsCriterionBaselines(candidate, baseline)) return false;
   if (floors.hasRules && candidate.ruleKeep.overall < floors.baselineRules) return false;
-
   if (!meetsFloors(candidate, floors)) return false;
   if (meetsStrictBaselines(candidate, floors)) return true;
 
@@ -253,13 +300,9 @@ function acceptableCandidate(candidate: ScoredCandidate, floors: ScoreFloors): b
 
 function needsImprovement(
   ats: AtsScoreResult,
-  tone: HumanToneScoreResult,
   rules: RuleKeepScoreResult
 ): boolean {
-  if (ats.overall < ATS_PASS_THRESHOLD) return true;
-  if (tone.overall < HUMAN_TONE_PASS_THRESHOLD) return true;
-  if (rules.totalRules > 0 && rules.overall < RULE_KEEP_PASS_THRESHOLD) return true;
-  return false;
+  return buildUnifiedResumeScore(ats, rules).overall < RESUME_PASS_THRESHOLD;
 }
 
 function shouldAcceptCandidate(
@@ -267,20 +310,20 @@ function shouldAcceptCandidate(
   baseline: ScoredCandidate,
   floors: ScoreFloors
 ): boolean {
-  if (!acceptableCandidate(candidate, floors)) return false;
+  if (!acceptableCandidate(candidate, floors, baseline)) return false;
   if (!isBetterCandidate(candidate, baseline, floors)) return false;
 
-  const baselineNeedsWork = needsImprovement(
-    baseline.ats,
-    baseline.humanTone,
-    baseline.ruleKeep
-  );
+  const baselineNeedsWork = needsImprovement(baseline.ats, baseline.ruleKeep);
   if (!baselineNeedsWork) return true;
 
   return failingDimensionGain(candidate, floors) > 0 || improvementCount(candidate, floors) > 0;
 }
 
 function isBetterCandidate(a: ScoredCandidate, b: ScoredCandidate, floors: ScoreFloors): boolean {
+  const aUnified = buildUnifiedResumeScore(a.ats, a.ruleKeep).overall;
+  const bUnified = buildUnifiedResumeScore(b.ats, b.ruleKeep).overall;
+  if (aUnified !== bUnified) return aUnified > bUnified;
+
   const aStrict = meetsStrictBaselines(a, floors);
   const bStrict = meetsStrictBaselines(b, floors);
   if (aStrict && !bStrict) return true;
@@ -299,14 +342,8 @@ function isBetterCandidate(a: ScoredCandidate, b: ScoredCandidate, floors: Score
   const bImproved = improvementCount(b, floors);
   if (aImproved !== bImproved) return aImproved > bImproved;
 
-  const aSum =
-    a.ats.overall +
-    a.humanTone.overall +
-    (floors.hasRules ? a.ruleKeep.overall : 0);
-  const bSum =
-    b.ats.overall +
-    b.humanTone.overall +
-    (floors.hasRules ? b.ruleKeep.overall : 0);
+  const aSum = a.ats.overall + (floors.hasRules ? a.ruleKeep.overall : 0);
+  const bSum = b.ats.overall + (floors.hasRules ? b.ruleKeep.overall : 0);
   return aSum > bSum;
 }
 
@@ -322,11 +359,10 @@ function buildImprovementNotice(
   restored: boolean
 ): string {
   const atsPart = formatScoreNotice("ATS", floors.baselineAts, best.ats.overall);
-  const tonePart = formatScoreNotice("Tone", floors.baselineTone, best.humanTone.overall);
   const rulesPart = floors.hasRules
     ? formatScoreNotice("Rules", floors.baselineRules, best.ruleKeep.overall)
     : null;
-  const scoreParts = [atsPart, tonePart, rulesPart].filter(Boolean).join("; ");
+  const scoreParts = [atsPart, rulesPart].filter(Boolean).join("; ");
 
   if (restored) {
     return `Regeneration did not improve weak scores enough. Restored previous draft (${scoreParts}).`;
@@ -347,9 +383,7 @@ function pickResult(
 ): RegeneratePickResult {
   return {
     content: candidate.content,
-    score: candidate.ats,
-    humanToneScore: candidate.humanTone,
-    ruleKeepScore: candidate.ruleKeep,
+    score: buildUnifiedResumeScore(candidate.ats, candidate.ruleKeep),
     notice: buildImprovementNotice(floors, candidate, restored),
   };
 }
@@ -358,22 +392,17 @@ function contentKey(content: GeneratedResumeContent): string {
   return JSON.stringify(content);
 }
 
-/** Build surgical patch variants — baseline-first, then AI — to avoid cross-score regressions. */
 function buildDeterministicCandidates(
   baseline: GeneratedResumeContent,
   aiDraft: GeneratedResumeContent,
   baselineAts: AtsScoreResult,
-  baselineTone: HumanToneScoreResult,
   baselineRules: RuleKeepScoreResult,
-  aiAts: AtsScoreResult,
-  aiTone: HumanToneScoreResult
+  aiAts: AtsScoreResult
 ): GeneratedResumeContent[] {
   const rulesGuarded =
     baselineRules.totalRules > 0 && baselineRules.overall >= RULE_KEEP_GUARD_THRESHOLD;
   const atsOpts = rulesGuarded ? { skillsAndTitleOnly: true as const } : undefined;
 
-  const baselineToneFlags = baselineTone.flags ?? [];
-  const aiToneFlags = aiTone.flags ?? [];
   const seen = new Set<string>();
   const out: GeneratedResumeContent[] = [];
 
@@ -386,30 +415,15 @@ function buildDeterministicCandidates(
 
   if (rulesGuarded) {
     add(applyDeterministicAtsPatches(baseline, baselineAts, atsOpts));
+    add(applyDeterministicAtsPatches(aiDraft, aiAts, atsOpts));
     return out;
   }
 
-  const baselineAtsPatch = applyDeterministicAtsPatches(baseline, baselineAts, atsOpts);
-  const baselineTonePatch = applyDeterministicTonePatches(baseline, baselineToneFlags);
-  const baselineAtsThenTone = applyDeterministicTonePatches(baselineAtsPatch, baselineToneFlags);
-  const baselineToneThenAts = applyDeterministicAtsPatches(baselineTonePatch, baselineAts, atsOpts);
-
-  add(baselineAtsPatch);
-  add(baselineTonePatch);
-  add(baselineAtsThenTone);
-  add(baselineToneThenAts);
+  add(applyDeterministicAtsPatches(baseline, baselineAts, atsOpts));
   if (!rulesGuarded) {
     add(aiDraft);
     if (aiAts.missingKeywords.length > 0) {
       add(applyDeterministicAtsPatches(aiDraft, aiAts));
-    }
-    if (aiToneFlags.length > 0) {
-      add(applyDeterministicTonePatches(aiDraft, aiToneFlags));
-    }
-    if (aiAts.missingKeywords.length > 0 && aiToneFlags.length > 0) {
-      add(
-        applyDeterministicTonePatches(applyDeterministicAtsPatches(aiDraft, aiAts), aiToneFlags)
-      );
     }
   }
 
@@ -423,27 +437,26 @@ function buildDeterministicCandidates(
 export async function pickBestRegenerateResult(
   baseline: GeneratedResumeContent,
   baselineAts: AtsScoreResult,
-  baselineTone: HumanToneScoreResult,
   baselineRules: RuleKeepScoreResult,
   aiDraft: GeneratedResumeContent,
-  evaluate: (content: GeneratedResumeContent) => Promise<RegenerateEvaluation | null>
+  evaluate: ScoreEvaluator
 ): Promise<RegeneratePickResult> {
-  const floors = buildFloors(baselineAts, baselineTone, baselineRules);
+  const floors = buildFloors(baselineAts, baselineRules);
 
   const baselineCandidate: ScoredCandidate = {
     content: baseline,
     ats: baselineAts,
-    humanTone: baselineTone,
     ruleKeep: baselineRules,
   };
 
-  const aiEval = await evaluate(aiDraft);
+  const aiEval = await evaluate(aiDraft, {
+    atsOnly: true,
+    ruleKeep: baselineRules,
+  });
   if (!aiEval) {
     return {
       content: baseline,
-      score: baselineAts,
-      humanToneScore: baselineTone,
-      ruleKeepScore: baselineRules,
+      score: buildUnifiedResumeScore(baselineAts, baselineRules),
       notice: "Could not re-score the revision. Kept your previous draft.",
     };
   }
@@ -453,7 +466,6 @@ export async function pickBestRegenerateResult(
   const aiScored: ScoredCandidate = {
     content: aiDraft,
     ats: aiEval.ats,
-    humanTone: aiEval.humanTone,
     ruleKeep: aiEval.ruleKeep,
   };
 
@@ -461,9 +473,9 @@ export async function pickBestRegenerateResult(
     baselineRules.totalRules > 0 && baselineRules.overall >= RULE_KEEP_GUARD_THRESHOLD;
 
   if (
-    !rulesGuarded &&
-    acceptableCandidate(aiScored, floors) &&
-    isBetterCandidate(aiScored, best, floors)
+    acceptableCandidate(aiScored, floors, baselineCandidate) &&
+    isBetterCandidate(aiScored, best, floors) &&
+    (!rulesGuarded || aiScored.ruleKeep.overall >= baselineRules.overall)
   ) {
     best = aiScored;
   }
@@ -472,42 +484,44 @@ export async function pickBestRegenerateResult(
     baseline,
     aiDraft,
     baselineAts,
-    baselineTone,
     baselineRules,
-    aiEval.ats,
-    aiEval.humanTone
+    aiEval.ats
   );
 
   for (const content of candidates) {
     if (contentKey(content) === contentKey(aiDraft)) continue;
 
-    const candidateEval = await evaluate(content);
+    const candidateEval = await evaluate(content, {
+      atsOnly: true,
+      ruleKeep: baselineRules,
+    });
     if (!candidateEval) continue;
 
     const scored: ScoredCandidate = {
       content,
       ats: candidateEval.ats,
-      humanTone: candidateEval.humanTone,
       ruleKeep: candidateEval.ruleKeep,
     };
 
-    if (
-      acceptableCandidate(scored, floors) &&
-      isBetterCandidate(scored, best, floors)
-    ) {
+    if (acceptableCandidate(scored, floors, baselineCandidate) && isBetterCandidate(scored, best, floors)) {
       best = scored;
     }
   }
 
-  if (shouldAcceptCandidate(best, baselineCandidate, floors)) {
+  const baselineUnified = buildUnifiedResumeScore(baselineAts, baselineRules).overall;
+  const bestUnified = buildUnifiedResumeScore(best.ats, best.ruleKeep).overall;
+
+  if (
+    shouldAcceptCandidate(best, baselineCandidate, floors) ||
+    (bestUnified > baselineUnified && meetsCriterionBaselines(best, baselineCandidate))
+  ) {
     const usedPatch = best.content !== aiDraft;
     if (usedPatch) {
       const atsPart = formatScoreNotice("ATS", floors.baselineAts, best.ats.overall);
-      const tonePart = formatScoreNotice("Tone", floors.baselineTone, best.humanTone.overall);
       const rulesPart = floors.hasRules
         ? formatScoreNotice("Rules", floors.baselineRules, best.ruleKeep.overall)
         : null;
-      const scoreParts = [atsPart, tonePart, rulesPart].filter(Boolean).join("; ");
+      const scoreParts = [atsPart, rulesPart].filter(Boolean).join("; ");
       return {
         ...pickResult(best, floors, false),
         notice: `Applied surgical fixes instead of a broad rewrite — ${scoreParts}.`,
@@ -523,10 +537,228 @@ export async function pickBestRegenerateResult(
       {
         content: aiDraft,
         ats: aiEval.ats,
-        humanTone: aiEval.humanTone,
         ruleKeep: aiEval.ruleKeep,
       },
       true
     ),
+  };
+}
+
+export type ScoreEvaluateOptions = {
+  /** Fast ATS-only pass — skips rule-audit AI (prevents 502 timeouts). */
+  atsOnly?: boolean;
+  ruleKeep?: RuleKeepScoreResult;
+};
+
+export type ScoreEvaluator = (
+  content: GeneratedResumeContent,
+  options?: ScoreEvaluateOptions
+) => Promise<RegenerateEvaluation | null>;
+
+export type IterativeRegenerationInput = {
+  baselineContent: GeneratedResumeContent;
+  baselineAts: AtsScoreResult;
+  baselineRules: RuleKeepScoreResult;
+  generateDraft: (input: {
+    previousContent: GeneratedResumeContent;
+    atsFeedback: AtsScoreResult;
+    ruleKeepFeedback: RuleKeepScoreResult;
+  }) => Promise<GeneratedResumeContent>;
+  evaluate: ScoreEvaluator;
+};
+
+function isMeaningfulScoreGain(
+  before: ResumeUnifiedScoreResult,
+  after: ResumeUnifiedScoreResult
+): boolean {
+  if (after.overall > before.overall) return true;
+  if (after.ats.overall > before.ats.overall && after.ruleKeep.overall >= before.ruleKeep.overall) {
+    return true;
+  }
+  if (after.ruleKeep.overall > before.ruleKeep.overall && after.ats.overall >= before.ats.overall) {
+    return true;
+  }
+  return false;
+}
+
+/** After first generation, inject missing JD keywords when the ATS score is below target. */
+export function tryApplyInitialAtsBoost(
+  content: GeneratedResumeContent,
+  ats: AtsScoreResult
+): GeneratedResumeContent {
+  if (ats.overall >= RESUME_PASS_THRESHOLD || ats.missingKeywords.length === 0) {
+    return content;
+  }
+  return applyDeterministicAtsPatches(content, ats);
+}
+
+/** Repeatedly apply deterministic ATS patches until the score stops improving. */
+export async function maximizeDeterministicAtsScore(
+  content: GeneratedResumeContent,
+  evaluate: ScoreEvaluator,
+  options?: { maxRounds?: number; initialEval?: RegenerateEvaluation }
+): Promise<RegeneratePickResult> {
+  const maxRounds = options?.maxRounds ?? 2;
+  let current = content;
+  let currentEval = options?.initialEval ?? (await evaluate(current));
+
+  if (!currentEval) {
+    return {
+      content,
+      score: buildUnifiedResumeScore(
+        {
+          overall: 0,
+          passed: false,
+          breakdown: [],
+          matchedKeywords: [],
+          missingKeywords: [],
+          recommendations: [],
+          summary: "Could not score content.",
+        },
+        emptyRuleKeepScore()
+      ),
+      notice: "Could not score content for ATS boost.",
+    };
+  }
+
+  let best: RegeneratePickResult = {
+    content: current,
+    score: currentEval,
+    notice: `Score ${currentEval.overall}/${RESUME_SCORE_MAX}.`,
+  };
+
+  for (let round = 0; round < maxRounds; round += 1) {
+    const patched = applyDeterministicAtsPatches(current, currentEval.ats);
+    if (contentKey(patched) === contentKey(current)) break;
+
+    const nextEval = await evaluate(patched, {
+      atsOnly: true,
+      ruleKeep: currentEval.ruleKeep,
+    });
+    if (!nextEval) break;
+
+    const baselineScored: ScoredCandidate = {
+      content: current,
+      ats: currentEval.ats,
+      ruleKeep: currentEval.ruleKeep,
+    };
+    const candidateScored: ScoredCandidate = {
+      content: patched,
+      ats: nextEval.ats,
+      ruleKeep: nextEval.ruleKeep,
+    };
+
+    if (!meetsCriterionBaselines(candidateScored, baselineScored)) break;
+
+    const improved =
+      nextEval.overall > currentEval.overall ||
+      nextEval.ats.overall > currentEval.ats.overall;
+
+    if (!improved) break;
+
+    current = patched;
+    currentEval = nextEval;
+    best = {
+      content: current,
+      score: currentEval,
+      notice: `Deterministic ATS boost — overall ${currentEval.overall}/${RESUME_SCORE_MAX}.`,
+    };
+
+    if (currentEval.overall >= RESUME_PASS_THRESHOLD) break;
+  }
+
+  return best;
+}
+
+/**
+ * Run regeneration iterations until overall score ≥ 94, or two consecutive iterations
+ * with no overall score improvement.
+ */
+export async function runIterativeRegeneration(
+  input: IterativeRegenerationInput
+): Promise<RegeneratePickResult> {
+  let content = input.baselineContent;
+  let ats = input.baselineAts;
+  let rules = input.baselineRules;
+  let score = buildUnifiedResumeScore(ats, rules);
+  let lastOverall = score.overall;
+  let staleIterations = 0;
+
+  let best: RegeneratePickResult = {
+    content,
+    score,
+    notice: `Starting from overall score ${score.overall}/${RESUME_SCORE_MAX} (target ≥ ${RESUME_PASS_THRESHOLD}).`,
+  };
+
+  if (score.overall >= RESUME_PASS_THRESHOLD) {
+    return {
+      ...best,
+      notice: `Already at target — overall score ${score.overall} (≥ ${RESUME_PASS_THRESHOLD}).`,
+    };
+  }
+
+  for (let iteration = 0; iteration < MAX_REGENERATION_ITERATIONS; iteration += 1) {
+    const deterministic = await maximizeDeterministicAtsScore(content, input.evaluate, {
+      maxRounds: 1,
+      initialEval: score,
+    });
+    if (
+      deterministic.score.overall > score.overall ||
+      isMeaningfulScoreGain(score, deterministic.score)
+    ) {
+      staleIterations = 0;
+      content = deterministic.content;
+      ats = deterministic.score.ats;
+      rules = deterministic.score.ruleKeep;
+      score = deterministic.score;
+      lastOverall = score.overall;
+      best = deterministic;
+
+      if (score.overall >= RESUME_PASS_THRESHOLD) {
+        return {
+          ...best,
+          notice: `${deterministic.notice} Target reached — overall score ${score.overall} (≥ ${RESUME_PASS_THRESHOLD}).`,
+        };
+      }
+    }
+
+    const aiDraft = await input.generateDraft({
+      previousContent: content,
+      atsFeedback: ats,
+      ruleKeepFeedback: rules,
+    });
+
+    const picked = await pickBestRegenerateResult(content, ats, rules, aiDraft, input.evaluate);
+
+    if (picked.score.overall > lastOverall || isMeaningfulScoreGain(score, picked.score)) {
+      staleIterations = 0;
+      content = picked.content;
+      ats = picked.score.ats;
+      rules = picked.score.ruleKeep;
+      score = picked.score;
+      lastOverall = score.overall;
+      best = picked;
+
+      if (score.overall >= RESUME_PASS_THRESHOLD) {
+        return {
+          ...best,
+          notice: `${picked.notice} Target reached — overall score ${score.overall} (≥ ${RESUME_PASS_THRESHOLD}).`,
+        };
+      }
+      continue;
+    }
+
+    staleIterations += 1;
+    if (staleIterations >= STALE_REGENERATION_LIMIT) {
+      return {
+        ...best,
+        notice: `${best.notice} Stopped after ${STALE_REGENERATION_LIMIT} iterations with no overall score gain (best: ${best.score.overall}).`,
+      };
+    }
+  }
+
+  return {
+    ...best,
+    notice: `${best.notice} Reached iteration limit (best overall: ${best.score.overall}).`,
   };
 }

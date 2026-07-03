@@ -1,317 +1,189 @@
-import { ATS_PASS_THRESHOLD, ATS_SCORE_MAX } from "@/lib/resume-ats-algorithm";
-import { HUMAN_TONE_PASS_THRESHOLD, HUMAN_TONE_SCORE_MAX } from "@/lib/resume-human-tone-algorithm";
-import { RULE_KEEP_PASS_THRESHOLD, RULE_KEEP_SCORE_MAX, RULE_KEEP_GUARD_THRESHOLD } from "@/lib/resume-rule-keep-constants";
-import type { AtsScoreResult, GeneratedResumeContent, HumanToneScoreResult, RuleKeepScoreResult } from "@/lib/resume-types";
+import { applyResumeContentPostProcess } from "@/lib/resume-content-postprocess";
+import { extractResumeFileNamePatternFromPrompt } from "@/lib/resume-filename";
+import { buildTemplateSkillsPromptBlock } from "@/lib/resume-skills-style";
+import { isProjectLayout, normalizeResumeExperience, normalizeResumeProject } from "@/lib/resume-experience-utils";
+import { buildRegenerationEvaluationBlock } from "@/lib/resume-regenerate-prompt";
+import { emptyRuleKeepScore } from "@/lib/resume-rule-keep";
+import { buildUnifiedResumeScore } from "@/lib/resume-unified-score";
+import type { AtsScoreResult, GeneratedResumeContent, ResumeTemplateLayout, RuleKeepScoreResult } from "@/lib/resume-types";
 
 export const RESUME_AI_MODEL = "deepseek-v4-pro";
 
 export const RESUME_MAX_TOKENS = 16384;
 
-export const RESUME_SYSTEM_PROMPT = `You are an expert resume writer for software engineers.
-Rewrite the professional title line, summary, skills, and experience bullets for a target job.
-Keep the same companies, roles, and date ranges from the template — do not invent new employers.
-
-Return ONLY valid json with this exact shape:
-{
+const BULLETS_JSON_SHAPE = `{
   "title": "string",
   "summary": "string",
-  "skills": "comma-separated skill list",
+  "skills": "string",
+  "fileName": "string",
+  "experiences": [
+    { "company": "string", "role": "string", "dates": "string", "bullets": ["string"] }
+  ]
+}`;
+
+const PROJECTS_JSON_SHAPE = `{
+  "title": "string",
+  "summary": "string",
+  "skills": "string",
+  "fileName": "string",
   "experiences": [
     {
       "company": "string",
       "role": "string",
-      "dates": "MM/YYYY – MM/YYYY",
-      "bullets": ["bullet 1", "bullet 2"]
+      "dates": "string",
+      "projects": [
+        {
+          "name": "string",
+          "businessChallenge": "string",
+          "assignedResponsibility": "string",
+          "action": "string",
+          "result": "string"
+        }
+      ]
     }
   ]
-}
+}`;
 
-Rules:
-- title: one professional headline line tailored to the target job (pipe-separated keywords OK, e.g. "Senior Backend Engineer | Node.js | AWS").
-- summary: 2–4 sentences, ATS-friendly, no first-person pronouns.
-- skills: one comma-separated line, mirror job keywords where truthful.
-- experiences: MUST include exactly the same number of companies as the template, in the same order.
-- For each experience entry, copy company, role, and dates EXACTLY from the template list (do not put bullet text in company/role fields).
-- Only rewrite the bullets array for each company; keep the bullet count per company as specified in the template list.
-- Additional user instructions apply to summary, skills, and bullet wording only — never change employer names, roles, or dates.
-- No markdown fences, no commentary — valid json only.`;
-
-export const RESUME_REGENERATE_SYSTEM_SUFFIX = `When regeneration context is provided, this is a TARGETED REVISION pass — not a full rewrite.
-
-Priority order (highest first):
-1) RULE KEEP — user prompt rules are sacred. Never break a passing rule to improve ATS or tone.
-2) Preserve all text that already passes rules, tone, and ATS — return it verbatim.
-3) ATS and human tone — improve only weak dimensions using the SURGICAL EDIT PLAN zones.
-
-Targets: ATS ${ATS_PASS_THRESHOLD}+, tone ${HUMAN_TONE_PASS_THRESHOLD}+, rules ${RULE_KEEP_PASS_THRESHOLD}+.
-
-Preservation rules:
-- Start from the previous draft and keep strong content unchanged.
-- Do not rewrite entire sections, companies, or bullet lists.
-- Copy company, role, and dates exactly from the previous draft.
-
-Revision rules:
-- When rule keep is ${RULE_KEEP_GUARD_THRESHOLD}+, add ATS keywords ONLY to title and skills — do NOT edit summary or experience bullets for keywords.
-- Never rewrite a whole bullet — change the minimum words in the minimum field.
-- If an ATS or tone fix would break any passing rule, skip it and use skills/title only.
-- Wrap only newly emphasized priority keywords in **bold** where truthful and allowed by rules.`;
-
-export function buildResumeSystemPrompt(regenerate = false): string {
-  return regenerate
-    ? `${RESUME_SYSTEM_PROMPT}\n\n${RESUME_REGENERATE_SYSTEM_SUFFIX}`
-    : RESUME_SYSTEM_PROMPT;
-}
-
-export function buildHumanToneRegeneratePromptSection(
-  feedback: HumanToneScoreResult,
-  targetScore = HUMAN_TONE_PASS_THRESHOLD
-): string {
-  const failedGates = feedback.gates?.filter((g) => !g.passed) ?? [];
-  const weakCategories = feedback.breakdown
-    .filter((b) => b.score < b.maxScore * 0.75)
-    .map((b) => `- ${b.category}: ${b.score}/${b.maxScore} — ${b.notes}`);
-
+/** Minimal system prompt — content/style rules come only from the user's instructions. */
+export function buildResumeSystemPrompt(regenerate = false, layout: ResumeTemplateLayout = "bullets"): string {
+  const shape = isProjectLayout(layout) ? PROJECTS_JSON_SHAPE : BULLETS_JSON_SHAPE;
+  const skillRule = isProjectLayout(layout)
+    ? "- Skillsets: follow the template category labels, order, line count, and colon formatting exactly; only replace the technologies."
+    : "- Skillsets: follow the template plain-list style exactly; do not add category labels.";
+  const regenerateRules = regenerate
+    ? [
+        "- REGENERATE MODE: Start from the previous draft JSON in the user message. Change only fields needed to fix weak scores.",
+        "- Copy every unchanged field verbatim from the previous draft (same wording, punctuation, and formatting).",
+        "- Do not rewrite high-scoring sections, summaries, or experience sentences unless the evaluation block flags them.",
+      ]
+    : [];
   return [
-    `HUMAN TONE REVISION — previous score ${feedback.overall}/${HUMAN_TONE_SCORE_MAX}. Target: ${targetScore}+ (co-equal with ATS).`,
-    `TONE FLOOR: Human tone MUST stay at or above ${feedback.overall}. Improve natural, recruiter-friendly wording — not keyword stuffing.`,
-    `Previous tone summary: ${feedback.summary}`,
-    feedback.flags && feedback.flags.length > 0 &&
-      `Remove or replace these AI-style buzzwords/phrases: ${feedback.flags.join(", ")}`,
-    feedback.recommendations.length > 0 &&
-      `Human-tone improvements (apply surgically alongside ATS fixes):\n${feedback.recommendations.map((r) => `- ${r}`).join("\n")}`,
-    failedGates.length > 0 &&
-      `Failed tone gates:\n${failedGates.map((g) => `- ${g.name}: ${g.detail}`).join("\n")}`,
-    weakCategories.length > 0 &&
-      `Weak tone categories (improve without breaking ATS keywords):\n${weakCategories.join("\n")}`,
-    `Tone revision checklist:
-- Vary action verbs and bullet openings — no repeated phrasing.
-- Add collaboration or context in bullets that lack human cues.
-- Use specific metrics (ms, users, $) instead of generic percentages on every line.
-- Remove em-dashes, bracket labels, first-person, and buzzword clutter.`,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+    "Return ONLY valid JSON matching this shape:",
+    shape,
+    "",
+    "Technical output rules (not content style):",
+    "- Use **double asterisks** around skill category labels (e.g. **Languages:**) and tech terms so Word can render bold.",
+    "- Match the template job count, dates, project/bullet counts, and fixed project names from the user message.",
+    skillRule,
+    "- Set fileName when Instructions specify a resume file name (no .docx extension; substitute real values for placeholders).",
+    "- Do not invent employers or projects.",
+    "- All wording, tone, and formatting rules come ONLY from the user Instructions in the user message.",
+    "- No markdown fences or commentary.",
+    ...regenerateRules,
+  ].join("\n");
 }
 
-export function buildAtsRegeneratePromptSection(
-  feedback: AtsScoreResult,
-  previousContent: GeneratedResumeContent,
-  targetScore = ATS_PASS_THRESHOLD,
-  ruleKeepFeedback?: RuleKeepScoreResult
+function formatTemplateStructureLine(
+  e: GeneratedResumeContent["experiences"][number],
+  index: number,
+  layout: ResumeTemplateLayout
 ): string {
-  const failedGates = feedback.gates?.filter((g) => !g.passed) ?? [];
-  const weakCategories = feedback.breakdown
-    .filter((b) => b.score < b.maxScore * 0.75)
-    .map((b) => `- ${b.category}: ${b.score}/${b.maxScore} — ${b.notes}`);
-
-  const rulesGuarded =
-    Boolean(ruleKeepFeedback?.totalRules) &&
-    ruleKeepFeedback!.overall >= RULE_KEEP_GUARD_THRESHOLD;
-
-  const previousDraft = {
-    title: previousContent.title,
-    summary: previousContent.summary,
-    skills: previousContent.skills,
-    experiences: previousContent.experiences.map((e) => ({
-      company: e.company,
-      role: e.role,
-      dates: e.dates,
-      bullets: e.bullets,
-    })),
-  };
-
-  return [
-    `ATS TARGETED REVISION — previous score ${feedback.overall}/${ATS_SCORE_MAX}. Target: ${targetScore}+.`,
-    rulesGuarded &&
-      `RULE GUARD ACTIVE (rule keep ${ruleKeepFeedback!.overall}/${RULE_KEEP_SCORE_MAX}): add missing keywords ONLY to the title line and skills line. Do NOT edit summary or experience bullets for ATS — those fields are protected to preserve rule compliance.`,
-    `IMPORTANT: Do NOT rewrite the entire resume. Use the previous draft below as your base.`,
-    `Previous evaluation summary: ${feedback.summary}`,
-    feedback.missingKeywords.length > 0 &&
-      `Missing must-have keywords — add only where needed (title, summary, skills, or specific bullets; do not rewrite unaffected sections): ${feedback.missingKeywords.join(", ")}`,
-    feedback.recommendations.length > 0 &&
-      `Required improvements (apply surgically — one issue at a time, minimal edits):\n${feedback.recommendations.map((r) => `- ${r}`).join("\n")}`,
-    failedGates.length > 0 &&
-      `Failed pass gates (fix only what these gates require):\n${failedGates.map((g) => `- ${g.name}: ${g.detail}`).join("\n")}`,
-    weakCategories.length > 0 &&
-      `Weak scoring categories (touch only the sections tied to each category):\n${weakCategories.join("\n")}`,
-    feedback.matchedKeywords.length > 0 &&
-      `Protected keywords — do NOT remove or rephrase these; keep exact wording where already present: ${feedback.matchedKeywords.slice(0, 24).join(", ")}`,
-    `Previous draft (BASE VERSION — retain structure, style, and wording except where ATS gaps above require a small change):\n${JSON.stringify(previousDraft, null, 2)}`,
-    `Revision checklist:
-- Return the same number of experience entries and the same bullet count per company as the previous draft.
-- Copy company, role, and dates from the previous draft unchanged.
-- Leave unchanged any title line, summary sentence, skill, or bullet that already supports ATS matching.
-- Edit only sections directly tied to missing keywords, failed gates, weak categories, or recommendations.`,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-}
-
-export function buildRuleKeepRegeneratePromptSection(
-  feedback: RuleKeepScoreResult,
-  targetScore = RULE_KEEP_PASS_THRESHOLD
-): string {
-  if (feedback.totalRules === 0) return "";
-
-  const failed = feedback.rules.filter((r) => !r.passed);
-  const passed = feedback.rules.filter((r) => r.passed);
-
-  return [
-    `RULE KEEP REVISION — previous score ${feedback.overall}/${RULE_KEEP_SCORE_MAX} (${feedback.passedRules}/${feedback.totalRules} rules passed). Target: ${targetScore}+.`,
-    `RULE FLOOR (absolute): Rule keep MUST stay at or above ${feedback.overall}. No ATS or tone gain is worth breaking a passing rule.`,
-    `Previous rule summary: ${feedback.summary}`,
-    passed.length > 0 &&
-      `Passing rules — do NOT edit any text that satisfies these (return those fields verbatim):\n${passed
-        .slice(0, 12)
-        .map((r, index) => `- Rule ${index + 1} [${r.category}]: ${r.detail}`)
-        .join("\n")}${passed.length > 12 ? `\n- …and ${passed.length - 12} more passing rules` : ""}`,
-    failed.length > 0 &&
-      `Failed rules — address each gap in the resume text (category + auditor finding):\n${failed
-        .map((r, index) => `- Rule ${index + 1} [${r.category}]: ${r.detail}`)
-        .join("\n")}`,
-    feedback.recommendations.length > 0 &&
-      `Rule gaps to close:\n${feedback.recommendations.map((r) => `- ${r}`).join("\n")}`,
-    `Rule revision checklist:
-- Edit only title, summary, skills, or bullets needed to satisfy failed rules.
-- Do not drop ATS keywords or natural tone while fixing a rule.
-- Balance all three targets — ATS, human tone, and rule compliance.`,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-}
-
-/** Maps failing scores to exact edit zones so one fix does not rewrite unrelated fields. */
-export function buildSurgicalEditPlanSection(
-  atsFeedback?: AtsScoreResult,
-  humanToneFeedback?: HumanToneScoreResult,
-  ruleKeepFeedback?: RuleKeepScoreResult
-): string {
-  const atsPassing = !atsFeedback || atsFeedback.overall >= ATS_PASS_THRESHOLD;
-  const tonePassing = !humanToneFeedback || humanToneFeedback.overall >= HUMAN_TONE_PASS_THRESHOLD;
-  const rulesActive = Boolean(ruleKeepFeedback && ruleKeepFeedback.totalRules > 0);
-  const rulesPassing =
-    !rulesActive || (ruleKeepFeedback!.overall >= RULE_KEEP_PASS_THRESHOLD);
-
-  const rulesGuarded =
-    rulesActive && ruleKeepFeedback!.overall >= RULE_KEEP_GUARD_THRESHOLD;
-
-  const lines = [
-    "SURGICAL EDIT PLAN (mandatory) — edit ONLY the zones below. All other fields stay verbatim from the previous draft.",
-  ];
-
-  if (rulesGuarded) {
-    lines.push(
-      `RULE GUARD (${ruleKeepFeedback!.overall}/${RULE_KEEP_SCORE_MAX}): summary and ALL experience bullets are LOCKED for ATS/tone edits. Only title and skills may change for keywords. Tone fixes must be in-place word swaps inside bullets only when they do not break any passing rule.`
-    );
+  const prefix = `${index + 1}. company="${e.company}" | dates="${e.dates}"`;
+  if (isProjectLayout(layout) || e.projects?.length) {
+    const projects = e.projects ?? [];
+    const names = projects.map((p) => `"${p.name}"`).join(", ");
+    return `${prefix} | ${projects.length} project(s), fixed names: ${names}`;
   }
-
-  if (atsFeedback && !atsPassing) {
-    lines.push(
-      rulesGuarded
-        ? `ATS is below target (${atsFeedback.overall}) — add missing keywords ONLY to title and skills. Do NOT modify summary or bullets.`
-        : `ATS is below target (${atsFeedback.overall}) — edit ONLY: title, skills, summary (max one clause), and bullets missing keywords. Prefer skills/title first.`
-    );
-  } else if (atsFeedback) {
-    lines.push(
-      `ATS is already strong (${atsFeedback.overall}) — do NOT rephrase title, skills, or summary for keywords. Keep matched keywords exactly as written.`
-    );
-  }
-
-  if (humanToneFeedback && !tonePassing) {
-    lines.push(
-      rulesGuarded
-        ? `Human tone is below target (${humanToneFeedback.overall}) — with rule guard active, prefer leaving bullets unchanged. If you must edit tone, use single-word swaps in bullets that already pass all rules; never rewrite a bullet.`
-        : `Human tone is below target (${humanToneFeedback.overall}) — edit ONLY bullets with repetition, buzzwords, or weak openers. Swap verbs and add collaboration context in-place. Do NOT remove ATS keywords or metrics from edited bullets.`
-    );
-  } else if (humanToneFeedback) {
-    lines.push(
-      `Human tone is already strong (${humanToneFeedback.overall}) — do NOT rephrase bullets for style unless a rule requires it.`
-    );
-  }
-
-  if (rulesActive && ruleKeepFeedback && !rulesPassing) {
-    const failed = ruleKeepFeedback.rules.filter((r) => !r.passed);
-    lines.push(
-      `Rule keep is below target (${ruleKeepFeedback.overall}) — fix ONLY the field tied to each failed rule:\n${failed
-        .map((r, i) => `- Rule ${i + 1} [${r.category}]: ${r.detail}`)
-        .join("\n")}`
-    );
-  } else if (rulesActive && ruleKeepFeedback) {
-    lines.push(
-      `Rule keep is already strong (${ruleKeepFeedback.overall}) — do not edit fields for rules that already pass.`
-    );
-  }
-
-  lines.push(
-    rulesGuarded
-      ? `Conflict resolution: rule keep wins over ATS and tone. With rule guard active, ATS keywords go in title/skills only; do not edit summary or bullets unless fixing a specific failed rule in that field.`
-      : `Conflict resolution: if improving one score would hurt another, use this order — (1) preserve passing rules, (2) skills/title for ATS keywords, (3) in-place bullet word swaps for tone, (4) smallest rule fix in the cited field only. Never replace a full bullet or summary paragraph.`
-  );
-
-  return lines.join("\n\n");
+  return `${prefix} | ${e.bullets.length} bullet(s)`;
 }
 
 export function buildResumeUserPrompt({
   jobTitle,
-  companyName,
   jobDescription,
   customPrompt,
-  headerTitle,
   existingExperiences,
-  atsFeedback,
-  humanToneFeedback,
-  ruleKeepFeedback,
+  templateLayout = "bullets",
   previousContent,
+  atsFeedback,
+  ruleKeepFeedback,
+  priorityKeywords,
+  templateSkillsSample,
 }: {
   jobTitle: string;
-  companyName: string;
   jobDescription: string;
   customPrompt: string;
-  headerTitle: string;
   existingExperiences: GeneratedResumeContent["experiences"];
-  atsFeedback?: AtsScoreResult;
-  humanToneFeedback?: HumanToneScoreResult;
-  ruleKeepFeedback?: RuleKeepScoreResult;
+  templateLayout?: ResumeTemplateLayout;
   previousContent?: GeneratedResumeContent;
+  atsFeedback?: AtsScoreResult;
+  ruleKeepFeedback?: RuleKeepScoreResult;
+  /** Must-have JD keywords — injected on first generation to improve initial ATS match. */
+  priorityKeywords?: string[];
+  /** Skillsets section from the user's template DOCX. */
+  templateSkillsSample?: string;
 }): string {
-  const isRegenerate = Boolean(previousContent && atsFeedback);
+  const layout = previousContent?.layout ?? templateLayout;
+  const experiences = previousContent?.experiences ?? existingExperiences;
+  const isRegenerate = Boolean(previousContent);
+  const instructions = customPrompt.trim();
 
-  const experienceInstructions = isRegenerate
-    ? `Previous draft companies (${previousContent!.experiences.length} required — copy company, role, dates exactly from previous draft; keep same bullet count per company; revise bullets only where ATS or human-tone feedback requires):\n${previousContent!.experiences
-        .map(
-          (e, i) =>
-            `${i + 1}. company="${e.company}" | role="${e.role}" | dates="${e.dates}" | bullets: keep ${e.bullets.length} bullets, change only if needed for ATS or tone gaps`
+  const structureBlock = [
+    `Template structure (${experiences.length} job(s) — keep company, dates, project names, and counts fixed):`,
+    experiences.map((e, i) => formatTemplateStructureLine(e, i, layout)).join("\n"),
+  ].join("\n");
+
+  const previousDraftBlock =
+    isRegenerate && previousContent
+      ? [
+          "Previous draft (revise using only the job description and instructions above):",
+          JSON.stringify(
+            {
+              title: previousContent.title,
+              summary: previousContent.summary,
+              skills: previousContent.skills,
+              fileName: previousContent.fileName,
+              experiences: previousContent.experiences,
+            },
+            null,
+            2
+          ),
+        ].join("\n")
+      : "";
+
+  const evaluationBlock =
+    isRegenerate && atsFeedback
+      ? buildRegenerationEvaluationBlock(
+          atsFeedback,
+          ruleKeepFeedback ?? emptyRuleKeepScore(),
+          buildUnifiedResumeScore(atsFeedback, ruleKeepFeedback ?? emptyRuleKeepScore()).overall
         )
-        .join("\n")}`
-    : `Template companies (${existingExperiences.length} required — copy company, role, dates exactly into each JSON experience object):\n${existingExperiences
-        .map(
-          (e, i) =>
-            `${i + 1}. company="${e.company}" | role="${e.role}" | dates="${e.dates}" | bullets: rewrite all ${e.bullets.length} bullets`
-        )
-        .join("\n")}`;
+      : "";
 
-  const closingInstruction = isRegenerate
-    ? `Return exactly ${previousContent!.experiences.length} objects in experiences[]. Surgical triple-target revision only — improve weak scores using the edit zones above; leave all other text unchanged. Return valid json only.`
-    : `Return exactly ${existingExperiences.length} objects in experiences[]. Rewrite title, summary, skills, and bullets only. Return valid json only.`;
+  const keywordBlock =
+    !isRegenerate && priorityKeywords && priorityKeywords.length > 0
+      ? [
+          "Priority ATS keywords from the job description (include naturally in title, skills, summary, and experience):",
+          priorityKeywords.slice(0, 18).join(", "),
+        ].join("\n")
+      : "";
 
-  const surgicalPlan =
-    isRegenerate &&
-    buildSurgicalEditPlanSection(atsFeedback, humanToneFeedback, ruleKeepFeedback);
+  const fileNamePattern = instructions ? extractResumeFileNamePatternFromPrompt(instructions) : null;
+  const fileNameBlock = fileNamePattern
+    ? [
+        'Resume file name (required JSON field "fileName"):',
+        "Set fileName to this exact pattern with placeholders replaced using your generated title and top skills.",
+        "Do not include .docx. Example shape only:",
+        fileNamePattern,
+      ].join("\n")
+    : instructions
+      ? 'If Instructions specify a resume file name, set JSON field "fileName" to that resolved name (no .docx extension).'
+      : "";
+
+  const templateSkillsBlock = buildTemplateSkillsPromptBlock(templateSkillsSample ?? "", layout);
 
   return [
-    jobTitle && `Target job title: ${jobTitle}`,
-    `Target company: ${companyName}`,
+    jobTitle && `Job title:\n${jobTitle}`,
     jobDescription && `Job description:\n${jobDescription}`,
-    customPrompt && `Additional instructions:\n${customPrompt}`,
-    headerTitle && `Current resume title line: ${headerTitle}`,
-    experienceInstructions,
-    surgicalPlan,
-    ruleKeepFeedback && buildRuleKeepRegeneratePromptSection(ruleKeepFeedback),
-    atsFeedback &&
-      previousContent &&
-      buildAtsRegeneratePromptSection(atsFeedback, previousContent, ATS_PASS_THRESHOLD, ruleKeepFeedback),
-    humanToneFeedback && buildHumanToneRegeneratePromptSection(humanToneFeedback),
-    closingInstruction,
+    keywordBlock,
+    templateSkillsBlock,
+    fileNameBlock,
+    instructions
+      ? `Instructions:\n${instructions}`
+      : "Instructions: Write all resume content tailored to the job description.",
+    evaluationBlock,
+    previousDraftBlock,
+    structureBlock,
+    `Return exactly ${experiences.length} experience entries. Valid JSON only.`,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -420,7 +292,10 @@ function tryParseResumeJson(jsonText: string): GeneratedResumeContent | null {
   return null;
 }
 
-export function parseResumeJsonContent(raw: string): GeneratedResumeContent {
+export function parseResumeJsonContent(
+  raw: string,
+  layout: ResumeTemplateLayout = "bullets"
+): GeneratedResumeContent {
   const jsonText = extractResumeJsonRaw(raw);
   if (!jsonText) {
     throw new Error("AI returned no resume content. Please try again.");
@@ -431,26 +306,47 @@ export function parseResumeJsonContent(raw: string): GeneratedResumeContent {
     throw new Error("AI returned invalid JSON. Try again or shorten the job description.");
   }
 
+  const projectMode = isProjectLayout(layout);
+
+  const fileName = parsed.fileName?.trim() ? String(parsed.fileName).trim() : undefined;
+
   return {
     title: String(parsed.title).trim(),
     summary: String(parsed.summary).trim(),
     skills: String(parsed.skills).trim(),
-    experiences: parsed.experiences.map((e) => ({
-      company: String(e.company ?? "").trim(),
-      role: String(e.role ?? "").trim(),
-      dates: String(e.dates ?? "").trim(),
-      bullets: (e.bullets ?? []).map((b) => String(b).trim()).filter(Boolean),
-    })),
+    ...(fileName ? { fileName } : {}),
+    layout: projectMode ? "projects" : "bullets",
+    experiences: parsed.experiences.map((e) =>
+      normalizeResumeExperience(
+        projectMode
+          ? {
+              company: e.company,
+              role: e.role,
+              dates: e.dates,
+              bullets: [],
+              projects: (e.projects ?? []).map((p) => normalizeResumeProject(p)),
+            }
+          : {
+              company: e.company,
+              role: e.role,
+              dates: e.dates,
+              bullets: (e.bullets ?? []).map((b) => String(b).trim()).filter(Boolean),
+            },
+        layout
+      )
+    ),
   };
 }
 
 function matchExperienceByCompany(
   parsedExperiences: GeneratedResumeContent["experiences"],
   existing: GeneratedResumeContent["experiences"][number],
-  index: number
+  index: number,
+  layout: ResumeTemplateLayout
 ) {
   const byIndex = parsedExperiences[index];
-  if (byIndex?.bullets?.length) return byIndex;
+  const projectMode = isProjectLayout(layout) || (existing.projects?.length ?? 0) > 0;
+  if (projectMode ? byIndex?.projects?.length : byIndex?.bullets?.length) return byIndex;
 
   const key = existing.company.toLowerCase();
   return parsedExperiences.find(
@@ -461,25 +357,148 @@ function matchExperienceByCompany(
   );
 }
 
+function normalizeProjectsToCount(
+  projects: GeneratedResumeContent["experiences"][number]["projects"],
+  targetCount: number,
+  fallback: NonNullable<GeneratedResumeContent["experiences"][number]["projects"]>
+) {
+  const normalized = (projects ?? []).map((p) => normalizeResumeProject(p));
+  if (targetCount <= 0) return [];
+  if (normalized.length === targetCount) return normalized;
+  if (normalized.length > targetCount) return normalized.slice(0, targetCount);
+  const out = [...normalized];
+  while (out.length < targetCount) {
+    out.push(normalizeResumeProject(fallback[out.length] ?? fallback[fallback.length - 1]));
+  }
+  return out;
+}
+
+function normalizeCompareText(text: string): string {
+  return text.replace(/\*\*/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/** During regenerate, prefer the previous draft unless AI clearly changed a field. */
+export function pickRegenerateText(
+  aiText: string,
+  baselineText: string | undefined,
+  templateText: string | undefined
+): string {
+  const ai = aiText.trim();
+  const baseline = (baselineText ?? "").trim();
+  const template = (templateText ?? "").trim();
+
+  if (!ai) return baseline || template;
+  if (baseline && normalizeCompareText(ai) === normalizeCompareText(baseline)) return baseline;
+  if (
+    baseline &&
+    template &&
+    normalizeCompareText(ai) === normalizeCompareText(template) &&
+    normalizeCompareText(baseline) !== normalizeCompareText(template)
+  ) {
+    return baseline;
+  }
+  return ai;
+}
+
 export function mergeResumeWithTemplate(
   parsed: GeneratedResumeContent,
   existingExperiences: GeneratedResumeContent["experiences"],
-  fallbackTitle: string
+  fallbackTitle: string,
+  layout: ResumeTemplateLayout = "bullets",
+  baseline?: GeneratedResumeContent | null
 ): GeneratedResumeContent {
+  const projectMode = isProjectLayout(layout);
+  const baselineTitle = baseline?.title?.trim();
+
   return {
-    title: parsed.title || fallbackTitle,
-    summary: parsed.summary,
-    skills: parsed.skills,
+    title: pickRegenerateText(parsed.title || fallbackTitle, baselineTitle, fallbackTitle),
+    summary: pickRegenerateText(parsed.summary, baseline?.summary, ""),
+    skills: pickRegenerateText(parsed.skills, baseline?.skills, ""),
+    ...(parsed.fileName?.trim()
+      ? { fileName: parsed.fileName.trim() }
+      : baseline?.fileName?.trim()
+        ? { fileName: baseline.fileName.trim() }
+        : {}),
+    layout: projectMode ? "projects" : "bullets",
     experiences: existingExperiences.map((existing, i) => {
-      const generated = matchExperienceByCompany(parsed.experiences, existing, i);
+      const generated = matchExperienceByCompany(parsed.experiences, existing, i, layout);
+      const baselineExp = baseline?.experiences[i];
+
+      if (projectMode || existing.projects?.length) {
+        const projects = normalizeProjectsToCount(
+          generated?.projects,
+          existing.projects?.length ?? 0,
+          existing.projects ?? []
+        ).map((project, projectIndex) => {
+          const templateProject = existing.projects?.[projectIndex];
+          const baselineProject = baselineExp?.projects?.[projectIndex];
+          return {
+            name: templateProject?.name ?? project.name,
+            businessChallenge: pickRegenerateText(
+              project.businessChallenge,
+              baselineProject?.businessChallenge,
+              templateProject?.businessChallenge
+            ),
+            assignedResponsibility: pickRegenerateText(
+              project.assignedResponsibility,
+              baselineProject?.assignedResponsibility,
+              templateProject?.assignedResponsibility
+            ),
+            action: pickRegenerateText(project.action, baselineProject?.action, templateProject?.action),
+            result: pickRegenerateText(project.result, baselineProject?.result, templateProject?.result),
+          };
+        });
+
+        return {
+          company: existing.company,
+          role: pickRegenerateText(generated?.role ?? "", baselineExp?.role, existing.role),
+          dates: existing.dates,
+          bullets: [],
+          projects,
+        };
+      }
+
+      const sourceBullets = generated?.bullets?.length
+        ? generated.bullets
+        : baselineExp?.bullets?.length
+          ? baselineExp.bullets
+          : existing.bullets;
+      const target = existing.bullets.length;
+      const normalized =
+        sourceBullets.length === target
+          ? sourceBullets
+          : sourceBullets.length > target
+            ? sourceBullets.slice(0, target)
+            : [...sourceBullets, ...(baselineExp?.bullets ?? existing.bullets).slice(sourceBullets.length, target)];
+
+      const bullets = normalized.map((bullet, bulletIndex) =>
+        pickRegenerateText(
+          bullet,
+          baselineExp?.bullets[bulletIndex],
+          existing.bullets[bulletIndex]
+        )
+      );
+
       return {
         company: existing.company,
-        role: existing.role,
+        role: pickRegenerateText(generated?.role ?? "", baselineExp?.role, existing.role),
         dates: existing.dates,
-        bullets: generated?.bullets?.length ? generated.bullets : existing.bullets,
+        bullets,
       };
     }),
   };
+}
+
+export function finalizeResumeContent(
+  modelText: string,
+  existingExperiences: GeneratedResumeContent["experiences"],
+  fallbackTitle: string,
+  layout: ResumeTemplateLayout = "bullets",
+  baseline?: GeneratedResumeContent | null
+): GeneratedResumeContent {
+  const parsed = parseResumeJsonContent(modelText, layout);
+  const merged = mergeResumeWithTemplate(parsed, existingExperiences, fallbackTitle, layout, baseline);
+  return applyResumeContentPostProcess(merged, existingExperiences, layout);
 }
 
 export type ResumeGenerationPhase =
@@ -496,6 +515,7 @@ export function detectResumeGenerationPhase(
   output: string
 ): ResumeGenerationPhase {
   const text = output;
+  if (/"projects"/.test(text) || /"businessChallenge"/.test(text)) return "experiences";
   if (/"bullets"/.test(text) || /"experiences"\s*:\s*\[/.test(text)) return "experiences";
   if (/"skills"/.test(text)) return "skills";
   if (/"summary"/.test(text)) return "summary";
@@ -510,6 +530,6 @@ export const RESUME_PHASE_LABELS: Record<ResumeGenerationPhase, string> = {
   title: "Crafting resume title",
   summary: "Writing professional summary",
   skills: "Building skillsets",
-  experiences: "Tailoring experience bullets",
+  experiences: "Tailoring experience content",
   finalizing: "Finalizing your draft",
 };

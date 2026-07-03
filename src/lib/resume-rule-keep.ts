@@ -39,12 +39,21 @@ function resumePayload(content: GeneratedResumeContent): string {
       title: content.title,
       summary: content.summary,
       skills: content.skills,
-      experiences: content.experiences.map((e) => ({
-        company: e.company,
-        role: e.role,
-        dates: e.dates,
-        bullets: e.bullets,
-      })),
+      experiences: content.experiences.map((e) =>
+        e.projects?.length
+          ? {
+              company: e.company,
+              role: e.role,
+              dates: e.dates,
+              projects: e.projects,
+            }
+          : {
+              company: e.company,
+              role: e.role,
+              dates: e.dates,
+              bullets: e.bullets,
+            }
+      ),
     },
     null,
     2
@@ -170,8 +179,15 @@ export async function evaluateRuleKeepScore(
 
   const allChecks: Array<{ ruleIndex: number; passed: boolean; detail: string }> = [];
 
+  const batchOffsets: number[] = [];
   for (let offset = 0; offset < rules.length; offset += RULE_BATCH_SIZE) {
-    const batchChecks = await auditRuleBatch(rules, offset, content);
+    batchOffsets.push(offset);
+  }
+
+  const batchResults = await Promise.all(
+    batchOffsets.map((offset) => auditRuleBatch(rules, offset, content))
+  );
+  for (const batchChecks of batchResults) {
     allChecks.push(...batchChecks);
   }
 

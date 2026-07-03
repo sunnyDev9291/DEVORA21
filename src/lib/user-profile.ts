@@ -14,6 +14,9 @@ export type StoredUserProfile = {
 
   resumeTemplateBase64?: string;
 
+  /** Set when the user uploads a new template — used to prefer local over stale remote copies. */
+  resumeTemplateUpdatedAt?: number;
+
   customPrompt: string;
 
   promptFileName?: string;
@@ -235,6 +238,7 @@ export function buildFallbackAvatarUrl(firstName: string, lastName: string): str
 export async function cacheUploadedTemplate(userId: string, file: File): Promise<string> {
 
   const { fileToBase64 } = await import("@/lib/profile-file");
+  const { PROFILE_TEMPLATE_UPDATED_EVENT } = await import("@/lib/template-fingerprint");
 
   const templateBase64 = await fileToBase64(file);
 
@@ -244,7 +248,13 @@ export async function cacheUploadedTemplate(userId: string, file: File): Promise
 
     resumeTemplateBase64: templateBase64,
 
+    resumeTemplateUpdatedAt: Date.now(),
+
   });
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(PROFILE_TEMPLATE_UPDATED_EVENT));
+  }
 
   return templateBase64;
 

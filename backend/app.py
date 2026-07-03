@@ -20,14 +20,17 @@ from __future__ import annotations
 
 import base64
 import csv
+import io
 import json
 import os
 import shutil
 import subprocess
 import sys
 import uuid
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
+from xml.etree import ElementTree as ET
 
 from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
@@ -111,12 +114,34 @@ def find_soffice() -> str | None:
     return None
 
 
+def validate_docx_bytes(raw: bytes) -> None:
+    """Reject uploads that are not a readable DOCX before calling LibreOffice."""
+    if not raw.startswith(b"PK"):
+        raise ValueError("resume must be a valid .docx file (missing ZIP header).")
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            bad = archive.testzip()
+            if bad:
+                raise ValueError(f"resume DOCX is corrupt (bad zip entry: {bad}).")
+            document_xml = archive.read("word/document.xml")
+    except zipfile.BadZipFile as exc:
+        raise ValueError("resume DOCX is not a valid ZIP archive.") from exc
+
+    try:
+        ET.fromstring(document_xml)
+    except ET.ParseError as exc:
+        raise ValueError(f"resume DOCX has invalid document.xml: {exc}") from exc
+
+
 def convert_docx_to_pdf(docx_path: Path) -> Path:
     soffice = find_soffice()
     if not soffice:
         raise RuntimeError(
             "LibreOffice not found. Install LibreOffice or set LIBREOFFICE_PATH."
         )
+
+    validate_docx_bytes(docx_path.read_bytes())
 
     out_dir = docx_path.parent
     cmd = [
@@ -139,8 +164,9 @@ def convert_docx_to_pdf(docx_path: Path) -> Path:
         check=False,
     )
     if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "unknown error").strip()
         raise RuntimeError(
-            f"PDF conversion failed: {result.stderr or result.stdout or 'unknown error'}"
+            f"LibreOffice could not convert this DOCX to PDF: {detail}"
         )
 
     pdf_path = docx_path.with_suffix(".pdf")
@@ -275,6 +301,11 @@ def archive_resume():
         return jsonify(error="resume file exceeds size limit."), 413
     if not raw[:2] == b"PK":
         return jsonify(error="resume must be a valid .docx file."), 422
+
+    try:
+        validate_docx_bytes(raw)
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 422
 
     if not resume_file_name or resume_file_name == "resume.docx":
         resume_file_name = safe_resume_filename(upload.filename)
