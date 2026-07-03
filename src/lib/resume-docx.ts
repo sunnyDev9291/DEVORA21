@@ -364,14 +364,14 @@ function buildRunsFromMarkdownWithProperties(
     return `<w:r>${plainRPr}<w:t xml:space="preserve"></w:t></w:r>`;
   }
 
-  let prefixed = Boolean(options?.prefix);
+  let prefixApplied = false;
   return parts
     .map((part) => {
       const boldMatch = /^\*\*([^*]+)\*\*$/.exec(part);
       const content = boldMatch ? boldMatch[1] : part;
       const rPr = boldMatch ? boldRPr : plainRPr;
-      const withPrefix = !prefixed && options?.prefix ? `${options.prefix}${content}` : content;
-      if (!prefixed && options?.prefix) prefixed = true;
+      const withPrefix = !prefixApplied && options?.prefix ? `${options.prefix}${content}` : content;
+      if (!prefixApplied && options?.prefix) prefixApplied = true;
       return `<w:r>${rPr}<w:t xml:space="preserve">${escapeXml(withPrefix)}</w:t></w:r>`;
     })
     .join("");
@@ -450,6 +450,18 @@ function setSkillLineParagraphText(pXml: string, line: string): string {
 }
 
 /** Project BAR labels (Business Challenge, Action, etc.) — preserve bold/italic/underline from template. */
+function inferBarFieldSeparator(pXml: string): { labelSuffix: string; valuePrefix: string } {
+  const textRuns = matchTextRuns(pXml).filter((run) => /<w:t[\s\S]*?<\/w:t>/.test(run));
+  if (textRuns.length >= 2) {
+    const secondText = getRunPlainText(textRuns[1]);
+    const colonPrefix = secondText.match(/^(:[\s]*)/);
+    if (colonPrefix) {
+      return { labelSuffix: "", valuePrefix: colonPrefix[1] };
+    }
+  }
+  return { labelSuffix: ":", valuePrefix: " " };
+}
+
 export function setBarFieldParagraphText(pXml: string, label: string, value: string): string {
   const open = pXml.match(/^(<w:p[^>]*>)/)?.[1] ?? "<w:p>";
   const pPr = pXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] ?? "";
@@ -462,11 +474,12 @@ export function setBarFieldParagraphText(pXml: string, label: string, value: str
   if (!valueRPr) valueRPr = stripDecorations(baseRPr) || baseRPr;
 
   const trimmedLabel = label.trim().replace(/:+\s*$/, "");
-  const labelRun = `<w:r>${labelRPr}<w:t xml:space="preserve">${escapeXml(`${trimmedLabel}:`)}</w:t></w:r>`;
+  const { labelSuffix, valuePrefix } = inferBarFieldSeparator(pXml);
+  const labelRun = `<w:r>${labelRPr}<w:t xml:space="preserve">${escapeXml(`${trimmedLabel}${labelSuffix}`)}</w:t></w:r>`;
   const trimmedValue = value.trim();
   const skillBoldRPr = ensureLatinBoldRunProperties(valueRPr);
   const valueRuns = trimmedValue
-    ? buildRunsFromMarkdownWithProperties(trimmedValue, skillBoldRPr, valueRPr, { prefix: " " })
+    ? buildRunsFromMarkdownWithProperties(trimmedValue, skillBoldRPr, valueRPr, { prefix: valuePrefix })
     : "";
 
   return `${open}${pPr}${labelRun}${valueRuns}</w:p>`;
@@ -669,6 +682,21 @@ function collectSectionParagraphIndices(
     if (text && !isSectionHeader(text)) indices.push(i);
   }
   return indices;
+}
+
+/** Empty spacer paragraphs between a section header and the next section (e.g. skills → experience). */
+function collectSectionGapParagraphs(
+  paragraphs: string[],
+  headerIdx: number,
+  endIdx: number
+): string[] {
+  const gaps: string[] = [];
+  for (let i = headerIdx + 1; i < endIdx; i += 1) {
+    if (!getParagraphText(paragraphs[i]).trim()) {
+      gaps.push(paragraphs[i]);
+    }
+  }
+  return gaps;
 }
 
 /** Extract summary, skills, and sample bullets from the template for style-matching prompts. */
@@ -894,6 +922,7 @@ export function applyContentToDocx(
   const skillsIndices = collectSectionParagraphIndices(paragraphs, skillsIdx, expIdx);
   applySectionParagraphs(paragraphs, summaryIndices, content.summary);
   const skillParagraphs = buildSkillsParagraphs(paragraphs, skillsIndices, content.skills);
+  const skillsGapParagraphs = collectSectionGapParagraphs(paragraphs, skillsIdx, expIdx);
   const skillsContentStart = skillsIndices.length > 0 ? skillsIndices[0] : skillsIdx + 1;
 
   const expEnd = eduIdx === -1 ? paragraphs.length : eduIdx;
@@ -953,12 +982,11 @@ export function applyContentToDocx(
 
   applyPageBreaksFromTemplate(experienceParagraphs, originalExperienceParagraphs);
 
-  const experienceHeaderParagraph = setParagraphSpacing(paragraphs[expIdx], 0, 0);
-
   const updatedParagraphs = [
     ...paragraphs.slice(0, skillsContentStart),
     ...skillParagraphs,
-    experienceHeaderParagraph,
+    ...skillsGapParagraphs,
+    paragraphs[expIdx],
     ...experienceParagraphs,
     ...paragraphs.slice(expEnd),
   ];
