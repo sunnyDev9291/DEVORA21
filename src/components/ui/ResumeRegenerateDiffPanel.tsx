@@ -32,7 +32,7 @@ export default function ResumeRegenerateDiffPanel({
       <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-amber-500/20">
         <div>
           <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">
-            Regeneration changes
+            Improvement changes
           </p>
           <p className="text-xs text-amber-800/80 dark:text-amber-200/80 mt-0.5">
             {changes.length} field{changes.length === 1 ? "" : "s"} updated from your previous draft

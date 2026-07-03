@@ -11,8 +11,7 @@ import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
 import { generateResume } from "@/lib/resume-generate-client";
 import { archiveResume } from "@/lib/resume-archive";
 import { resumeBuilderAccessDeniedMessage } from "@/lib/resume-access";
-import { maximizeDeterministicAtsScore, runIterativeRegeneration, type RegenerateEvaluation } from "@/lib/resume-ats-regenerate";
-import { buildUnifiedResumeScore, RESUME_PASS_THRESHOLD } from "@/lib/resume-unified-score";
+import { buildUnifiedResumeScore } from "@/lib/resume-unified-score";
 import { emptyRuleKeepScore } from "@/lib/resume-rule-keep";
 import type { ResumeScoreResult } from "@/lib/resume-score";
 import { buildJobKeywordsCacheKey } from "@/lib/resume-keywords-cache";
@@ -29,6 +28,10 @@ import {
   type FeedbackResolution,
   type ResumeFieldChange,
 } from "@/lib/resume-content-diff";
+import {
+  describeImproveTarget,
+  type ResumeImproveTarget,
+} from "@/lib/resume-improve-target";
 import {
   normalizeResumeFileBaseName,
   buildExpectedResumeBaseName,
@@ -134,6 +137,7 @@ export default function ResumeGenerator({
   const [regenerateNotice, setRegenerateNotice] = useState("");
   const [regenerateBaseline, setRegenerateBaseline] = useState<GeneratedResumeContent | null>(null);
   const [regenerateBaselineScore, setRegenerateBaselineScore] = useState<ResumeUnifiedScoreResult | null>(null);
+  const [improvingTargetId, setImprovingTargetId] = useState("");
   const [atsModalOpen, setAtsModalOpen] = useState(false);
   const [resumeChatOpen, setResumeChatOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -175,6 +179,10 @@ export default function ResumeGenerator({
     setStreamPhase("starting");
     setResumeScore(null);
     setScoreError("");
+    setRegenerateNotice("");
+    setRegenerateBaseline(null);
+    setRegenerateBaselineScore(null);
+    setImprovingTargetId("");
     setAtsModalOpen(false);
     setResumeChatOpen(false);
     setResumeFileBaseName("");
@@ -237,6 +245,7 @@ export default function ResumeGenerator({
     setRegenerateNotice("");
     setRegenerateBaseline(null);
     setRegenerateBaselineScore(null);
+    setImprovingTargetId("");
     setAtsModalOpen(false);
     setResumeChatOpen(false);
     setResumeFileBaseName("");
@@ -333,7 +342,7 @@ export default function ResumeGenerator({
       /** Await slow Rule Keep audit (manual recheck). Default: ATS first, rules in background. */
       includeRuleKeep?: boolean;
     }
-  ): Promise<RegenerateEvaluation | null> {
+  ): Promise<ResumeUnifiedScoreResult | null> {
     const controller = new AbortController();
 
     if (!options?.quiet) {
@@ -427,40 +436,7 @@ export default function ResumeGenerator({
     }
   }
 
-  async function scoreAfterFirstGenerate(resumeContent: GeneratedResumeContent) {
-    const scored = await evaluateResumeScores(resumeContent, { openModal: true });
-    if (!scored || scored.overall >= RESUME_PASS_THRESHOLD) return;
-
-    const boosted = await maximizeDeterministicAtsScore(
-      resumeContent,
-      (candidate, evalOpts) =>
-        evaluateResumeScores(candidate, {
-          openModal: false,
-          preserveScore: true,
-          quiet: true,
-          ruleKeepSnapshot: evalOpts?.ruleKeep ?? scored.ruleKeep,
-        }),
-      { initialEval: scored, maxRounds: 1 }
-    );
-
-    if (boosted.score.overall > scored.overall) {
-      setContent(boosted.content);
-      setResumeScore(boosted.score);
-      setGenerationKey((k) => k + 1);
-      if (form.customPrompt?.trim()) {
-        void hydrateRuleKeepScores(boosted.content, boosted.score.ats);
-      }
-    }
-  }
-
-  async function handleGenerate(
-    e?: React.FormEvent,
-    options?: {
-      atsFeedback?: AtsScoreResult;
-      ruleKeepFeedback?: RuleKeepScoreResult;
-      previousContent?: GeneratedResumeContent;
-    }
-  ) {
+  async function handleGenerate(e?: React.FormEvent) {
     e?.preventDefault();
     if (applying) return;
     if (!activeTemplate) {
@@ -483,6 +459,7 @@ export default function ResumeGenerator({
     setRegenerateNotice("");
     setRegenerateBaseline(null);
     setRegenerateBaselineScore(null);
+    setImprovingTargetId("");
     setGenerating(true);
     setStreamPhase("starting");
 
@@ -492,87 +469,29 @@ export default function ResumeGenerator({
 
     const templateForRequest = resolveActiveUserTemplate(user?.id, activeTemplate)!;
 
-    let firstGenerateContent: GeneratedResumeContent | null = null;
-
     try {
       setDocxBase64("");
       setFileName("");
       setStep("review");
 
-      if (options?.previousContent && options?.atsFeedback) {
-        setRegenerateBaseline(options.previousContent);
-        setRegenerateBaselineScore(
-          resumeScore ??
-            buildUnifiedResumeScore(
-              options.atsFeedback,
-              options.ruleKeepFeedback ?? emptyRuleKeepScore()
-            )
-        );
-
-        const picked = await runIterativeRegeneration({
-          baselineContent: options.previousContent,
-          baselineAts: options.atsFeedback,
-          baselineRules: options.ruleKeepFeedback ?? emptyRuleKeepScore(),
-          generateDraft: async ({ previousContent, atsFeedback, ruleKeepFeedback }) => {
-            const draft = await generateResume(
-              {
-                ...form,
-                templateName: templateForRequest.fileName,
-                templateBase64: templateForRequest.templateBase64,
-                profileName: chatProfile?.fullName,
-                previousContent,
-                atsFeedback,
-                ruleKeepFeedback,
-              },
-              {
-                onPhase: (phase) => {
-                  if (generationRunRef.current === runId) setStreamPhase(phase);
-                },
-                signal: controller.signal,
-              }
-            );
-            return draft.content;
+      const data = await generateResume(
+        {
+          ...form,
+          templateName: templateForRequest.fileName,
+          templateBase64: templateForRequest.templateBase64,
+          profileName: chatProfile?.fullName,
+        },
+        {
+          onPhase: (phase) => {
+            if (generationRunRef.current === runId) setStreamPhase(phase);
           },
-          evaluate: (candidate, evalOpts) =>
-            evaluateResumeScores(candidate, {
-              openModal: false,
-              preserveScore: true,
-              quiet: true,
-              ruleKeepSnapshot:
-                evalOpts?.ruleKeep ?? options.ruleKeepFeedback ?? emptyRuleKeepScore(),
-            }),
-        });
-        if (generationRunRef.current !== runId) return;
-        setContent(picked.content);
-        setResumeScore(picked.score);
-        setRegenerateNotice(picked.notice);
-        if (picked.content !== options.previousContent) {
-          setGenerationKey((k) => k + 1);
+          signal: controller.signal,
         }
-        if (form.customPrompt?.trim()) {
-          void hydrateRuleKeepScores(picked.content, picked.score.ats);
-        }
-      } else {
-        const data = await generateResume(
-          {
-            ...form,
-            templateName: templateForRequest.fileName,
-            templateBase64: templateForRequest.templateBase64,
-            profileName: chatProfile?.fullName,
-          },
-          {
-            onPhase: (phase) => {
-              if (generationRunRef.current === runId) setStreamPhase(phase);
-            },
-            signal: controller.signal,
-          }
-        );
+      );
 
-        if (generationRunRef.current !== runId) return;
-        setContent(data.content);
-        setGenerationKey((k) => k + 1);
-        firstGenerateContent = data.content;
-      }
+      if (generationRunRef.current !== runId) return;
+      setContent(data.content);
+      setGenerationKey((k) => k + 1);
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       if (generationRunRef.current !== runId) return;
@@ -583,31 +502,94 @@ export default function ResumeGenerator({
         abortRef.current = null;
       }
     }
-
-    if (generationRunRef.current === runId && firstGenerateContent) {
-      void scoreAfterFirstGenerate(firstGenerateContent);
-    }
   }
 
-  async function handleRegenerate() {
-    if (applying || generating || !content) return;
+  async function handleImproveScoreItem(target: ResumeImproveTarget) {
+    if (applying || generating || !content || !activeTemplate) return;
 
     setAtsModalOpen(true);
     setScoreError("");
 
-    let scores = resumeScore;
+    const baselineScore =
+      resumeScore ?? (await evaluateResumeScores(content, { openModal: true, includeRuleKeep: true }));
+    if (!baselineScore) return;
 
-    if (!scores) {
-      const evaluated = await evaluateResumeScores(content, { openModal: true });
-      if (!evaluated) return;
-      scores = evaluated;
+    abortRef.current?.abort();
+    const runId = ++generationRunRef.current;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setGenerating(true);
+    setImprovingTargetId(target.id);
+    setStreamPhase("starting");
+    setError("");
+    setRegenerateNotice("");
+    setRegenerateBaseline(content);
+    setRegenerateBaselineScore(baselineScore);
+
+    const templateForRequest = resolveActiveUserTemplate(user?.id, activeTemplate)!;
+    const targetedInstruction = [
+      "Targeted Improve button request:",
+      describeImproveTarget(target),
+      "",
+      "Edit only the smallest necessary part of the previous draft to improve this selected score item.",
+      "Copy every unrelated field exactly from the previous draft. Do not rewrite the whole resume.",
+    ].join("\n");
+
+    try {
+      const draft = await generateResume(
+        {
+          ...form,
+          customPrompt: [form.customPrompt.trim(), targetedInstruction].filter(Boolean).join("\n\n"),
+          templateName: templateForRequest.fileName,
+          templateBase64: templateForRequest.templateBase64,
+          profileName: chatProfile?.fullName,
+          previousContent: content,
+          atsFeedback: baselineScore.ats,
+          ruleKeepFeedback: baselineScore.ruleKeep,
+        },
+        {
+          onPhase: (phase) => {
+            if (generationRunRef.current === runId) setStreamPhase(phase);
+          },
+          signal: controller.signal,
+        }
+      );
+
+      if (generationRunRef.current !== runId) return;
+
+      const nextScore = await evaluateResumeScores(draft.content, {
+        openModal: false,
+        preserveScore: true,
+        quiet: true,
+        includeRuleKeep: target.kind === "custom-rule",
+        ruleKeepSnapshot: target.kind === "custom-rule" ? undefined : baselineScore.ruleKeep,
+      });
+
+      if (generationRunRef.current !== runId) return;
+      setContent(draft.content);
+      setGenerationKey((k) => k + 1);
+      if (nextScore) {
+        setResumeScore(nextScore);
+        setRegenerateNotice(
+          `Improved "${target.label}" — overall ${baselineScore.overall}→${nextScore.overall}/100.`
+        );
+        if (target.kind !== "custom-rule" && form.customPrompt?.trim()) {
+          void hydrateRuleKeepScores(draft.content, nextScore.ats);
+        }
+      } else {
+        setRegenerateNotice(`Updated "${target.label}". Re-check the score to verify the improvement.`);
+      }
+    } catch (err) {
+      if ((err as Error).name === "AbortError") return;
+      if (generationRunRef.current !== runId) return;
+      setError((err as Error).message || "Could not improve this score item.");
+    } finally {
+      if (generationRunRef.current === runId) {
+        setGenerating(false);
+        setImprovingTargetId("");
+        abortRef.current = null;
+      }
     }
-
-    await handleGenerate(undefined, {
-      atsFeedback: scores.ats,
-      ruleKeepFeedback: scores.ruleKeep,
-      previousContent: content,
-    });
   }
 
   async function submitResumeArchive(docxB64: string, resumeFileName: string) {
@@ -695,6 +677,7 @@ export default function ResumeGenerator({
     setRegenerateNotice("");
     setRegenerateBaseline(null);
     setRegenerateBaselineScore(null);
+    setImprovingTargetId("");
     setAtsModalOpen(false);
     setResumeChatOpen(false);
     setResumeFileBaseName("");
@@ -739,17 +722,7 @@ export default function ResumeGenerator({
           </div>
         </div>
 
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (content) {
-              void handleRegenerate();
-            } else {
-              void handleGenerate(e);
-            }
-          }}
-          className="space-y-4"
-        >
+        <form onSubmit={handleGenerate} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label htmlFor="jobTitle" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
@@ -831,7 +804,7 @@ export default function ResumeGenerator({
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
-                  Regenerate draft
+                  Generate new draft
                 </>
               ) : (
                 <>
@@ -1016,7 +989,6 @@ export default function ResumeGenerator({
               content={content}
               onChange={setContent}
               onApply={handleApply}
-              onRegenerate={handleRegenerate}
               applying={applying}
               generating={generating}
               templateName={activeTemplate?.fileName ?? ""}
@@ -1064,7 +1036,6 @@ export default function ResumeGenerator({
         content={content}
         onContentChange={setContent}
         onApply={handleApply}
-        onRegenerate={handleRegenerate}
         applying={applying}
         generating={generating}
         streamPhase={streamPhase}
@@ -1092,6 +1063,8 @@ export default function ResumeGenerator({
           setRegenerateBaseline(null);
           setRegenerateBaselineScore(null);
         }}
+        onImprove={handleImproveScoreItem}
+        improvingTargetId={improvingTargetId}
       />
 
       <PdfPreviewModal

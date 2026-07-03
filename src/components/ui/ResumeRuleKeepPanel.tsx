@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { RULE_KEEP_PASS_THRESHOLD, RULE_KEEP_SCORE_MAX } from "@/lib/resume-rule-keep-constants";
 import type { RuleKeepScoreResult } from "@/lib/resume-types";
+import type { ResumeImproveTarget } from "@/lib/resume-improve-target";
 import { EvaluationRowLoader } from "@/components/ui/ResumeStepLoader";
 
 export interface ResumeRuleKeepPanelProps {
@@ -12,6 +13,8 @@ export interface ResumeRuleKeepPanelProps {
   customPrompt?: string;
   /** When true, omit the hero ring and outer section styling. */
   embedded?: boolean;
+  onImprove?: (target: ResumeImproveTarget) => void;
+  improvingTargetId?: string;
 }
 
 function scoreColor(overall: number, hasRules: boolean): string {
@@ -65,6 +68,8 @@ export function ResumeRuleKeepPanel({
   error,
   customPrompt = "",
   embedded = false,
+  onImprove,
+  improvingTargetId,
 }: ResumeRuleKeepPanelProps) {
   const [rulesExpanded, setRulesExpanded] = useState(true);
   const hasPrompt = Boolean(customPrompt.trim());
@@ -183,6 +188,26 @@ export function ResumeRuleKeepPanel({
                         >
                           {item.passed ? "Passed" : "Failed"}
                         </span>
+                        {onImprove && !item.passed && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onImprove({
+                                id: `custom-rule:${item.id}`,
+                                kind: "custom-rule",
+                                label: `Rule ${index + 1}`,
+                                rule: item.rule,
+                                detail: item.detail,
+                                category: item.category,
+                                passed: item.passed,
+                              })
+                            }
+                            disabled={Boolean(improvingTargetId)}
+                            className="rounded-md border border-emerald-500/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-500/10 disabled:opacity-50 dark:text-emerald-300"
+                          >
+                            {improvingTargetId === `custom-rule:${item.id}` ? "Improving..." : "Improve"}
+                          </button>
+                        )}
                       </div>
                       <p className="text-slate-700 dark:text-slate-300 leading-relaxed">{item.rule}</p>
                       <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
@@ -217,7 +242,7 @@ export function ResumeRuleKeepPanel({
       {!score.passed && hasRules && (
         <div className={`border-t border-emerald-500/10 bg-emerald-500/[0.02] ${embedded ? "py-3 mt-4" : "px-5 py-3 sm:px-6"}`}>
           <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
-            Regenerate the draft to improve compliance with the failed rules above.
+            Use Improve beside a failed rule to make a targeted edit without rewriting the full draft.
           </p>
         </div>
       )}

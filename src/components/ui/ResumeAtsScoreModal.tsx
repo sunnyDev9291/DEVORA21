@@ -10,6 +10,7 @@ import { RESUME_PASS_THRESHOLD } from "@/lib/resume-unified-score";
 import type { GeneratedResumeContent } from "@/lib/resume-types";
 import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
 import type { FeedbackResolution, ResumeFieldChange } from "@/lib/resume-content-diff";
+import type { ResumeImproveTarget } from "@/lib/resume-improve-target";
 
 interface ResumeAtsScoreModalProps extends ResumeScorePanelProps {
   open: boolean;
@@ -18,7 +19,6 @@ interface ResumeAtsScoreModalProps extends ResumeScorePanelProps {
   content?: GeneratedResumeContent | null;
   onContentChange?: (content: GeneratedResumeContent) => void;
   onApply?: () => void;
-  onRegenerate?: () => void;
   applying?: boolean;
   generating?: boolean;
   streamPhase?: ResumeGenerationPhase;
@@ -37,6 +37,8 @@ interface ResumeAtsScoreModalProps extends ResumeScorePanelProps {
   regenerateFeedback?: FeedbackResolution | null;
   changedFieldIds?: Set<string>;
   onDismissRegenerateDiff?: () => void;
+  onImprove?: (target: ResumeImproveTarget) => void;
+  improvingTargetId?: string;
 }
 
 export default function ResumeAtsScoreModal({
@@ -51,7 +53,6 @@ export default function ResumeAtsScoreModal({
   content,
   onContentChange,
   onApply,
-  onRegenerate,
   applying = false,
   generating = false,
   streamPhase = "starting",
@@ -70,8 +71,10 @@ export default function ResumeAtsScoreModal({
   regenerateFeedback = null,
   changedFieldIds,
   onDismissRegenerateDiff,
+  onImprove,
+  improvingTargetId,
 }: ResumeAtsScoreModalProps) {
-  const showContentReview = !!content && !!onContentChange && !!onApply && !!onRegenerate;
+  const showContentReview = !!content && !!onContentChange && !!onApply;
   const titleId = useId();
   const [mounted, setMounted] = useState(false);
 
@@ -155,6 +158,8 @@ export default function ResumeAtsScoreModal({
               onRecheck={onRecheck}
               recheckDisabled={recheckDisabled}
               customPrompt={customPrompt}
+              onImprove={onImprove}
+              improvingTargetId={improvingTargetId}
             />
           </div>
 
@@ -180,7 +185,6 @@ export default function ResumeAtsScoreModal({
                   content={content}
                   onChange={onContentChange}
                   onApply={onApply}
-                  onRegenerate={onRegenerate}
                   applying={applying}
                   generating={generating}
                   templateName={templateName}

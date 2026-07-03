@@ -5,6 +5,7 @@ import { ATS_PASS_THRESHOLD } from "@/lib/resume-ats";
 import { RULE_KEEP_PASS_THRESHOLD } from "@/lib/resume-rule-keep-constants";
 import { RESUME_PASS_THRESHOLD, RESUME_SCORE_MAX } from "@/lib/resume-unified-score";
 import type { ResumeUnifiedScoreResult } from "@/lib/resume-types";
+import type { ResumeImproveTarget } from "@/lib/resume-improve-target";
 import { ResumeAtsScorePanel } from "@/components/ui/ResumeAtsScorePanel";
 import { ResumeRuleKeepPanel } from "@/components/ui/ResumeRuleKeepPanel";
 import { EvaluationHeroLoader } from "@/components/ui/ResumeStepLoader";
@@ -16,6 +17,8 @@ export interface ResumeScorePanelProps {
   onRecheck?: () => void;
   recheckDisabled?: boolean;
   customPrompt?: string;
+  onImprove?: (target: ResumeImproveTarget) => void;
+  improvingTargetId?: string;
 }
 
 function scoreColor(overall: number, passed: boolean): string {
@@ -106,6 +109,8 @@ export function ResumeScorePanel({
   onRecheck,
   recheckDisabled,
   customPrompt = "",
+  onImprove,
+  improvingTargetId,
 }: ResumeScorePanelProps) {
   const [atsExpanded, setAtsExpanded] = useState(true);
   const [rulesExpanded, setRulesExpanded] = useState(true);
@@ -204,7 +209,14 @@ export function ResumeScorePanel({
         </button>
         {atsExpanded && (
           <div className="px-5 pb-4 sm:px-6 border-t border-violet-500/10">
-            <ResumeAtsScorePanel score={score.ats} loading={false} error="" embedded />
+            <ResumeAtsScorePanel
+              score={score.ats}
+              loading={false}
+              error=""
+              embedded
+              onImprove={onImprove}
+              improvingTargetId={improvingTargetId}
+            />
           </div>
         )}
       </div>
@@ -238,6 +250,8 @@ export function ResumeScorePanel({
                 error=""
                 customPrompt={customPrompt}
                 embedded
+                onImprove={onImprove}
+                improvingTargetId={improvingTargetId}
               />
             </div>
           )}
