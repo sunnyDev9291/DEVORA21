@@ -173,9 +173,10 @@ export async function resolveTemplateFromDocx(buffer: Buffer): Promise<TemplateP
     throw new Error(aiCheck.errors.join(" "));
   } catch (err) {
     const detail = err instanceof Error ? err.message : "AI parse failed";
+    const structuralErrors = !structuralCheck.ok ? structuralCheck.errors : [];
     throw new Error(
-      structuralCheck.errors.length
-        ? `Template parse failed (${structuralCheck.errors.join("; ")}). ${detail}`
+      structuralErrors.length
+        ? `Template parse failed (${structuralErrors.join("; ")}). ${detail}`
         : detail
     );
   }
