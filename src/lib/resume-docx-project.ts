@@ -445,7 +445,7 @@ function applyProjectToParagraphGroup(
 
     if (classified.kind === "field" && classified.field) {
       const field = classified.field;
-      const value = bold(project[field]);
+      const value = field === "action" ? project[field] : bold(project[field]);
       if (group.length === 1) {
         out.push(
           setBarFieldParagraphText(group[0], resolveBarFieldLabel(sampleText, field), value)

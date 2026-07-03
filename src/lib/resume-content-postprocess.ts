@@ -195,7 +195,7 @@ function boldProjectFields(project: ResumeProject, skillTerms: string[]): Resume
 
     assignedResponsibility: boldSkillTermsInText(project.assignedResponsibility, skillTerms),
 
-    action: boldSkillTermsInText(project.action, skillTerms),
+    action: project.action,
 
     result: boldSkillTermsInText(project.result, skillTerms),
 
