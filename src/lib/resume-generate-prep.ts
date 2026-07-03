@@ -8,7 +8,7 @@ import {
   finalizeResumeContent,
 } from "@/lib/resume-prompt";
 import { ensureResumeContentFileName } from "@/lib/resume-filename";
-import { alignSkillsToTemplate } from "@/lib/resume-skills-style";
+import { formatSkillsWithTemplateStyle } from "@/lib/resume-skills-style";
 import type {
   AtsScoreResult,
   GeneratedResumeContent,
@@ -175,7 +175,7 @@ function applyTemplateSkillsStyle(
   if (!skillsSample?.trim()) return content;
   return {
     ...content,
-    skills: alignSkillsToTemplate(content.skills, skillsSample),
+    skills: formatSkillsWithTemplateStyle(content.skills, skillsSample),
   };
 }
 

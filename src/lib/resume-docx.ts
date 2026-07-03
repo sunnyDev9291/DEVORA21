@@ -799,13 +799,7 @@ function buildSkillsParagraphs(
     contentTemplates[contentTemplates.length - 1] ??
     paragraphs[skillsIndices[skillsIndices.length - 1]];
 
-  const templateLineCount = contentTemplates.length || skillsIndices.length;
-  const normalizedLines =
-    templateLineCount > 0 && lines.length > templateLineCount
-      ? lines.slice(0, templateLineCount)
-      : lines;
-
-  const skillParagraphs = normalizedLines.map((line, index) => {
+  const skillParagraphs = lines.map((line, index) => {
     const template = contentTemplates[index] ?? fallback;
     return setSkillLineParagraphText(template, line);
   });
