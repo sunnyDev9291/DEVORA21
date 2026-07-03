@@ -42,8 +42,13 @@ export function getDocxParagraphs(buffer: Buffer): DocxParagraph[] {
   }));
 }
 
+function sanitizeForXml(text: string): string {
+  // XML 1.0 forbids most control characters; LibreOffice rejects malformed document.xml.
+  return text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\uFFFE\uFFFF]/g, "");
+}
+
 function escapeXml(text: string): string {
-  return text
+  return sanitizeForXml(text)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -299,6 +304,7 @@ function setSkillLineParagraphText(pXml: string, line: string): string {
   if (runs.length >= 2) {
     const { label, value } = parsed;
     let labelAssigned = false;
+    let valueAssigned = false;
     const updatedRuns = runs.map((run) => {
       if (!/<w:t[\s\S]*?<\/w:t>/.test(run)) return run;
       const isBold = /<w:b(?:\s[^>]*)?\/>|<w:b(?:\s[^>]*)?>[^<]*<\/w:b>/.test(run);
@@ -306,8 +312,12 @@ function setSkillLineParagraphText(pXml: string, line: string): string {
         labelAssigned = true;
         return replaceRunText(run, `${label}:`);
       }
-      if (!isBold && labelAssigned) {
+      if (!isBold && labelAssigned && !valueAssigned) {
+        valueAssigned = true;
         return replaceRunText(run, value ? ` ${value}` : "");
+      }
+      if (!isBold && labelAssigned && valueAssigned) {
+        return replaceRunText(run, "");
       }
       return run;
     });
