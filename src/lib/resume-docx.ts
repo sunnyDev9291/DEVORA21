@@ -137,7 +137,7 @@ function applyPageBreaksFromTemplate(
 }
 
 export function setParagraphText(pXml: string, text: string): string {
-  if (!/\*\*[^*]+\*\*/.test(text)) {
+  if (!text.includes("**")) {
     const preserved = replaceSingleRunParagraphText(pXml, text);
     if (preserved) return preserved;
   }
@@ -353,6 +353,30 @@ function pickValueRunProperties(runs: string[]): string {
   return best;
 }
 
+function buildRunsFromMarkdownWithProperties(
+  text: string,
+  boldRPr: string,
+  plainRPr: string,
+  options?: { prefix?: string }
+): string {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g).filter((part) => part.length > 0);
+  if (parts.length === 0) {
+    return `<w:r>${plainRPr}<w:t xml:space="preserve"></w:t></w:r>`;
+  }
+
+  let prefixed = Boolean(options?.prefix);
+  return parts
+    .map((part) => {
+      const boldMatch = /^\*\*([^*]+)\*\*$/.exec(part);
+      const content = boldMatch ? boldMatch[1] : part;
+      const rPr = boldMatch ? boldRPr : plainRPr;
+      const withPrefix = !prefixed && options?.prefix ? `${options.prefix}${content}` : content;
+      if (!prefixed && options?.prefix) prefixed = true;
+      return `<w:r>${rPr}<w:t xml:space="preserve">${escapeXml(withPrefix)}</w:t></w:r>`;
+    })
+    .join("");
+}
+
 function buildRunsFromMarkdownText(pXml: string, text: string): string {
   const runs = matchTextRuns(pXml);
   const baseRPr = extractBaseRunProperties(pXml);
@@ -360,19 +384,7 @@ function buildRunsFromMarkdownText(pXml: string, text: string): string {
   const valueRPr =
     pickValueRunProperties(runs) || stripDecorations(baseRPr) || baseRPr;
 
-  const parts = text.split(/(\*\*[^*]+\*\*)/g).filter((part) => part.length > 0);
-  if (parts.length === 0) {
-    return `<w:r>${valueRPr}<w:t xml:space="preserve"></w:t></w:r>`;
-  }
-
-  return parts
-    .map((part) => {
-      const boldMatch = /^\*\*([^*]+)\*\*$/.exec(part);
-      const content = boldMatch ? boldMatch[1] : part;
-      const rPr = boldMatch ? labelRPr : valueRPr;
-      return `<w:r>${rPr}<w:t xml:space="preserve">${escapeXml(content)}</w:t></w:r>`;
-    })
-    .join("");
+  return buildRunsFromMarkdownWithProperties(text, labelRPr, valueRPr);
 }
 
 function parseSkillCategoryLine(line: string): { label: string; value: string } | null {
@@ -452,11 +464,12 @@ export function setBarFieldParagraphText(pXml: string, label: string, value: str
   const trimmedLabel = label.trim().replace(/:+\s*$/, "");
   const labelRun = `<w:r>${labelRPr}<w:t xml:space="preserve">${escapeXml(`${trimmedLabel}:`)}</w:t></w:r>`;
   const trimmedValue = value.trim();
-  const valueRun = trimmedValue
-    ? `<w:r>${valueRPr}<w:t xml:space="preserve"> ${escapeXml(trimmedValue)}</w:t></w:r>`
+  const skillBoldRPr = ensureLatinBoldRunProperties(valueRPr);
+  const valueRuns = trimmedValue
+    ? buildRunsFromMarkdownWithProperties(trimmedValue, skillBoldRPr, valueRPr, { prefix: " " })
     : "";
 
-  return `${open}${pPr}${labelRun}${valueRun}</w:p>`;
+  return `${open}${pPr}${labelRun}${valueRuns}</w:p>`;
 }
 
 function findSectionIndex(paragraphs: string[], pattern: RegExp): number {
