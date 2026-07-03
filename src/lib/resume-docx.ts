@@ -55,15 +55,19 @@ function escapeXml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
-export function getParagraphText(pXml: string): string {
-  const raw = (pXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [])
-    .map((t) => t.replace(/<w:t[^>]*>/, "").replace(/<\/w:t>/, ""))
-    .join("");
-  return raw
+function decodeXmlEntities(text: string): string {
+  return text
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"');
+}
+
+export function getParagraphText(pXml: string): string {
+  const raw = (pXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [])
+    .map((t) => t.replace(/<w:t[^>]*>/, "").replace(/<\/w:t>/, ""))
+    .join("");
+  return decodeXmlEntities(raw);
 }
 
 /** Plain text with **bold** markers from Word run properties. */
@@ -80,8 +84,9 @@ export function getParagraphTextWithBold(pXml: string): string {
       })
       .join("");
     if (!text) continue;
+    const decoded = decodeXmlEntities(text);
     const isBold = /<w:b(?:\s[^>]*)?\/>|<w:b(?:\s[^>]*)?>[^<]*<\/w:b>/.test(run);
-    out += isBold ? `**${text}**` : text;
+    out += isBold ? `**${decoded}**` : decoded;
   }
 
   return out || getParagraphText(pXml);
@@ -273,65 +278,58 @@ function parseSkillCategoryLine(line: string): { label: string; value: string } 
   const trimmed = line.trim();
   const markdown = trimmed.match(/^\*\*([^*:]+):\*\*\s*(.*)$/);
   if (markdown) {
-    const label = markdown[1].trim();
+    const label = decodeXmlEntities(markdown[1].replace(/\*\*/g, "")).trim();
     const value = markdown[2].replace(/\*\*/g, "").trim();
     return label ? { label, value } : null;
   }
   const plain = trimmed.match(/^([^:]+):\s*(.*)$/);
   if (plain) {
-    const label = plain[1].replace(/\*\*/g, "").trim();
+    const label = decodeXmlEntities(plain[1].replace(/\*\*/g, "")).trim();
     const value = plain[2].replace(/\*\*/g, "").trim();
     return label ? { label, value } : null;
   }
   return null;
 }
 
+function extractRunProperties(runXml: string): string {
+  return runXml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/)?.[0] ?? "";
+}
+
 function replaceRunText(runXml: string, text: string): string {
   if (!/<w:t[\s\S]*?<\/w:t>/.test(runXml)) return runXml;
   return runXml.replace(
-    /<w:t([^>]*)>[\s\S]*?<\/w:t>/,
-    `<w:t$1 xml:space="preserve">${escapeXml(text)}</w:t>`
+    /<w:t[^>]*>[\s\S]*?<\/w:t>/,
+    `<w:t xml:space="preserve">${escapeXml(text)}</w:t>`
   );
 }
 
-/** Keep the template paragraph's bold/plain run styling when writing a category line. */
+/** Rebuild category skill lines with two runs — multi-run templates break LibreOffice PDF conversion. */
 function setSkillLineParagraphText(pXml: string, line: string): string {
   const trimmed = line.trim();
   const parsed = parseSkillCategoryLine(trimmed);
   if (!parsed) return setParagraphText(pXml, trimmed);
 
-  const runs = pXml.match(/<w:r[\s\S]*?<\/w:r>/g) ?? [];
-  if (runs.length >= 2) {
-    const { label, value } = parsed;
-    let labelAssigned = false;
-    let valueAssigned = false;
-    const updatedRuns = runs.map((run) => {
-      if (!/<w:t[\s\S]*?<\/w:t>/.test(run)) return run;
-      const isBold = /<w:b(?:\s[^>]*)?\/>|<w:b(?:\s[^>]*)?>[^<]*<\/w:b>/.test(run);
-      if (isBold && !labelAssigned) {
-        labelAssigned = true;
-        return replaceRunText(run, `${label}:`);
-      }
-      if (!isBold && labelAssigned && !valueAssigned) {
-        valueAssigned = true;
-        return replaceRunText(run, value ? ` ${value}` : "");
-      }
-      if (!isBold && labelAssigned && valueAssigned) {
-        return replaceRunText(run, "");
-      }
-      return run;
-    });
-
-    const open = pXml.match(/^(<w:p[^>]*>)/)?.[1] ?? "<w:p>";
-    const pPr = pXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] ?? "";
-    return `${open}${pPr}${updatedRuns.join("")}</w:p>`;
-  }
-
   const open = pXml.match(/^(<w:p[^>]*>)/)?.[1] ?? "<w:p>";
   const pPr = pXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] ?? "";
+  const runs = pXml.match(/<w:r[\s\S]*?<\/w:r>/g) ?? [];
+
+  let boldLabelRPr = "";
+  let plainRPr = "";
+  for (const run of runs) {
+    if (!/<w:t[\s\S]*?<\/w:t>/.test(run)) continue;
+    const isBold = /<w:b(?:\s[^>]*)?\/>|<w:b(?:\s[^>]*)?>[^<]*<\/w:b>/.test(run);
+    if (isBold && !boldLabelRPr) {
+      boldLabelRPr = ensureLatinBoldRunProperties(extractRunProperties(run));
+    }
+    if (!isBold && !plainRPr) {
+      const stripped = stripBoldRunProperties(extractRunProperties(run));
+      plainRPr = stripped || extractRunProperties(run);
+    }
+  }
+
   const baseRPr = extractBaseRunProperties(pXml);
-  const boldLabelRPr = ensureLatinBoldRunProperties(baseRPr);
-  const plainRPr = stripBoldRunProperties(baseRPr) || baseRPr;
+  if (!boldLabelRPr) boldLabelRPr = ensureLatinBoldRunProperties(baseRPr);
+  if (!plainRPr) plainRPr = stripBoldRunProperties(baseRPr) || baseRPr;
 
   const { label, value } = parsed;
   const labelRun = `<w:r>${boldLabelRPr}<w:t xml:space="preserve">${escapeXml(`${label}:`)}</w:t></w:r>`;

@@ -4,6 +4,18 @@ export type TemplateSkillLine = {
   sampleLine: string;
 };
 
+function decodeXmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"');
+}
+
+function normalizeSkillLabel(label: string): string {
+  return decodeXmlEntities(label.replace(/\*\*/g, "")).trim();
+}
+
 export function parseTemplateSkillLines(templateSkills: string): TemplateSkillLine[] {
   return templateSkills
     .split(/\n+/)
@@ -12,11 +24,11 @@ export function parseTemplateSkillLines(templateSkills: string): TemplateSkillLi
     .map((sampleLine) => {
       const markdown = sampleLine.match(/^\*\*([^*:]+):\*\*\s*(.*)$/);
       if (markdown) {
-        return { label: markdown[1].trim(), sampleLine };
+        return { label: normalizeSkillLabel(markdown[1]), sampleLine };
       }
       const plain = sampleLine.match(/^([^:]+):\s*(.*)$/);
       if (plain) {
-        return { label: plain[1].replace(/\*\*/g, "").trim(), sampleLine };
+        return { label: normalizeSkillLabel(plain[1]), sampleLine };
       }
       return { label: "", sampleLine };
     });
@@ -30,7 +42,7 @@ function parseSkillsByCategory(skills: string): Map<string, string> {
 
     const markdown = trimmed.match(/^\*\*([^*:]+):\*\*\s*(.*)$/);
     const plain = trimmed.match(/^([^:]+):\s*(.*)$/);
-    const label = (markdown?.[1] ?? plain?.[1] ?? "").replace(/\*\*/g, "").trim();
+    const label = normalizeSkillLabel(markdown?.[1] ?? plain?.[1] ?? "");
     const value = (markdown?.[2] ?? plain?.[2] ?? "").replace(/\*\*/g, "").trim();
 
     if (label) {
