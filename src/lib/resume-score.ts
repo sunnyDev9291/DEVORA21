@@ -5,15 +5,14 @@ import {
 } from "@/lib/resume-ats-algorithm";
 import { getCachedJobKeywords } from "@/lib/resume-keywords-cache";
 import { emptyRuleKeepScore, evaluateRuleKeepScore } from "@/lib/resume-rule-keep";
+import { buildUnifiedResumeScore } from "@/lib/resume-unified-score";
 import type {
   AtsScoreResult,
   GeneratedResumeContent,
-  RuleKeepScoreResult,
+  ResumeUnifiedScoreResult,
 } from "@/lib/resume-types";
 
-export type ResumeScoreResult = {
-  ats: AtsScoreResult;
-  ruleKeep: RuleKeepScoreResult;
+export type ResumeScoreResult = ResumeUnifiedScoreResult & {
   keywordsCacheKey: string;
 };
 
@@ -56,5 +55,5 @@ export async function evaluateResumeScoreBundle({
 
   const ats = evaluateAtsWithKeywords(content, jobTitle, keywords);
 
-  return { ats, ruleKeep, keywordsCacheKey: cacheKey };
+  return { ...buildUnifiedResumeScore(ats, ruleKeep), keywordsCacheKey: cacheKey };
 }

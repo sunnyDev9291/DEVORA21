@@ -89,3 +89,13 @@ export type RuleKeepScoreResult = {
   summary: string;
   algorithm?: string;
 };
+
+/** Combined ATS + Rule Keep score shown as one resume quality metric. */
+export type ResumeUnifiedScoreResult = {
+  overall: number;
+  passed: boolean;
+  summary: string;
+  ats: AtsScoreResult;
+  ruleKeep: RuleKeepScoreResult;
+  hasRules: boolean;
+};

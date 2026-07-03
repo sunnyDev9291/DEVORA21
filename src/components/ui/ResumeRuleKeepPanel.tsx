@@ -10,6 +10,8 @@ export interface ResumeRuleKeepPanelProps {
   loading: boolean;
   error: string;
   customPrompt?: string;
+  /** When true, omit the hero ring and outer section styling. */
+  embedded?: boolean;
 }
 
 function scoreColor(overall: number, hasRules: boolean): string {
@@ -57,11 +59,17 @@ function RuleRing({ overall, hasRules }: { overall: number; hasRules: boolean })
   );
 }
 
-export function ResumeRuleKeepPanel({ score, loading, error, customPrompt = "" }: ResumeRuleKeepPanelProps) {
+export function ResumeRuleKeepPanel({
+  score,
+  loading,
+  error,
+  customPrompt = "",
+  embedded = false,
+}: ResumeRuleKeepPanelProps) {
   const [rulesExpanded, setRulesExpanded] = useState(true);
   const hasPrompt = Boolean(customPrompt.trim());
 
-  if (loading && !score) {
+  if (loading && !score && !embedded) {
     return (
       <EvaluationRowLoader
         title="Checking custom rules…"
@@ -71,7 +79,7 @@ export function ResumeRuleKeepPanel({ score, loading, error, customPrompt = "" }
     );
   }
 
-  if (error) {
+  if (error && !embedded) {
     return (
       <div className="border-t border-emerald-500/15 bg-emerald-500/[0.03] px-5 py-4 sm:px-6">
         <p className="text-sm font-semibold text-red-600 dark:text-red-400">Rule Keep check failed</p>
@@ -85,9 +93,9 @@ export function ResumeRuleKeepPanel({ score, loading, error, customPrompt = "" }
   const hasRules = score.totalRules > 0;
   const failedCount = score.totalRules - score.passedRules;
 
-  return (
-    <div className="border-t border-emerald-500/15 bg-gradient-to-b from-emerald-500/[0.04] to-transparent">
-      <div className="px-5 py-5 sm:px-6">
+  const content = (
+    <>
+      {!embedded && (
         <div className="flex gap-4 items-start">
           <RuleRing overall={score.overall} hasRules={hasRules} />
           <div className="min-w-0 flex-1">
@@ -115,10 +123,10 @@ export function ResumeRuleKeepPanel({ score, loading, error, customPrompt = "" }
             )}
           </div>
         </div>
-      </div>
+      )}
 
       {hasRules && (
-        <div className="border-t border-emerald-500/10">
+        <div className={embedded ? "mt-0" : "border-t border-emerald-500/10 mt-0"}>
           <button
             type="button"
             onClick={() => setRulesExpanded((open) => !open)}
@@ -207,12 +215,22 @@ export function ResumeRuleKeepPanel({ score, loading, error, customPrompt = "" }
       )}
 
       {!score.passed && hasRules && (
-        <div className="px-5 py-3 sm:px-6 border-t border-emerald-500/10 bg-emerald-500/[0.02]">
+        <div className={`border-t border-emerald-500/10 bg-emerald-500/[0.02] ${embedded ? "py-3 mt-4" : "px-5 py-3 sm:px-6"}`}>
           <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
             Regenerate the draft to improve compliance with the failed rules above.
           </p>
         </div>
       )}
+    </>
+  );
+
+  if (embedded) {
+    return <div className="overflow-hidden">{content}</div>;
+  }
+
+  return (
+    <div className="border-t border-emerald-500/15 bg-gradient-to-b from-emerald-500/[0.04] to-transparent">
+      <div className="px-5 py-5 sm:px-6">{content}</div>
     </div>
   );
 }

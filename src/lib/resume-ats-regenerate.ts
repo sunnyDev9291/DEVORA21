@@ -1,10 +1,12 @@
 import { ATS_PASS_THRESHOLD } from "@/lib/resume-ats-algorithm";
 import { RULE_KEEP_PASS_THRESHOLD, RULE_KEEP_GUARD_THRESHOLD } from "@/lib/resume-rule-keep-constants";
+import { buildUnifiedResumeScore } from "@/lib/resume-unified-score";
 import { keywordPresentInText } from "@/lib/resume-ats-keywords";
 import { flattenContentExperienceText } from "@/lib/resume-experience-utils";
 import type {
   AtsScoreResult,
   GeneratedResumeContent,
+  ResumeUnifiedScoreResult,
   RuleKeepScoreResult,
 } from "@/lib/resume-types";
 
@@ -80,15 +82,11 @@ export function applyDeterministicAtsPatches(
   return result;
 }
 
-export type RegenerateEvaluation = {
-  ats: AtsScoreResult;
-  ruleKeep: RuleKeepScoreResult;
-};
+export type RegenerateEvaluation = ResumeUnifiedScoreResult;
 
 export type RegeneratePickResult = {
   content: GeneratedResumeContent;
-  score: AtsScoreResult;
-  ruleKeepScore: RuleKeepScoreResult;
+  score: ResumeUnifiedScoreResult;
   notice: string;
 };
 
@@ -269,8 +267,7 @@ function pickResult(
 ): RegeneratePickResult {
   return {
     content: candidate.content,
-    score: candidate.ats,
-    ruleKeepScore: candidate.ruleKeep,
+    score: buildUnifiedResumeScore(candidate.ats, candidate.ruleKeep),
     notice: buildImprovementNotice(floors, candidate, restored),
   };
 }
@@ -339,8 +336,7 @@ export async function pickBestRegenerateResult(
   if (!aiEval) {
     return {
       content: baseline,
-      score: baselineAts,
-      ruleKeepScore: baselineRules,
+      score: buildUnifiedResumeScore(baselineAts, baselineRules),
       notice: "Could not re-score the revision. Kept your previous draft.",
     };
   }

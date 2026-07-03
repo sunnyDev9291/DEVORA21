@@ -4,22 +4,16 @@ import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
 import ResumeContentReview from "@/components/sections/ResumeContentReview";
 import ResumeThinkingProgress from "@/components/ui/ResumeThinkingProgress";
-import { ResumeAtsScorePanel, type ResumeAtsScorePanelProps } from "@/components/ui/ResumeAtsScorePanel";
-import { ResumeRuleKeepPanel } from "@/components/ui/ResumeRuleKeepPanel";
-import { EvaluationStepStack } from "@/components/ui/ResumeStepLoader";
+import { ResumeScorePanel, type ResumeScorePanelProps } from "@/components/ui/ResumeScorePanel";
 import { ResumeScoringInstructionsPanel } from "@/components/ui/ResumeScoringInstructionsPanel";
-import { ATS_PASS_THRESHOLD } from "@/lib/resume-ats";
-import { RULE_KEEP_PASS_THRESHOLD } from "@/lib/resume-rule-keep-constants";
-import type { GeneratedResumeContent, RuleKeepScoreResult } from "@/lib/resume-types";
+import { RESUME_PASS_THRESHOLD } from "@/lib/resume-unified-score";
+import type { GeneratedResumeContent } from "@/lib/resume-types";
 import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
 
-interface ResumeAtsScoreModalProps extends ResumeAtsScorePanelProps {
+interface ResumeAtsScoreModalProps extends ResumeScorePanelProps {
   open: boolean;
   onClose: () => void;
   jobTitle?: string;
-  ruleKeepScore?: RuleKeepScoreResult | null;
-  ruleKeepLoading?: boolean;
-  ruleKeepError?: string;
   content?: GeneratedResumeContent | null;
   onContentChange?: (content: GeneratedResumeContent) => void;
   onApply?: () => void;
@@ -49,9 +43,6 @@ export default function ResumeAtsScoreModal({
   error,
   onRecheck,
   recheckDisabled,
-  ruleKeepScore = null,
-  ruleKeepLoading = false,
-  ruleKeepError = "",
   content,
   onContentChange,
   onApply,
@@ -121,19 +112,17 @@ export default function ResumeAtsScoreModal({
           </div>
           <div className="min-w-0 flex-1">
             <h2 id={titleId} className="text-base font-bold text-slate-900 dark:text-white truncate">
-              {showContentReview ? "Review draft & scores" : "Resume score report"}
+              {showContentReview ? "Review draft & score" : "Resume score report"}
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-              {jobTitle
-                ? `Target: ${jobTitle}`
-                : `ATS ${ATS_PASS_THRESHOLD}%+ · Rules ${RULE_KEEP_PASS_THRESHOLD}%+`}
+              {jobTitle ? `Target: ${jobTitle}` : `Combined ATS + rules · ${RESUME_PASS_THRESHOLD}%+ to pass`}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-white/[0.06] dark:hover:text-white transition-colors"
-            aria-label="Close ATS report"
+            aria-label="Close score report"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -150,39 +139,14 @@ export default function ResumeAtsScoreModal({
         >
           <div className="min-h-0 overflow-y-auto overscroll-contain order-2 lg:order-1 border-t lg:border-t-0 border-slate-200 dark:border-white/[0.08]">
             <ResumeScoringInstructionsPanel customPrompt={customPrompt} defaultExpanded={Boolean(customPrompt.trim())} />
-            {loading || ruleKeepLoading ? (
-              <EvaluationStepStack className="rounded-none border-0 bg-transparent dark:bg-transparent">
-                <ResumeAtsScorePanel
-                  score={score}
-                  loading={loading}
-                  error={error}
-                  onRecheck={onRecheck}
-                  recheckDisabled={recheckDisabled}
-                />
-                <ResumeRuleKeepPanel
-                  score={ruleKeepScore}
-                  loading={ruleKeepLoading}
-                  error={ruleKeepError}
-                  customPrompt={customPrompt}
-                />
-              </EvaluationStepStack>
-            ) : (
-              <>
-                <ResumeAtsScorePanel
-                  score={score}
-                  loading={loading}
-                  error={error}
-                  onRecheck={onRecheck}
-                  recheckDisabled={recheckDisabled}
-                />
-                <ResumeRuleKeepPanel
-                  score={ruleKeepScore}
-                  loading={ruleKeepLoading}
-                  error={ruleKeepError}
-                  customPrompt={customPrompt}
-                />
-              </>
-            )}
+            <ResumeScorePanel
+              score={score}
+              loading={loading}
+              error={error}
+              onRecheck={onRecheck}
+              recheckDisabled={recheckDisabled}
+              customPrompt={customPrompt}
+            />
           </div>
 
           {showContentReview && (

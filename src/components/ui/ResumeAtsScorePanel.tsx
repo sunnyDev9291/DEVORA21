@@ -10,6 +10,8 @@ export interface ResumeAtsScorePanelProps {
   error: string;
   onRecheck?: () => void;
   recheckDisabled?: boolean;
+  /** When true, omit the hero ring and title — for use inside the unified score panel. */
+  embedded?: boolean;
 }
 
 function scoreColor(overall: number): string {
@@ -61,8 +63,9 @@ export function ResumeAtsScorePanel({
   error,
   onRecheck,
   recheckDisabled,
+  embedded = false,
 }: ResumeAtsScorePanelProps) {
-  if (loading) {
+  if (loading && !embedded) {
     return (
       <EvaluationHeroLoader
         title="Evaluating ATS score…"
@@ -93,9 +96,9 @@ export function ResumeAtsScorePanel({
 
   if (!score) return null;
 
-  return (
-    <div className="overflow-hidden">
-      <div className="px-5 py-5 sm:px-6 sm:py-6">
+  const details = (
+    <>
+      {!embedded && (
         <div className="flex flex-col sm:flex-row gap-5 sm:gap-6">
           <ScoreRing overall={score.overall} />
 
@@ -115,34 +118,34 @@ export function ResumeAtsScorePanel({
             <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{score.summary}</p>
           </div>
         </div>
+      )}
 
-        <div className="mt-6 space-y-3">
-          {score.breakdown.map((item) => (
-            <div key={item.category}>
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{item.category}</span>
-                <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
-                  {item.score}/{item.maxScore}
-                </span>
-              </div>
-              <div className="h-1.5 rounded-full bg-slate-200 dark:bg-white/10 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all duration-700"
-                  style={{ width: `${item.maxScore ? (item.score / item.maxScore) * 100 : 0}%` }}
-                />
-              </div>
-              {item.notes && (
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">{item.notes}</p>
-              )}
+      <div className={embedded ? "space-y-3" : "mt-6 space-y-3"}>
+        {score.breakdown.map((item) => (
+          <div key={item.category}>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{item.category}</span>
+              <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                {item.score}/{item.maxScore}
+              </span>
             </div>
-          ))}
-        </div>
+            <div className="h-1.5 rounded-full bg-slate-200 dark:bg-white/10 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all duration-700"
+                style={{ width: `${item.maxScore ? (item.score / item.maxScore) * 100 : 0}%` }}
+              />
+            </div>
+            {item.notes && (
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">{item.notes}</p>
+            )}
+          </div>
+        ))}
       </div>
 
       {(score.matchedKeywords.length > 0 || score.missingKeywords.length > 0) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-0 border-t border-violet-500/10">
+        <div className={`grid grid-cols-1 sm:grid-cols-2 gap-0 border-t border-violet-500/10 ${embedded ? "mt-4" : ""}`}>
           {score.matchedKeywords.length > 0 && (
-            <div className="px-5 py-4 sm:px-6 border-b sm:border-b-0 sm:border-r border-violet-500/10">
+            <div className={`${embedded ? "py-3" : "px-5 py-4 sm:px-6"} border-b sm:border-b-0 sm:border-r border-violet-500/10`}>
               <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-2">
                 Matched keywords
               </p>
@@ -159,7 +162,7 @@ export function ResumeAtsScorePanel({
             </div>
           )}
           {score.missingKeywords.length > 0 && (
-            <div className="px-5 py-4 sm:px-6">
+            <div className={embedded ? "py-3" : "px-5 py-4 sm:px-6"}>
               <p className="text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400 mb-2">
                 Missing / weak keywords
               </p>
@@ -179,9 +182,9 @@ export function ResumeAtsScorePanel({
       )}
 
       {score.recommendations.length > 0 && (
-        <div className="px-5 py-4 sm:px-6 border-t border-violet-500/10 bg-slate-50/50 dark:bg-white/[0.02]">
+        <div className={`border-t border-violet-500/10 bg-slate-50/50 dark:bg-white/[0.02] ${embedded ? "py-3 mt-4" : "px-5 py-4 sm:px-6"}`}>
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-            Recommendations to improve score
+            ATS recommendations
           </p>
           <ol className="space-y-1.5 list-decimal list-inside">
             {score.recommendations.map((rec) => (
@@ -194,9 +197,9 @@ export function ResumeAtsScorePanel({
       )}
 
       {score.gates && score.gates.length > 0 && (
-        <div className="px-5 py-4 sm:px-6 border-t border-violet-500/10">
+        <div className={`border-t border-violet-500/10 ${embedded ? "py-3 mt-4" : "px-5 py-4 sm:px-6"}`}>
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-            Pass gates (all required for {ATS_PASS_THRESHOLD}% pass)
+            ATS pass gates (all required for {ATS_PASS_THRESHOLD}% pass)
           </p>
           <ul className="space-y-1.5">
             {score.gates.map((gate) => (
@@ -221,6 +224,16 @@ export function ResumeAtsScorePanel({
           )}
         </div>
       )}
+    </>
+  );
+
+  if (embedded) {
+    return <div className="overflow-hidden">{details}</div>;
+  }
+
+  return (
+    <div className="overflow-hidden">
+      <div className="px-5 py-5 sm:px-6 sm:py-6">{details}</div>
     </div>
   );
 }
