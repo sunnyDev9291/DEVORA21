@@ -71,8 +71,16 @@ export function getParagraphText(pXml: string): string {
 }
 
 /** Plain text with **bold** markers from Word run properties. */
+const TEXT_RUN_PATTERN = /<w:r\b[^>]*>[\s\S]*?<\/w:r>/g;
+
+function matchTextRuns(pXml: string): string[] {
+  return pXml.match(TEXT_RUN_PATTERN) ?? [];
+}
+
+export { matchTextRuns };
+
 export function getParagraphTextWithBold(pXml: string): string {
-  const runs = pXml.match(/<w:r[\s\S]*?<\/w:r>/g) ?? [];
+  const runs = matchTextRuns(pXml);
   if (runs.length === 0) return getParagraphText(pXml);
 
   let out = "";
@@ -142,7 +150,7 @@ export function setParagraphText(pXml: string, text: string): string {
 
 /** Keep full run/rPr XML when the paragraph has a single text run (typical bullets/headers). */
 function replaceSingleRunParagraphText(pXml: string, text: string): string | null {
-  const runs = pXml.match(/<w:r[\s\S]*?<\/w:r>/g) ?? [];
+  const runs = matchTextRuns(pXml);
   const textRuns = runs.filter((run) => /<w:t[\s\S]*?<\/w:t>/.test(run));
   if (textRuns.length !== 1) return null;
 
@@ -216,7 +224,7 @@ function extractExperienceStyleBlocks(
 }
 
 function extractBaseRunProperties(pXml: string): string {
-  const fromRun = pXml.match(/<w:r[^>]*>[\s\S]*?<w:rPr>[\s\S]*?<\/w:rPr>/)?.[0];
+  const fromRun = pXml.match(/<w:r\b[^>]*>[\s\S]*?<w:rPr>[\s\S]*?<\/w:rPr>/)?.[0];
   if (fromRun) {
     const rPr = fromRun.match(/<w:rPr>[\s\S]*?<\/w:rPr>/)?.[0];
     if (rPr) return rPr;
@@ -229,28 +237,8 @@ function extractBaseRunProperties(pXml: string): string {
   return "";
 }
 
-function buildRunsFromMarkdownText(pXml: string, text: string): string {
-  const baseRPr = extractBaseRunProperties(pXml);
-  const boldRPr =
-    baseRPr && baseRPr.includes("<w:b")
-      ? baseRPr
-      : baseRPr
-        ? baseRPr.replace("</w:rPr>", "<w:b/></w:rPr>")
-        : "<w:rPr><w:b/></w:rPr>";
-
-  const parts = text.split(/(\*\*[^*]+\*\*)/g).filter((part) => part.length > 0);
-  if (parts.length === 0) {
-    return `<w:r>${baseRPr}<w:t xml:space="preserve"></w:t></w:r>`;
-  }
-
-  return parts
-    .map((part) => {
-      const boldMatch = /^\*\*([^*]+)\*\*$/.exec(part);
-      const content = boldMatch ? boldMatch[1] : part;
-      const rPr = boldMatch ? boldRPr || "<w:rPr><w:b/></w:rPr>" : baseRPr;
-      return `<w:r>${rPr}<w:t xml:space="preserve">${escapeXml(content)}</w:t></w:r>`;
-    })
-    .join("");
+function extractRunProperties(runXml: string): string {
+  return runXml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/)?.[0] ?? "";
 }
 
 /** Latin bold (`<w:b/>`) — templates often only set `<w:bCs/>`, which does not bold category labels. */
@@ -274,6 +262,119 @@ function stripBoldRunProperties(rPr: string): string {
     .replace(/<w:bCs\b[^>]*>[\s\S]*?<\/w:bCs>/g, "");
 }
 
+function getRunPlainText(runXml: string): string {
+  return decodeXmlEntities(
+    (runXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) ?? [])
+      .map((t) => t.replace(/<w:t[^>]*>/, "").replace(/<\/w:t>/, ""))
+      .join("")
+  );
+}
+
+function hasLatinItalic(rPr: string): boolean {
+  const tag = rPr.match(/<w:i(?!Cs)\b[^>]*\/?>/)?.[0] ?? "";
+  if (!tag) return false;
+  return !/w:val="(?:0|false)"/.test(tag);
+}
+
+function hasUnderline(rPr: string): boolean {
+  const tag = rPr.match(/<w:u\b[^>]*\/?>/)?.[0] ?? "";
+  if (!tag) return false;
+  return !/w:val="(?:none|false)"/.test(tag);
+}
+
+function runFormattingScore(rPr: string): number {
+  let score = 0;
+  if (hasLatinBold(rPr)) score += 4;
+  if (hasLatinItalic(rPr)) score += 2;
+  if (hasUnderline(rPr)) score += 1;
+  return score;
+}
+
+function stripItalicRunProperties(rPr: string): string {
+  return rPr
+    .replace(/<w:i(?!Cs)\b[^/]*\/>/g, "")
+    .replace(/<w:i(?!Cs)\b[^>]*>[\s\S]*?<\/w:i>/g, "")
+    .replace(/<w:iCs\b[^/]*\/>/g, "")
+    .replace(/<w:iCs\b[^>]*>[\s\S]*?<\/w:iCs>/g, "");
+}
+
+function stripUnderlineRunProperties(rPr: string): string {
+  return rPr
+    .replace(/<w:u\b[^/]*\/>/g, "")
+    .replace(/<w:u\b[^>]*>[\s\S]*?<\/w:u>/g, "");
+}
+
+function stripDecorations(rPr: string): string {
+  return stripUnderlineRunProperties(stripItalicRunProperties(stripBoldRunProperties(rPr)));
+}
+
+function pickLabelRunProperties(runs: string[]): string {
+  let best = "";
+  let bestScore = -1;
+  for (const run of runs) {
+    if (!/<w:t[\s\S]*?<\/w:t>/.test(run)) continue;
+    const rPr = extractRunProperties(run);
+    const score = runFormattingScore(rPr);
+    if (score > bestScore) {
+      bestScore = score;
+      best = rPr;
+    }
+  }
+  return best;
+}
+
+function pickValueRunProperties(runs: string[]): string {
+  let best = "";
+  let bestLen = 0;
+
+  for (const run of runs) {
+    if (!/<w:t[\s\S]*?<\/w:t>/.test(run)) continue;
+    const text = getRunPlainText(run).trim();
+    if (!text || text === ":" || text.length < 8) continue;
+    const rPr = extractRunProperties(run);
+    if (runFormattingScore(rPr) > 0) continue;
+    if (text.length > bestLen) {
+      bestLen = text.length;
+      best = rPr;
+    }
+  }
+  if (best) return best;
+
+  for (const run of runs) {
+    if (!/<w:t[\s\S]*?<\/w:t>/.test(run)) continue;
+    const text = getRunPlainText(run).trim();
+    if (text.length < 8) continue;
+    const stripped = stripDecorations(extractRunProperties(run));
+    if (text.length > bestLen) {
+      bestLen = text.length;
+      best = stripped;
+    }
+  }
+  return best;
+}
+
+function buildRunsFromMarkdownText(pXml: string, text: string): string {
+  const runs = matchTextRuns(pXml);
+  const baseRPr = extractBaseRunProperties(pXml);
+  const labelRPr = pickLabelRunProperties(runs) || ensureLatinBoldRunProperties(baseRPr);
+  const valueRPr =
+    pickValueRunProperties(runs) || stripDecorations(baseRPr) || baseRPr;
+
+  const parts = text.split(/(\*\*[^*]+\*\*)/g).filter((part) => part.length > 0);
+  if (parts.length === 0) {
+    return `<w:r>${valueRPr}<w:t xml:space="preserve"></w:t></w:r>`;
+  }
+
+  return parts
+    .map((part) => {
+      const boldMatch = /^\*\*([^*]+)\*\*$/.exec(part);
+      const content = boldMatch ? boldMatch[1] : part;
+      const rPr = boldMatch ? labelRPr : valueRPr;
+      return `<w:r>${rPr}<w:t xml:space="preserve">${escapeXml(content)}</w:t></w:r>`;
+    })
+    .join("");
+}
+
 function parseSkillCategoryLine(line: string): { label: string; value: string } | null {
   const trimmed = line.trim();
   const markdown = trimmed.match(/^\*\*([^*:]+):\*\*\s*(.*)$/);
@@ -289,10 +390,6 @@ function parseSkillCategoryLine(line: string): { label: string; value: string } 
     return label ? { label, value } : null;
   }
   return null;
-}
-
-function extractRunProperties(runXml: string): string {
-  return runXml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/)?.[0] ?? "";
 }
 
 function replaceRunText(runXml: string, text: string): string {
@@ -311,7 +408,7 @@ function setSkillLineParagraphText(pXml: string, line: string): string {
 
   const open = pXml.match(/^(<w:p[^>]*>)/)?.[1] ?? "<w:p>";
   const pPr = pXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] ?? "";
-  const runs = pXml.match(/<w:r[\s\S]*?<\/w:r>/g) ?? [];
+  const runs = matchTextRuns(pXml);
 
   let boldLabelRPr = "";
   let plainRPr = "";
@@ -335,6 +432,28 @@ function setSkillLineParagraphText(pXml: string, line: string): string {
   const labelRun = `<w:r>${boldLabelRPr}<w:t xml:space="preserve">${escapeXml(`${label}:`)}</w:t></w:r>`;
   const valueRun = value
     ? `<w:r>${plainRPr}<w:t xml:space="preserve"> ${escapeXml(value)}</w:t></w:r>`
+    : "";
+
+  return `${open}${pPr}${labelRun}${valueRun}</w:p>`;
+}
+
+/** Project BAR labels (Business Challenge, Action, etc.) — preserve bold/italic/underline from template. */
+export function setBarFieldParagraphText(pXml: string, label: string, value: string): string {
+  const open = pXml.match(/^(<w:p[^>]*>)/)?.[1] ?? "<w:p>";
+  const pPr = pXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] ?? "";
+  const runs = matchTextRuns(pXml);
+
+  const baseRPr = extractBaseRunProperties(pXml);
+  let labelRPr = pickLabelRunProperties(runs);
+  let valueRPr = pickValueRunProperties(runs);
+  if (!labelRPr) labelRPr = ensureLatinBoldRunProperties(baseRPr);
+  if (!valueRPr) valueRPr = stripDecorations(baseRPr) || baseRPr;
+
+  const trimmedLabel = label.trim().replace(/:+\s*$/, "");
+  const labelRun = `<w:r>${labelRPr}<w:t xml:space="preserve">${escapeXml(`${trimmedLabel}:`)}</w:t></w:r>`;
+  const trimmedValue = value.trim();
+  const valueRun = trimmedValue
+    ? `<w:r>${valueRPr}<w:t xml:space="preserve"> ${escapeXml(trimmedValue)}</w:t></w:r>`
     : "";
 
   return `${open}${pPr}${labelRun}${valueRun}</w:p>`;

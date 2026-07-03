@@ -4,6 +4,8 @@ import {
   getDocxParagraphs,
   getParagraphText,
   getParagraphTextWithBold,
+  matchTextRuns,
+  setBarFieldParagraphText,
   type DocxParagraph,
 } from "@/lib/resume-docx";
 import { boldSkillTermsInText, extractSkillTerms } from "@/lib/resume-content-postprocess";
@@ -392,15 +394,13 @@ function fieldLabelPrefix(text: string, field: ProjectFieldKey): string {
 }
 
 function paragraphXmlHasBoldRun(pXml: string): boolean {
-  const runs = pXml.match(/<w:r[\s\S]*?<\/w:r>/g) ?? [];
+  const runs = matchTextRuns(pXml);
   return runs.some(
     (run) => /<w:t[\s\S]*?<\/w:t>/.test(run) && /<w:b(?:\s[^>]*)?\/>|<w:b(?:\s[^>]*)?>/.test(run)
   );
 }
 
-/** Inline BAR line: bold label + plain value, matching template Word styling. */
-function formatBoldBarInlineField(sampleText: string, field: ProjectFieldKey, value: string): string {
-  const classified = classifyParagraph(sampleText);
+function resolveBarFieldLabel(sampleText: string, field: ProjectFieldKey): string {
   let label = fieldLabelPrefix(sampleText, field).trim();
   if (label.endsWith(":")) label = label.slice(0, -1);
   if (!label) {
@@ -412,8 +412,7 @@ function formatBoldBarInlineField(sampleText: string, field: ProjectFieldKey, va
     };
     label = labels[field];
   }
-  const trimmedValue = value.trim();
-  return trimmedValue ? `**${label}:** ${trimmedValue}` : `**${label}:**`;
+  return label;
 }
 
 function applyProjectToParagraphGroup(
@@ -449,7 +448,7 @@ function applyProjectToParagraphGroup(
       const value = bold(project[field]);
       if (group.length === 1) {
         out.push(
-          setParagraphText(group[0], formatBoldBarInlineField(sampleText, field, value))
+          setBarFieldParagraphText(group[0], resolveBarFieldLabel(sampleText, field), value)
         );
       } else {
         // Label line keeps template XML (bold label styling preserved).
