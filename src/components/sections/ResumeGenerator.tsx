@@ -68,6 +68,9 @@ type Step = "form" | "review" | "done";
 const inputClass =
   "w-full bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.10] hover:border-slate-300 dark:hover:border-white/[0.16] focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-4 py-3.5 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 dark:placeholder:text-slate-600 outline-none transition-all";
 
+// Keep the scoring code available, but disable the feature in the UI and network flow.
+const RESUME_SCORE_SYSTEM_ENABLED = false;
+
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const PDF_MIME = "application/pdf";
 
@@ -309,6 +312,7 @@ export default function ResumeGenerator({
     resumeContent: GeneratedResumeContent,
     ats: AtsScoreResult
   ) {
+    if (!RESUME_SCORE_SYSTEM_ENABLED) return;
     if (!form.customPrompt?.trim()) return;
 
     ruleKeepAbortRef.current?.abort();
@@ -346,6 +350,8 @@ export default function ResumeGenerator({
       includeRuleKeep?: boolean;
     }
   ): Promise<ResumeUnifiedScoreResult | null> {
+    if (!RESUME_SCORE_SYSTEM_ENABLED) return null;
+
     const controller = new AbortController();
 
     if (!options?.quiet) {
@@ -509,6 +515,7 @@ export default function ResumeGenerator({
   }
 
   async function handleImproveScoreItem(target: ResumeImproveTarget) {
+    if (!RESUME_SCORE_SYSTEM_ENABLED) return;
     if (applying || generating || !content || !activeTemplate) return;
 
     setAtsModalOpen(true);
@@ -645,7 +652,9 @@ export default function ResumeGenerator({
       setArchiveError("");
       setPreviewOpen(true);
       void import("@/components/ui/PdfPreviewModal");
-      void evaluateResumeScores(content, { openModal: false });
+      if (RESUME_SCORE_SYSTEM_ENABLED) {
+        void evaluateResumeScores(content, { openModal: false });
+      }
       void submitResumeArchive(data.docxBase64, data.fileName);
     } catch (err) {
       setError((err as Error).message || "Failed to update resume.");
@@ -935,7 +944,7 @@ export default function ResumeGenerator({
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-              {(resumeScore || scoreLoading) && (
+              {RESUME_SCORE_SYSTEM_ENABLED && (resumeScore || scoreLoading) && (
                 <button
                   type="button"
                   onClick={() => setAtsModalOpen(true)}
@@ -972,7 +981,7 @@ export default function ResumeGenerator({
             </div>
           </div>
 
-          {atsModalOpen ? (
+          {RESUME_SCORE_SYSTEM_ENABLED && atsModalOpen ? (
             <div className="rounded-2xl border border-dashed border-violet-500/25 bg-violet-500/[0.04] px-5 py-8 text-center">
               <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
                 Your draft and ATS score are open in the review panel.
@@ -1025,49 +1034,51 @@ export default function ResumeGenerator({
         </div>
       )}
 
-      <ResumeAtsScoreModal
-        open={atsModalOpen}
-        onClose={() => setAtsModalOpen(false)}
-        jobTitle={targetJobLabel}
-        score={resumeScore}
-        loading={scoreLoading}
-        error={scoreError}
-        onRecheck={content ? () => evaluateResumeScores(content, { includeRuleKeep: true }) : undefined}
-        recheckDisabled={scoreLoading || generating || applying || !content}
-        content={content}
-        onContentChange={setContent}
-        onApply={handleApply}
-        applying={applying}
-        generating={generating}
-        streamPhase={streamPhase}
-        generateError={error}
-        regenerateNotice={regenerateNotice}
-        templateName={userTemplate?.fileName ?? ""}
-        customPrompt={form.customPrompt}
-        resumeFileBaseName={resumeFileBaseName}
-        suggestedResumeBaseName={suggestedResumeBaseName}
-        onResumeFileBaseNameChange={(value) => {
-          setResumeNameTouched(true);
-          setResumeFileBaseName(value);
-        }}
-        onResumeFileBaseNameReset={() => {
-          setResumeNameTouched(false);
-          setResumeFileBaseName(suggestedResumeBaseName);
-        }}
-        applyLabel={step === "done" ? "Re-apply changes" : "Apply to resume"}
-        generationKey={generationKey}
-        onOpenResumeChat={() => setResumeChatOpen(true)}
-        regenerateChanges={regenerateChanges}
-        regenerateFeedback={regenerateFeedback}
-        changedFieldIds={changedFieldIds}
-        onDismissRegenerateDiff={() => {
-          setRegenerateBaseline(null);
-          setRegenerateBaselineScore(null);
-        }}
-        onImprove={handleImproveScoreItem}
-        improvingTargetId={improvingTargetId}
-        improvingTargetLabel={improvingTargetLabel}
-      />
+      {RESUME_SCORE_SYSTEM_ENABLED && (
+        <ResumeAtsScoreModal
+          open={atsModalOpen}
+          onClose={() => setAtsModalOpen(false)}
+          jobTitle={targetJobLabel}
+          score={resumeScore}
+          loading={scoreLoading}
+          error={scoreError}
+          onRecheck={content ? () => evaluateResumeScores(content, { includeRuleKeep: true }) : undefined}
+          recheckDisabled={scoreLoading || generating || applying || !content}
+          content={content}
+          onContentChange={setContent}
+          onApply={handleApply}
+          applying={applying}
+          generating={generating}
+          streamPhase={streamPhase}
+          generateError={error}
+          regenerateNotice={regenerateNotice}
+          templateName={userTemplate?.fileName ?? ""}
+          customPrompt={form.customPrompt}
+          resumeFileBaseName={resumeFileBaseName}
+          suggestedResumeBaseName={suggestedResumeBaseName}
+          onResumeFileBaseNameChange={(value) => {
+            setResumeNameTouched(true);
+            setResumeFileBaseName(value);
+          }}
+          onResumeFileBaseNameReset={() => {
+            setResumeNameTouched(false);
+            setResumeFileBaseName(suggestedResumeBaseName);
+          }}
+          applyLabel={step === "done" ? "Re-apply changes" : "Apply to resume"}
+          generationKey={generationKey}
+          onOpenResumeChat={() => setResumeChatOpen(true)}
+          regenerateChanges={regenerateChanges}
+          regenerateFeedback={regenerateFeedback}
+          changedFieldIds={changedFieldIds}
+          onDismissRegenerateDiff={() => {
+            setRegenerateBaseline(null);
+            setRegenerateBaselineScore(null);
+          }}
+          onImprove={handleImproveScoreItem}
+          improvingTargetId={improvingTargetId}
+          improvingTargetLabel={improvingTargetLabel}
+        />
+      )}
 
       <PdfPreviewModal
         open={previewOpen}
