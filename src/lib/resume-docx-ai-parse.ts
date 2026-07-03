@@ -142,18 +142,34 @@ function parseStructural(
   return parseExperiencesFromDocxBuffer(buffer);
 }
 
-/** Structural Word parse first; AI fallback when validation fails. */
-export async function resolveTemplateFromDocx(buffer: Buffer): Promise<TemplateParseResult> {
+/** Fast structural parse from the current DOCX bytes — always use for build/apply. */
+export function parseTemplateStructureSync(buffer: Buffer): TemplateParseResult & { valid: boolean } {
   const layout = detectResumeTemplateLayout(buffer);
   const skillsSample = parseTemplateContentSamples(buffer).skills;
-  const structural = parseStructural(buffer, layout);
-  const structuralCheck = validateByLayout(layout, structural);
-  if (structuralCheck.ok) return { layout, experiences: structural, skillsSample };
+  const experiences = parseStructural(buffer, layout);
+  const valid = validateByLayout(layout, experiences).ok;
+  return { layout, experiences, skillsSample, valid };
+}
+
+/** Structural Word parse first; AI fallback when validation fails. */
+export async function resolveTemplateFromDocx(buffer: Buffer): Promise<TemplateParseResult> {
+  const structural = parseTemplateStructureSync(buffer);
+  if (structural.valid) {
+    return {
+      layout: structural.layout,
+      experiences: structural.experiences,
+      skillsSample: structural.skillsSample,
+    };
+  }
+
+  const structuralCheck = validateByLayout(structural.layout, structural.experiences);
 
   try {
-    const aiParsed = await parseExperiencesWithAI(buffer, layout);
-    const aiCheck = validateByLayout(layout, aiParsed);
-    if (aiCheck.ok) return { layout, experiences: aiParsed, skillsSample };
+    const aiParsed = await parseExperiencesWithAI(buffer, structural.layout);
+    const aiCheck = validateByLayout(structural.layout, aiParsed);
+    if (aiCheck.ok) {
+      return { layout: structural.layout, experiences: aiParsed, skillsSample: structural.skillsSample };
+    }
     throw new Error(aiCheck.errors.join(" "));
   } catch (err) {
     const detail = err instanceof Error ? err.message : "AI parse failed";

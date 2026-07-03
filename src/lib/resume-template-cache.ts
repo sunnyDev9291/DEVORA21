@@ -1,8 +1,8 @@
 import { createHash } from "crypto";
 import type { GeneratedResumeContent, ResumeTemplateLayout } from "@/lib/resume-types";
 import { getCachedValue, setCachedValue } from "@/lib/server-cache";
-import { parseTemplateContentSamples } from "@/lib/resume-docx";
 import {
+  parseTemplateStructureSync,
   resolveTemplateFromDocx,
   type TemplateParseResult,
 } from "@/lib/resume-docx-ai-parse";
@@ -12,23 +12,57 @@ function templateCacheKey(templateName: string, buffer: Buffer): string {
   return `template-parse:${templateName.trim().toLowerCase()}:${hash}`;
 }
 
+function mergeFreshStructure(
+  buffer: Buffer,
+  base: Partial<TemplateParseResult> | null
+): TemplateParseResult {
+  const fresh = parseTemplateStructureSync(buffer);
+  if (fresh.valid) {
+    return {
+      layout: fresh.layout,
+      experiences: fresh.experiences,
+      skillsSample: fresh.skillsSample,
+    };
+  }
+
+  if (base?.experiences?.length) {
+    return {
+      layout: fresh.layout,
+      experiences: base.experiences,
+      skillsSample: fresh.skillsSample,
+    };
+  }
+
+  return {
+    layout: fresh.layout,
+    experiences: fresh.experiences,
+    skillsSample: fresh.skillsSample,
+  };
+}
+
 export async function getCachedTemplateParse(
   templateName: string,
   buffer: Buffer
 ): Promise<TemplateParseResult> {
   const key = templateCacheKey(templateName, buffer);
   const cached = await getCachedValue<TemplateParseResult>(key);
+  const fromStructure = mergeFreshStructure(buffer, cached);
+  const structural = parseTemplateStructureSync(buffer);
+
+  if (fromStructure.experiences.length > 0 && structural.valid) {
+    await setCachedValue(key, fromStructure);
+    return fromStructure;
+  }
+
   if (cached?.experiences?.length) {
-    return {
-      ...cached,
-      skillsSample: cached.skillsSample ?? parseTemplateContentSamples(buffer).skills,
-    };
+    return mergeFreshStructure(buffer, cached);
   }
 
   const parsed = await resolveTemplateFromDocx(buffer);
   await setCachedValue(key, parsed);
   return parsed;
 }
+
 export async function getCachedTemplateLayout(
   templateName: string,
   buffer: Buffer

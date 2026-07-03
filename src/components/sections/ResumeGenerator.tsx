@@ -30,6 +30,20 @@ import {
 } from "@/lib/resume-filename";
 import { loadStoredProfile, resolveUserNames } from "@/lib/user-profile";
 
+function resolveActiveUserTemplate(
+  userId: string | undefined,
+  userTemplate: UserResumeTemplateAsset | null
+): UserResumeTemplateAsset | null {
+  const stored = userId ? loadStoredProfile(userId) : null;
+  if (stored?.resumeTemplateBase64?.trim() && stored.resumeTemplateFileName?.trim()) {
+    return {
+      fileName: stored.resumeTemplateFileName,
+      templateBase64: stored.resumeTemplateBase64,
+    };
+  }
+  return userTemplate;
+}
+
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
 const ResumeAtsScoreModal = dynamic(() => import("@/components/ui/ResumeAtsScoreModal"));
 const ResumeChatDialog = dynamic(() => import("@/components/ui/ResumeChatDialog"));
@@ -81,6 +95,11 @@ export default function ResumeGenerator({
     };
   }, [user]);
 
+  const activeTemplate = useMemo(
+    () => resolveActiveUserTemplate(user?.id, userTemplate),
+    [user?.id, userTemplate?.fileName, userTemplate?.templateBase64]
+  );
+
   const [form, setForm] = useState({
     jobTitle: "",
     companyName: "",
@@ -124,7 +143,7 @@ export default function ResumeGenerator({
   }, [userPrompt]);
 
   const wizardStep = resolveResumeWizardStep({
-    hasTemplate: !!userTemplate,
+    hasTemplate: !!activeTemplate,
     generating,
     hasDraft: !!content,
     isDone: step === "done",
@@ -153,7 +172,7 @@ export default function ResumeGenerator({
     setResumeFileBaseName("");
     setResumeNameTouched(false);
     keywordsCacheKeyRef.current = null;
-  }, [userTemplate?.fileName, userTemplate?.templateBase64]);
+  }, [activeTemplate?.fileName, activeTemplate?.templateBase64]);
 
   useEffect(() => {
     keywordsCacheKeyRef.current = null;
@@ -226,21 +245,21 @@ export default function ResumeGenerator({
 
   const targetJobLabel = `${form.jobTitle.trim()} at ${form.companyName.trim()}`;
 
-  const canGenerate = !!userTemplate && !!form.jobTitle.trim() && !!form.companyName.trim();
+  const canGenerate = !!activeTemplate && !!form.jobTitle.trim() && !!form.companyName.trim();
 
   const suggestedResumeBaseName = useMemo(() => {
     if (!content) return "";
     if (content.fileName?.trim()) {
       return normalizeResumeFileBaseName(content.fileName);
     }
-    if (!userTemplate) return "";
+    if (!activeTemplate) return "";
     return buildExpectedResumeBaseName(
-      userTemplate.fileName,
+      activeTemplate.fileName,
       content,
       form.customPrompt,
       chatProfile?.fullName
     );
-  }, [content, userTemplate, form.customPrompt, chatProfile?.fullName]);
+  }, [content, activeTemplate, form.customPrompt, chatProfile?.fullName]);
 
   useEffect(() => {
     if (!resumeNameTouched && suggestedResumeBaseName) {
@@ -434,7 +453,7 @@ export default function ResumeGenerator({
   ) {
     e?.preventDefault();
     if (applying) return;
-    if (!userTemplate) {
+    if (!activeTemplate) {
       setError("Upload a resume template on your dashboard before generating.");
       return;
     }
@@ -459,6 +478,8 @@ export default function ResumeGenerator({
     abortRef.current = controller;
     syncKeywordsCacheKey();
 
+    const templateForRequest = resolveActiveUserTemplate(user?.id, activeTemplate)!;
+
     let firstGenerateContent: GeneratedResumeContent | null = null;
 
     try {
@@ -475,8 +496,8 @@ export default function ResumeGenerator({
             const draft = await generateResume(
               {
                 ...form,
-                templateName: userTemplate!.fileName,
-                templateBase64: userTemplate!.templateBase64,
+                templateName: templateForRequest.fileName,
+                templateBase64: templateForRequest.templateBase64,
                 profileName: chatProfile?.fullName,
                 previousContent,
                 atsFeedback,
@@ -514,8 +535,8 @@ export default function ResumeGenerator({
         const data = await generateResume(
           {
             ...form,
-            templateName: userTemplate.fileName,
-            templateBase64: userTemplate.templateBase64,
+            templateName: templateForRequest.fileName,
+            templateBase64: templateForRequest.templateBase64,
             profileName: chatProfile?.fullName,
           },
           {
@@ -593,7 +614,10 @@ export default function ResumeGenerator({
   }
 
   async function handleApply() {
-    if (!content || !userTemplate || applying) return;
+    if (!content || !activeTemplate || applying) return;
+    const templateForRequest = resolveActiveUserTemplate(user?.id, activeTemplate);
+    if (!templateForRequest) return;
+
     setError("");
     setApplying(true);
     try {
@@ -601,8 +625,8 @@ export default function ResumeGenerator({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          templateName: userTemplate.fileName,
-          templateBase64: userTemplate.templateBase64,
+          templateName: templateForRequest.fileName,
+          templateBase64: templateForRequest.templateBase64,
           customPrompt: form.customPrompt,
           content,
           resumeFileBaseName: resumeFileBaseName.trim(),
@@ -731,7 +755,7 @@ export default function ResumeGenerator({
             </p>
           )}
 
-          {!userTemplate && (
+          {!activeTemplate && (
             <div className="flex items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-4 py-3">
               <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -947,7 +971,7 @@ export default function ResumeGenerator({
               onRegenerate={handleRegenerate}
               applying={applying}
               generating={generating}
-              templateName={userTemplate?.fileName ?? ""}
+              templateName={activeTemplate?.fileName ?? ""}
               resumeFileBaseName={resumeFileBaseName}
               suggestedResumeBaseName={suggestedResumeBaseName}
               onResumeFileBaseNameChange={(value) => {
