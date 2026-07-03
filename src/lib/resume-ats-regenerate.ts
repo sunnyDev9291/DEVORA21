@@ -1,6 +1,6 @@
 import { ATS_PASS_THRESHOLD } from "@/lib/resume-ats-algorithm";
 import { RULE_KEEP_PASS_THRESHOLD, RULE_KEEP_GUARD_THRESHOLD } from "@/lib/resume-rule-keep-constants";
-import { buildUnifiedResumeScore } from "@/lib/resume-unified-score";
+import { buildUnifiedResumeScore, RESUME_PASS_THRESHOLD, RESUME_SCORE_MAX } from "@/lib/resume-unified-score";
 import { keywordPresentInText } from "@/lib/resume-ats-keywords";
 import { flattenContentExperienceText } from "@/lib/resume-experience-utils";
 import type {
@@ -90,6 +90,9 @@ export type RegeneratePickResult = {
   notice: string;
 };
 
+export const MAX_REGENERATION_ITERATIONS = 6;
+export const STALE_REGENERATION_LIMIT = 2;
+
 type ScoredCandidate = {
   content: GeneratedResumeContent;
   ats: AtsScoreResult;
@@ -147,14 +150,28 @@ function improvementCount(candidate: ScoredCandidate, floors: ScoreFloors): numb
 }
 
 function failingDimensionGain(candidate: ScoredCandidate, floors: ScoreFloors): number {
-  let gain = 0;
-  if (floors.baselineAts < ATS_PASS_THRESHOLD) {
-    gain += candidate.ats.overall - floors.baselineAts;
+  const baselineUnified = floors.hasRules
+    ? Math.round((floors.baselineAts + floors.baselineRules) / 2)
+    : floors.baselineAts;
+  if (baselineUnified >= RESUME_PASS_THRESHOLD) return 0;
+  return buildUnifiedResumeScore(candidate.ats, candidate.ruleKeep).overall - baselineUnified;
+}
+
+function meetsCriterionBaselines(candidate: ScoredCandidate, baseline: ScoredCandidate): boolean {
+  if (candidate.ats.overall < baseline.ats.overall) return false;
+  if (candidate.ruleKeep.overall < baseline.ruleKeep.overall) return false;
+
+  for (const baseItem of baseline.ats.breakdown) {
+    const candItem = candidate.ats.breakdown.find((b) => b.category === baseItem.category);
+    if (candItem && candItem.score < baseItem.score) return false;
   }
-  if (floors.hasRules && floors.baselineRules < RULE_KEEP_PASS_THRESHOLD) {
-    gain += candidate.ruleKeep.overall - floors.baselineRules;
+
+  for (const baseRule of baseline.ruleKeep.rules) {
+    const candRule = candidate.ruleKeep.rules.find((r) => r.id === baseRule.id);
+    if (baseRule.passed && candRule && !candRule.passed) return false;
   }
-  return gain;
+
+  return true;
 }
 
 function meetsStrictBaselines(candidate: ScoredCandidate, floors: ScoreFloors): boolean {
@@ -174,7 +191,12 @@ function passingDimensionLoss(candidate: ScoredCandidate, floors: ScoreFloors): 
   return loss;
 }
 
-function acceptableCandidate(candidate: ScoredCandidate, floors: ScoreFloors): boolean {
+function acceptableCandidate(
+  candidate: ScoredCandidate,
+  floors: ScoreFloors,
+  baseline: ScoredCandidate
+): boolean {
+  if (!meetsCriterionBaselines(candidate, baseline)) return false;
   if (floors.hasRules && candidate.ruleKeep.overall < floors.baselineRules) return false;
   if (!meetsFloors(candidate, floors)) return false;
   if (meetsStrictBaselines(candidate, floors)) return true;
@@ -188,9 +210,7 @@ function needsImprovement(
   ats: AtsScoreResult,
   rules: RuleKeepScoreResult
 ): boolean {
-  if (ats.overall < ATS_PASS_THRESHOLD) return true;
-  if (rules.totalRules > 0 && rules.overall < RULE_KEEP_PASS_THRESHOLD) return true;
-  return false;
+  return buildUnifiedResumeScore(ats, rules).overall < RESUME_PASS_THRESHOLD;
 }
 
 function shouldAcceptCandidate(
@@ -198,7 +218,7 @@ function shouldAcceptCandidate(
   baseline: ScoredCandidate,
   floors: ScoreFloors
 ): boolean {
-  if (!acceptableCandidate(candidate, floors)) return false;
+  if (!acceptableCandidate(candidate, floors, baseline)) return false;
   if (!isBetterCandidate(candidate, baseline, floors)) return false;
 
   const baselineNeedsWork = needsImprovement(baseline.ats, baseline.ruleKeep);
@@ -354,7 +374,7 @@ export async function pickBestRegenerateResult(
 
   if (
     !rulesGuarded &&
-    acceptableCandidate(aiScored, floors) &&
+    acceptableCandidate(aiScored, floors, baselineCandidate) &&
     isBetterCandidate(aiScored, best, floors)
   ) {
     best = aiScored;
@@ -380,7 +400,7 @@ export async function pickBestRegenerateResult(
       ruleKeep: candidateEval.ruleKeep,
     };
 
-    if (acceptableCandidate(scored, floors) && isBetterCandidate(scored, best, floors)) {
+    if (acceptableCandidate(scored, floors, baselineCandidate) && isBetterCandidate(scored, best, floors)) {
       best = scored;
     }
   }
@@ -412,5 +432,86 @@ export async function pickBestRegenerateResult(
       },
       true
     ),
+  };
+}
+
+export type IterativeRegenerationInput = {
+  baselineContent: GeneratedResumeContent;
+  baselineAts: AtsScoreResult;
+  baselineRules: RuleKeepScoreResult;
+  generateDraft: (input: {
+    previousContent: GeneratedResumeContent;
+    atsFeedback: AtsScoreResult;
+    ruleKeepFeedback: RuleKeepScoreResult;
+  }) => Promise<GeneratedResumeContent>;
+  evaluate: (content: GeneratedResumeContent) => Promise<RegenerateEvaluation | null>;
+};
+
+/**
+ * Run regeneration iterations until overall score ≥ 94, or two consecutive iterations
+ * with no overall score improvement.
+ */
+export async function runIterativeRegeneration(
+  input: IterativeRegenerationInput
+): Promise<RegeneratePickResult> {
+  let content = input.baselineContent;
+  let ats = input.baselineAts;
+  let rules = input.baselineRules;
+  let score = buildUnifiedResumeScore(ats, rules);
+  let lastOverall = score.overall;
+  let staleIterations = 0;
+
+  let best: RegeneratePickResult = {
+    content,
+    score,
+    notice: `Starting from overall score ${score.overall}/${RESUME_SCORE_MAX} (target ≥ ${RESUME_PASS_THRESHOLD}).`,
+  };
+
+  if (score.overall >= RESUME_PASS_THRESHOLD) {
+    return {
+      ...best,
+      notice: `Already at target — overall score ${score.overall} (≥ ${RESUME_PASS_THRESHOLD}).`,
+    };
+  }
+
+  for (let iteration = 0; iteration < MAX_REGENERATION_ITERATIONS; iteration += 1) {
+    const aiDraft = await input.generateDraft({
+      previousContent: content,
+      atsFeedback: ats,
+      ruleKeepFeedback: rules,
+    });
+
+    const picked = await pickBestRegenerateResult(content, ats, rules, aiDraft, input.evaluate);
+
+    if (picked.score.overall > lastOverall) {
+      staleIterations = 0;
+      content = picked.content;
+      ats = picked.score.ats;
+      rules = picked.score.ruleKeep;
+      score = picked.score;
+      lastOverall = score.overall;
+      best = picked;
+
+      if (score.overall >= RESUME_PASS_THRESHOLD) {
+        return {
+          ...best,
+          notice: `${picked.notice} Target reached — overall score ${score.overall} (≥ ${RESUME_PASS_THRESHOLD}).`,
+        };
+      }
+      continue;
+    }
+
+    staleIterations += 1;
+    if (staleIterations >= STALE_REGENERATION_LIMIT) {
+      return {
+        ...best,
+        notice: `${best.notice} Stopped after ${STALE_REGENERATION_LIMIT} iterations with no overall score gain (best: ${best.score.overall}).`,
+      };
+    }
+  }
+
+  return {
+    ...best,
+    notice: `${best.notice} Reached iteration limit (best overall: ${best.score.overall}).`,
   };
 }

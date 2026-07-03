@@ -1,6 +1,9 @@
 import { applyResumeContentPostProcess } from "@/lib/resume-content-postprocess";
 import { isProjectLayout, normalizeResumeExperience, normalizeResumeProject } from "@/lib/resume-experience-utils";
-import type { GeneratedResumeContent, ResumeTemplateLayout } from "@/lib/resume-types";
+import { buildRegenerationEvaluationBlock } from "@/lib/resume-regenerate-prompt";
+import { emptyRuleKeepScore } from "@/lib/resume-rule-keep";
+import { buildUnifiedResumeScore } from "@/lib/resume-unified-score";
+import type { AtsScoreResult, GeneratedResumeContent, ResumeTemplateLayout, RuleKeepScoreResult } from "@/lib/resume-types";
 
 export const RESUME_AI_MODEL = "deepseek-v4-pro";
 
@@ -74,6 +77,8 @@ export function buildResumeUserPrompt({
   existingExperiences,
   templateLayout = "bullets",
   previousContent,
+  atsFeedback,
+  ruleKeepFeedback,
 }: {
   jobTitle: string;
   jobDescription: string;
@@ -81,6 +86,8 @@ export function buildResumeUserPrompt({
   existingExperiences: GeneratedResumeContent["experiences"];
   templateLayout?: ResumeTemplateLayout;
   previousContent?: GeneratedResumeContent;
+  atsFeedback?: AtsScoreResult;
+  ruleKeepFeedback?: RuleKeepScoreResult;
 }): string {
   const layout = previousContent?.layout ?? templateLayout;
   const experiences = previousContent?.experiences ?? existingExperiences;
@@ -109,12 +116,22 @@ export function buildResumeUserPrompt({
         ].join("\n")
       : "";
 
+  const evaluationBlock =
+    isRegenerate && atsFeedback
+      ? buildRegenerationEvaluationBlock(
+          atsFeedback,
+          ruleKeepFeedback ?? emptyRuleKeepScore(),
+          buildUnifiedResumeScore(atsFeedback, ruleKeepFeedback ?? emptyRuleKeepScore()).overall
+        )
+      : "";
+
   return [
     jobTitle && `Job title:\n${jobTitle}`,
     jobDescription && `Job description:\n${jobDescription}`,
     instructions
       ? `Instructions:\n${instructions}`
       : "Instructions: Write all resume content tailored to the job description.",
+    evaluationBlock,
     previousDraftBlock,
     structureBlock,
     `Return exactly ${experiences.length} experience entries. Valid JSON only.`,

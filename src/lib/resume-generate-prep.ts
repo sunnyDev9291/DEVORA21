@@ -111,6 +111,8 @@ export async function prepareResumeGeneration(
     existingExperiences,
     templateLayout,
     previousContent: isRegenerate ? body.previousContent : undefined,
+    atsFeedback: isRegenerate ? body.atsFeedback : undefined,
+    ruleKeepFeedback: isRegenerate ? body.ruleKeepFeedback : undefined,
   });
 
   return {

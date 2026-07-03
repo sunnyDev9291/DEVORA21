@@ -11,7 +11,7 @@ import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
 import { generateResume } from "@/lib/resume-generate-client";
 import { archiveResume } from "@/lib/resume-archive";
 import { resumeBuilderAccessDeniedMessage } from "@/lib/resume-access";
-import { pickBestRegenerateResult, type RegenerateEvaluation } from "@/lib/resume-ats-regenerate";
+import { runIterativeRegeneration, type RegenerateEvaluation } from "@/lib/resume-ats-regenerate";
 import { emptyRuleKeepScore } from "@/lib/resume-rule-keep";
 import type { ResumeScoreResult } from "@/lib/resume-score";
 import type {
@@ -342,42 +342,42 @@ export default function ResumeGenerator({
     abortRef.current = controller;
 
     try {
-      const data = await generateResume(
-        {
-          ...form,
-          templateName: userTemplate.fileName,
-          templateBase64: userTemplate.templateBase64,
-          ...(options?.atsFeedback && { atsFeedback: options.atsFeedback }),
-          ...(options?.ruleKeepFeedback && { ruleKeepFeedback: options.ruleKeepFeedback }),
-          ...(options?.previousContent && { previousContent: options.previousContent }),
-        },
-        {
-          onPhase: (phase) => {
-            if (generationRunRef.current === runId) setStreamPhase(phase);
-          },
-          signal: controller.signal,
-        }
-      );
-
-      if (generationRunRef.current !== runId) return;
-
       setDocxBase64("");
       setFileName("");
       setStep("review");
 
       if (options?.previousContent && options?.atsFeedback) {
-        const picked = await pickBestRegenerateResult(
-          options.previousContent,
-          options.atsFeedback,
-          options.ruleKeepFeedback ?? emptyRuleKeepScore(),
-          data.content,
-          (candidate) =>
+        const picked = await runIterativeRegeneration({
+          baselineContent: options.previousContent,
+          baselineAts: options.atsFeedback,
+          baselineRules: options.ruleKeepFeedback ?? emptyRuleKeepScore(),
+          generateDraft: async ({ previousContent, atsFeedback, ruleKeepFeedback }) => {
+            const draft = await generateResume(
+              {
+                ...form,
+                templateName: userTemplate!.fileName,
+                templateBase64: userTemplate!.templateBase64,
+                previousContent,
+                atsFeedback,
+                ruleKeepFeedback,
+              },
+              {
+                onPhase: (phase) => {
+                  if (generationRunRef.current === runId) setStreamPhase(phase);
+                },
+                signal: controller.signal,
+              }
+            );
+            return draft.content;
+          },
+          evaluate: (candidate) =>
             evaluateResumeScores(candidate, {
               openModal: true,
               preserveScore: true,
               reuseKeywords: true,
-            })
-        );
+            }),
+        });
+        if (generationRunRef.current !== runId) return;
         setContent(picked.content);
         setResumeScore(picked.score);
         setRegenerateNotice(picked.notice);
@@ -385,6 +385,21 @@ export default function ResumeGenerator({
           setGenerationKey((k) => k + 1);
         }
       } else {
+        const data = await generateResume(
+          {
+            ...form,
+            templateName: userTemplate.fileName,
+            templateBase64: userTemplate.templateBase64,
+          },
+          {
+            onPhase: (phase) => {
+              if (generationRunRef.current === runId) setStreamPhase(phase);
+            },
+            signal: controller.signal,
+          }
+        );
+
+        if (generationRunRef.current !== runId) return;
         setContent(data.content);
         setGenerationKey((k) => k + 1);
         await evaluateResumeScores(data.content);
