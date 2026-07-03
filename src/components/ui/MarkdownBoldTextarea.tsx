@@ -9,6 +9,7 @@ interface MarkdownBoldTextareaProps {
   onChange: (value: string) => void;
   className?: string;
   rows?: number;
+  minHeight?: number;
   maxHeight?: number;
   placeholder?: string;
   "aria-label"?: string;
@@ -20,6 +21,7 @@ export default function MarkdownBoldTextarea({
   onChange,
   className = "",
   rows = 2,
+  minHeight: minHeightProp,
   maxHeight,
   placeholder,
   "aria-label": ariaLabel,
@@ -51,7 +53,6 @@ export default function MarkdownBoldTextarea({
   }, [onChange]);
 
   const minHeight = Math.max(rows * 24 + 24, 72);
-  const boxHeight = maxHeight ?? minHeight;
 
   return (
     <div
@@ -65,6 +66,12 @@ export default function MarkdownBoldTextarea({
       data-placeholder={placeholder}
       onInput={emitChange}
       onBlur={emitChange}
+      onPaste={(e) => {
+        e.preventDefault();
+        const text = e.clipboardData.getData("text/plain");
+        document.execCommand("insertText", false, text);
+        emitChange();
+      }}
       onKeyDown={(e) => {
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") {
           e.preventDefault();
@@ -73,7 +80,12 @@ export default function MarkdownBoldTextarea({
         }
       }}
       className={`markdown-bold-editor ${className}`}
-      style={{ height: boxHeight, maxHeight: boxHeight, overflowY: "auto" }}
+      style={{
+        minHeight: minHeightProp ?? minHeight,
+        maxHeight,
+        overflowY: "auto",
+        resize: "vertical",
+      }}
     />
   );
 }

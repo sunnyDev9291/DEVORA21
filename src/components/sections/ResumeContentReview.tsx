@@ -130,6 +130,8 @@ export default function ResumeContentReview({
     changedFieldIds?.has(fieldId)
       ? "ring-2 ring-amber-400/50 border-amber-400/40"
       : "";
+  const skillLineCount = content.skills.split(/\n+/).filter((line) => line.trim()).length;
+  const summaryWordCount = content.summary.split(/\s+/).filter(Boolean).length;
 
   return (
     <div className={embedded ? "space-y-4" : "space-y-6"}>
@@ -196,19 +198,29 @@ export default function ResumeContentReview({
           />
         </div>
 
-        <div className="rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.02] p-5">
+        <div className={`${embedded ? "" : "lg:col-span-2"} rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.02] p-5`}>
           <label htmlFor="resume-skills" className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white mb-2">
             <span className="w-6 h-6 rounded-md bg-violet-500/15 text-violet-600 dark:text-violet-400 flex items-center justify-center text-xs">S</span>
             Skillsets
           </label>
+          <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+            <span>{skillLineCount} categor{skillLineCount === 1 ? "y" : "ies"}</span>
+            <span>One category per line works best</span>
+            <span>Use Ctrl/Cmd+B for bold</span>
+          </div>
           <MarkdownBoldTextarea
             id="resume-skills"
             value={content.skills}
             onChange={(skills) => onChange({ ...content, skills })}
-            className={`${fieldClass} min-h-[88px] ${changedRing("skills")}`}
-            rows={3}
-            placeholder="Comma-separated skills"
+            className={`${fieldClass} min-h-[180px] resize-y leading-relaxed ${changedRing("skills")}`}
+            rows={6}
+            minHeight={180}
+            maxHeight={420}
+            placeholder={"Languages: C#, TypeScript\nBackend: .NET, ASP.NET Core, Web APIs\nFrontend: React"}
           />
+          <p className="mt-2 text-xs text-slate-400">
+            Keep categories JD-specific. Template styling is applied later.
+          </p>
         </div>
 
         <div className={`${embedded ? "" : "lg:col-span-2"} rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.02] p-5`}>
@@ -216,12 +228,20 @@ export default function ResumeContentReview({
             <span className="w-6 h-6 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-xs">∑</span>
             Summary
           </label>
+          <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+            <span>{summaryWordCount} words</span>
+            <span>2-4 focused sentences is easiest to review</span>
+            <span>Use Ctrl/Cmd+B for key terms</span>
+          </div>
           <MarkdownBoldTextarea
             id="resume-summary"
             value={content.summary}
             onChange={(summary) => onChange({ ...content, summary })}
-            className={`${fieldClass} min-h-[120px] leading-relaxed ${changedRing("summary")}`}
-            rows={4}
+            className={`${fieldClass} min-h-[220px] resize-y text-[15px] leading-7 ${changedRing("summary")}`}
+            rows={8}
+            minHeight={220}
+            maxHeight={520}
+            placeholder="Write a concise, JD-targeted professional summary..."
           />
         </div>
       </div>
