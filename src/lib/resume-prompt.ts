@@ -47,6 +47,9 @@ const PROJECTS_JSON_SHAPE = `{
 /** Minimal system prompt — content/style rules come only from the user's instructions. */
 export function buildResumeSystemPrompt(regenerate = false, layout: ResumeTemplateLayout = "bullets"): string {
   const shape = isProjectLayout(layout) ? PROJECTS_JSON_SHAPE : BULLETS_JSON_SHAPE;
+  const skillRule = isProjectLayout(layout)
+    ? "- Skillsets: follow the template category labels, order, line count, and colon formatting exactly; only replace the technologies."
+    : "- Skillsets: follow the template plain-list style exactly; do not add category labels.";
   const regenerateRules = regenerate
     ? [
         "- REGENERATE MODE: Start from the previous draft JSON in the user message. Change only fields needed to fix weak scores.",
@@ -61,7 +64,7 @@ export function buildResumeSystemPrompt(regenerate = false, layout: ResumeTempla
     "Technical output rules (not content style):",
     "- Use **double asterisks** around skill category labels (e.g. **Languages:**) and tech terms so Word can render bold.",
     "- Match the template job count, dates, project/bullet counts, and fixed project names from the user message.",
-    "- Skillsets: match template formatting style (**Category:** terms) but choose JD-relevant category labels — do not copy template category names unless they fit the role.",
+    skillRule,
     "- Set fileName when Instructions specify a resume file name (no .docx extension; substitute real values for placeholders).",
     "- Do not invent employers or projects.",
     "- All wording, tone, and formatting rules come ONLY from the user Instructions in the user message.",
@@ -166,7 +169,7 @@ export function buildResumeUserPrompt({
       ? 'If Instructions specify a resume file name, set JSON field "fileName" to that resolved name (no .docx extension).'
       : "";
 
-  const templateSkillsBlock = buildTemplateSkillsPromptBlock(templateSkillsSample ?? "");
+  const templateSkillsBlock = buildTemplateSkillsPromptBlock(templateSkillsSample ?? "", layout);
 
   return [
     jobTitle && `Job title:\n${jobTitle}`,

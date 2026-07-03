@@ -131,7 +131,8 @@ export async function POST(req: Request) {
     const content = ensureResumeContentFileName(
       applyTemplateSkillsStyle(
         finalizeResumeContent(aiRaw, existingExperiences, header.title, templateLayout),
-        skillsSample
+        skillsSample,
+        templateLayout
       ),
       { templateName, customPrompt, profileName: body.profileName?.trim() }
     );

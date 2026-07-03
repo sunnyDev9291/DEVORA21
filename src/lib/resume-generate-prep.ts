@@ -165,7 +165,11 @@ export function finalizeResumeContentFromModel(
     mergeContext.templateLayout,
     mergeContext.regenerateBaseline
   );
-  const styled = applyTemplateSkillsStyle(content, mergeContext.skillsSample);
+  const styled = applyTemplateSkillsStyle(
+    content,
+    mergeContext.skillsSample,
+    mergeContext.templateLayout
+  );
   return ensureResumeContentFileName(styled, {
     templateName,
     customPrompt: mergeContext.customPrompt,
@@ -175,12 +179,13 @@ export function finalizeResumeContentFromModel(
 
 function applyTemplateSkillsStyle(
   content: GeneratedResumeContent,
-  skillsSample?: string
+  skillsSample?: string,
+  layout: ResumeTemplateLayout = content.layout ?? "bullets"
 ): GeneratedResumeContent {
   if (!skillsSample?.trim()) return content;
   return {
     ...content,
-    skills: formatSkillsWithTemplateStyle(content.skills, skillsSample),
+    skills: formatSkillsWithTemplateStyle(content.skills, skillsSample, layout),
   };
 }
 

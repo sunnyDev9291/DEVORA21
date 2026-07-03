@@ -222,14 +222,14 @@ export function applyResumeContentPostProcess(
   const skillTerms = extractSkillTerms(content.skills);
   const projectMode = isProjectLayout(layout);
   const alignedSkills = templateSkillsSample?.trim()
-    ? formatSkillsWithTemplateStyle(content.skills, templateSkillsSample)
+    ? formatSkillsWithTemplateStyle(content.skills, templateSkillsSample, layout)
     : content.skills;
-  const skillsWithCategories = boldSkillCategoryLabels(alignedSkills);
+  const skillsWithTemplateStyle = projectMode ? boldSkillCategoryLabels(alignedSkills) : alignedSkills;
 
   return {
     ...content,
     layout: projectMode ? "projects" : "bullets",
-    skills: boldSkillTermsInText(skillsWithCategories, skillTerms),
+    skills: skillsWithTemplateStyle,
 
     experiences: content.experiences.map((exp, index) => {
 

@@ -73,7 +73,8 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
                 templateLayout,
                 regenerateBaseline
               ),
-              skillsSample
+              skillsSample,
+              templateLayout
             ),
             { templateName, customPrompt, profileName }
           );
@@ -89,7 +90,8 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
                 templateLayout,
                 regenerateBaseline
               ),
-              skillsSample
+              skillsSample,
+              templateLayout
             ),
             { templateName, customPrompt, profileName }
           );
