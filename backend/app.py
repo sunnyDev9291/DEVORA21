@@ -32,7 +32,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-from flask import Flask, jsonify, request, send_file
+import requests
+from flask import Flask, Response, jsonify, request, send_file, stream_with_context
 from flask_cors import CORS
 
 APP_DIR = Path(__file__).resolve().parent
@@ -42,6 +43,9 @@ CSV_PATH = STORAGE_DIR / "resume_log.csv"
 INDEX_PATH = STORAGE_DIR / "archives_index.json"
 MAX_FILE_BYTES = 10 * 1024 * 1024
 CSV_HEADER = ["datetime", "job_title", "company_name", "job_description", "resume_name"]
+DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions"
+DEEPSEEK_MODEL = "deepseek-v4-pro"
+AI_REQUEST_TIMEOUT_SECONDS = 300
 
 app = Flask(__name__)
 CORS(
@@ -191,6 +195,70 @@ def append_csv_row(
         writer.writerow([dt, job_title, company_name, job_description, resume_name])
 
 
+def require_ai_internal_auth() -> bool:
+    """When AI_INTERNAL_API_KEY is set, require Bearer token from Next.js / Netlify."""
+    expected = os.environ.get("AI_INTERNAL_API_KEY", "").strip()
+    if not expected:
+        return True
+    auth = (request.headers.get("Authorization") or "").strip()
+    return auth == f"Bearer {expected}"
+
+
+def build_deepseek_payload(
+    messages: list[dict],
+    *,
+    max_tokens: int,
+    stream: bool,
+    json_object: bool,
+) -> dict:
+    payload: dict = {
+        "model": DEEPSEEK_MODEL,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "stream": stream,
+        "thinking": {"type": "disabled"},
+    }
+    if json_object:
+        payload["response_format"] = {"type": "json_object"}
+    return payload
+
+
+def deepseek_headers() -> dict[str, str]:
+    api_key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("DEEPSEEK_API_KEY is not configured on the backend server.")
+    return {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+
+def parse_ai_request() -> tuple[list[dict] | None, int, bool, tuple[Response, int] | None]:
+    if not require_ai_internal_auth():
+        return None, 0, False, (jsonify(error="Unauthorized."), 401)
+
+    body = request.get_json(silent=True) or {}
+    messages = body.get("messages")
+    if not isinstance(messages, list) or not messages:
+        return None, 0, False, (jsonify(error="messages is required."), 400)
+
+    normalized: list[dict] = []
+    for item in messages:
+        if not isinstance(item, dict):
+            return None, 0, False, (jsonify(error="Each message must be an object."), 400)
+        role = str(item.get("role", "")).strip()
+        content = str(item.get("content", "")).strip()
+        if role not in {"system", "user", "assistant"}:
+            return None, 0, False, (jsonify(error="Invalid message role."), 400)
+        if not content:
+            return None, 0, False, (jsonify(error="Message content cannot be empty."), 400)
+        normalized.append({"role": role, "content": content})
+
+    max_tokens = int(body.get("maxTokens") or 4096)
+    json_object = bool(body.get("jsonObject"))
+    return normalized, max_tokens, json_object, None
+
+
 def archive_matches_query(row: dict, query: str) -> bool:
     if not query:
         return True
@@ -208,7 +276,104 @@ def archive_matches_query(row: dict, query: str) -> bool:
 
 @app.get("/health")
 def health():
-    return jsonify(status="ok", libreoffice=find_soffice() is not None)
+    return jsonify(
+        status="ok",
+        libreoffice=find_soffice() is not None,
+        deepseek=bool(os.environ.get("DEEPSEEK_API_KEY", "").strip()),
+    )
+
+
+@app.post("/ai/chat/completions")
+def ai_chat_completions():
+    messages, max_tokens, json_object, error_response = parse_ai_request()
+    if error_response is not None:
+        return error_response
+
+    try:
+        upstream = requests.post(
+            DEEPSEEK_API_URL,
+            headers=deepseek_headers(),
+            json=build_deepseek_payload(
+                messages,
+                max_tokens=max_tokens,
+                stream=False,
+                json_object=json_object,
+            ),
+            timeout=AI_REQUEST_TIMEOUT_SECONDS,
+        )
+    except requests.RequestException as exc:
+        return jsonify(error=f"Failed to reach DeepSeek: {exc}"), 502
+
+    if not upstream.ok:
+        detail = upstream.text.strip() or upstream.reason
+        return jsonify(error=f"DeepSeek API error ({upstream.status_code}): {detail}"), upstream.status_code
+
+    data = upstream.json()
+    content = (
+        data.get("choices", [{}])[0]
+        .get("message", {})
+        .get("content", "")
+        .strip()
+    )
+    if not content:
+        return jsonify(error="Empty response from DeepSeek."), 502
+
+    return jsonify(content=content, model=DEEPSEEK_MODEL)
+
+
+@app.post("/ai/chat/completions/stream")
+def ai_chat_completions_stream():
+    messages, max_tokens, json_object, error_response = parse_ai_request()
+    if error_response is not None:
+        return error_response
+
+    try:
+        headers = deepseek_headers()
+    except RuntimeError as exc:
+        return jsonify(error=str(exc)), 500
+
+    payload = build_deepseek_payload(
+        messages,
+        max_tokens=max_tokens,
+        stream=True,
+        json_object=json_object,
+    )
+
+    def generate():
+        try:
+            with requests.post(
+                DEEPSEEK_API_URL,
+                headers=headers,
+                json=payload,
+                stream=True,
+                timeout=AI_REQUEST_TIMEOUT_SECONDS,
+            ) as upstream:
+                if not upstream.ok:
+                    detail = upstream.text.strip() or upstream.reason
+                    yield f"data: {json.dumps({'error': f'DeepSeek API error ({upstream.status_code}): {detail}'})}\n\n"
+                    return
+
+                for line in upstream.iter_lines(decode_unicode=True):
+                    if line is None:
+                        continue
+                    text = line.strip()
+                    if not text:
+                        continue
+                    if text.startswith("data:"):
+                        yield f"{text}\n\n"
+                    else:
+                        yield f"data: {text}\n\n"
+        except requests.RequestException as exc:
+            yield f"data: {json.dumps({'error': f'Failed to reach DeepSeek: {exc}'})}\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-store",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @app.get("/resume/archives")

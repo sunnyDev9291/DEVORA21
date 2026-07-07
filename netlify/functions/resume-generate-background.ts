@@ -1,10 +1,6 @@
 import type { Config } from "@netlify/functions";
 import { getStore } from "@netlify/blobs";
 
-const DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions";
-const DEEPSEEK_MODEL = "deepseek-v4-pro";
-const DEEPSEEK_MAX_TOKENS = 16384;
-
 type PendingJob = {
   status: "pending";
   templateName: string;
@@ -50,39 +46,53 @@ function getJobStore() {
   return getStore({ name: "resume-jobs", consistency: "strong" });
 }
 
-async function callDeepSeek(messages: unknown[]): Promise<string> {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
-  if (!apiKey) {
-    throw new Error("DEEPSEEK_API_KEY is not set on Netlify.");
+function resolveBackendApiUrl(): string {
+  const base = (
+    process.env.BACKEND_API_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    ""
+  ).replace(/\/$/, "");
+  if (!base) {
+    throw new Error("BACKEND_API_URL is not configured on Netlify.");
   }
+  return base;
+}
 
-  const response = await fetch(DEEPSEEK_API_URL, {
+function buildAiAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+  const key = process.env.AI_INTERNAL_API_KEY?.trim();
+  if (key) {
+    headers.Authorization = `Bearer ${key}`;
+  }
+  return headers;
+}
+
+async function callAiBackend(messages: unknown[]): Promise<string> {
+  const response = await fetch(`${resolveBackendApiUrl()}/ai/chat/completions`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
+    headers: buildAiAuthHeaders(),
     body: JSON.stringify({
-      model: DEEPSEEK_MODEL,
       messages,
-      max_tokens: DEEPSEEK_MAX_TOKENS,
-      stream: false,
-      response_format: { type: "json_object" },
-      thinking: { type: "disabled" },
+      maxTokens: 16384,
+      jsonObject: true,
     }),
   });
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw new Error(`DeepSeek API error (${response.status}): ${detail || response.statusText}`);
+    throw new Error(detail || `AI backend error (${response.status}).`);
   }
 
-  const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const content = data.choices?.[0]?.message?.content?.trim();
+  const data = (await response.json()) as { content?: string; error?: string };
+  if (data.error) {
+    throw new Error(data.error);
+  }
+  const content = data.content?.trim();
   if (!content) {
-    throw new Error("Empty response from DeepSeek.");
+    throw new Error("Empty response from AI backend.");
   }
   return content;
 }
@@ -151,7 +161,7 @@ export default async function handler(req: Request) {
       throw new Error("Resume job is missing AI messages.");
     }
 
-    const text = await callDeepSeek(messages);
+    const text = await callAiBackend(messages);
 
     await store.setJSON(jobId, {
       ...existingJob,
