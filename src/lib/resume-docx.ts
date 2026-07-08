@@ -19,6 +19,8 @@ const SECTION_HEADERS = {
   education: /^(EDUCATION|Education)$/i,
 };
 
+const SKILLS_EXPERIENCE_GAP_AFTER_TWIPS = 40;
+
 export type DocxParagraph = {
   text: string;
   isListItem: boolean;
@@ -684,19 +686,174 @@ function collectSectionParagraphIndices(
   return indices;
 }
 
-/** Empty spacer paragraphs between a section header and the next section (e.g. skills → experience). */
-function collectSectionGapParagraphs(
+type SectionRegionParts = {
+  leadingEmpty: string[];
+  contentTemplates: string[];
+  trailingEmpty: string[];
+};
+
+function partitionSectionRegion(regionParagraphs: string[]): SectionRegionParts {
+  const leadingEmpty: string[] = [];
+  const contentTemplates: string[] = [];
+  const trailingEmpty: string[] = [];
+  let phase: "leading" | "content" | "trailing" = "leading";
+
+  for (const paragraph of regionParagraphs) {
+    const text = getParagraphText(paragraph).trim();
+    if (phase === "leading") {
+      if (!text) leadingEmpty.push(paragraph);
+      else {
+        contentTemplates.push(paragraph);
+        phase = "content";
+      }
+    } else if (phase === "content") {
+      if (!text) {
+        trailingEmpty.push(paragraph);
+        phase = "trailing";
+      } else {
+        contentTemplates.push(paragraph);
+      }
+    } else {
+      trailingEmpty.push(paragraph);
+    }
+  }
+
+  return { leadingEmpty, contentTemplates, trailingEmpty };
+}
+
+function buildSectionParagraphs(
+  regionParagraphs: string[],
+  content: string,
+  renderLine: (template: string, line: string) => string
+): string[] {
+  if (regionParagraphs.length === 0) return [];
+
+  const { leadingEmpty, contentTemplates, trailingEmpty } = partitionSectionRegion(regionParagraphs);
+  const lines = content
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const fallback =
+    contentTemplates[contentTemplates.length - 1] ??
+    regionParagraphs.find((paragraph) => getParagraphText(paragraph).trim()) ??
+    regionParagraphs[0];
+
+  if (lines.length === 0) {
+    return [
+      ...leadingEmpty,
+      ...contentTemplates.map((paragraph) => setParagraphText(paragraph, "")),
+      ...trailingEmpty,
+    ];
+  }
+
+  if (contentTemplates.length <= 1) {
+    const merged = lines.join(contentTemplates.length === 0 ? "\n" : " ");
+    return [...leadingEmpty, renderLine(fallback, merged), ...trailingEmpty];
+  }
+
+  const rendered = lines.map((line, index) =>
+    renderLine(contentTemplates[index] ?? fallback, line)
+  );
+  return [...leadingEmpty, ...rendered, ...trailingEmpty];
+}
+
+function setParagraphSpacing(pXml: string, beforeTwips: number, afterTwips: number): string {
+  const spacingTag = `<w:spacing w:before="${beforeTwips}" w:after="${afterTwips}"/>`;
+  if (/<w:pPr[\s\S]*?<\/w:pPr>/.test(pXml)) {
+    if (/<w:spacing[^/]*\/>/.test(pXml)) {
+      return pXml.replace(/<w:spacing[^/]*\/>/, spacingTag);
+    }
+    return pXml.replace(/<w:pPr([^>]*)>/, `<w:pPr$1>${spacingTag}`);
+  }
+  const open = pXml.match(/^(<w:p[^>]*>)/)?.[1] ?? "<w:p>";
+  const rest = pXml.slice(open.length);
+  return `${open}<w:pPr>${spacingTag}</w:pPr>${rest}`;
+}
+
+function applySkillsExperienceGap(trailingEmpty: string[]): string[] {
+  if (trailingEmpty.length === 0) return trailingEmpty;
+  const last = trailingEmpty[trailingEmpty.length - 1];
+  return [
+    ...trailingEmpty.slice(0, -1),
+    setParagraphSpacing(setParagraphText(last, ""), 0, SKILLS_EXPERIENCE_GAP_AFTER_TWIPS),
+  ];
+}
+
+function buildSkillsRegionParagraphs(regionParagraphs: string[], skillsContent: string): string[] {
+  const { leadingEmpty, contentTemplates, trailingEmpty } = partitionSectionRegion(regionParagraphs);
+  const lines = skillsContent
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0 || contentTemplates.length === 0) {
+    return buildSectionParagraphs(regionParagraphs, skillsContent, setSkillLineParagraphText);
+  }
+
+  const fallback = contentTemplates[contentTemplates.length - 1];
+  const skillParagraphs = lines.map((line, index) =>
+    setSkillLineParagraphText(contentTemplates[index] ?? fallback, line)
+  );
+
+  const gapTrailing =
+    trailingEmpty.length > 0
+      ? applySkillsExperienceGap(trailingEmpty)
+      : applySkillsExperienceGap([setParagraphText(fallback, "")]);
+
+  return [...leadingEmpty, ...skillParagraphs, ...gapTrailing];
+}
+
+function applyTitleParagraph(
+  paragraphs: string[],
+  title: string,
+  header: { titleParagraphIndex: number },
+  summaryIdx: number
+): void {
+  const trimmedTitle = title.trim();
+  if (!trimmedTitle || summaryIdx <= 0) return;
+
+  if (header.titleParagraphIndex >= 0 && header.titleParagraphIndex < summaryIdx) {
+    paragraphs[header.titleParagraphIndex] = setParagraphText(
+      paragraphs[header.titleParagraphIndex],
+      trimmedTitle
+    );
+    return;
+  }
+
+  let nameIdx = -1;
+  for (let i = 0; i < summaryIdx; i += 1) {
+    const text = getParagraphText(paragraphs[i]).trim();
+    if (!text || isContactLine(text)) continue;
+    nameIdx = i;
+    break;
+  }
+  if (nameIdx === -1) return;
+
+  for (let i = nameIdx + 1; i < summaryIdx; i += 1) {
+    const text = getParagraphText(paragraphs[i]).trim();
+    if (!text || isContactLine(text)) continue;
+    paragraphs[i] = setParagraphText(paragraphs[i], trimmedTitle);
+    return;
+  }
+
+  for (let i = nameIdx + 1; i < summaryIdx; i += 1) {
+    if (!getParagraphText(paragraphs[i]).trim()) {
+      paragraphs[i] = setParagraphText(paragraphs[i], trimmedTitle);
+      return;
+    }
+  }
+}
+
+function sliceSectionRegion(
   paragraphs: string[],
   headerIdx: number,
   endIdx: number
 ): string[] {
-  const gaps: string[] = [];
-  for (let i = headerIdx + 1; i < endIdx; i += 1) {
-    if (!getParagraphText(paragraphs[i]).trim()) {
-      gaps.push(paragraphs[i]);
-    }
-  }
-  return gaps;
+  return paragraphs.slice(headerIdx + 1, endIdx).filter((paragraph) => {
+    const text = getParagraphText(paragraph).trim();
+    return !text || !isSectionHeader(text);
+  });
 }
 
 /** Extract summary, skills, and sample bullets from the template for style-matching prompts. */
@@ -760,138 +917,6 @@ export function parseTemplateContentSamples(buffer: Buffer): TemplateContentSamp
   return { layout, summary, skills, sampleBullets, sampleProjects };
 }
 
-function applySectionParagraphs(
-  paragraphs: string[],
-  paragraphIndices: number[],
-  content: string
-): void {
-  if (paragraphIndices.length === 0) return;
-
-  const lines = content
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  if (paragraphIndices.length === 1) {
-    const merged = lines.length > 0 ? lines.join(" ") : content.trim();
-    paragraphs[paragraphIndices[0]] = setParagraphText(paragraphs[paragraphIndices[0]], merged);
-    return;
-  }
-
-  for (let i = 0; i < paragraphIndices.length; i += 1) {
-    const line = i < lines.length ? lines[i] : "";
-    paragraphs[paragraphIndices[i]] = setParagraphText(paragraphs[paragraphIndices[i]], line);
-  }
-
-  if (lines.length > paragraphIndices.length) {
-    const lastIdx = paragraphIndices[paragraphIndices.length - 1];
-    const overflow = lines.slice(paragraphIndices.length - 1).join(" ");
-    paragraphs[lastIdx] = setParagraphText(paragraphs[lastIdx], overflow);
-  }
-}
-
-const SKILLS_EXPERIENCE_GAP_AFTER_TWIPS = 40;
-
-function setParagraphSpacing(pXml: string, beforeTwips: number, afterTwips: number): string {
-  const spacingTag = `<w:spacing w:before="${beforeTwips}" w:after="${afterTwips}"/>`;
-  if (/<w:pPr[\s\S]*?<\/w:pPr>/.test(pXml)) {
-    if (/<w:spacing[^/]*\/>/.test(pXml)) {
-      return pXml.replace(/<w:spacing[^/]*\/>/, spacingTag);
-    }
-    return pXml.replace(/<w:pPr([^>]*)>/, `<w:pPr$1>${spacingTag}`);
-  }
-  const open = pXml.match(/^(<w:p[^>]*>)/)?.[1] ?? "<w:p>";
-  const rest = pXml.slice(open.length);
-  return `${open}<w:pPr>${spacingTag}</w:pPr>${rest}`;
-}
-
-/** One compact skill line per category; drops trailing blank skill slots before Experience. */
-function buildSkillsParagraphs(
-  paragraphs: string[],
-  skillsIndices: number[],
-  skillsContent: string
-): string[] {
-  const lines = skillsContent
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (lines.length === 0 || skillsIndices.length === 0) return [];
-
-  const contentTemplates = skillsIndices
-    .filter((index) => getParagraphText(paragraphs[index]).trim())
-    .map((index) => paragraphs[index]);
-  const emptyTemplates = skillsIndices
-    .filter((index) => !getParagraphText(paragraphs[index]).trim())
-    .map((index) => paragraphs[index]);
-  const fallback =
-    contentTemplates[contentTemplates.length - 1] ??
-    paragraphs[skillsIndices[skillsIndices.length - 1]];
-
-  const skillParagraphs = lines.map((line, index) => {
-    const template = contentTemplates[index] ?? fallback;
-    return setSkillLineParagraphText(template, line);
-  });
-
-  if (emptyTemplates.length > 0) {
-    const spacer = setParagraphSpacing(
-      setParagraphText(emptyTemplates[emptyTemplates.length - 1], ""),
-      0,
-      SKILLS_EXPERIENCE_GAP_AFTER_TWIPS
-    );
-    skillParagraphs.push(spacer);
-  }
-
-  return skillParagraphs;
-}
-
-export function parseExperiencesFromDocxBuffer(buffer: Buffer) {
-  const paragraphs = getDocxParagraphs(buffer);
-  const expIdx = paragraphs.findIndex((p) => SECTION_HEADERS.experience.test(p.text));
-  const eduIdx = paragraphs.findIndex((p) => SECTION_HEADERS.education.test(p.text));
-  if (expIdx === -1) throw new Error("EXPERIENCE section not found in template.");
-
-  const end = eduIdx === -1 ? paragraphs.length : eduIdx;
-  const experiences: GeneratedResumeContent["experiences"] = [];
-
-  let currentHeader: Pick<
-    GeneratedResumeContent["experiences"][number],
-    "company" | "role" | "dates"
-  > | null = null;
-  let bullets: string[] = [];
-
-  const flush = () => {
-    if (!currentHeader) return;
-    experiences.push({ ...currentHeader, bullets: [...bullets] });
-    currentHeader = null;
-    bullets = [];
-  };
-
-  for (let i = expIdx + 1; i < end; i += 1) {
-    const line = paragraphs[i];
-    if (!line.text || isSectionHeader(line.text)) continue;
-
-    if (line.isListItem) {
-      if (currentHeader) bullets.push(line.text);
-      continue;
-    }
-
-    const headerMatch = tryParseJobHeader(line, paragraphs[i + 1] ?? null);
-    if (headerMatch) {
-      flush();
-      currentHeader = headerMatch.header;
-      if (headerMatch.skipNext) i += 1;
-      continue;
-    }
-
-    if (currentHeader && !parseDatesFromLine(line.text)) {
-      bullets.push(line.text);
-    }
-  }
-
-  flush();
-  return experiences;
-}
-
 export function applyContentToDocx(
   buffer: Buffer,
   content: GeneratedResumeContent
@@ -909,21 +934,18 @@ export function applyContentToDocx(
   if (summaryIdx === -1 || skillsIdx === -1 || expIdx === -1) {
     throw new Error("Template must contain SUMMARY, SKILLS, and EXPERIENCE sections.");
   }
-
-  const header = parseResumeHeaderFromDocxBuffer(buffer);
-  if (content.title && header.titleParagraphIndex >= 0) {
-    paragraphs[header.titleParagraphIndex] = setParagraphText(
-      paragraphs[header.titleParagraphIndex],
-      content.title
-    );
+  if (summaryIdx >= skillsIdx || skillsIdx >= expIdx) {
+    throw new Error("Template sections are out of order. Expected SUMMARY → SKILLS → EXPERIENCE.");
   }
 
-  const summaryIndices = collectSectionParagraphIndices(paragraphs, summaryIdx, skillsIdx);
-  const skillsIndices = collectSectionParagraphIndices(paragraphs, skillsIdx, expIdx);
-  applySectionParagraphs(paragraphs, summaryIndices, content.summary);
-  const skillParagraphs = buildSkillsParagraphs(paragraphs, skillsIndices, content.skills);
-  const skillsGapParagraphs = collectSectionGapParagraphs(paragraphs, skillsIdx, expIdx);
-  const skillsContentStart = skillsIndices.length > 0 ? skillsIndices[0] : skillsIdx + 1;
+  const header = parseResumeHeaderFromDocxBuffer(buffer);
+  applyTitleParagraph(paragraphs, content.title, header, summaryIdx);
+
+  const summaryRegion = sliceSectionRegion(paragraphs, summaryIdx, skillsIdx);
+  const summaryBody = buildSectionParagraphs(summaryRegion, content.summary, setParagraphText);
+
+  const skillsRegion = sliceSectionRegion(paragraphs, skillsIdx, expIdx);
+  const skillsBody = buildSkillsRegionParagraphs(skillsRegion, content.skills);
 
   const expEnd = eduIdx === -1 ? paragraphs.length : eduIdx;
   const originalExperienceParagraphs = paragraphs.slice(expIdx + 1, expEnd);
@@ -983,9 +1005,11 @@ export function applyContentToDocx(
   applyPageBreaksFromTemplate(experienceParagraphs, originalExperienceParagraphs);
 
   const updatedParagraphs = [
-    ...paragraphs.slice(0, skillsContentStart),
-    ...skillParagraphs,
-    ...skillsGapParagraphs,
+    ...paragraphs.slice(0, summaryIdx),
+    paragraphs[summaryIdx],
+    ...summaryBody,
+    paragraphs[skillsIdx],
+    ...skillsBody,
     paragraphs[expIdx],
     ...experienceParagraphs,
     ...paragraphs.slice(expEnd),
@@ -1006,4 +1030,52 @@ export function applyContentToDocx(
 
   zip.file("word/document.xml", rebuilt);
   return zip.generate({ type: "nodebuffer", compression: "DEFLATE" }) as Buffer;
+}
+
+export function parseExperiencesFromDocxBuffer(buffer: Buffer) {
+  const paragraphs = getDocxParagraphs(buffer);
+  const expIdx = paragraphs.findIndex((p) => SECTION_HEADERS.experience.test(p.text));
+  const eduIdx = paragraphs.findIndex((p) => SECTION_HEADERS.education.test(p.text));
+  if (expIdx === -1) throw new Error("EXPERIENCE section not found in template.");
+
+  const end = eduIdx === -1 ? paragraphs.length : eduIdx;
+  const experiences: GeneratedResumeContent["experiences"] = [];
+
+  let currentHeader: Pick<
+    GeneratedResumeContent["experiences"][number],
+    "company" | "role" | "dates"
+  > | null = null;
+  let bullets: string[] = [];
+
+  const flush = () => {
+    if (!currentHeader) return;
+    experiences.push({ ...currentHeader, bullets: [...bullets] });
+    currentHeader = null;
+    bullets = [];
+  };
+
+  for (let i = expIdx + 1; i < end; i += 1) {
+    const line = paragraphs[i];
+    if (!line.text || isSectionHeader(line.text)) continue;
+
+    if (line.isListItem) {
+      if (currentHeader) bullets.push(line.text);
+      continue;
+    }
+
+    const headerMatch = tryParseJobHeader(line, paragraphs[i + 1] ?? null);
+    if (headerMatch) {
+      flush();
+      currentHeader = headerMatch.header;
+      if (headerMatch.skipNext) i += 1;
+      continue;
+    }
+
+    if (currentHeader && !parseDatesFromLine(line.text)) {
+      bullets.push(line.text);
+    }
+  }
+
+  flush();
+  return experiences;
 }

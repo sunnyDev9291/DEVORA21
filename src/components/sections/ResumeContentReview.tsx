@@ -259,12 +259,12 @@ export default function ResumeContentReview({
                   <div className="px-5 pb-5 pt-0 space-y-3 border-t border-slate-100 dark:border-white/[0.06]">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-4">
                       <div className="sm:col-span-2">
-                        <p className="text-xs font-medium text-slate-500 mb-1">Company <span className="font-normal text-slate-400">(from template)</span></p>
+                        <p className="text-xs font-medium text-slate-500 mb-1">Company</p>
                         <p className="text-sm font-semibold text-slate-900 dark:text-white px-1">{exp.company}</p>
                       </div>
                       <div>
                         <p className="text-xs font-medium text-slate-500 mb-1">
-                          Role / title <span className="font-normal text-slate-400">(tailored to JD)</span>
+                          Role / title
                         </p>
                         <MarkdownBoldTextarea
                           id={`exp-${index}-role`}
@@ -277,7 +277,7 @@ export default function ResumeContentReview({
                         />
                       </div>
                       <div>
-                        <p className="text-xs font-medium text-slate-500 mb-1">Dates <span className="font-normal text-slate-400">(from template)</span></p>
+                        <p className="text-xs font-medium text-slate-500 mb-1">Dates</p>
                         <p className="text-sm text-slate-800 dark:text-slate-200 px-1">{exp.dates}</p>
                       </div>
                     </div>
@@ -293,7 +293,7 @@ export default function ResumeContentReview({
                             </p>
                             <div>
                               <p className="text-xs font-medium text-slate-500 mb-1">
-                                Project name <span className="font-normal text-slate-400">(from template)</span>
+                                Project name
                               </p>
                               <p className="text-sm font-semibold text-slate-900 dark:text-white px-1">{project.name}</p>
                             </div>
