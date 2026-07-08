@@ -2,6 +2,13 @@ import { API_BASE_URL } from "@/lib/api-base-url";
 import { RESUME_BUILDER_ACCESS_MESSAGE } from "@/lib/resume-access";
 import type { SavedResumeArchive, SavedResumeListResponse } from "@/lib/saved-resumes-types";
 
+export type SavedResumeSearchFilters = {
+  company?: string;
+  jd?: string;
+  dateFrom?: string;
+  dateTo?: string;
+};
+
 function parseFileName(res: Response, fallback: string): string {
   const custom =
     res.headers.get("x-resume-name") ??
@@ -37,10 +44,16 @@ function resolveArchiveFileName(
   );
 }
 
-export async function listSavedResumes(search = ""): Promise<SavedResumeArchive[]> {
+export async function listSavedResumes(filters: SavedResumeSearchFilters = {}): Promise<SavedResumeArchive[]> {
   const params = new URLSearchParams();
-  const query = search.trim();
-  if (query) params.set("q", query);
+  const company = filters.company?.trim();
+  const jd = filters.jd?.trim();
+  const dateFrom = filters.dateFrom?.trim();
+  const dateTo = filters.dateTo?.trim();
+  if (company) params.set("company", company);
+  if (jd) params.set("jd", jd);
+  if (dateFrom) params.set("from", dateFrom);
+  if (dateTo) params.set("to", dateTo);
 
   const url = `${API_BASE_URL}/resume/archives${params.size ? `?${params}` : ""}`;
   const res = await fetch(url, {

@@ -274,6 +274,61 @@ def archive_matches_query(row: dict, query: str) -> bool:
     return query.lower() in haystack
 
 
+def parse_bid_at(value: str) -> datetime | None:
+    try:
+        text = str(value).strip()
+        if not text:
+            return None
+        if text.endswith("Z"):
+            text = f"{text[:-1]}+00:00"
+        parsed = datetime.fromisoformat(text)
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except (ValueError, TypeError):
+        return None
+
+
+def parse_date_bound(value: str, *, end_of_day: bool = False) -> datetime | None:
+    text = (value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.strptime(text, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        if end_of_day:
+            return parsed.replace(hour=23, minute=59, second=59, microsecond=999999)
+        return parsed
+    except ValueError:
+        return None
+
+
+def archive_matches_filters(
+    row: dict,
+    *,
+    company: str = "",
+    jd: str = "",
+    date_from: str = "",
+    date_to: str = "",
+) -> bool:
+    if company and company.lower() not in str(row.get("company_name", "")).lower():
+        return False
+    if jd and jd.lower() not in str(row.get("job_description", "")).lower():
+        return False
+
+    if date_from or date_to:
+        bid_at = parse_bid_at(str(row.get("bid_at", "")))
+        if not bid_at:
+            return False
+        start = parse_date_bound(date_from)
+        end = parse_date_bound(date_to, end_of_day=True)
+        if start and bid_at < start:
+            return False
+        if end and bid_at > end:
+            return False
+
+    return True
+
+
 @app.get("/health")
 def health():
     return jsonify(
@@ -379,12 +434,27 @@ def ai_chat_completions_stream():
 @app.get("/resume/archives")
 def list_archives():
     user_id = resolve_user_id()
-    query = (request.args.get("q") or "").strip()
-    rows = [
-        row
-        for row in load_index()
-        if row.get("user_id") == user_id and archive_matches_query(row, query)
-    ]
+    legacy_query = (request.args.get("q") or "").strip()
+    company = (request.args.get("company") or "").strip()
+    jd = (request.args.get("jd") or "").strip()
+    date_from = (request.args.get("from") or "").strip()
+    date_to = (request.args.get("to") or "").strip()
+
+    rows = []
+    for row in load_index():
+        if row.get("user_id") != user_id:
+            continue
+        if legacy_query and not archive_matches_query(row, legacy_query):
+            continue
+        if not archive_matches_filters(
+            row,
+            company=company,
+            jd=jd,
+            date_from=date_from,
+            date_to=date_to,
+        ):
+            continue
+        rows.append(row)
     rows.sort(key=lambda r: r.get("bid_at", ""), reverse=True)
 
     items = [
