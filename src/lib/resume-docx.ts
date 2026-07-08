@@ -805,6 +805,18 @@ function buildSkillsRegionParagraphs(regionParagraphs: string[], skillsContent: 
 }
 
 /**
+ * Detect a "Name <sep> Title" combined header line (e.g. "Franco Torrez | Senior Software Engineer").
+ * Returns the name portion and the separator (including surrounding spaces) so the title can be swapped.
+ */
+function splitCombinedNameTitle(text: string): { name: string; separator: string } | null {
+  const match = text.match(/^(.+?)(\s+[|\u2013\u2014\u00b7\u2022\u00b0]\s+|\s+-\s+)(.+)$/);
+  if (!match) return null;
+  const name = match[1].trim();
+  if (!name) return null;
+  return { name, separator: match[2] };
+}
+
+/**
  * Apply the generated resume title to the header region (paragraphs before SUMMARY).
  * Returns a new array; may insert a paragraph when the template has no dedicated title line,
  * so the title always renders as a headline directly under the name.
@@ -835,14 +847,24 @@ function applyTitleToHeaderRegion(
   }
   if (nameIdx === -1) return paragraphs;
 
-  // 2a. Reuse an empty spacer immediately after the name (keeps template spacing).
+  // 2a. Name and title share one line ("Name | Title") — replace only the title portion.
+  const combined = splitCombinedNameTitle(getParagraphText(paragraphs[nameIdx]).trim());
+  if (combined) {
+    paragraphs[nameIdx] = setParagraphText(
+      paragraphs[nameIdx],
+      `${combined.name}${combined.separator}${trimmedTitle}`
+    );
+    return paragraphs;
+  }
+
+  // 2b. Reuse an empty spacer immediately after the name (keeps template spacing).
   const afterName = paragraphs[nameIdx + 1];
   if (afterName !== undefined && !getParagraphText(afterName).trim()) {
     paragraphs[nameIdx + 1] = setParagraphText(afterName, trimmedTitle);
     return paragraphs;
   }
 
-  // 2b. Otherwise insert a new headline paragraph right under the name (clone the name style).
+  // 2c. Otherwise insert a new headline paragraph right under the name (clone the name style).
   paragraphs.splice(nameIdx + 1, 0, setParagraphText(paragraphs[nameIdx], trimmedTitle));
   return paragraphs;
 }
