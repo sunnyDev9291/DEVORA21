@@ -52,8 +52,8 @@ Rules:
 - company = employer name only
 - role = job title
 - dates = employment range exactly as written
-- Each project block has: name, Business Challenge, Assigned Responsibility, Action, Result
-- Labels may appear as "Project:", "Business Challenge:", "Assigned Responsibility:", "Action:", "Result:" — extract values only
+- Each project block has: name, business need/challenge, responsibility, work/action, result
+- Labels may appear as "Project:", "Business Challenge:", "Business Need:", "Work and Business Need:", "Assigned Responsibility:", "Responsibility:", "Action:", "Work:", "Word:", "Result:" — extract values only
 - preserve order from top to bottom
 - do not invent employers or projects`;
 
