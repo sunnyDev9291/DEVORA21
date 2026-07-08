@@ -804,45 +804,47 @@ function buildSkillsRegionParagraphs(regionParagraphs: string[], skillsContent: 
   return [...leadingEmpty, ...skillParagraphs, ...gapTrailing];
 }
 
-function applyTitleParagraph(
-  paragraphs: string[],
+/**
+ * Apply the generated resume title to the header region (paragraphs before SUMMARY).
+ * Returns a new array; may insert a paragraph when the template has no dedicated title line,
+ * so the title always renders as a headline directly under the name.
+ */
+function applyTitleToHeaderRegion(
+  headerParagraphs: string[],
   title: string,
-  header: { titleParagraphIndex: number },
-  summaryIdx: number
-): void {
+  titleParagraphIndex: number
+): string[] {
   const trimmedTitle = title.trim();
-  if (!trimmedTitle || summaryIdx <= 0) return;
+  if (!trimmedTitle) return headerParagraphs;
 
-  if (header.titleParagraphIndex >= 0 && header.titleParagraphIndex < summaryIdx) {
-    paragraphs[header.titleParagraphIndex] = setParagraphText(
-      paragraphs[header.titleParagraphIndex],
-      trimmedTitle
-    );
-    return;
+  const paragraphs = [...headerParagraphs];
+
+  // 1. Template has a dedicated title line right under the name — replace it in place.
+  if (titleParagraphIndex >= 0 && titleParagraphIndex < paragraphs.length) {
+    paragraphs[titleParagraphIndex] = setParagraphText(paragraphs[titleParagraphIndex], trimmedTitle);
+    return paragraphs;
   }
 
+  // 2. No dedicated title line: find the name line (first non-empty, non-contact paragraph).
   let nameIdx = -1;
-  for (let i = 0; i < summaryIdx; i += 1) {
+  for (let i = 0; i < paragraphs.length; i += 1) {
     const text = getParagraphText(paragraphs[i]).trim();
     if (!text || isContactLine(text)) continue;
     nameIdx = i;
     break;
   }
-  if (nameIdx === -1) return;
+  if (nameIdx === -1) return paragraphs;
 
-  for (let i = nameIdx + 1; i < summaryIdx; i += 1) {
-    const text = getParagraphText(paragraphs[i]).trim();
-    if (!text || isContactLine(text)) continue;
-    paragraphs[i] = setParagraphText(paragraphs[i], trimmedTitle);
-    return;
+  // 2a. Reuse an empty spacer immediately after the name (keeps template spacing).
+  const afterName = paragraphs[nameIdx + 1];
+  if (afterName !== undefined && !getParagraphText(afterName).trim()) {
+    paragraphs[nameIdx + 1] = setParagraphText(afterName, trimmedTitle);
+    return paragraphs;
   }
 
-  for (let i = nameIdx + 1; i < summaryIdx; i += 1) {
-    if (!getParagraphText(paragraphs[i]).trim()) {
-      paragraphs[i] = setParagraphText(paragraphs[i], trimmedTitle);
-      return;
-    }
-  }
+  // 2b. Otherwise insert a new headline paragraph right under the name (clone the name style).
+  paragraphs.splice(nameIdx + 1, 0, setParagraphText(paragraphs[nameIdx], trimmedTitle));
+  return paragraphs;
 }
 
 function sliceSectionRegion(
@@ -939,7 +941,11 @@ export function applyContentToDocx(
   }
 
   const header = parseResumeHeaderFromDocxBuffer(buffer);
-  applyTitleParagraph(paragraphs, content.title, header, summaryIdx);
+  const headerParagraphs = applyTitleToHeaderRegion(
+    paragraphs.slice(0, summaryIdx),
+    content.title,
+    header.titleParagraphIndex
+  );
 
   const summaryRegion = sliceSectionRegion(paragraphs, summaryIdx, skillsIdx);
   const summaryBody = buildSectionParagraphs(summaryRegion, content.summary, setParagraphText);
@@ -1005,7 +1011,7 @@ export function applyContentToDocx(
   applyPageBreaksFromTemplate(experienceParagraphs, originalExperienceParagraphs);
 
   const updatedParagraphs = [
-    ...paragraphs.slice(0, summaryIdx),
+    ...headerParagraphs,
     paragraphs[summaryIdx],
     ...summaryBody,
     paragraphs[skillsIdx],
