@@ -52,12 +52,15 @@ function getScrollContainer(start: HTMLElement | null): HTMLElement | Window {
 }
 
 function readScrollTop(container: HTMLElement | Window): number {
-  return container === window ? window.scrollY : container.scrollTop;
+  if (container instanceof Window) {
+    return container.scrollY;
+  }
+  return container.scrollTop;
 }
 
 function writeScrollTop(container: HTMLElement | Window, top: number): void {
-  if (container === window) {
-    window.scrollTo(0, top);
+  if (container instanceof Window) {
+    container.scrollTo(0, top);
     return;
   }
   container.scrollTop = top;
