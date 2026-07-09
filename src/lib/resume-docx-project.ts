@@ -5,6 +5,9 @@ import {
   getParagraphText,
   getParagraphTextWithBold,
   matchTextRuns,
+  formatCombinedExperienceHeaderText,
+  formatExperienceRoleText,
+  paragraphXmlIsFullyBold,
   setBarFieldParagraphText,
   type DocxParagraph,
 } from "@/lib/resume-docx";
@@ -492,12 +495,18 @@ export function buildProjectExperienceParagraphs(
     for (const headerXml of template.headerParagraphXml) {
       const text = getParagraphText(headerXml);
       if (parseCombinedExperienceLine(text)) {
-        const headerText = exp.dates
-          ? `${bold(exp.role)}, ${exp.company}, ${exp.dates}`
-          : `${bold(exp.role)}, ${exp.company}`;
+        const headerText = formatCombinedExperienceHeaderText(
+          exp.role,
+          exp.company,
+          exp.dates,
+          headerXml,
+          bold
+        );
         experienceParagraphs.push(setParagraphText(headerXml, headerText));
       } else if (parseRoleDatesLine(text)) {
-        const roleDates = exp.dates ? `${bold(exp.role)}    ${exp.dates}` : bold(exp.role);
+        const roleDates = exp.dates
+          ? `${formatExperienceRoleText(exp.role, headerXml, bold)}    ${exp.dates}`
+          : formatExperienceRoleText(exp.role, headerXml, bold);
         experienceParagraphs.push(setParagraphText(headerXml, roleDates));
       } else {
         experienceParagraphs.push(setParagraphText(headerXml, exp.company));

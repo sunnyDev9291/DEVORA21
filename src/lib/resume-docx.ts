@@ -272,6 +272,46 @@ function getRunPlainText(runXml: string): string {
   );
 }
 
+/** True when every non-empty text run in the paragraph is bold (template job-header style). */
+export function paragraphXmlIsFullyBold(pXml: string): boolean {
+  const textRuns = matchTextRuns(pXml).filter((run) => getRunPlainText(run).trim().length > 0);
+  if (textRuns.length === 0) return false;
+  return textRuns.every((run) => /<w:b(?:\s[^>]*)?\/>|<w:b(?:\s[^>]*)?>/.test(run));
+}
+
+export function boldEntirePlainText(text: string): string {
+  const plain = text.replace(/\*\*/g, "").trim();
+  return plain ? `**${plain}**` : "";
+}
+
+export function formatExperienceRoleText(
+  role: string,
+  templateXml: string,
+  boldSkillTerms: (text: string) => string
+): string {
+  if (paragraphXmlIsFullyBold(templateXml)) {
+    return boldEntirePlainText(role);
+  }
+  return boldSkillTerms(role);
+}
+
+export function formatCombinedExperienceHeaderText(
+  role: string,
+  company: string,
+  dates: string,
+  templateXml: string,
+  boldSkillTerms: (text: string) => string
+): string {
+  const plainRole = role.replace(/\*\*/g, "").trim();
+  const line = dates ? `${plainRole}, ${company}, ${dates}` : `${plainRole}, ${company}`;
+  if (paragraphXmlIsFullyBold(templateXml)) {
+    return boldEntirePlainText(line);
+  }
+  return dates
+    ? `${boldSkillTerms(role)}, ${company}, ${dates}`
+    : `${boldSkillTerms(role)}, ${company}`;
+}
+
 function hasLatinItalic(rPr: string): boolean {
   const tag = rPr.match(/<w:i(?!Cs)\b[^>]*\/?>/)?.[0] ?? "";
   if (!tag) return false;
@@ -1012,13 +1052,19 @@ export function applyContentToDocx(
         };
 
       if (useCombinedHeaders) {
-        const headerText = exp.dates
-          ? `${boldExpText(exp.role)}, ${exp.company}, ${exp.dates}`
-          : `${boldExpText(exp.role)}, ${exp.company}`;
+        const headerText = formatCombinedExperienceHeaderText(
+          exp.role,
+          exp.company,
+          exp.dates,
+          style.headerTemplate,
+          boldExpText
+        );
         experienceParagraphs.push(setParagraphText(style.headerTemplate, headerText));
       } else {
         experienceParagraphs.push(setParagraphText(style.headerTemplate, exp.company));
-        const roleDates = exp.dates ? `${boldExpText(exp.role)}    ${exp.dates}` : boldExpText(exp.role);
+        const roleDates = exp.dates
+          ? `${formatExperienceRoleText(exp.role, style.roleTemplate ?? defaultRoleTemplate, boldExpText)}    ${exp.dates}`
+          : formatExperienceRoleText(exp.role, style.roleTemplate ?? defaultRoleTemplate, boldExpText);
         experienceParagraphs.push(
           setParagraphText(style.roleTemplate ?? defaultRoleTemplate, roleDates)
         );
