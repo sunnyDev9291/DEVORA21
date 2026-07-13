@@ -5,6 +5,9 @@ import {
   getParagraphText,
   getParagraphTextWithBold,
   matchTextRuns,
+  formatCombinedExperienceHeaderText,
+  formatExperienceRoleText,
+  paragraphXmlIsFullyBold,
   setBarFieldParagraphText,
   type DocxParagraph,
 } from "@/lib/resume-docx";
@@ -26,12 +29,16 @@ export type ProjectFieldKey =
   | "result";
 
 const PROJECT_FIELD_PATTERNS: Array<{ field: ProjectFieldKey; pattern: RegExp }> = [
-  { field: "businessChallenge", pattern: /^(?:business\s+)?challenge\s*:?\s*(.*)$/i },
+  {
+    field: "businessChallenge",
+    pattern:
+      /^(?:(?:work\s+and\s+)?business\s+(?:need|challenge)|business\s+(?:need|challenge))\s*:?\s*(.*)$/i,
+  },
   {
     field: "assignedResponsibility",
     pattern: /^(?:assigned\s+)?responsibilit(?:y|ies)\s*:?\s*(.*)$/i,
   },
-  { field: "action", pattern: /^actions?\s*:?\s*(.*)$/i },
+  { field: "action", pattern: /^(?:actions?|work|word)\s*:?\s*(.*)$/i },
   { field: "result", pattern: /^results?\s*:?\s*(.*)$/i },
 ];
 
@@ -39,6 +46,8 @@ const PROJECT_NAME_PATTERN = /^projects?\s*:?\s*(.*)$/i;
 
 const FIELD_LABEL_ONLY = new Set([
   "business challenge",
+  "business need",
+  "work and business need",
   "challenge",
   "assigned responsibility",
   "assigned responsibilities",
@@ -46,9 +55,19 @@ const FIELD_LABEL_ONLY = new Set([
   "responsibilities",
   "action",
   "actions",
+  "work",
+  "word",
   "result",
   "results",
 ]);
+
+function fieldKeyFromLabelOnly(label: string): ProjectFieldKey {
+  const lower = label.toLowerCase();
+  if (lower.includes("need") || lower.includes("challenge")) return "businessChallenge";
+  if (lower.includes("responsibilit")) return "assignedResponsibility";
+  if (lower === "work" || lower === "word" || lower.startsWith("action")) return "action";
+  return "result";
+}
 
 function isSectionHeader(text: string): boolean {
   return SECTION_HEADERS.education.test(text) || SECTION_HEADERS.experience.test(text);
@@ -134,14 +153,7 @@ function classifyParagraph(text: string): {
   }
 
   if (FIELD_LABEL_ONLY.has(trimmed.toLowerCase())) {
-    const field: ProjectFieldKey = trimmed.toLowerCase().includes("challenge")
-      ? "businessChallenge"
-      : trimmed.toLowerCase().includes("responsibilit")
-        ? "assignedResponsibility"
-        : trimmed.toLowerCase().startsWith("action")
-          ? "action"
-          : "result";
-    return { kind: "field", field, inlineValue: "" };
+    return { kind: "field", field: fieldKeyFromLabelOnly(trimmed), inlineValue: "" };
   }
 
   return { kind: "other" };
@@ -483,12 +495,18 @@ export function buildProjectExperienceParagraphs(
     for (const headerXml of template.headerParagraphXml) {
       const text = getParagraphText(headerXml);
       if (parseCombinedExperienceLine(text)) {
-        const headerText = exp.dates
-          ? `${bold(exp.role)}, ${exp.company}, ${exp.dates}`
-          : `${bold(exp.role)}, ${exp.company}`;
+        const headerText = formatCombinedExperienceHeaderText(
+          exp.role,
+          exp.company,
+          exp.dates,
+          headerXml,
+          bold
+        );
         experienceParagraphs.push(setParagraphText(headerXml, headerText));
       } else if (parseRoleDatesLine(text)) {
-        const roleDates = exp.dates ? `${bold(exp.role)}    ${exp.dates}` : bold(exp.role);
+        const roleDates = exp.dates
+          ? `${formatExperienceRoleText(exp.role, headerXml, bold)}    ${exp.dates}`
+          : formatExperienceRoleText(exp.role, headerXml, bold);
         experienceParagraphs.push(setParagraphText(headerXml, roleDates));
       } else {
         experienceParagraphs.push(setParagraphText(headerXml, exp.company));

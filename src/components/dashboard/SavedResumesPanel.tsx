@@ -8,6 +8,7 @@ import {
   fetchSavedResumeFile,
   listSavedResumes,
   resolveArchiveFileName,
+  type SavedResumeSearchFilters,
 } from "@/lib/saved-resumes-api";
 import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
 
@@ -64,6 +65,12 @@ const STYLES = {
     subtitle: "mt-1 text-sm text-slate-400",
     input:
       "w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40",
+    searchPanel: "mt-5 rounded-2xl border border-white/10 bg-white/[0.02] p-4 sm:p-5",
+    searchGrid: "grid gap-4 sm:grid-cols-2",
+    searchField: "space-y-1.5",
+    searchLabel: "text-xs font-semibold uppercase tracking-wider text-slate-500",
+    searchActions: "mt-4 flex flex-wrap items-center gap-3",
+    searchHint: "text-xs text-slate-500",
     pickerSection: "mt-5 space-y-4",
     pickerLabel: "text-xs font-semibold uppercase tracking-wider text-slate-500",
     chipGrid: "mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6",
@@ -109,6 +116,13 @@ const STYLES = {
     subtitle: "mt-1 text-sm text-slate-500 dark:text-slate-400",
     input:
       "w-full rounded-xl border border-slate-200 dark:border-white/[0.10] bg-slate-50 dark:bg-white/[0.03] px-4 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40",
+    searchPanel:
+      "mt-5 rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4 dark:border-white/[0.08] dark:bg-white/[0.02] sm:p-5",
+    searchGrid: "grid gap-4 sm:grid-cols-2",
+    searchField: "space-y-1.5",
+    searchLabel: "text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400",
+    searchActions: "mt-4 flex flex-wrap items-center gap-3",
+    searchHint: "text-xs text-slate-500 dark:text-slate-400",
     pickerSection: "mt-5 space-y-4",
     pickerLabel: "text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400",
     chipGrid: "mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6",
@@ -201,22 +215,13 @@ function truncate(text: string, max = 100): string {
   return `${trimmed.slice(0, max).trimEnd()}…`;
 }
 
-function matchesSearch(item: SavedResumeArchive, query: string): boolean {
-  if (!query) return true;
-  const parts = parseBidAt(item.bidAt);
-  const haystack = [
-    item.jobTitle,
-    item.companyName,
-    item.jobDescription,
-    item.resumeFileName,
-    parts?.yearLabel ?? "",
-    parts?.monthLabel ?? "",
-    parts?.dayLabel ?? "",
-    parts?.timeLabel ?? "",
-  ]
-    .join(" ")
-    .toLowerCase();
-  return haystack.includes(query.toLowerCase());
+function hasActiveFilters(filters: SavedResumeSearchFilters): boolean {
+  return Boolean(
+    filters.company?.trim() ||
+      filters.jd?.trim() ||
+      filters.dateFrom?.trim() ||
+      filters.dateTo?.trim()
+  );
 }
 
 function sortByBidDate(items: SavedResumeArchive[]): SavedResumeArchive[] {
@@ -427,8 +432,12 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
   const [items, setItems] = useState<SavedResumeArchive[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [companySearch, setCompanySearch] = useState("");
+  const [jdSearch, setJdSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [debouncedCompany, setDebouncedCompany] = useState("");
+  const [debouncedJd, setDebouncedJd] = useState("");
   const [selectedYearKey, setSelectedYearKey] = useState<string | null>(null);
   const [selectedMonthKey, setSelectedMonthKey] = useState<string | null>(null);
   const [expandedDayKeys, setExpandedDayKeys] = useState<Set<string>>(new Set());
@@ -444,11 +453,23 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
 
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
 
-  const loadItems = useCallback(async (query: string) => {
+  const activeFilters = useMemo<SavedResumeSearchFilters>(
+    () => ({
+      company: debouncedCompany.trim(),
+      jd: debouncedJd.trim(),
+      dateFrom: dateFrom.trim(),
+      dateTo: dateTo.trim(),
+    }),
+    [debouncedCompany, debouncedJd, dateFrom, dateTo]
+  );
+
+  const filtersActive = hasActiveFilters(activeFilters);
+
+  const loadItems = useCallback(async (filters: SavedResumeSearchFilters) => {
     setLoading(true);
     setError("");
     try {
-      const data = await listSavedResumes(query);
+      const data = await listSavedResumes(filters);
       setItems(sortByBidDate(data));
     } catch (err) {
       setItems([]);
@@ -459,19 +480,18 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
   }, []);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    const timer = window.setTimeout(() => {
+      setDebouncedCompany(companySearch);
+      setDebouncedJd(jdSearch);
+    }, 300);
     return () => window.clearTimeout(timer);
-  }, [search]);
+  }, [companySearch, jdSearch]);
 
   useEffect(() => {
-    void loadItems(debouncedSearch);
-  }, [debouncedSearch, loadItems]);
+    void loadItems(activeFilters);
+  }, [activeFilters, loadItems]);
 
-  const visibleItems = useMemo(() => {
-    const query = debouncedSearch.trim();
-    if (!query) return items;
-    return items.filter((item) => matchesSearch(item, query));
-  }, [items, debouncedSearch]);
+  const visibleItems = items;
 
   const yearGroups = useMemo(() => groupByYearMonthDay(visibleItems), [visibleItems]);
 
@@ -507,9 +527,19 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
   }, [yearGroups, selectedYearKey, selectedMonthKey]);
 
   useEffect(() => {
-    if (!debouncedSearch.trim() || !selectedMonth) return;
+    if (!filtersActive || !selectedMonth) return;
     setExpandedDayKeys(new Set(selectedMonth.days.map((day) => day.dayKey)));
-  }, [debouncedSearch, selectedMonth]);
+  }, [filtersActive, selectedMonth]);
+
+  function clearFilters() {
+    setCompanySearch("");
+    setJdSearch("");
+    setDateFrom("");
+    setDateTo("");
+    setDebouncedCompany("");
+    setDebouncedJd("");
+    setExpandedDayKeys(new Set());
+  }
 
   function selectYear(yearKey: string) {
     setSelectedYearKey(yearKey);
@@ -597,26 +627,75 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
 
   return (
     <section className={styles.section}>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className={styles.title}>Saved resumes</h2>
-          <p className={styles.subtitle}>
-            Pick a year and month, then expand a date to see applications. Click a job description
-            preview for the full posting.
-          </p>
+      <div>
+        <h2 className={styles.title}>Saved resumes</h2>
+        <p className={styles.subtitle}>
+          Filter by date range, company, or job description, then pick a year and month to browse
+          applications.
+        </p>
+      </div>
+
+      <div className={styles.searchPanel}>
+        <div className={styles.searchGrid}>
+          <div className={styles.searchField}>
+            <label htmlFor="saved-resume-date-from" className={styles.searchLabel}>
+              From date
+            </label>
+            <input
+              id="saved-resume-date-from"
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className={styles.input}
+            />
+          </div>
+          <div className={styles.searchField}>
+            <label htmlFor="saved-resume-date-to" className={styles.searchLabel}>
+              To date
+            </label>
+            <input
+              id="saved-resume-date-to"
+              type="date"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={(e) => setDateTo(e.target.value)}
+              className={styles.input}
+            />
+          </div>
+          <div className={styles.searchField}>
+            <label htmlFor="saved-resume-company" className={styles.searchLabel}>
+              Company name
+            </label>
+            <input
+              id="saved-resume-company"
+              type="search"
+              value={companySearch}
+              onChange={(e) => setCompanySearch(e.target.value)}
+              placeholder="Search by company…"
+              className={styles.input}
+            />
+          </div>
+          <div className={styles.searchField}>
+            <label htmlFor="saved-resume-jd" className={styles.searchLabel}>
+              Job description
+            </label>
+            <input
+              id="saved-resume-jd"
+              type="search"
+              value={jdSearch}
+              onChange={(e) => setJdSearch(e.target.value)}
+              placeholder="Search inside JD text…"
+              className={styles.input}
+            />
+          </div>
         </div>
-        <div className="w-full sm:max-w-xs">
-          <label htmlFor="saved-resume-search" className="sr-only">
-            Search saved resumes
-          </label>
-          <input
-            id="saved-resume-search"
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search applications…"
-            className={styles.input}
-          />
+        <div className={styles.searchActions}>
+          {filtersActive ? (
+            <Button type="button" variant="outline" size="sm" onClick={clearFilters}>
+              Clear filters
+            </Button>
+          ) : null}
+          <p className={styles.searchHint}>Filters combine together. Leave fields empty to ignore them.</p>
         </div>
       </div>
 
@@ -635,8 +714,8 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
         </div>
       ) : yearGroups.length === 0 ? (
         <div className={`${styles.empty} mt-5`}>
-          {debouncedSearch
-            ? "No applications match your search."
+          {filtersActive
+            ? "No applications match your filters."
             : "No saved resumes yet. Apply a tailored resume from New resume to save one here."}
         </div>
       ) : (

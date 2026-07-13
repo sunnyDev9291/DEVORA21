@@ -151,6 +151,7 @@ export default function ResumeGenerator({
   const ruleKeepAbortRef = useRef<AbortController | null>(null);
   const reviewRef = useRef<HTMLDivElement>(null);
   const successBannerRef = useRef<HTMLDivElement>(null);
+  const reviewScrollTriggerRef = useRef({ step, generationKey });
   const promptPrefsLoadedRef = useRef(false);
 
   useEffect(() => {
@@ -207,7 +208,12 @@ export default function ResumeGenerator({
   }, []);
 
   useEffect(() => {
-    if (step === "review" && content) {
+    const prev = reviewScrollTriggerRef.current;
+    const generationChanged = generationKey !== prev.generationKey;
+    const enteredReview = step === "review" && prev.step !== "review";
+    reviewScrollTriggerRef.current = { step, generationKey };
+
+    if ((generationChanged || enteredReview) && step === "review" && content) {
       reviewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, [step, content, generationKey]);

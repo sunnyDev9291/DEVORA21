@@ -19,6 +19,8 @@ const SECTION_HEADERS = {
   education: /^(EDUCATION|Education)$/i,
 };
 
+const SKILLS_EXPERIENCE_GAP_AFTER_TWIPS = 40;
+
 export type DocxParagraph = {
   text: string;
   isListItem: boolean;
@@ -268,6 +270,46 @@ function getRunPlainText(runXml: string): string {
       .map((t) => t.replace(/<w:t[^>]*>/, "").replace(/<\/w:t>/, ""))
       .join("")
   );
+}
+
+/** True when every non-empty text run in the paragraph is bold (template job-header style). */
+export function paragraphXmlIsFullyBold(pXml: string): boolean {
+  const textRuns = matchTextRuns(pXml).filter((run) => getRunPlainText(run).trim().length > 0);
+  if (textRuns.length === 0) return false;
+  return textRuns.every((run) => /<w:b(?:\s[^>]*)?\/>|<w:b(?:\s[^>]*)?>/.test(run));
+}
+
+export function boldEntirePlainText(text: string): string {
+  const plain = text.replace(/\*\*/g, "").trim();
+  return plain ? `**${plain}**` : "";
+}
+
+export function formatExperienceRoleText(
+  role: string,
+  templateXml: string,
+  boldSkillTerms: (text: string) => string
+): string {
+  if (paragraphXmlIsFullyBold(templateXml)) {
+    return boldEntirePlainText(role);
+  }
+  return boldSkillTerms(role);
+}
+
+export function formatCombinedExperienceHeaderText(
+  role: string,
+  company: string,
+  dates: string,
+  templateXml: string,
+  boldSkillTerms: (text: string) => string
+): string {
+  const plainRole = role.replace(/\*\*/g, "").trim();
+  const line = dates ? `${plainRole}, ${company}, ${dates}` : `${plainRole}, ${company}`;
+  if (paragraphXmlIsFullyBold(templateXml)) {
+    return boldEntirePlainText(line);
+  }
+  return dates
+    ? `${boldSkillTerms(role)}, ${company}, ${dates}`
+    : `${boldSkillTerms(role)}, ${company}`;
 }
 
 function hasLatinItalic(rPr: string): boolean {
@@ -684,19 +726,198 @@ function collectSectionParagraphIndices(
   return indices;
 }
 
-/** Empty spacer paragraphs between a section header and the next section (e.g. skills → experience). */
-function collectSectionGapParagraphs(
+type SectionRegionParts = {
+  leadingEmpty: string[];
+  contentTemplates: string[];
+  trailingEmpty: string[];
+};
+
+function partitionSectionRegion(regionParagraphs: string[]): SectionRegionParts {
+  const leadingEmpty: string[] = [];
+  const contentTemplates: string[] = [];
+  const trailingEmpty: string[] = [];
+  let phase: "leading" | "content" | "trailing" = "leading";
+
+  for (const paragraph of regionParagraphs) {
+    const text = getParagraphText(paragraph).trim();
+    if (phase === "leading") {
+      if (!text) leadingEmpty.push(paragraph);
+      else {
+        contentTemplates.push(paragraph);
+        phase = "content";
+      }
+    } else if (phase === "content") {
+      if (!text) {
+        trailingEmpty.push(paragraph);
+        phase = "trailing";
+      } else {
+        contentTemplates.push(paragraph);
+      }
+    } else {
+      trailingEmpty.push(paragraph);
+    }
+  }
+
+  return { leadingEmpty, contentTemplates, trailingEmpty };
+}
+
+function buildSectionParagraphs(
+  regionParagraphs: string[],
+  content: string,
+  renderLine: (template: string, line: string) => string
+): string[] {
+  if (regionParagraphs.length === 0) return [];
+
+  const { leadingEmpty, contentTemplates, trailingEmpty } = partitionSectionRegion(regionParagraphs);
+  const lines = content
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const fallback =
+    contentTemplates[contentTemplates.length - 1] ??
+    regionParagraphs.find((paragraph) => getParagraphText(paragraph).trim()) ??
+    regionParagraphs[0];
+
+  if (lines.length === 0) {
+    return [
+      ...leadingEmpty,
+      ...contentTemplates.map((paragraph) => setParagraphText(paragraph, "")),
+      ...trailingEmpty,
+    ];
+  }
+
+  if (contentTemplates.length <= 1) {
+    const merged = lines.join(contentTemplates.length === 0 ? "\n" : " ");
+    return [...leadingEmpty, renderLine(fallback, merged), ...trailingEmpty];
+  }
+
+  const rendered = lines.map((line, index) =>
+    renderLine(contentTemplates[index] ?? fallback, line)
+  );
+  return [...leadingEmpty, ...rendered, ...trailingEmpty];
+}
+
+function setParagraphSpacing(pXml: string, beforeTwips: number, afterTwips: number): string {
+  const spacingTag = `<w:spacing w:before="${beforeTwips}" w:after="${afterTwips}"/>`;
+  if (/<w:pPr[\s\S]*?<\/w:pPr>/.test(pXml)) {
+    if (/<w:spacing[^/]*\/>/.test(pXml)) {
+      return pXml.replace(/<w:spacing[^/]*\/>/, spacingTag);
+    }
+    return pXml.replace(/<w:pPr([^>]*)>/, `<w:pPr$1>${spacingTag}`);
+  }
+  const open = pXml.match(/^(<w:p[^>]*>)/)?.[1] ?? "<w:p>";
+  const rest = pXml.slice(open.length);
+  return `${open}<w:pPr>${spacingTag}</w:pPr>${rest}`;
+}
+
+function applySkillsExperienceGap(trailingEmpty: string[]): string[] {
+  if (trailingEmpty.length === 0) return trailingEmpty;
+  const last = trailingEmpty[trailingEmpty.length - 1];
+  return [
+    ...trailingEmpty.slice(0, -1),
+    setParagraphSpacing(setParagraphText(last, ""), 0, SKILLS_EXPERIENCE_GAP_AFTER_TWIPS),
+  ];
+}
+
+function buildSkillsRegionParagraphs(regionParagraphs: string[], skillsContent: string): string[] {
+  const { leadingEmpty, contentTemplates, trailingEmpty } = partitionSectionRegion(regionParagraphs);
+  const lines = skillsContent
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0 || contentTemplates.length === 0) {
+    return buildSectionParagraphs(regionParagraphs, skillsContent, setSkillLineParagraphText);
+  }
+
+  const fallback = contentTemplates[contentTemplates.length - 1];
+  const skillParagraphs = lines.map((line, index) =>
+    setSkillLineParagraphText(contentTemplates[index] ?? fallback, line)
+  );
+
+  const gapTrailing =
+    trailingEmpty.length > 0
+      ? applySkillsExperienceGap(trailingEmpty)
+      : applySkillsExperienceGap([setParagraphText(fallback, "")]);
+
+  return [...leadingEmpty, ...skillParagraphs, ...gapTrailing];
+}
+
+/**
+ * Detect a "Name <sep> Title" combined header line (e.g. "Franco Torrez | Senior Software Engineer").
+ * Returns the name portion and the separator (including surrounding spaces) so the title can be swapped.
+ */
+function splitCombinedNameTitle(text: string): { name: string; separator: string } | null {
+  const match = text.match(/^(.+?)(\s+[|\u2013\u2014\u00b7\u2022\u00b0]\s+|\s+-\s+)(.+)$/);
+  if (!match) return null;
+  const name = match[1].trim();
+  if (!name) return null;
+  return { name, separator: match[2] };
+}
+
+/**
+ * Apply the generated resume title to the header region (paragraphs before SUMMARY).
+ * Returns a new array; may insert a paragraph when the template has no dedicated title line,
+ * so the title always renders as a headline directly under the name.
+ */
+function applyTitleToHeaderRegion(
+  headerParagraphs: string[],
+  title: string,
+  titleParagraphIndex: number
+): string[] {
+  const trimmedTitle = title.trim();
+  if (!trimmedTitle) return headerParagraphs;
+
+  const paragraphs = [...headerParagraphs];
+
+  // 1. Template has a dedicated title line right under the name — replace it in place.
+  if (titleParagraphIndex >= 0 && titleParagraphIndex < paragraphs.length) {
+    paragraphs[titleParagraphIndex] = setParagraphText(paragraphs[titleParagraphIndex], trimmedTitle);
+    return paragraphs;
+  }
+
+  // 2. No dedicated title line: find the name line (first non-empty, non-contact paragraph).
+  let nameIdx = -1;
+  for (let i = 0; i < paragraphs.length; i += 1) {
+    const text = getParagraphText(paragraphs[i]).trim();
+    if (!text || isContactLine(text)) continue;
+    nameIdx = i;
+    break;
+  }
+  if (nameIdx === -1) return paragraphs;
+
+  // 2a. Name and title share one line ("Name | Title") — replace only the title portion.
+  const combined = splitCombinedNameTitle(getParagraphText(paragraphs[nameIdx]).trim());
+  if (combined) {
+    paragraphs[nameIdx] = setParagraphText(
+      paragraphs[nameIdx],
+      `${combined.name}${combined.separator}${trimmedTitle}`
+    );
+    return paragraphs;
+  }
+
+  // 2b. Reuse an empty spacer immediately after the name (keeps template spacing).
+  const afterName = paragraphs[nameIdx + 1];
+  if (afterName !== undefined && !getParagraphText(afterName).trim()) {
+    paragraphs[nameIdx + 1] = setParagraphText(afterName, trimmedTitle);
+    return paragraphs;
+  }
+
+  // 2c. Otherwise insert a new headline paragraph right under the name (clone the name style).
+  paragraphs.splice(nameIdx + 1, 0, setParagraphText(paragraphs[nameIdx], trimmedTitle));
+  return paragraphs;
+}
+
+function sliceSectionRegion(
   paragraphs: string[],
   headerIdx: number,
   endIdx: number
 ): string[] {
-  const gaps: string[] = [];
-  for (let i = headerIdx + 1; i < endIdx; i += 1) {
-    if (!getParagraphText(paragraphs[i]).trim()) {
-      gaps.push(paragraphs[i]);
-    }
-  }
-  return gaps;
+  return paragraphs.slice(headerIdx + 1, endIdx).filter((paragraph) => {
+    const text = getParagraphText(paragraph).trim();
+    return !text || !isSectionHeader(text);
+  });
 }
 
 /** Extract summary, skills, and sample bullets from the template for style-matching prompts. */
@@ -760,88 +981,129 @@ export function parseTemplateContentSamples(buffer: Buffer): TemplateContentSamp
   return { layout, summary, skills, sampleBullets, sampleProjects };
 }
 
-function applySectionParagraphs(
-  paragraphs: string[],
-  paragraphIndices: number[],
-  content: string
-): void {
-  if (paragraphIndices.length === 0) return;
+export function applyContentToDocx(
+  buffer: Buffer,
+  content: GeneratedResumeContent
+): Buffer {
+  const zip = new PizZip(buffer);
+  const xml = zip.file("word/document.xml")?.asText();
+  if (!xml) throw new Error("Invalid docx: missing document.xml");
 
-  const lines = content
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+  const paragraphs = xml.match(/<w:p[\s\S]*?<\/w:p>/g) || [];
+  const summaryIdx = findSectionIndex(paragraphs, SECTION_HEADERS.summary);
+  const skillsIdx = findSectionIndex(paragraphs, SECTION_HEADERS.skills);
+  const expIdx = findSectionIndex(paragraphs, SECTION_HEADERS.experience);
+  const eduIdx = findSectionIndex(paragraphs, SECTION_HEADERS.education);
 
-  if (paragraphIndices.length === 1) {
-    const merged = lines.length > 0 ? lines.join(" ") : content.trim();
-    paragraphs[paragraphIndices[0]] = setParagraphText(paragraphs[paragraphIndices[0]], merged);
-    return;
+  if (summaryIdx === -1 || skillsIdx === -1 || expIdx === -1) {
+    throw new Error("Template must contain SUMMARY, SKILLS, and EXPERIENCE sections.");
+  }
+  if (summaryIdx >= skillsIdx || skillsIdx >= expIdx) {
+    throw new Error("Template sections are out of order. Expected SUMMARY → SKILLS → EXPERIENCE.");
   }
 
-  for (let i = 0; i < paragraphIndices.length; i += 1) {
-    const line = i < lines.length ? lines[i] : "";
-    paragraphs[paragraphIndices[i]] = setParagraphText(paragraphs[paragraphIndices[i]], line);
-  }
+  const header = parseResumeHeaderFromDocxBuffer(buffer);
+  const headerParagraphs = applyTitleToHeaderRegion(
+    paragraphs.slice(0, summaryIdx),
+    content.title,
+    header.titleParagraphIndex
+  );
 
-  if (lines.length > paragraphIndices.length) {
-    const lastIdx = paragraphIndices[paragraphIndices.length - 1];
-    const overflow = lines.slice(paragraphIndices.length - 1).join(" ");
-    paragraphs[lastIdx] = setParagraphText(paragraphs[lastIdx], overflow);
-  }
-}
+  const summaryRegion = sliceSectionRegion(paragraphs, summaryIdx, skillsIdx);
+  const summaryBody = buildSectionParagraphs(summaryRegion, content.summary, setParagraphText);
 
-const SKILLS_EXPERIENCE_GAP_AFTER_TWIPS = 40;
+  const skillsRegion = sliceSectionRegion(paragraphs, skillsIdx, expIdx);
+  const skillsBody = buildSkillsRegionParagraphs(skillsRegion, content.skills);
 
-function setParagraphSpacing(pXml: string, beforeTwips: number, afterTwips: number): string {
-  const spacingTag = `<w:spacing w:before="${beforeTwips}" w:after="${afterTwips}"/>`;
-  if (/<w:pPr[\s\S]*?<\/w:pPr>/.test(pXml)) {
-    if (/<w:spacing[^/]*\/>/.test(pXml)) {
-      return pXml.replace(/<w:spacing[^/]*\/>/, spacingTag);
-    }
-    return pXml.replace(/<w:pPr([^>]*)>/, `<w:pPr$1>${spacingTag}`);
-  }
-  const open = pXml.match(/^(<w:p[^>]*>)/)?.[1] ?? "<w:p>";
-  const rest = pXml.slice(open.length);
-  return `${open}<w:pPr>${spacingTag}</w:pPr>${rest}`;
-}
+  const expEnd = eduIdx === -1 ? paragraphs.length : eduIdx;
+  const originalExperienceParagraphs = paragraphs.slice(expIdx + 1, expEnd);
+  const layout = content.layout ?? detectResumeTemplateLayout(buffer);
+  const skillTerms = extractSkillTerms(content.skills);
+  const boldExpText = (text: string) => boldSkillTermsInText(text, skillTerms);
 
-/** One compact skill line per category; drops trailing blank skill slots before Experience. */
-function buildSkillsParagraphs(
-  paragraphs: string[],
-  skillsIndices: number[],
-  skillsContent: string
-): string[] {
-  const lines = skillsContent
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (lines.length === 0 || skillsIndices.length === 0) return [];
+  let experienceParagraphs: string[] = [];
 
-  const contentTemplates = skillsIndices
-    .filter((index) => getParagraphText(paragraphs[index]).trim())
-    .map((index) => paragraphs[index]);
-  const emptyTemplates = skillsIndices
-    .filter((index) => !getParagraphText(paragraphs[index]).trim())
-    .map((index) => paragraphs[index]);
-  const fallback =
-    contentTemplates[contentTemplates.length - 1] ??
-    paragraphs[skillsIndices[skillsIndices.length - 1]];
-
-  const skillParagraphs = lines.map((line, index) => {
-    const template = contentTemplates[index] ?? fallback;
-    return setSkillLineParagraphText(template, line);
-  });
-
-  if (emptyTemplates.length > 0) {
-    const spacer = setParagraphSpacing(
-      setParagraphText(emptyTemplates[emptyTemplates.length - 1], ""),
-      0,
-      SKILLS_EXPERIENCE_GAP_AFTER_TWIPS
+  if (layout === "projects") {
+    const { jobTemplates } = parseProjectExperiencesFromDocxBuffer(buffer);
+    experienceParagraphs = buildProjectExperienceParagraphs(
+      { ...content, layout: "projects" },
+      jobTemplates as ProjectJobTemplate[],
+      setParagraphText,
+      skillTerms
     );
-    skillParagraphs.push(spacer);
+  } else {
+    const headerSample = getParagraphText(paragraphs[expIdx + 1] ?? "").trim();
+    const useCombinedHeaders = parseCombinedExperienceLine(headerSample) !== null;
+    const styleBlocks = extractExperienceStyleBlocks(originalExperienceParagraphs, useCombinedHeaders);
+    const defaultHeaderTemplate = paragraphs[expIdx + 1];
+    const defaultRoleTemplate = paragraphs[expIdx + 2];
+    const defaultBulletTemplate = useCombinedHeaders
+      ? paragraphs[expIdx + 2] ?? paragraphs[expIdx + 1]
+      : paragraphs[expIdx + 3] ?? paragraphs[expIdx + 2];
+
+    for (let jobIndex = 0; jobIndex < content.experiences.length; jobIndex += 1) {
+      const exp = content.experiences[jobIndex];
+      const style =
+        styleBlocks[jobIndex] ??
+        styleBlocks[styleBlocks.length - 1] ?? {
+          headerTemplate: defaultHeaderTemplate,
+          roleTemplate: useCombinedHeaders ? undefined : defaultRoleTemplate,
+          bulletTemplate: defaultBulletTemplate,
+        };
+
+      if (useCombinedHeaders) {
+        const headerText = formatCombinedExperienceHeaderText(
+          exp.role,
+          exp.company,
+          exp.dates,
+          style.headerTemplate,
+          boldExpText
+        );
+        experienceParagraphs.push(setParagraphText(style.headerTemplate, headerText));
+      } else {
+        experienceParagraphs.push(setParagraphText(style.headerTemplate, exp.company));
+        const roleDates = exp.dates
+          ? `${formatExperienceRoleText(exp.role, style.roleTemplate ?? defaultRoleTemplate, boldExpText)}    ${exp.dates}`
+          : formatExperienceRoleText(exp.role, style.roleTemplate ?? defaultRoleTemplate, boldExpText);
+        experienceParagraphs.push(
+          setParagraphText(style.roleTemplate ?? defaultRoleTemplate, roleDates)
+        );
+      }
+
+      for (const bullet of exp.bullets) {
+        experienceParagraphs.push(setParagraphText(style.bulletTemplate, boldExpText(bullet)));
+      }
+    }
   }
 
-  return skillParagraphs;
+  applyPageBreaksFromTemplate(experienceParagraphs, originalExperienceParagraphs);
+
+  const updatedParagraphs = [
+    ...headerParagraphs,
+    paragraphs[summaryIdx],
+    ...summaryBody,
+    paragraphs[skillsIdx],
+    ...skillsBody,
+    paragraphs[expIdx],
+    ...experienceParagraphs,
+    ...paragraphs.slice(expEnd),
+  ];
+
+  const bodyStart = xml.indexOf("<w:body>");
+  const bodyEnd = xml.indexOf("</w:body>");
+  if (bodyStart === -1 || bodyEnd === -1) {
+    throw new Error("Invalid docx: missing w:body.");
+  }
+
+  const sectPr = xml.match(/<w:sectPr[\s\S]*?<\/w:sectPr>/)?.[0] ?? "";
+  const rebuilt =
+    xml.slice(0, bodyStart + "<w:body>".length) +
+    updatedParagraphs.join("") +
+    sectPr +
+    xml.slice(bodyEnd);
+
+  zip.file("word/document.xml", rebuilt);
+  return zip.generate({ type: "nodebuffer", compression: "DEFLATE" }) as Buffer;
 }
 
 export function parseExperiencesFromDocxBuffer(buffer: Buffer) {
@@ -890,120 +1152,4 @@ export function parseExperiencesFromDocxBuffer(buffer: Buffer) {
 
   flush();
   return experiences;
-}
-
-export function applyContentToDocx(
-  buffer: Buffer,
-  content: GeneratedResumeContent
-): Buffer {
-  const zip = new PizZip(buffer);
-  const xml = zip.file("word/document.xml")?.asText();
-  if (!xml) throw new Error("Invalid docx: missing document.xml");
-
-  const paragraphs = xml.match(/<w:p[\s\S]*?<\/w:p>/g) || [];
-  const summaryIdx = findSectionIndex(paragraphs, SECTION_HEADERS.summary);
-  const skillsIdx = findSectionIndex(paragraphs, SECTION_HEADERS.skills);
-  const expIdx = findSectionIndex(paragraphs, SECTION_HEADERS.experience);
-  const eduIdx = findSectionIndex(paragraphs, SECTION_HEADERS.education);
-
-  if (summaryIdx === -1 || skillsIdx === -1 || expIdx === -1) {
-    throw new Error("Template must contain SUMMARY, SKILLS, and EXPERIENCE sections.");
-  }
-
-  const header = parseResumeHeaderFromDocxBuffer(buffer);
-  if (content.title && header.titleParagraphIndex >= 0) {
-    paragraphs[header.titleParagraphIndex] = setParagraphText(
-      paragraphs[header.titleParagraphIndex],
-      content.title
-    );
-  }
-
-  const summaryIndices = collectSectionParagraphIndices(paragraphs, summaryIdx, skillsIdx);
-  const skillsIndices = collectSectionParagraphIndices(paragraphs, skillsIdx, expIdx);
-  applySectionParagraphs(paragraphs, summaryIndices, content.summary);
-  const skillParagraphs = buildSkillsParagraphs(paragraphs, skillsIndices, content.skills);
-  const skillsGapParagraphs = collectSectionGapParagraphs(paragraphs, skillsIdx, expIdx);
-  const skillsContentStart = skillsIndices.length > 0 ? skillsIndices[0] : skillsIdx + 1;
-
-  const expEnd = eduIdx === -1 ? paragraphs.length : eduIdx;
-  const originalExperienceParagraphs = paragraphs.slice(expIdx + 1, expEnd);
-  const layout = content.layout ?? detectResumeTemplateLayout(buffer);
-  const skillTerms = extractSkillTerms(content.skills);
-  const boldExpText = (text: string) => boldSkillTermsInText(text, skillTerms);
-
-  let experienceParagraphs: string[] = [];
-
-  if (layout === "projects") {
-    const { jobTemplates } = parseProjectExperiencesFromDocxBuffer(buffer);
-    experienceParagraphs = buildProjectExperienceParagraphs(
-      { ...content, layout: "projects" },
-      jobTemplates as ProjectJobTemplate[],
-      setParagraphText,
-      skillTerms
-    );
-  } else {
-    const headerSample = getParagraphText(paragraphs[expIdx + 1] ?? "").trim();
-    const useCombinedHeaders = parseCombinedExperienceLine(headerSample) !== null;
-    const styleBlocks = extractExperienceStyleBlocks(originalExperienceParagraphs, useCombinedHeaders);
-    const defaultHeaderTemplate = paragraphs[expIdx + 1];
-    const defaultRoleTemplate = paragraphs[expIdx + 2];
-    const defaultBulletTemplate = useCombinedHeaders
-      ? paragraphs[expIdx + 2] ?? paragraphs[expIdx + 1]
-      : paragraphs[expIdx + 3] ?? paragraphs[expIdx + 2];
-
-    for (let jobIndex = 0; jobIndex < content.experiences.length; jobIndex += 1) {
-      const exp = content.experiences[jobIndex];
-      const style =
-        styleBlocks[jobIndex] ??
-        styleBlocks[styleBlocks.length - 1] ?? {
-          headerTemplate: defaultHeaderTemplate,
-          roleTemplate: useCombinedHeaders ? undefined : defaultRoleTemplate,
-          bulletTemplate: defaultBulletTemplate,
-        };
-
-      if (useCombinedHeaders) {
-        const headerText = exp.dates
-          ? `${boldExpText(exp.role)}, ${exp.company}, ${exp.dates}`
-          : `${boldExpText(exp.role)}, ${exp.company}`;
-        experienceParagraphs.push(setParagraphText(style.headerTemplate, headerText));
-      } else {
-        experienceParagraphs.push(setParagraphText(style.headerTemplate, exp.company));
-        const roleDates = exp.dates ? `${boldExpText(exp.role)}    ${exp.dates}` : boldExpText(exp.role);
-        experienceParagraphs.push(
-          setParagraphText(style.roleTemplate ?? defaultRoleTemplate, roleDates)
-        );
-      }
-
-      for (const bullet of exp.bullets) {
-        experienceParagraphs.push(setParagraphText(style.bulletTemplate, boldExpText(bullet)));
-      }
-    }
-  }
-
-  applyPageBreaksFromTemplate(experienceParagraphs, originalExperienceParagraphs);
-
-  const updatedParagraphs = [
-    ...paragraphs.slice(0, skillsContentStart),
-    ...skillParagraphs,
-    ...skillsGapParagraphs,
-    paragraphs[expIdx],
-    ...experienceParagraphs,
-    ...paragraphs.slice(expEnd),
-  ];
-
-  const bodyStart = xml.indexOf("<w:body>");
-  const bodyEnd = xml.indexOf("</w:body>");
-  if (bodyStart === -1 || bodyEnd === -1) {
-    throw new Error("Invalid docx: missing w:body.");
-  }
-
-  const sectPr = xml.match(/<w:sectPr[\s\S]*?<\/w:sectPr>/)?.[0] ?? "";
-  const rebuilt =
-    xml.slice(0, bodyStart + "<w:body>".length) +
-    updatedParagraphs.join("") +
-    sectPr +
-    xml.slice(bodyEnd);
-
-  zip.file("word/document.xml", rebuilt);
-  return zip.generate({ type: "nodebuffer", compression: "DEFLATE" }) as Buffer;
 }

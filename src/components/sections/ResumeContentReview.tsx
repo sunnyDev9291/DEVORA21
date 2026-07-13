@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { GeneratedResumeContent, ResumeExperience, ResumeProject } from "@/lib/resume-types";
 import { isProjectLayout } from "@/lib/resume-experience-utils";
 import { sanitizeResumeFileBaseName } from "@/lib/resume-filename";
@@ -39,6 +39,33 @@ const PROJECT_FIELDS: Array<{ key: keyof ResumeProject; label: string }> = [
 const fieldClass =
   "w-full bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.10] hover:border-slate-300 dark:hover:border-white/[0.16] focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-4 py-3 text-slate-900 dark:text-white text-sm outline-none transition-all";
 
+function getScrollContainer(start: HTMLElement | null): HTMLElement | Window {
+  let node = start?.parentElement ?? null;
+  while (node) {
+    const { overflowY } = window.getComputedStyle(node);
+    if ((overflowY === "auto" || overflowY === "scroll") && node.scrollHeight > node.clientHeight) {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return window;
+}
+
+function readScrollTop(container: HTMLElement | Window): number {
+  if (container instanceof Window) {
+    return container.scrollY;
+  }
+  return container.scrollTop;
+}
+
+function writeScrollTop(container: HTMLElement | Window, top: number): void {
+  if (container instanceof Window) {
+    container.scrollTo(0, top);
+    return;
+  }
+  container.scrollTop = top;
+}
+
 export default function ResumeContentReview({
   content,
   onChange,
@@ -61,6 +88,8 @@ export default function ResumeContentReview({
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [expandedExp, setExpandedExp] = useState<number | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const experienceSectionRef = useRef<HTMLDivElement>(null);
+  const scrollRestoreRef = useRef<{ container: HTMLElement | Window; top: number } | null>(null);
 
   const copyBullet = useCallback((key: string, text: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -73,6 +102,19 @@ export default function ResumeContentReview({
     setReviewConfirmed(false);
     setExpandedExp(null);
   }, [generationKey, templateName]);
+
+  useLayoutEffect(() => {
+    const restore = scrollRestoreRef.current;
+    if (!restore) return;
+    scrollRestoreRef.current = null;
+    writeScrollTop(restore.container, restore.top);
+  }, [expandedExp]);
+
+  function toggleExperience(index: number) {
+    const container = getScrollContainer(experienceSectionRef.current);
+    scrollRestoreRef.current = { container, top: readScrollTop(container) };
+    setExpandedExp((current) => (current === index ? null : index));
+  }
 
   function updateExperience(index: number, patch: Partial<ResumeExperience>) {
     onChange({
@@ -221,7 +263,7 @@ export default function ResumeContentReview({
         </div>
       </div>
 
-      <div>
+      <div ref={experienceSectionRef}>
         <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
           <span className="w-6 h-6 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center text-xs">E</span>
           Experience ({content.experiences.length})
@@ -230,10 +272,10 @@ export default function ResumeContentReview({
           {content.experiences.map((exp, index) => {
             const open = expandedExp === index;
             return (
-              <div key={`exp-${index}`} className="rounded-2xl border border-slate-200 dark:border-white/[0.08] overflow-hidden bg-white dark:bg-white/[0.02]">
+              <div key={`exp-${index}`} className="rounded-2xl border border-slate-200 dark:border-white/[0.08] overflow-hidden bg-white dark:bg-white/[0.02] [overflow-anchor:none]">
                 <button
                   type="button"
-                  onClick={() => setExpandedExp(open ? null : index)}
+                  onClick={() => toggleExperience(index)}
                   className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors"
                   aria-expanded={open}
                 >
@@ -256,15 +298,15 @@ export default function ResumeContentReview({
                   </svg>
                 </button>
                 {open && (
-                  <div className="px-5 pb-5 pt-0 space-y-3 border-t border-slate-100 dark:border-white/[0.06]">
+                  <div className="px-5 pb-5 pt-0 space-y-3 border-t border-slate-100 dark:border-white/[0.06] [overflow-anchor:none]">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-4">
                       <div className="sm:col-span-2">
-                        <p className="text-xs font-medium text-slate-500 mb-1">Company <span className="font-normal text-slate-400">(from template)</span></p>
+                        <p className="text-xs font-medium text-slate-500 mb-1">Company</p>
                         <p className="text-sm font-semibold text-slate-900 dark:text-white px-1">{exp.company}</p>
                       </div>
                       <div>
                         <p className="text-xs font-medium text-slate-500 mb-1">
-                          Role / title <span className="font-normal text-slate-400">(tailored to JD)</span>
+                          Role / title
                         </p>
                         <MarkdownBoldTextarea
                           id={`exp-${index}-role`}
@@ -277,7 +319,7 @@ export default function ResumeContentReview({
                         />
                       </div>
                       <div>
-                        <p className="text-xs font-medium text-slate-500 mb-1">Dates <span className="font-normal text-slate-400">(from template)</span></p>
+                        <p className="text-xs font-medium text-slate-500 mb-1">Dates</p>
                         <p className="text-sm text-slate-800 dark:text-slate-200 px-1">{exp.dates}</p>
                       </div>
                     </div>
@@ -293,7 +335,7 @@ export default function ResumeContentReview({
                             </p>
                             <div>
                               <p className="text-xs font-medium text-slate-500 mb-1">
-                                Project name <span className="font-normal text-slate-400">(from template)</span>
+                                Project name
                               </p>
                               <p className="text-sm font-semibold text-slate-900 dark:text-white px-1">{project.name}</p>
                             </div>

@@ -38,9 +38,10 @@ export function emptyResumeProject(): ResumeProject {
 export function stripBarLabelFromValue(value: string, field: keyof ResumeProject): string {
   if (field === "name") return value.trim();
   const patterns: Record<string, RegExp> = {
-    businessChallenge: /^(?:business\s+)?challenge\s*:?\s*/i,
+    businessChallenge:
+      /^(?:(?:work\s+and\s+)?business\s+(?:need|challenge)|business\s+(?:need|challenge))\s*:?\s*/i,
     assignedResponsibility: /^(?:assigned\s+)?responsibilit(?:y|ies)\s*:?\s*/i,
-    action: /^actions?\s*:?\s*/i,
+    action: /^(?:actions?|work|word)\s*:?\s*/i,
     result: /^results?\s*:?\s*/i,
   };
   return value.replace(patterns[field] ?? /^$/, "").trim();

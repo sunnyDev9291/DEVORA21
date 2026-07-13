@@ -56,7 +56,7 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
         if (!modelText) {
           enqueue({
             type: "error",
-            message: "AI returned no content. Check DEEPSEEK_API_KEY and try again.",
+            message: "AI returned no content. Check AI backend configuration and try again.",
           });
           controller.close();
           return;
@@ -121,7 +121,7 @@ export async function runResumeGenerationSync(prep: ResumeGeneratePrep): Promise
     jsonObject: true,
   });
   if (!modelText.trim()) {
-    throw new Error("AI returned no content. Check DEEPSEEK_API_KEY and try again.");
+    throw new Error("AI returned no content. Check AI backend configuration and try again.");
   }
   return modelText;
 }
