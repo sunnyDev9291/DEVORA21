@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import ResumeApplyTypeToggle from "@/components/sections/ResumeApplyTypeToggle";
 
 const TABS = [
   { href: "/resume", label: "New resume", isActive: (path: string) => path === "/resume" },
@@ -18,8 +17,6 @@ export default function ResumePanelTabs() {
 
   return (
     <div className="relative z-10 mx-auto w-full max-w-[70vw] px-4 sm:px-6 lg:px-8">
-      <ResumeApplyTypeToggle />
-
       <nav
         className="inline-flex w-full max-w-md rounded-xl border border-slate-200/80 bg-white/90 p-1 shadow-lg shadow-slate-200/40 backdrop-blur-sm dark:border-white/[0.10] dark:bg-navy-900/90 dark:shadow-black/30 sm:w-auto"
         aria-label="Resume sections"
