@@ -3,12 +3,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { profileApi, type UserPromptAsset, type UserResumeTemplateAsset } from "@/lib/profile-api";
 import { resumeBuilderAccessDeniedMessage } from "@/lib/resume-access";
-import {
-  fingerprintTemplateBase64,
-  PROFILE_TEMPLATE_UPDATED_EVENT,
-} from "@/lib/template-fingerprint";
+import { PROFILE_TEMPLATE_UPDATED_EVENT } from "@/lib/template-fingerprint";
 import { loadStoredProfile, saveStoredProfile } from "@/lib/user-profile";
 
+/**
+ * Profile template/prompt are stored on the backend and mirrored in localStorage.
+ * Remote is always the source of truth when available so another device/session
+ * that uploads a new template or prompt is picked up here.
+ * LocalStorage is only an instant hydrate + offline fallback.
+ */
 export function useUserProfileAssets(userId: string | undefined) {
   const [template, setTemplate] = useState<UserResumeTemplateAsset | null>(null);
   const [prompt, setPrompt] = useState<UserPromptAsset | null>(null);
@@ -40,18 +43,20 @@ export function useUserProfileAssets(userId: string | undefined) {
     setLoading(true);
     setError("");
 
-    const stored = userId ? loadStoredProfile(userId) : null;
+    const stored = loadStoredProfile(userId);
     const localTemplate =
-      stored?.resumeTemplateFileName && stored.resumeTemplateBase64
+      stored.resumeTemplateFileName && stored.resumeTemplateBase64
         ? {
             fileName: stored.resumeTemplateFileName,
             templateBase64: stored.resumeTemplateBase64,
           }
         : null;
+
+    // Instant UI from local mirror; remote overwrite follows.
     if (localTemplate) {
       setTemplate(localTemplate);
     }
-    if (stored?.customPrompt) {
+    if (stored.customPrompt) {
       setPrompt({
         content: stored.customPrompt,
         fileName: stored.promptFileName,
@@ -59,7 +64,7 @@ export function useUserProfileAssets(userId: string | undefined) {
     }
 
     let templateLoaded = Boolean(localTemplate);
-    let promptLoaded = Boolean(stored?.customPrompt);
+    let promptLoaded = Boolean(stored.customPrompt);
 
     try {
       const remoteTemplate = await profileApi.fetchResumeTemplate().catch((err) => {
@@ -69,24 +74,13 @@ export function useUserProfileAssets(userId: string | undefined) {
         return null;
       });
       if (remoteTemplate) {
-        const localFingerprint = fingerprintTemplateBase64(localTemplate?.templateBase64);
-        const remoteFingerprint = fingerprintTemplateBase64(remoteTemplate.templateBase64);
-        const localIsNewerUpload = Boolean(
-          stored?.resumeTemplateUpdatedAt &&
-            localFingerprint &&
-            localFingerprint !== remoteFingerprint
-        );
-
-        if (localIsNewerUpload && localTemplate) {
-          setTemplate(localTemplate);
-        } else {
-          setTemplate(remoteTemplate);
-          saveStoredProfile(userId, {
-            resumeTemplateFileName: remoteTemplate.fileName,
-            resumeTemplateBase64: remoteTemplate.templateBase64,
-            resumeTemplateUpdatedAt: undefined,
-          });
-        }
+        // Backend wins — another device may have uploaded a newer file.
+        setTemplate(remoteTemplate);
+        saveStoredProfile(userId, {
+          resumeTemplateFileName: remoteTemplate.fileName,
+          resumeTemplateBase64: remoteTemplate.templateBase64,
+          resumeTemplateUpdatedAt: undefined,
+        });
         templateLoaded = true;
       }
     } catch (err) {
@@ -109,7 +103,7 @@ export function useUserProfileAssets(userId: string | undefined) {
 
     if (!templateLoaded && !promptLoaded) {
       hydrateFromLocal();
-      if (stored?.customPrompt) {
+      if (stored.customPrompt) {
         setPrompt({
           content: stored.customPrompt,
           fileName: stored.promptFileName,
@@ -123,6 +117,25 @@ export function useUserProfileAssets(userId: string | undefined) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Re-fetch when the user returns to this tab/window so uploads from another
+  // device are adopted without a full page reload.
+  useEffect(() => {
+    if (!userId || typeof window === "undefined") return;
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        void refresh();
+      }
+    };
+
+    window.addEventListener("focus", onVisible);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("focus", onVisible);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [userId, refresh]);
 
   useEffect(() => {
     if (!userId || typeof window === "undefined") return;
