@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
 import ResumeThinkingProgress from "@/components/ui/ResumeThinkingProgress";
+import ResumeRawAiTextarea from "@/components/ui/ResumeRawAiTextarea";
 import ResumeContentReview from "@/components/sections/ResumeContentReview";
 import { resolveResumeWizardStep } from "@/components/sections/ResumeStepper";
 import { useAuth } from "@/context/AuthContext";
@@ -142,6 +143,7 @@ export default function ResumeGenerator({
   const [resumeFileBaseName, setResumeFileBaseName] = useState("");
   const [resumeNameTouched, setResumeNameTouched] = useState(false);
   const [streamPhase, setStreamPhase] = useState<ResumeGenerationPhase>("starting");
+  const [streamOutput, setStreamOutput] = useState("");
   const [resumeScore, setResumeScore] = useState<ResumeUnifiedScoreResult | null>(null);
   const [scoreLoading, setScoreLoading] = useState(false);
   const [scoreError, setScoreError] = useState("");
@@ -486,6 +488,8 @@ export default function ResumeGenerator({
     setImprovingTargetLabel("");
     setGenerating(true);
     setStreamPhase("starting");
+    setStreamOutput("");
+    setContent(null);
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -508,6 +512,9 @@ export default function ResumeGenerator({
         {
           onPhase: (phase) => {
             if (generationRunRef.current === runId) setStreamPhase(phase);
+          },
+          onOutput: (_chunk, full) => {
+            if (generationRunRef.current === runId) setStreamOutput(full);
           },
           signal: controller.signal,
         }
@@ -547,6 +554,7 @@ export default function ResumeGenerator({
     setImprovingTargetId(target.id);
     setImprovingTargetLabel(target.label);
     setStreamPhase("starting");
+    setStreamOutput("");
     setError("");
     setRegenerateNotice("");
     setRegenerateBaseline(content);
@@ -570,6 +578,9 @@ export default function ResumeGenerator({
         {
           onPhase: (phase) => {
             if (generationRunRef.current === runId) setStreamPhase(phase);
+          },
+          onOutput: (_chunk, full) => {
+            if (generationRunRef.current === runId) setStreamOutput(full);
           },
           signal: controller.signal,
         }
@@ -732,7 +743,8 @@ export default function ResumeGenerator({
 
   const canPreviewPdf = !!pdfBlob && !archiving;
 
-  const showReview = content && step !== "form";
+  const showReview = step !== "form" && (Boolean(content) || generating || Boolean(streamOutput));
+  const showStructuredReview = Boolean(content) && !generating;
 
   return (
     <>
@@ -853,7 +865,9 @@ export default function ResumeGenerator({
           </div>
 
           {generating && (
-            <ResumeThinkingProgress phase={streamPhase} jobTitle={targetJobLabel} />
+            <div className="mt-6">
+              <ResumeThinkingProgress phase={streamPhase} jobTitle={targetJobLabel} />
+            </div>
           )}
         </form>
       </div>
@@ -863,7 +877,7 @@ export default function ResumeGenerator({
           <svg className="w-5 h-5 text-red-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <p className="text-sm text-red-600 dark:text-red-300">{error}</p>
+          <p className="text-sm text-red-600 dark:text-red-300 whitespace-pre-wrap">{error}</p>
         </div>
       )}
 
@@ -876,7 +890,7 @@ export default function ResumeGenerator({
         </div>
       )}
 
-      {/* Step 3: Review */}
+      {/* Step 3: Raw stream + structured review */}
       {showReview && (
         <div ref={reviewRef} className="pt-8 border-t border-slate-200 dark:border-white/[0.06]">
           {step === "done" && docxBase64 && (
@@ -953,8 +967,14 @@ export default function ResumeGenerator({
             <div className="flex items-center gap-3">
               <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-violet-500/15 text-violet-600 dark:text-violet-400 text-sm font-bold">3</span>
               <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">Edit your draft</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Review every field, then apply to your template</p>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  {generating ? "Receiving AI draft" : "Edit your draft"}
+                </h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  {generating
+                    ? "Raw stream fills first — structured fields appear when complete"
+                    : "Review every field, then apply to your template"}
+                </p>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 sm:justify-end">
@@ -995,6 +1015,12 @@ export default function ResumeGenerator({
             </div>
           </div>
 
+          {(generating || streamOutput) && (
+            <div className="mb-6">
+              <ResumeRawAiTextarea value={streamOutput} streaming={generating} />
+            </div>
+          )}
+
           {RESUME_SCORE_SYSTEM_ENABLED && atsModalOpen ? (
             <div className="rounded-2xl border border-dashed border-violet-500/25 bg-violet-500/[0.04] px-5 py-8 text-center">
               <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
@@ -1008,7 +1034,7 @@ export default function ResumeGenerator({
                 Open review panel
               </button>
             </div>
-          ) : (
+          ) : showStructuredReview && content ? (
             <ResumeContentReview
               content={content}
               onChange={setContent}
@@ -1036,7 +1062,13 @@ export default function ResumeGenerator({
                 setRegenerateBaselineScore(null);
               }}
             />
-          )}
+          ) : generating ? (
+            <div className="rounded-2xl border border-dashed border-slate-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.02] px-6 py-8 text-center">
+              <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
+                Title, summary, skillsets, and experience will fill here automatically once the raw JSON stream finishes.
+              </p>
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -1064,6 +1096,7 @@ export default function ResumeGenerator({
           applying={applying}
           generating={generating}
           streamPhase={streamPhase}
+          streamOutput={streamOutput}
           generateError={error}
           regenerateNotice={regenerateNotice}
           templateName={userTemplate?.fileName ?? ""}

@@ -7,9 +7,10 @@ import { emptyRuleKeepScore } from "@/lib/resume-rule-keep";
 import { buildUnifiedResumeScore } from "@/lib/resume-unified-score";
 import type { AtsScoreResult, GeneratedResumeContent, ResumeTemplateLayout, RuleKeepScoreResult } from "@/lib/resume-types";
 
-export const RESUME_AI_MODEL = "deepseek-v4-pro";
+export const RESUME_AI_MODEL = "claude-sonnet-4-6";
 
-export const RESUME_MAX_TOKENS = 16384;
+/** Resume generation streams with this budget (backend Claude default). */
+export const RESUME_MAX_TOKENS = 4096;
 
 const BULLETS_JSON_SHAPE = `{
   "title": "string",
@@ -126,17 +127,14 @@ export function buildResumeUserPrompt({
     isRegenerate && previousContent
       ? [
           "Previous draft (revise using only the job description and instructions above):",
-          JSON.stringify(
-            {
-              title: previousContent.title,
-              summary: previousContent.summary,
-              skills: previousContent.skills,
-              fileName: previousContent.fileName,
-              experiences: previousContent.experiences,
-            },
-            null,
-            2
-          ),
+          // Compact JSON — same fields as pretty-print; whitespace only (no quality change).
+          JSON.stringify({
+            title: previousContent.title,
+            summary: previousContent.summary,
+            skills: previousContent.skills,
+            fileName: previousContent.fileName,
+            experiences: previousContent.experiences,
+          }),
         ].join("\n")
       : "";
 
@@ -525,7 +523,7 @@ export function detectResumeGenerationPhase(
 }
 
 export const RESUME_PHASE_LABELS: Record<ResumeGenerationPhase, string> = {
-  starting: "Starting DeepSeek",
+  starting: "Preparing your request",
   analyzing: "Analyzing job & template",
   title: "Crafting resume title",
   summary: "Writing professional summary",

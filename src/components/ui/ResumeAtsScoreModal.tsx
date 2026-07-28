@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import ResumeContentReview from "@/components/sections/ResumeContentReview";
 import ResumeImproveProgress from "@/components/ui/ResumeImproveProgress";
 import ResumeThinkingProgress from "@/components/ui/ResumeThinkingProgress";
+import ResumeRawAiTextarea from "@/components/ui/ResumeRawAiTextarea";
 import { ResumeScorePanel, type ResumeScorePanelProps } from "@/components/ui/ResumeScorePanel";
 import { ResumeScoringInstructionsPanel } from "@/components/ui/ResumeScoringInstructionsPanel";
 import { RESUME_PASS_THRESHOLD } from "@/lib/resume-unified-score";
@@ -23,6 +24,7 @@ interface ResumeAtsScoreModalProps extends ResumeScorePanelProps {
   applying?: boolean;
   generating?: boolean;
   streamPhase?: ResumeGenerationPhase;
+  streamOutput?: string;
   generateError?: string;
   regenerateNotice?: string;
   templateName?: string;
@@ -58,6 +60,7 @@ export default function ResumeAtsScoreModal({
   applying = false,
   generating = false,
   streamPhase = "starting",
+  streamOutput = "",
   generateError = "",
   regenerateNotice = "",
   templateName = "",
@@ -176,13 +179,17 @@ export default function ResumeAtsScoreModal({
                       targetLabel={improvingTargetLabel}
                     />
                   ) : (
-                    <ResumeThinkingProgress phase={streamPhase} jobTitle={jobTitle ?? ""} embedded />
+                    <ResumeThinkingProgress
+                      phase={streamPhase}
+                      jobTitle={jobTitle ?? ""}
+                      embedded
+                    />
                   )}
                 </div>
               )}
               {generateError && (
                 <div className="mx-4 mt-4 flex items-start gap-2 rounded-xl border border-red-500/25 bg-red-500/[0.08] px-3 py-2.5">
-                  <p className="text-xs text-red-600 dark:text-red-300">{generateError}</p>
+                  <p className="text-xs text-red-600 dark:text-red-300 whitespace-pre-wrap">{generateError}</p>
                 </div>
               )}
               {regenerateNotice && (
@@ -190,27 +197,40 @@ export default function ResumeAtsScoreModal({
                   <p className="text-xs text-amber-800 dark:text-amber-200">{regenerateNotice}</p>
                 </div>
               )}
-              <div className={`p-4 sm:p-5 ${generating ? "pointer-events-none opacity-60" : ""}`}>
-                <ResumeContentReview
-                  content={content}
-                  onChange={onContentChange}
-                  onApply={onApply}
-                  applying={applying}
-                  generating={generating}
-                  templateName={templateName}
-                  resumeFileBaseName={resumeFileBaseName}
-                  suggestedResumeBaseName={suggestedResumeBaseName}
-                  onResumeFileBaseNameChange={onResumeFileBaseNameChange ?? (() => {})}
-                  onResumeFileBaseNameReset={onResumeFileBaseNameReset}
-                  applyLabel={applyLabel}
-                  generationKey={generationKey}
-                  embedded
-                  regenerateChanges={regenerateChanges}
-                  regenerateFeedback={regenerateFeedback}
-                  changedFieldIds={changedFieldIds}
-                  onDismissRegenerateDiff={onDismissRegenerateDiff}
-                />
-              </div>
+              {(generating || streamOutput) && (
+                <div className="mx-4 mt-4">
+                  <ResumeRawAiTextarea value={streamOutput} streaming={generating} />
+                </div>
+              )}
+              {content && !generating ? (
+                <div className="p-4 sm:p-5">
+                  <ResumeContentReview
+                    content={content}
+                    onChange={onContentChange}
+                    onApply={onApply}
+                    applying={applying}
+                    generating={generating}
+                    templateName={templateName}
+                    resumeFileBaseName={resumeFileBaseName}
+                    suggestedResumeBaseName={suggestedResumeBaseName}
+                    onResumeFileBaseNameChange={onResumeFileBaseNameChange ?? (() => {})}
+                    onResumeFileBaseNameReset={onResumeFileBaseNameReset}
+                    applyLabel={applyLabel}
+                    generationKey={generationKey}
+                    embedded
+                    regenerateChanges={regenerateChanges}
+                    regenerateFeedback={regenerateFeedback}
+                    changedFieldIds={changedFieldIds}
+                    onDismissRegenerateDiff={onDismissRegenerateDiff}
+                  />
+                </div>
+              ) : generating ? (
+                <div className="mx-4 my-4 rounded-xl border border-dashed border-slate-200 dark:border-white/[0.08] px-4 py-6 text-center">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Structured fields fill after the raw stream completes.
+                  </p>
+                </div>
+              ) : null}
             </div>
           )}
         </div>

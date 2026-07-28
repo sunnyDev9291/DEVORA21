@@ -18,13 +18,13 @@ const PHASE_ORDER: ResumeGenerationPhase[] = [
 ];
 
 const PHASE_DESCRIPTIONS: Record<ResumeGenerationPhase, string> = {
-  starting: "Connecting to the AI writer",
-  analyzing: "Reading your template and job description",
+  starting: "Preparing prompts from your template",
+  analyzing: "Streaming tailored resume content from the AI",
   title: "Crafting a tailored resume title",
   summary: "Writing your professional summary",
   skills: "Building skillsets for this role",
   experiences: "Tailoring experience bullets to the job",
-  finalizing: "Polishing and packaging your draft",
+  finalizing: "Filling structured fields from the raw JSON",
 };
 
 function phaseIndex(phase: ResumeGenerationPhase): number {

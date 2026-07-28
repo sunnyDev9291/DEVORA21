@@ -44,7 +44,8 @@ INDEX_PATH = STORAGE_DIR / "archives_index.json"
 MAX_FILE_BYTES = 10 * 1024 * 1024
 CSV_HEADER = ["datetime", "job_title", "company_name", "job_description", "resume_name"]
 DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions"
-DEEPSEEK_MODEL = "deepseek-v4-pro"
+# Prefer Flash for latency; set DEEPSEEK_MODEL=deepseek-v4-pro for max quality.
+DEEPSEEK_MODEL = (os.environ.get("DEEPSEEK_MODEL") or "deepseek-v4-flash").strip() or "deepseek-v4-flash"
 AI_REQUEST_TIMEOUT_SECONDS = 300
 
 app = Flask(__name__)
@@ -58,6 +59,7 @@ CORS(
         "https://www.devora21.com",
     ],
     methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-User-Id"],
     supports_credentials=True,
 )
 
@@ -216,6 +218,7 @@ def build_deepseek_payload(
         "messages": messages,
         "max_tokens": max_tokens,
         "stream": stream,
+        "temperature": 0.4,
         "thinking": {"type": "disabled"},
     }
     if json_object:

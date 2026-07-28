@@ -76,7 +76,7 @@ async function callAiBackend(messages: unknown[]): Promise<string> {
     headers: buildAiAuthHeaders(),
     body: JSON.stringify({
       messages,
-      maxTokens: 16384,
+      maxTokens: 4096,
       jsonObject: true,
     }),
   });

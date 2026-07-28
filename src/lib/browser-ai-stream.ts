@@ -1,0 +1,95 @@
+import { API_BASE_URL } from "@/lib/api-base-url";
+
+export type BrowserAiChatMessage = {
+  role: "system" | "user" | "assistant";
+  content: string;
+};
+
+export type BrowserAiStreamDelta = {
+  content?: string;
+};
+
+const MID_STREAM_ERROR = /(?:^|\n)\[error\]\s*(.+)$/i;
+
+async function readHttpError(response: Response): Promise<string> {
+  const detail = await response.text().catch(() => "");
+  if (!detail) {
+    return `AI backend error (${response.status}): ${response.statusText}`;
+  }
+  try {
+    const parsed = JSON.parse(detail) as { error?: string; message?: string };
+    return parsed.error || parsed.message || detail;
+  } catch {
+    return detail;
+  }
+}
+
+function throwIfMidStreamError(accumulated: string): void {
+  const match = MID_STREAM_ERROR.exec(accumulated);
+  if (match?.[1]) {
+    throw new Error(match[1].trim());
+  }
+}
+
+/**
+ * Stream chat completions directly from api.devora21.com as raw plain text chunks
+ * (not SSE / not JSON envelopes). Auth token comes from prepare (server), not NEXT_PUBLIC.
+ */
+export async function* iterateBrowserAiStream(
+  messages: BrowserAiChatMessage[],
+  maxTokens = 4096,
+  options: { jsonObject?: boolean; signal?: AbortSignal; authToken: string }
+): AsyncGenerator<BrowserAiStreamDelta> {
+  const authToken = options.authToken?.trim();
+  if (!authToken) {
+    throw new Error(
+      "Missing AI stream auth token. Ensure AI_INTERNAL_API_KEY is set on the Next.js / Netlify server."
+    );
+  }
+
+  const response = await fetch(`${API_BASE_URL}/ai/chat/completions/stream`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "text/plain",
+      Authorization: `Bearer ${authToken}`,
+    },
+    body: JSON.stringify({
+      messages,
+      maxTokens,
+      jsonObject: options.jsonObject ?? false,
+    }),
+    signal: options.signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(await readHttpError(response));
+  }
+  if (!response.body) {
+    throw new Error("No response stream from AI backend.");
+  }
+
+  const decoder = new TextDecoder();
+  const reader = response.body.getReader();
+  let accumulated = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+
+    const chunk = decoder.decode(value, { stream: true });
+    if (!chunk) continue;
+
+    accumulated += chunk;
+    throwIfMidStreamError(accumulated);
+    yield { content: chunk };
+  }
+
+  const tail = decoder.decode();
+  if (tail) {
+    accumulated += tail;
+    throwIfMidStreamError(accumulated);
+    yield { content: tail };
+  }
+}
