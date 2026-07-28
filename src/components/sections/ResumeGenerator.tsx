@@ -1018,8 +1018,8 @@ export default function ResumeGenerator({
               templateName={activeTemplate?.fileName ?? ""}
               resumeFileBaseName={resumeFileBaseName}
               suggestedResumeBaseName={suggestedResumeBaseName}
-              onResumeFileBaseNameChange={(value) => {
-                setResumeNameTouched(true);
+              onResumeFileBaseNameChange={(value, options) => {
+                if (options?.markTouched !== false) setResumeNameTouched(true);
                 setResumeFileBaseName(value);
               }}
               onResumeFileBaseNameReset={() => {
@@ -1070,8 +1070,8 @@ export default function ResumeGenerator({
           customPrompt={form.customPrompt}
           resumeFileBaseName={resumeFileBaseName}
           suggestedResumeBaseName={suggestedResumeBaseName}
-          onResumeFileBaseNameChange={(value) => {
-            setResumeNameTouched(true);
+          onResumeFileBaseNameChange={(value, options) => {
+            if (options?.markTouched !== false) setResumeNameTouched(true);
             setResumeFileBaseName(value);
           }}
           onResumeFileBaseNameReset={() => {

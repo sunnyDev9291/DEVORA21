@@ -422,7 +422,9 @@ function buildRunsFromMarkdownWithProperties(
 function buildRunsFromMarkdownText(pXml: string, text: string): string {
   const runs = matchTextRuns(pXml);
   const baseRPr = extractBaseRunProperties(pXml);
-  const labelRPr = pickLabelRunProperties(runs) || ensureLatinBoldRunProperties(baseRPr);
+  // Bullet templates are usually fully plain — pickLabelRunProperties still returns that
+  // plain rPr (truthy), so **markdown** segments must explicitly get Latin <w:b/>.
+  const labelRPr = ensureLatinBoldRunProperties(pickLabelRunProperties(runs) || baseRPr);
   const valueRPr =
     pickValueRunProperties(runs) || stripDecorations(baseRPr) || baseRPr;
 

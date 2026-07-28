@@ -29,7 +29,7 @@ interface ResumeAtsScoreModalProps extends ResumeScorePanelProps {
   customPrompt?: string;
   resumeFileBaseName?: string;
   suggestedResumeBaseName?: string;
-  onResumeFileBaseNameChange?: (value: string) => void;
+  onResumeFileBaseNameChange?: (value: string, options?: { markTouched?: boolean }) => void;
   onResumeFileBaseNameReset?: () => void;
   applyLabel?: string;
   generationKey?: number;
