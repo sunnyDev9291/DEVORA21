@@ -38,8 +38,7 @@ The backend server only:
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `BACKEND_API_URL` | yes | `https://api.devora21.com` |
-| `AI_INTERNAL_API_KEY` | recommended | Same value as backend `AI_INTERNAL_API_KEY` (server utility calls) |
-| `NEXT_PUBLIC_AI_INTERNAL_API_KEY` | yes for resume stream | Same value — browser streams Claude directly from `/ai/chat/completions/stream` |
+| `AI_INTERNAL_API_KEY` | recommended | Same value as backend `AI_INTERNAL_API_KEY` (server-only; prepare returns it at runtime for browser streaming) |
 
 Remove `DEEPSEEK_API_KEY` from Netlify after deploy.
 

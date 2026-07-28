@@ -18,6 +18,7 @@ interface PrepareResponse {
   templateName?: string;
   messages?: Array<{ role: "system" | "user" | "assistant"; content: string }>;
   mergeContext?: ResumeMergeContext;
+  streamAuthToken?: string;
   error?: string;
 }
 
@@ -57,6 +58,11 @@ export async function generateResume(
       `Unexpected prepare response from resume generator: ${JSON.stringify(prep).slice(0, 400)}`
     );
   }
+  if (!prep.streamAuthToken?.trim()) {
+    throw new Error(
+      "Prepare did not return stream auth. Set AI_INTERNAL_API_KEY on the Netlify/Next.js server (server-only, not NEXT_PUBLIC_)."
+    );
+  }
 
   handlers.onPhase?.("analyzing");
 
@@ -64,6 +70,7 @@ export async function generateResume(
   for await (const delta of iterateBrowserAiStream(prep.messages, RESUME_MAX_TOKENS, {
     jsonObject: true,
     signal: handlers.signal,
+    authToken: prep.streamAuthToken,
   })) {
     if (!delta.content) continue;
     output += delta.content;

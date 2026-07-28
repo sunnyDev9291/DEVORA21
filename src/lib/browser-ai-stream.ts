@@ -11,16 +11,6 @@ export type BrowserAiStreamDelta = {
 
 const MID_STREAM_ERROR = /(?:^|\n)\[error\]\s*(.+)$/i;
 
-function resolveBrowserAiKey(): string {
-  const key = process.env.NEXT_PUBLIC_AI_INTERNAL_API_KEY?.trim();
-  if (!key) {
-    throw new Error(
-      "Missing NEXT_PUBLIC_AI_INTERNAL_API_KEY. Set it to the same value as AI_INTERNAL_API_KEY so the browser can stream from the API."
-    );
-  }
-  return key;
-}
-
 async function readHttpError(response: Response): Promise<string> {
   const detail = await response.text().catch(() => "");
   if (!detail) {
@@ -43,26 +33,33 @@ function throwIfMidStreamError(accumulated: string): void {
 
 /**
  * Stream chat completions directly from api.devora21.com as raw plain text chunks
- * (not SSE / not JSON envelopes). Avoids Netlify timeouts on long Claude responses.
+ * (not SSE / not JSON envelopes). Auth token comes from prepare (server), not NEXT_PUBLIC.
  */
 export async function* iterateBrowserAiStream(
   messages: BrowserAiChatMessage[],
   maxTokens = 4096,
-  options?: { jsonObject?: boolean; signal?: AbortSignal }
+  options: { jsonObject?: boolean; signal?: AbortSignal; authToken: string }
 ): AsyncGenerator<BrowserAiStreamDelta> {
+  const authToken = options.authToken?.trim();
+  if (!authToken) {
+    throw new Error(
+      "Missing AI stream auth token. Ensure AI_INTERNAL_API_KEY is set on the Next.js / Netlify server."
+    );
+  }
+
   const response = await fetch(`${API_BASE_URL}/ai/chat/completions/stream`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Accept: "text/plain",
-      Authorization: `Bearer ${resolveBrowserAiKey()}`,
+      Authorization: `Bearer ${authToken}`,
     },
     body: JSON.stringify({
       messages,
       maxTokens,
-      jsonObject: options?.jsonObject ?? false,
+      jsonObject: options.jsonObject ?? false,
     }),
-    signal: options?.signal,
+    signal: options.signal,
   });
 
   if (!response.ok) {
@@ -89,7 +86,6 @@ export async function* iterateBrowserAiStream(
     yield { content: chunk };
   }
 
-  // Flush any remaining decoder state
   const tail = decoder.decode();
   if (tail) {
     accumulated += tail;
