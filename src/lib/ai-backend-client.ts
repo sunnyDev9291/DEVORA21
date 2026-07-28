@@ -123,10 +123,14 @@ export async function* iterateAiChatStream(
 
       try {
         const parsed = JSON.parse(payload) as {
+          error?: string;
           choices?: Array<{
             delta?: { content?: string; reasoning_content?: string };
           }>;
         };
+        if (parsed.error) {
+          throw new Error(parsed.error);
+        }
         const delta = parsed.choices?.[0]?.delta;
         if (!delta) continue;
 

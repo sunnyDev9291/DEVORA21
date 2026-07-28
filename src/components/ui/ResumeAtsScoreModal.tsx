@@ -23,6 +23,7 @@ interface ResumeAtsScoreModalProps extends ResumeScorePanelProps {
   applying?: boolean;
   generating?: boolean;
   streamPhase?: ResumeGenerationPhase;
+  streamOutput?: string;
   generateError?: string;
   regenerateNotice?: string;
   templateName?: string;
@@ -58,6 +59,7 @@ export default function ResumeAtsScoreModal({
   applying = false,
   generating = false,
   streamPhase = "starting",
+  streamOutput = "",
   generateError = "",
   regenerateNotice = "",
   templateName = "",
@@ -176,7 +178,12 @@ export default function ResumeAtsScoreModal({
                       targetLabel={improvingTargetLabel}
                     />
                   ) : (
-                    <ResumeThinkingProgress phase={streamPhase} jobTitle={jobTitle ?? ""} embedded />
+                    <ResumeThinkingProgress
+                      phase={streamPhase}
+                      jobTitle={jobTitle ?? ""}
+                      streamOutput={streamOutput}
+                      embedded
+                    />
                   )}
                 </div>
               )}

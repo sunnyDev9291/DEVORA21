@@ -6,7 +6,7 @@ import {
   type AiStreamDelta,
 } from "@/lib/ai-backend-client";
 
-export const DEEPSEEK_MODEL = "deepseek-v4-pro";
+export const DEEPSEEK_MODEL = "claude-sonnet-4-6";
 
 export type ChatMessage = AiChatMessage;
 export type DeepSeekCallOptions = AiCompletionOptions;

@@ -142,6 +142,7 @@ export default function ResumeGenerator({
   const [resumeFileBaseName, setResumeFileBaseName] = useState("");
   const [resumeNameTouched, setResumeNameTouched] = useState(false);
   const [streamPhase, setStreamPhase] = useState<ResumeGenerationPhase>("starting");
+  const [streamOutput, setStreamOutput] = useState("");
   const [resumeScore, setResumeScore] = useState<ResumeUnifiedScoreResult | null>(null);
   const [scoreLoading, setScoreLoading] = useState(false);
   const [scoreError, setScoreError] = useState("");
@@ -486,6 +487,7 @@ export default function ResumeGenerator({
     setImprovingTargetLabel("");
     setGenerating(true);
     setStreamPhase("starting");
+    setStreamOutput("");
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -508,6 +510,9 @@ export default function ResumeGenerator({
         {
           onPhase: (phase) => {
             if (generationRunRef.current === runId) setStreamPhase(phase);
+          },
+          onOutput: (_chunk, full) => {
+            if (generationRunRef.current === runId) setStreamOutput(full);
           },
           signal: controller.signal,
         }
@@ -547,6 +552,7 @@ export default function ResumeGenerator({
     setImprovingTargetId(target.id);
     setImprovingTargetLabel(target.label);
     setStreamPhase("starting");
+    setStreamOutput("");
     setError("");
     setRegenerateNotice("");
     setRegenerateBaseline(content);
@@ -570,6 +576,9 @@ export default function ResumeGenerator({
         {
           onPhase: (phase) => {
             if (generationRunRef.current === runId) setStreamPhase(phase);
+          },
+          onOutput: (_chunk, full) => {
+            if (generationRunRef.current === runId) setStreamOutput(full);
           },
           signal: controller.signal,
         }
@@ -853,7 +862,11 @@ export default function ResumeGenerator({
           </div>
 
           {generating && (
-            <ResumeThinkingProgress phase={streamPhase} jobTitle={targetJobLabel} />
+            <ResumeThinkingProgress
+              phase={streamPhase}
+              jobTitle={targetJobLabel}
+              streamOutput={streamOutput}
+            />
           )}
         </form>
       </div>
@@ -1064,6 +1077,7 @@ export default function ResumeGenerator({
           applying={applying}
           generating={generating}
           streamPhase={streamPhase}
+          streamOutput={streamOutput}
           generateError={error}
           regenerateNotice={regenerateNotice}
           templateName={userTemplate?.fileName ?? ""}

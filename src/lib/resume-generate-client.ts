@@ -1,157 +1,98 @@
 import type { GeneratedResumeContent } from "@/lib/resume-types";
-import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
-import { consumeResumeStream } from "@/lib/resume-stream-client";
-import { RESUME_JOB_TTL_MS } from "@/lib/resume-job-constants";
+import {
+  detectResumeGenerationPhase,
+  pickResumeModelText,
+  RESUME_MAX_TOKENS,
+  type ResumeGenerationPhase,
+} from "@/lib/resume-prompt";
+import { iterateBrowserAiStream } from "@/lib/browser-ai-stream";
+import type { ResumeMergeContext } from "@/lib/resume-generate-prep";
 
 export interface ResumeGenerateResult {
   content: GeneratedResumeContent;
   templateName: string;
 }
 
-interface StartAsyncResponse {
-  mode: "async";
-  jobId: string;
-  templateName: string;
-  triggered?: boolean;
-  reused?: boolean;
+interface PrepareResponse {
+  mode?: string;
+  templateName?: string;
+  messages?: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+  mergeContext?: ResumeMergeContext;
+  error?: string;
 }
 
-const POLL_MS = 1500;
-const MAX_POLL_MS = RESUME_JOB_TTL_MS;
-const RUN_PATH = "/.netlify/functions/resume-generate-background";
-
-async function triggerResumeBackgroundJob(jobId: string, signal?: AbortSignal) {
-  const response = await fetch(RUN_PATH, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jobId }),
-    signal,
-  });
-
-  if (response.status !== 202 && !response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(detail || `Failed to start background generation (${response.status}).`);
-  }
-}
-
-const POLL_PHASES: ResumeGenerationPhase[] = [
-  "starting",
-  "analyzing",
-  "title",
-  "summary",
-  "skills",
-  "experiences",
-];
-
-function sleep(ms: number, signal?: AbortSignal) {
-  return new Promise<void>((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new DOMException("Aborted", "AbortError"));
-      return;
-    }
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer);
-        reject(new DOMException("Aborted", "AbortError"));
-      },
-      { once: true }
-    );
-  });
-}
-
-async function pollResumeJob(
-  jobId: string,
-  handlers: {
-    onPhase?: (phase: ResumeGenerationPhase) => void;
-    signal?: AbortSignal;
-  }
-): Promise<ResumeGenerateResult> {
-  const deadline = Date.now() + MAX_POLL_MS;
-  let phaseIndex = 0;
-  handlers.onPhase?.(POLL_PHASES[phaseIndex]);
-
-  while (Date.now() < deadline) {
-    if (handlers.signal?.aborted) {
-      throw new DOMException("Aborted", "AbortError");
-    }
-
-    const statusRes = await fetch("/api/resume/generate/status", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jobId }),
-      signal: handlers.signal,
-    });
-
-    const statusData = (await statusRes.json()) as {
-      status?: string;
-      content?: GeneratedResumeContent;
-      templateName?: string;
-      message?: string;
-      error?: string;
-    };
-
-    if (!statusRes.ok) {
-      throw new Error(statusData.error || statusData.message || `Status check failed (${statusRes.status}).`);
-    }
-
-    if (statusData.status === "pending") {
-      if (phaseIndex < POLL_PHASES.length - 1) {
-        phaseIndex += 1;
-        handlers.onPhase?.(POLL_PHASES[phaseIndex]);
-      }
-      await sleep(POLL_MS, handlers.signal);
-      continue;
-    }
-
-    if (statusData.status === "error") {
-      throw new Error(statusData.message || statusData.error || "Resume generation failed.");
-    }
-
-    if (statusData.status === "done" && statusData.content && statusData.templateName) {
-      handlers.onPhase?.("finalizing");
-      return { content: statusData.content, templateName: statusData.templateName };
-    }
-
-    throw new Error("Unexpected response while generating resume.");
-  }
-
-  throw new Error("Resume generation timed out. Please try again.");
-}
-
+/**
+ * Prepare on Next.js (short), then stream Claude directly from api.devora21.com.
+ * No Netlify background job / long Claude proxy.
+ */
 export async function generateResume(
   body: Record<string, unknown>,
   handlers: {
     onPhase?: (phase: ResumeGenerationPhase) => void;
+    onOutput?: (text: string, full: string) => void;
     signal?: AbortSignal;
   }
 ): Promise<ResumeGenerateResult> {
-  const startRes = await fetch("/api/resume/generate/start", {
+  handlers.onPhase?.("starting");
+
+  const prepRes = await fetch("/api/resume/generate/start", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
     signal: handlers.signal,
   });
 
-  const contentType = startRes.headers.get("content-type") ?? "";
-
-  if (contentType.includes("ndjson")) {
-    return consumeResumeStream(startRes, handlers);
+  const prep = (await prepRes.json()) as PrepareResponse;
+  if (!prepRes.ok) {
+    throw new Error(prep.error || `Prepare failed (${prepRes.status}).`);
+  }
+  if (!prep.messages?.length || !prep.templateName || !prep.mergeContext) {
+    throw new Error("Unexpected prepare response from resume generator.");
   }
 
-  const startData = (await startRes.json()) as StartAsyncResponse & { error?: string };
-  if (!startRes.ok) {
-    throw new Error(startData.error || `Request failed (${startRes.status}).`);
+  handlers.onPhase?.("analyzing");
+
+  let output = "";
+  for await (const delta of iterateBrowserAiStream(prep.messages, RESUME_MAX_TOKENS, {
+    jsonObject: true,
+    signal: handlers.signal,
+  })) {
+    if (!delta.content) continue;
+    output += delta.content;
+    handlers.onOutput?.(delta.content, output);
+    handlers.onPhase?.(detectResumeGenerationPhase("", output));
   }
 
-  if (startData.mode !== "async" || !startData.jobId) {
-    throw new Error("Unexpected response from resume generator.");
+  handlers.onPhase?.("finalizing");
+
+  const modelText = pickResumeModelText(output, "");
+  if (!modelText.trim()) {
+    throw new Error("AI returned no content. Check AI backend configuration and try again.");
   }
 
-  if (!startData.triggered) {
-    await triggerResumeBackgroundJob(startData.jobId, handlers.signal);
+  const finalizeRes = await fetch("/api/resume/generate/finalize", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      modelText,
+      templateName: prep.templateName,
+      mergeContext: prep.mergeContext,
+    }),
+    signal: handlers.signal,
+  });
+
+  const finalized = (await finalizeRes.json()) as {
+    content?: GeneratedResumeContent;
+    templateName?: string;
+    error?: string;
+  };
+
+  if (!finalizeRes.ok) {
+    throw new Error(finalized.error || `Finalize failed (${finalizeRes.status}).`);
+  }
+  if (!finalized.content || !finalized.templateName) {
+    throw new Error("Unexpected finalize response from resume generator.");
   }
 
-  return pollResumeJob(startData.jobId, handlers);
+  return { content: finalized.content, templateName: finalized.templateName };
 }

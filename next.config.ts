@@ -19,6 +19,7 @@ const nextConfig: NextConfig = {
     "/api/resume/stream": ["./assets/starting resumes/**/*"],
     "/api/resume/build": ["./assets/starting resumes/**/*"],
     "/api/resume/generate/start": ["./assets/starting resumes/**/*", "./assets/Prompts/**/*"],
+    "/api/resume/generate/finalize": ["./assets/starting resumes/**/*"],
     "/api/resume/generate/status": ["./assets/starting resumes/**/*"],
   },
   serverExternalPackages: ["pizzip"],

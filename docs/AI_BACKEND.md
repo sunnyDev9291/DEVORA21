@@ -30,6 +30,7 @@ The backend server only:
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `DEEPSEEK_API_KEY` | yes | DeepSeek API key. Never expose to the browser or Netlify. |
+| `DEEPSEEK_MODEL` | no | Defaults to `deepseek-v4-flash` (fast). Set `deepseek-v4-pro` for max quality. |
 | `AI_INTERNAL_API_KEY` | recommended | Shared secret. Next.js / Netlify send `Authorization: Bearer <key>`. If unset, endpoints are open (dev only). |
 
 ## Environment variables (Netlify / Next.js)
@@ -37,7 +38,8 @@ The backend server only:
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `BACKEND_API_URL` | yes | `https://api.devora21.com` |
-| `AI_INTERNAL_API_KEY` | recommended | Same value as backend `AI_INTERNAL_API_KEY` |
+| `AI_INTERNAL_API_KEY` | recommended | Same value as backend `AI_INTERNAL_API_KEY` (server utility calls) |
+| `NEXT_PUBLIC_AI_INTERNAL_API_KEY` | yes for resume stream | Same value — browser streams Claude directly from `/ai/chat/completions/stream` |
 
 Remove `DEEPSEEK_API_KEY` from Netlify after deploy.
 
@@ -79,7 +81,7 @@ Allowed roles: `system`, `user`, `assistant`
 ```json
 {
   "content": "{ \"title\": \"...\", \"summary\": \"...\" }",
-  "model": "deepseek-v4-pro"
+  "model": "deepseek-v4-flash"
 }
 ```
 
@@ -103,10 +105,11 @@ Authorization: Bearer <DEEPSEEK_API_KEY>
 Content-Type: application/json
 
 {
-  "model": "deepseek-v4-pro",
+  "model": "deepseek-v4-flash",
   "messages": [...],
   "max_tokens": 16384,
   "stream": false,
+  "temperature": 0.4,
   "thinking": { "type": "disabled" },
   "response_format": { "type": "json_object" }
 }
