@@ -9,6 +9,8 @@ export type BrowserAiStreamDelta = {
   content?: string;
 };
 
+const MID_STREAM_ERROR = /(?:^|\n)\[error\]\s*(.+)$/i;
+
 function resolveBrowserAiKey(): string {
   const key = process.env.NEXT_PUBLIC_AI_INTERNAL_API_KEY?.trim();
   if (!key) {
@@ -32,9 +34,16 @@ async function readHttpError(response: Response): Promise<string> {
   }
 }
 
+function throwIfMidStreamError(accumulated: string): void {
+  const match = MID_STREAM_ERROR.exec(accumulated);
+  if (match?.[1]) {
+    throw new Error(match[1].trim());
+  }
+}
+
 /**
- * Stream chat completions directly from api.devora21.com (SSE).
- * Does not go through Netlify — avoids function timeouts on long Claude responses.
+ * Stream chat completions directly from api.devora21.com as raw plain text chunks
+ * (not SSE / not JSON envelopes). Avoids Netlify timeouts on long Claude responses.
  */
 export async function* iterateBrowserAiStream(
   messages: BrowserAiChatMessage[],
@@ -45,7 +54,7 @@ export async function* iterateBrowserAiStream(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Accept: "text/event-stream",
+      Accept: "text/plain",
       Authorization: `Bearer ${resolveBrowserAiKey()}`,
     },
     body: JSON.stringify({
@@ -65,39 +74,26 @@ export async function* iterateBrowserAiStream(
 
   const decoder = new TextDecoder();
   const reader = response.body.getReader();
-  let buffer = "";
+  let accumulated = "";
 
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
+    if (!value) continue;
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
+    const chunk = decoder.decode(value, { stream: true });
+    if (!chunk) continue;
 
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("data:")) continue;
+    accumulated += chunk;
+    throwIfMidStreamError(accumulated);
+    yield { content: chunk };
+  }
 
-      const payload = trimmed.slice(5).trim();
-      if (!payload || payload === "[DONE]") continue;
-
-      let parsed: {
-        error?: string;
-        choices?: Array<{ delta?: { content?: string } }>;
-      };
-      try {
-        parsed = JSON.parse(payload);
-      } catch {
-        continue;
-      }
-
-      if (parsed.error) {
-        throw new Error(parsed.error);
-      }
-
-      const content = parsed.choices?.[0]?.delta?.content;
-      if (content) yield { content };
-    }
+  // Flush any remaining decoder state
+  const tail = decoder.decode();
+  if (tail) {
+    accumulated += tail;
+    throwIfMidStreamError(accumulated);
+    yield { content: tail };
   }
 }

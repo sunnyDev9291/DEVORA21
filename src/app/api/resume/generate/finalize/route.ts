@@ -39,6 +39,13 @@ export async function POST(req: Request) {
     return Response.json({ content, templateName });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to finalize resume content.";
-    return Response.json({ error: message }, { status: 500 });
+    const preview =
+      modelText.length <= 800 ? modelText : `${modelText.slice(0, 800)}…`;
+    return Response.json(
+      {
+        error: `${message} Raw AI text (preview): ${preview}`,
+      },
+      { status: 500 }
+    );
   }
 }

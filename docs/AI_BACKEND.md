@@ -150,34 +150,34 @@ Same JSON body as the non-streaming endpoint.
 ### Success response
 
 ```
-Content-Type: text/event-stream
+Content-Type: text/plain; charset=utf-8
+X-Model: claude-sonnet-4-6
 
-data: {"choices":[{"delta":{"content":"Hello"}}]}
-
-data: [DONE]
+{streaming plain text chunks — not SSE, not a JSON envelope}
 ```
 
-Pass through DeepSeek SSE chunks unchanged.
+Resume generation in the browser appends raw text as it arrives, then JSON-parses when `jsonObject` was true.
 
 ### Backend behavior
 
 1. Same auth and validation as non-streaming
-2. Call DeepSeek with `"stream": true`
-3. Stream upstream SSE lines back to the caller
+2. Call Claude with `"stream": true`
+3. Pipe plain-text token chunks to the caller (no OpenAI SSE wrappers)
 4. Use a long timeout (recommended: 300 seconds)
 
 ---
 
 ## Callers in the Next.js app
 
-These server-side modules now call the backend instead of DeepSeek directly:
+These modules call the backend AI endpoints:
 
-- `src/lib/deepseek-stream.ts`
-- `src/lib/ai-backend-client.ts`
-- `netlify/functions/resume-generate-background.ts`
+- `src/lib/browser-ai-stream.ts` — browser-direct resume stream (plain text)
+- `src/lib/ai-backend-client.ts` — server utility calls
+- `src/lib/deepseek-stream.ts` — thin wrapper around ai-backend-client
+- `netlify/functions/resume-generate-background.ts` — legacy (resume gen no longer uses this)
 
 Used for:
-- resume generation
+- resume generation (browser → `/ai/chat/completions/stream`)
 - resume chat
 - general chat
 - ATS keyword extraction
@@ -188,9 +188,10 @@ Used for:
 
 ## CORS
 
-Browser clients do not call these AI endpoints directly.
+Resume generation streams from the browser to `api.devora21.com`, so CORS must allow:
 
-Only server-side Next.js routes and Netlify functions call them, so CORS is not required for AI.
+- Origins: app domains (`devora21.com`, Netlify preview, localhost)
+- Headers: `Authorization`, `Content-Type`, `Accept`
 
 Keep existing CORS for auth/archive routes.
 

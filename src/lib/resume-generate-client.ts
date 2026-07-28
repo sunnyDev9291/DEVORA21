@@ -21,8 +21,14 @@ interface PrepareResponse {
   error?: string;
 }
 
+function previewRawText(text: string, max = 800): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "(empty)";
+  return trimmed.length <= max ? trimmed : `${trimmed.slice(0, max)}…`;
+}
+
 /**
- * Prepare on Next.js (short), then stream Claude directly from api.devora21.com.
+ * Prepare on Next.js (short), then stream Claude plain text directly from api.devora21.com.
  * No Netlify background job / long Claude proxy.
  */
 export async function generateResume(
@@ -47,7 +53,9 @@ export async function generateResume(
     throw new Error(prep.error || `Prepare failed (${prepRes.status}).`);
   }
   if (!prep.messages?.length || !prep.templateName || !prep.mergeContext) {
-    throw new Error("Unexpected prepare response from resume generator.");
+    throw new Error(
+      `Unexpected prepare response from resume generator: ${JSON.stringify(prep).slice(0, 400)}`
+    );
   }
 
   handlers.onPhase?.("analyzing");
@@ -67,7 +75,9 @@ export async function generateResume(
 
   const modelText = pickResumeModelText(output, "");
   if (!modelText.trim()) {
-    throw new Error("AI returned no content. Check AI backend configuration and try again.");
+    throw new Error(
+      `AI returned no content after stream. Raw response:\n${previewRawText(output)}`
+    );
   }
 
   const finalizeRes = await fetch("/api/resume/generate/finalize", {
@@ -81,17 +91,20 @@ export async function generateResume(
     signal: handlers.signal,
   });
 
-  const finalized = (await finalizeRes.json()) as {
+  const finalized = (await finalizeRes.json().catch(() => null)) as {
     content?: GeneratedResumeContent;
     templateName?: string;
     error?: string;
-  };
+  } | null;
 
   if (!finalizeRes.ok) {
-    throw new Error(finalized.error || `Finalize failed (${finalizeRes.status}).`);
+    const detail = finalized?.error || `Finalize failed (${finalizeRes.status}).`;
+    throw new Error(`${detail}\n\nRaw AI text:\n${previewRawText(modelText)}`);
   }
-  if (!finalized.content || !finalized.templateName) {
-    throw new Error("Unexpected finalize response from resume generator.");
+  if (!finalized?.content || !finalized.templateName) {
+    throw new Error(
+      `Could not parse streamed AI JSON into resume content.\n\nRaw AI text:\n${previewRawText(modelText)}`
+    );
   }
 
   return { content: finalized.content, templateName: finalized.templateName };

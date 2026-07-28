@@ -15,10 +15,12 @@ export type AiStreamDelta = {
   reasoning?: string;
 };
 
-function buildAiAuthHeaders(): HeadersInit {
+const MID_STREAM_ERROR = /(?:^|\n)\[error\]\s*(.+)$/i;
+
+function buildAiAuthHeaders(accept = "text/plain"): HeadersInit {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    Accept: "application/json",
+    Accept: accept,
   };
   const key = process.env.AI_INTERNAL_API_KEY?.trim();
   if (key) {
@@ -44,6 +46,14 @@ async function readBackendError(response: Response): Promise<string> {
   }
 }
 
+function throwIfMidStreamError(accumulated: string): void {
+  const match = MID_STREAM_ERROR.exec(accumulated);
+  if (match?.[1]) {
+    throw new Error(match[1].trim());
+  }
+}
+
+/** Collect a full completion as plain text (non-stream or drained stream body). */
 export async function completeAiChat(
   messages: AiChatMessage[],
   maxTokens = 4096,
@@ -55,7 +65,7 @@ export async function completeAiChat(
 
   const response = await fetch(`${BACKEND_API_URL}/ai/chat/completions`, {
     method: "POST",
-    headers: buildAiAuthHeaders(),
+    headers: buildAiAuthHeaders("text/plain"),
     body: JSON.stringify({
       messages,
       maxTokens: options?.maxTokens ?? maxTokens,
@@ -67,14 +77,15 @@ export async function completeAiChat(
     throw new Error(await readBackendError(response));
   }
 
-  const data = (await response.json()) as { content?: string };
-  const content = data.content?.trim();
+  const content = (await response.text()).trim();
+  throwIfMidStreamError(content);
   if (!content) {
     throw new Error("Empty response from AI backend.");
   }
   return content;
 }
 
+/** Stream plain-text chunks from the backend (Claude stream=true, no SSE wrappers). */
 export async function* iterateAiChatStream(
   messages: AiChatMessage[],
   maxTokens = 4096,
@@ -86,7 +97,7 @@ export async function* iterateAiChatStream(
 
   const response = await fetch(`${BACKEND_API_URL}/ai/chat/completions/stream`, {
     method: "POST",
-    headers: buildAiAuthHeaders(),
+    headers: buildAiAuthHeaders("text/plain"),
     body: JSON.stringify({
       messages,
       maxTokens: options?.maxTokens ?? maxTokens,
@@ -104,43 +115,25 @@ export async function* iterateAiChatStream(
 
   const decoder = new TextDecoder();
   const reader = response.body.getReader();
-  let buffer = "";
+  let accumulated = "";
 
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
+    if (!value) continue;
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() ?? "";
+    const chunk = decoder.decode(value, { stream: true });
+    if (!chunk) continue;
 
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("data:")) continue;
+    accumulated += chunk;
+    throwIfMidStreamError(accumulated);
+    yield { content: chunk };
+  }
 
-      const payload = trimmed.slice(5).trim();
-      if (payload === "[DONE]") continue;
-
-      try {
-        const parsed = JSON.parse(payload) as {
-          error?: string;
-          choices?: Array<{
-            delta?: { content?: string; reasoning_content?: string };
-          }>;
-        };
-        if (parsed.error) {
-          throw new Error(parsed.error);
-        }
-        const delta = parsed.choices?.[0]?.delta;
-        if (!delta) continue;
-
-        const chunk: AiStreamDelta = {};
-        if (delta.reasoning_content) chunk.reasoning = delta.reasoning_content;
-        if (delta.content) chunk.content = delta.content;
-        if (chunk.reasoning || chunk.content) yield chunk;
-      } catch {
-        // Skip malformed SSE chunks.
-      }
-    }
+  const tail = decoder.decode();
+  if (tail) {
+    accumulated += tail;
+    throwIfMidStreamError(accumulated);
+    yield { content: tail };
   }
 }
