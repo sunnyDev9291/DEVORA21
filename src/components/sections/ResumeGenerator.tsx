@@ -10,8 +10,10 @@ import { useAuth } from "@/context/AuthContext";
 import type { UserResumeTemplateAsset } from "@/lib/profile-api";
 import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
 import { generateResume } from "@/lib/resume-generate-client";
+import { scrapeJobFromUrl } from "@/lib/job-scrape-api";
 import { archiveResume } from "@/lib/resume-archive";
 import { resumeBuilderAccessDeniedMessage } from "@/lib/resume-access";
+import { ApiError } from "@/lib/auth-api";
 import { buildUnifiedResumeScore } from "@/lib/resume-unified-score";
 import { emptyRuleKeepScore } from "@/lib/resume-rule-keep";
 import type { ResumeScoreResult } from "@/lib/resume-score";
@@ -125,6 +127,7 @@ export default function ResumeGenerator({
     jobLink: "",
     jobTitle: "",
     companyName: "",
+    location: "",
     jobDescription: "",
     customPrompt: userPrompt,
   });
@@ -139,6 +142,7 @@ export default function ResumeGenerator({
   const [generating, setGenerating] = useState(false);
   const [applying, setApplying] = useState(false);
   const [importingJob, setImportingJob] = useState(false);
+  const [jobFetchWarning, setJobFetchWarning] = useState("");
   const [error, setError] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [generationKey, setGenerationKey] = useState(0);
@@ -249,30 +253,42 @@ export default function ResumeGenerator({
     }
 
     setError("");
+    setJobFetchWarning("");
     setImportingJob(true);
     try {
-      const res = await fetch("/api/job/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
-      });
-      const data = (await res.json()) as {
-        title?: string;
-        company?: string;
-        description?: string;
-        error?: string;
-      };
-      if (!res.ok) {
-        throw new Error(data.error || `Import failed (${res.status}).`);
-      }
+      const data = await scrapeJobFromUrl(url);
+      // Always write scraped values into the form (title is required by the API helper).
       setForm((prev) => ({
         ...prev,
-        jobTitle: data.title?.trim() || prev.jobTitle,
-        companyName: data.company?.trim() || prev.companyName,
-        jobDescription: data.description?.trim() || prev.jobDescription,
+        jobTitle: data.jobTitle,
+        companyName: data.companyName || prev.companyName,
+        location: data.location || prev.location,
+        jobDescription: data.jobDescription || prev.jobDescription,
       }));
+
+      const softNotes: string[] = [];
+      if (!data.companyName.trim()) {
+        softNotes.push("Company name was not found — enter it manually.");
+      }
+      if (!data.jobDescription.trim()) {
+        softNotes.push("Job description was incomplete — paste or edit it before generating.");
+      }
+      if (data.warning?.trim()) softNotes.push(data.warning.trim());
+      if (data.confidence === "low") {
+        softNotes.push(
+          "Low confidence scrape — review title, company, and description before generating."
+        );
+      }
+      setJobFetchWarning(softNotes.join(" "));
     } catch (err) {
-      setError((err as Error).message || "Could not import that job link.");
+      if (err instanceof ApiError) {
+        setError(err.message);
+      } else {
+        setError(
+          (err as Error).message ||
+            "Could not fetch that job link. Paste the job description manually instead."
+        );
+      }
     } finally {
       setImportingJob(false);
     }
@@ -289,6 +305,7 @@ export default function ResumeGenerator({
       jobLink: "",
       jobTitle: "",
       companyName: "",
+      location: "",
       jobDescription: "",
     }));
     setStep("form");
@@ -301,6 +318,7 @@ export default function ResumeGenerator({
     setArchiveError("");
     setPreviewOpen(false);
     setError("");
+    setJobFetchWarning("");
     setStreamPhase("starting");
     setResumeScore(null);
     setScoreError("");
@@ -320,6 +338,7 @@ export default function ResumeGenerator({
     !!form.jobLink.trim() ||
     !!form.jobTitle.trim() ||
     !!form.companyName.trim() ||
+    !!form.location.trim() ||
     !!form.jobDescription.trim() ||
     !!content ||
     step !== "form" ||
@@ -812,7 +831,7 @@ export default function ResumeGenerator({
                 type="url"
                 value={form.jobLink}
                 onChange={handleChange}
-                placeholder="https://boards.greenhouse.io/… or company careers URL"
+                placeholder="https://boards.greenhouse.io/… or Lever / Ashby careers URL"
                 className={`${inputClass} flex-1`}
                 disabled={generating || applying || importingJob}
               />
@@ -836,8 +855,16 @@ export default function ResumeGenerator({
               </button>
             </div>
             <p className="mt-1.5 text-xs text-slate-400">
-              Apply fills title, company, and description from the posting when possible.
+              Apply fills job title, company name, and description from the posting, then you can generate the AI draft.
             </p>
+            {jobFetchWarning && (
+              <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-3 py-2.5">
+                <svg className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-xs text-amber-800 dark:text-amber-200">{jobFetchWarning}</p>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -871,6 +898,22 @@ export default function ResumeGenerator({
                 required
               />
             </div>
+          </div>
+
+          <div>
+            <label htmlFor="location" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+              Location
+            </label>
+            <input
+              id="location"
+              name="location"
+              type="text"
+              value={form.location}
+              onChange={handleChange}
+              placeholder="e.g. Remote · New York, NY"
+              className={inputClass}
+              disabled={generating || applying || importingJob}
+            />
           </div>
 
           <div>
