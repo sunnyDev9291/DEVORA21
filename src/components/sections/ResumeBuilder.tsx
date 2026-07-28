@@ -65,7 +65,9 @@ export default function ResumeBuilder() {
           </div>
 
           <div className="px-6 py-8 sm:px-8 sm:py-10">
-            {!loading && (
+            {loading && !template && !prompt ? (
+              <p className="text-sm text-slate-500">Loading your profile…</p>
+            ) : (
               <ResumeGenerator
                 userTemplate={template}
                 userPrompt={prompt?.content ?? ""}

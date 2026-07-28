@@ -5,6 +5,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Button from "@/components/ui/Button";
 import DashboardProfilePanel from "@/components/dashboard/DashboardProfilePanel";
+import DashboardApiKeysPanel from "@/components/dashboard/DashboardApiKeysPanel";
 import EmailVerificationBanner from "@/components/auth/EmailVerificationBanner";
 import ResumeAccessNotice from "@/components/auth/ResumeAccessNotice";
 import { AuthGuard } from "@/components/auth/AuthGuard";
@@ -91,7 +92,7 @@ function DashboardContent() {
         )}
 
         {user && isValidAuthUser(user) && (
-          <div className="mt-8">
+          <div className="mt-8 space-y-8">
             <DashboardProfilePanel
               user={user}
               onProfileUpdated={() => {
@@ -99,6 +100,7 @@ function DashboardContent() {
                 void refreshUser();
               }}
             />
+            <DashboardApiKeysPanel />
           </div>
         )}
 

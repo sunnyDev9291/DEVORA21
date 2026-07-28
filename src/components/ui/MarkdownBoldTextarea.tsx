@@ -7,6 +7,7 @@ interface MarkdownBoldTextareaProps {
   id?: string;
   value: string;
   onChange: (value: string) => void;
+  onBlur?: (value: string) => void;
   className?: string;
   rows?: number;
   minHeight?: number;
@@ -19,6 +20,7 @@ export default function MarkdownBoldTextarea({
   id,
   value,
   onChange,
+  onBlur,
   className = "",
   rows = 2,
   minHeight: minHeightProp,
@@ -43,6 +45,12 @@ export default function MarkdownBoldTextarea({
     syncFromValue();
   }, [syncFromValue]);
 
+  const readValue = useCallback(() => {
+    const el = editorRef.current;
+    if (!el) return value;
+    return htmlToMarkdownBold(el);
+  }, [value]);
+
   const emitChange = useCallback(() => {
     const el = editorRef.current;
     if (!el || syncingRef.current) return;
@@ -65,7 +73,10 @@ export default function MarkdownBoldTextarea({
       aria-label={ariaLabel}
       data-placeholder={placeholder}
       onInput={emitChange}
-      onBlur={emitChange}
+      onBlur={() => {
+        emitChange();
+        onBlur?.(readValue());
+      }}
       onPaste={(e) => {
         e.preventDefault();
         const text = e.clipboardData.getData("text/plain");

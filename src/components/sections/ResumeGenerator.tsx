@@ -39,10 +39,18 @@ import {
 } from "@/lib/resume-filename";
 import { loadStoredProfile, resolveUserNames } from "@/lib/user-profile";
 
+/**
+ * Prefer the template resolved by useUserProfileAssets (remote-synced).
+ * Fall back to localStorage only when the hook has not provided a template yet
+ * (offline / API unavailable), so another device's upload is not blocked forever.
+ */
 function resolveActiveUserTemplate(
   userId: string | undefined,
   userTemplate: UserResumeTemplateAsset | null
 ): UserResumeTemplateAsset | null {
+  if (userTemplate?.templateBase64?.trim() && userTemplate.fileName?.trim()) {
+    return userTemplate;
+  }
   const stored = userId ? loadStoredProfile(userId) : null;
   if (stored?.resumeTemplateBase64?.trim() && stored.resumeTemplateFileName?.trim()) {
     return {
@@ -50,7 +58,7 @@ function resolveActiveUserTemplate(
       templateBase64: stored.resumeTemplateBase64,
     };
   }
-  return userTemplate;
+  return null;
 }
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
@@ -1010,8 +1018,8 @@ export default function ResumeGenerator({
               templateName={activeTemplate?.fileName ?? ""}
               resumeFileBaseName={resumeFileBaseName}
               suggestedResumeBaseName={suggestedResumeBaseName}
-              onResumeFileBaseNameChange={(value) => {
-                setResumeNameTouched(true);
+              onResumeFileBaseNameChange={(value, options) => {
+                if (options?.markTouched !== false) setResumeNameTouched(true);
                 setResumeFileBaseName(value);
               }}
               onResumeFileBaseNameReset={() => {
@@ -1062,8 +1070,8 @@ export default function ResumeGenerator({
           customPrompt={form.customPrompt}
           resumeFileBaseName={resumeFileBaseName}
           suggestedResumeBaseName={suggestedResumeBaseName}
-          onResumeFileBaseNameChange={(value) => {
-            setResumeNameTouched(true);
+          onResumeFileBaseNameChange={(value, options) => {
+            if (options?.markTouched !== false) setResumeNameTouched(true);
             setResumeFileBaseName(value);
           }}
           onResumeFileBaseNameReset={() => {

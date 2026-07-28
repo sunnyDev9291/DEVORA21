@@ -145,7 +145,7 @@ export function setParagraphText(pXml: string, text: string): string {
   }
 
   const open = pXml.match(/^(<w:p[^>]*>)/)?.[1] ?? "<w:p>";
-  const pPr = pXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] ?? "";
+  const pPr = extractParagraphProperties(pXml);
   const runs = buildRunsFromMarkdownText(pXml, text);
   return `${open}${pPr}${runs}</w:p>`;
 }
@@ -422,7 +422,9 @@ function buildRunsFromMarkdownWithProperties(
 function buildRunsFromMarkdownText(pXml: string, text: string): string {
   const runs = matchTextRuns(pXml);
   const baseRPr = extractBaseRunProperties(pXml);
-  const labelRPr = pickLabelRunProperties(runs) || ensureLatinBoldRunProperties(baseRPr);
+  // Bullet templates are usually fully plain — pickLabelRunProperties still returns that
+  // plain rPr (truthy), so **markdown** segments must explicitly get Latin <w:b/>.
+  const labelRPr = ensureLatinBoldRunProperties(pickLabelRunProperties(runs) || baseRPr);
   const valueRPr =
     pickValueRunProperties(runs) || stripDecorations(baseRPr) || baseRPr;
 
@@ -461,7 +463,7 @@ function setSkillLineParagraphText(pXml: string, line: string): string {
   if (!parsed) return setParagraphText(pXml, trimmed);
 
   const open = pXml.match(/^(<w:p[^>]*>)/)?.[1] ?? "<w:p>";
-  const pPr = pXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] ?? "";
+  const pPr = extractParagraphProperties(pXml);
   const runs = matchTextRuns(pXml);
 
   let boldLabelRPr = "";
@@ -506,7 +508,7 @@ function inferBarFieldSeparator(pXml: string): { labelSuffix: string; valuePrefi
 
 export function setBarFieldParagraphText(pXml: string, label: string, value: string): string {
   const open = pXml.match(/^(<w:p[^>]*>)/)?.[1] ?? "<w:p>";
-  const pPr = pXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/)?.[0] ?? "";
+  const pPr = extractParagraphProperties(pXml);
   const runs = matchTextRuns(pXml);
 
   const baseRPr = extractBaseRunProperties(pXml);
@@ -726,6 +728,31 @@ function collectSectionParagraphIndices(
   return indices;
 }
 
+/** Characters commonly used as typed horizontal rules in Word templates. */
+const HORIZONTAL_RULE_TEXT = /^[\s_\u2013\u2014\u2015\u2212\u2500\u2501\u002D\uFF0D=·.•]{3,}$/;
+
+function extractParagraphProperties(pXml: string): string {
+  return pXml.match(/<w:pPr\b[^>]*>[\s\S]*?<\/w:pPr>/)?.[0] ?? "";
+}
+
+/** True when the paragraph is a decorative horizontal rule (border, drawing, or rule characters). */
+export function isHorizontalRuleParagraph(pXml: string): boolean {
+  const text = getParagraphText(pXml).trim();
+  if (text && HORIZONTAL_RULE_TEXT.test(text)) return true;
+  if (text) return false;
+
+  const pPr = extractParagraphProperties(pXml);
+  if (/<w:pBdr\b/i.test(pPr) || /<w:bottom\b/i.test(pPr) || /<w:top\b/i.test(pPr)) return true;
+  if (/<w:drawing\b/i.test(pXml) || /<w:pict\b/i.test(pXml) || /<v:line\b/i.test(pXml)) return true;
+  return false;
+}
+
+function isSectionSpacerParagraph(pXml: string): boolean {
+  const text = getParagraphText(pXml).trim();
+  if (!text) return true;
+  return isHorizontalRuleParagraph(pXml);
+}
+
 type SectionRegionParts = {
   leadingEmpty: string[];
   contentTemplates: string[];
@@ -739,26 +766,38 @@ function partitionSectionRegion(regionParagraphs: string[]): SectionRegionParts 
   let phase: "leading" | "content" | "trailing" = "leading";
 
   for (const paragraph of regionParagraphs) {
-    const text = getParagraphText(paragraph).trim();
+    const spacer = isSectionSpacerParagraph(paragraph);
     if (phase === "leading") {
-      if (!text) leadingEmpty.push(paragraph);
+      if (spacer) leadingEmpty.push(paragraph);
       else {
         contentTemplates.push(paragraph);
         phase = "content";
       }
     } else if (phase === "content") {
-      if (!text) {
+      if (spacer) {
         trailingEmpty.push(paragraph);
         phase = "trailing";
       } else {
         contentTemplates.push(paragraph);
       }
-    } else {
+    } else if (spacer) {
       trailingEmpty.push(paragraph);
+    } else {
+      // Non-spacer after trailing rules — treat as more content (rare), keep prior rules before it.
+      contentTemplates.push(...trailingEmpty, paragraph);
+      trailingEmpty.length = 0;
+      phase = "content";
     }
   }
 
   return { leadingEmpty, contentTemplates, trailingEmpty };
+}
+
+/** Keep decorative rule paragraphs intact — never rewrite their runs. */
+function preserveSpacerParagraphs(paragraphs: string[]): string[] {
+  return paragraphs.map((paragraph) =>
+    isHorizontalRuleParagraph(paragraph) ? paragraph : setParagraphText(paragraph, "")
+  );
 }
 
 function buildSectionParagraphs(
@@ -776,26 +815,36 @@ function buildSectionParagraphs(
 
   const fallback =
     contentTemplates[contentTemplates.length - 1] ??
-    regionParagraphs.find((paragraph) => getParagraphText(paragraph).trim()) ??
+    regionParagraphs.find(
+      (paragraph) => getParagraphText(paragraph).trim() && !isHorizontalRuleParagraph(paragraph)
+    ) ??
     regionParagraphs[0];
 
   if (lines.length === 0) {
     return [
-      ...leadingEmpty,
+      ...preserveSpacerParagraphs(leadingEmpty),
       ...contentTemplates.map((paragraph) => setParagraphText(paragraph, "")),
-      ...trailingEmpty,
+      ...preserveSpacerParagraphs(trailingEmpty),
     ];
   }
 
   if (contentTemplates.length <= 1) {
     const merged = lines.join(contentTemplates.length === 0 ? "\n" : " ");
-    return [...leadingEmpty, renderLine(fallback, merged), ...trailingEmpty];
+    return [
+      ...preserveSpacerParagraphs(leadingEmpty),
+      renderLine(fallback, merged),
+      ...preserveSpacerParagraphs(trailingEmpty),
+    ];
   }
 
   const rendered = lines.map((line, index) =>
     renderLine(contentTemplates[index] ?? fallback, line)
   );
-  return [...leadingEmpty, ...rendered, ...trailingEmpty];
+  return [
+    ...preserveSpacerParagraphs(leadingEmpty),
+    ...rendered,
+    ...preserveSpacerParagraphs(trailingEmpty),
+  ];
 }
 
 function setParagraphSpacing(pXml: string, beforeTwips: number, afterTwips: number): string {
@@ -814,8 +863,16 @@ function setParagraphSpacing(pXml: string, beforeTwips: number, afterTwips: numb
 function applySkillsExperienceGap(trailingEmpty: string[]): string[] {
   if (trailingEmpty.length === 0) return trailingEmpty;
   const last = trailingEmpty[trailingEmpty.length - 1];
+  // Never rewrite a decorative horizontal rule — only adjust plain spacers.
+  if (isHorizontalRuleParagraph(last)) {
+    return trailingEmpty.map((paragraph) =>
+      isHorizontalRuleParagraph(paragraph) ? paragraph : setParagraphText(paragraph, "")
+    );
+  }
   return [
-    ...trailingEmpty.slice(0, -1),
+    ...trailingEmpty.slice(0, -1).map((paragraph) =>
+      isHorizontalRuleParagraph(paragraph) ? paragraph : setParagraphText(paragraph, "")
+    ),
     setParagraphSpacing(setParagraphText(last, ""), 0, SKILLS_EXPERIENCE_GAP_AFTER_TWIPS),
   ];
 }
@@ -841,7 +898,11 @@ function buildSkillsRegionParagraphs(regionParagraphs: string[], skillsContent: 
       ? applySkillsExperienceGap(trailingEmpty)
       : applySkillsExperienceGap([setParagraphText(fallback, "")]);
 
-  return [...leadingEmpty, ...skillParagraphs, ...gapTrailing];
+  return [
+    ...preserveSpacerParagraphs(leadingEmpty),
+    ...skillParagraphs,
+    ...gapTrailing,
+  ];
 }
 
 /**
@@ -898,8 +959,13 @@ function applyTitleToHeaderRegion(
   }
 
   // 2b. Reuse an empty spacer immediately after the name (keeps template spacing).
+  // Skip decorative horizontal-rule paragraphs so section lines are not overwritten.
   const afterName = paragraphs[nameIdx + 1];
-  if (afterName !== undefined && !getParagraphText(afterName).trim()) {
+  if (
+    afterName !== undefined &&
+    !getParagraphText(afterName).trim() &&
+    !isHorizontalRuleParagraph(afterName)
+  ) {
     paragraphs[nameIdx + 1] = setParagraphText(afterName, trimmedTitle);
     return paragraphs;
   }

@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { GeneratedResumeContent, ResumeExperience, ResumeProject } from "@/lib/resume-types";
 import { isProjectLayout } from "@/lib/resume-experience-utils";
-import { sanitizeResumeFileBaseName } from "@/lib/resume-filename";
+import { extractResumeTitleHeadline, sanitizeResumeFileBaseName } from "@/lib/resume-filename";
+import {
+  applyResumeTitleHeadlineChange,
+  replaceRoleInResumeFileBaseName,
+} from "@/lib/resume-title-sync";
 import MarkdownBoldTextarea from "@/components/ui/MarkdownBoldTextarea";
 import ResumeRegenerateDiffPanel from "@/components/ui/ResumeRegenerateDiffPanel";
 import type { FeedbackResolution, ResumeFieldChange } from "@/lib/resume-content-diff";
@@ -17,7 +21,7 @@ interface ResumeContentReviewProps {
   templateName: string;
   resumeFileBaseName: string;
   suggestedResumeBaseName: string;
-  onResumeFileBaseNameChange: (value: string) => void;
+  onResumeFileBaseNameChange: (value: string, options?: { markTouched?: boolean }) => void;
   onResumeFileBaseNameReset?: () => void;
   applyLabel?: string;
   generationKey: number;
@@ -90,6 +94,9 @@ export default function ResumeContentReview({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const experienceSectionRef = useRef<HTMLDivElement>(null);
   const scrollRestoreRef = useRef<{ container: HTMLElement | Window; top: number } | null>(null);
+  const titleHeadlineRef = useRef(extractResumeTitleHeadline(content.title));
+  const contentRef = useRef(content);
+  contentRef.current = content;
 
   const copyBullet = useCallback((key: string, text: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -101,7 +108,8 @@ export default function ResumeContentReview({
   useEffect(() => {
     setReviewConfirmed(false);
     setExpandedExp(null);
-  }, [generationKey, templateName]);
+    titleHeadlineRef.current = extractResumeTitleHeadline(content.title);
+  }, [generationKey, templateName]); // eslint-disable-line react-hooks/exhaustive-deps -- reset on new generation/template only
 
   useLayoutEffect(() => {
     const restore = scrollRestoreRef.current;
@@ -114,6 +122,31 @@ export default function ResumeContentReview({
     const container = getScrollContainer(experienceSectionRef.current);
     scrollRestoreRef.current = { container, top: readScrollTop(container) };
     setExpandedExp((current) => (current === index ? null : index));
+  }
+
+  function handleTitleBlur(nextTitle: string) {
+    const previousHeadline = titleHeadlineRef.current;
+    const synced = applyResumeTitleHeadlineChange(
+      { ...contentRef.current, title: nextTitle },
+      nextTitle,
+      previousHeadline
+    );
+    titleHeadlineRef.current = extractResumeTitleHeadline(synced.title);
+    onChange(synced);
+
+    const nextHeadline = extractResumeTitleHeadline(synced.title);
+    if (
+      previousHeadline &&
+      nextHeadline &&
+      previousHeadline.toLowerCase() !== nextHeadline.toLowerCase()
+    ) {
+      const nextBaseName = synced.fileName?.trim()
+        ? sanitizeResumeFileBaseName(synced.fileName)
+        : replaceRoleInResumeFileBaseName(resumeFileBaseName, previousHeadline, nextHeadline);
+      if (nextBaseName.trim()) {
+        onResumeFileBaseNameChange(nextBaseName, { markTouched: false });
+      }
+    }
   }
 
   function updateExperience(index: number, patch: Partial<ResumeExperience>) {
@@ -209,10 +242,14 @@ export default function ResumeContentReview({
             id="resume-title"
             value={content.title}
             onChange={(title) => onChange({ ...content, title })}
+            onBlur={handleTitleBlur}
             className={`${fieldClass} ${changedRing("title")}`}
             rows={1}
             placeholder="Senior Engineer | React | AWS"
           />
+          <p className="mt-2 text-xs text-slate-400">
+            Changing the main role (before the first |) updates summary, experience roles, and the file name role.
+          </p>
         </div>
 
         <div className={`${embedded ? "" : "lg:col-span-2"} rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.02] p-5`}>
@@ -429,7 +466,7 @@ export default function ResumeContentReview({
           id="resume-file-name"
           type="text"
           value={resumeFileBaseName}
-          onChange={(e) => onResumeFileBaseNameChange(sanitizeResumeFileBaseName(e.target.value))}
+          onChange={(e) => onResumeFileBaseNameChange(sanitizeResumeFileBaseName(e.target.value), { markTouched: true })}
           className={`${fieldClass} font-mono`}
           placeholder="Franco_Torrez_Senior_Software_Engineer_React,AWS"
           spellCheck={false}
