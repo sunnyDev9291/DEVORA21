@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { GeneratedResumeContent, ResumeExperience, ResumeProject } from "@/lib/resume-types";
 import { isProjectLayout } from "@/lib/resume-experience-utils";
 import { extractResumeTitleHeadline, sanitizeResumeFileBaseName } from "@/lib/resume-filename";
@@ -92,11 +93,16 @@ export default function ResumeContentReview({
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [expandedExp, setExpandedExp] = useState<number | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
   const experienceSectionRef = useRef<HTMLDivElement>(null);
   const scrollRestoreRef = useRef<{ container: HTMLElement | Window; top: number } | null>(null);
   const titleHeadlineRef = useRef(extractResumeTitleHeadline(content.title));
   const contentRef = useRef(content);
   contentRef.current = content;
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const copyBullet = useCallback((key: string, text: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -205,6 +211,54 @@ export default function ResumeContentReview({
       : "";
   const skillLineCount = content.skills.split(/\n+/).filter((line) => line.trim()).length;
   const summaryWordCount = content.summary.split(/\s+/).filter(Boolean).length;
+
+  const applyBar = (
+    <div
+      className={
+        embedded
+          ? "sticky bottom-0 z-10 -mx-4 sm:-mx-5 mt-2 border-t border-slate-200 dark:border-white/[0.10] bg-white/95 dark:bg-navy-900/95 backdrop-blur-md px-4 sm:px-5 py-4"
+          : "rounded-2xl border border-slate-200 dark:border-white/[0.10] bg-white/95 dark:bg-navy-900/95 backdrop-blur-md shadow-xl shadow-slate-200/50 dark:shadow-black/40 p-5"
+      }
+    >
+      <label className="flex items-start gap-3 cursor-pointer mb-4">
+        <input
+          type="checkbox"
+          checked={reviewConfirmed}
+          onChange={(e) => setReviewConfirmed(e.target.checked)}
+          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+        />
+        <span className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+          I&apos;ve reviewed and edited this content. Apply it to my resume file.
+        </span>
+      </label>
+      <button
+        type="button"
+        onClick={onApply}
+        disabled={applying || generating || !canApply}
+        className="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-blue-600/25 transition-all"
+      >
+        {applying ? (
+          <>
+            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            Building your .docx…
+          </>
+        ) : (
+          <>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            {applyLabel}
+          </>
+        )}
+      </button>
+      {!reviewConfirmed && (
+        <p className="text-xs text-slate-400 text-center mt-2">Check the box above to enable apply</p>
+      )}
+    </div>
+  );
 
   return (
     <div className={embedded ? "space-y-4" : "space-y-6"}>
@@ -488,38 +542,21 @@ export default function ResumeContentReview({
         </div>
       </div>
 
-      <div className={`${embedded ? "rounded-2xl border border-slate-200 dark:border-white/[0.10] bg-slate-50/80 dark:bg-white/[0.02] p-4" : "sticky bottom-4 z-10 rounded-2xl border border-slate-200 dark:border-white/[0.10] bg-white/95 dark:bg-navy-900/95 backdrop-blur-md shadow-xl shadow-slate-200/50 dark:shadow-black/40 p-5"}`}>
-        <label className="flex items-start gap-3 cursor-pointer mb-4">
-          <input type="checkbox" checked={reviewConfirmed} onChange={(e) => setReviewConfirmed(e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
-          <span className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
-            I&apos;ve reviewed and edited this content. Apply it to my resume file.
-          </span>
-        </label>
-        <button
-          type="button"
-          onClick={onApply}
-          disabled={applying || generating || !canApply}
-          className="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-blue-600/25 transition-all"
-        >
-          {applying ? (
-            <>
-              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-              Building your .docx…
-            </>
-          ) : (
-            <>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              {applyLabel}
-            </>
-          )}
-        </button>
-        {!reviewConfirmed && <p className="text-xs text-slate-400 text-center mt-2">Check the box above to enable apply</p>}
-      </div>
+      {embedded ? (
+        applyBar
+      ) : (
+        <>
+          <div className="h-44 sm:h-40" aria-hidden />
+          {mounted
+            ? createPortal(
+                <div className="fixed inset-x-0 bottom-0 z-40 pointer-events-none px-4 pb-4 sm:px-6 lg:px-8">
+                  <div className="pointer-events-auto mx-auto w-full max-w-[70vw]">{applyBar}</div>
+                </div>,
+                document.body
+              )
+            : null}
+        </>
+      )}
     </div>
   );
 }
