@@ -15,7 +15,7 @@ export default function ResumeBuilder() {
   const [wizardStep, setWizardStep] = useState(1);
 
   return (
-    <section className="relative overflow-hidden bg-slate-50 py-12 dark:bg-navy-950 sm:py-16">
+    <section className="relative overflow-x-hidden bg-slate-50 py-12 dark:bg-navy-950 sm:py-16">
       <div className="pointer-events-none absolute inset-0" aria-hidden="true">
         <div className="absolute left-1/2 top-0 h-[420px] w-[900px] -translate-x-1/2 rounded-full bg-blue-600/8 blur-[120px]" />
         <div className="absolute bottom-0 right-0 h-[300px] w-[500px] rounded-full bg-violet-600/6 blur-[100px]" />
@@ -24,7 +24,7 @@ export default function ResumeBuilder() {
       <div className="relative mx-auto w-full max-w-[70vw] px-4 sm:px-6 lg:px-8">
         <ResumeStepper currentStep={wizardStep} />
 
-        <div className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white/90 shadow-xl shadow-slate-200/50 backdrop-blur-sm dark:border-white/[0.08] dark:bg-navy-900/80 dark:shadow-black/30">
+        <div className="overflow-x-hidden rounded-3xl border border-slate-200/80 bg-white/90 shadow-xl shadow-slate-200/50 backdrop-blur-sm dark:border-white/[0.08] dark:bg-navy-900/80 dark:shadow-black/30">
           <div className="border-b border-slate-200/80 bg-gradient-to-r from-slate-50/80 to-blue-50/30 px-6 py-6 dark:border-white/[0.06] dark:from-white/[0.02] dark:to-blue-500/[0.04] sm:px-8 sm:py-7">
             <p className="text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400">
               Step 1 · Your template

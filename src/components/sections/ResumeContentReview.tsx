@@ -212,15 +212,9 @@ export default function ResumeContentReview({
   const skillLineCount = content.skills.split(/\n+/).filter((line) => line.trim()).length;
   const summaryWordCount = content.summary.split(/\s+/).filter(Boolean).length;
 
-  const applyBar = (
-    <div
-      className={
-        embedded
-          ? "sticky bottom-0 z-10 -mx-4 sm:-mx-5 mt-2 border-t border-slate-200 dark:border-white/[0.10] bg-white/95 dark:bg-navy-900/95 backdrop-blur-md px-4 sm:px-5 py-4"
-          : "rounded-2xl border border-slate-200 dark:border-white/[0.10] bg-white/95 dark:bg-navy-900/95 backdrop-blur-md shadow-xl shadow-slate-200/50 dark:shadow-black/40 p-5"
-      }
-    >
-      <label className="flex items-start gap-3 cursor-pointer mb-4">
+  const applyBarInner = (
+    <>
+      <label className="flex items-start gap-3 cursor-pointer mb-3 sm:mb-4">
         <input
           type="checkbox"
           checked={reviewConfirmed}
@@ -257,7 +251,7 @@ export default function ResumeContentReview({
       {!reviewConfirmed && (
         <p className="text-xs text-slate-400 text-center mt-2">Check the box above to enable apply</p>
       )}
-    </div>
+    </>
   );
 
   return (
@@ -543,14 +537,23 @@ export default function ResumeContentReview({
       </div>
 
       {embedded ? (
-        applyBar
+        <div className="sticky bottom-0 z-10 -mx-4 sm:-mx-5 mt-2 border-t border-slate-200 dark:border-white/[0.10] bg-white/95 dark:bg-navy-900/95 backdrop-blur-md px-4 sm:px-5 py-4">
+          {applyBarInner}
+        </div>
       ) : (
         <>
-          <div className="h-44 sm:h-40" aria-hidden />
+          {/* Keep last fields scrollable above the fixed dock */}
+          <div className="h-52" aria-hidden />
           {mounted
             ? createPortal(
-                <div className="fixed inset-x-0 bottom-0 z-40 pointer-events-none px-4 pb-4 sm:px-6 lg:px-8">
-                  <div className="pointer-events-auto mx-auto w-full max-w-[70vw]">{applyBar}</div>
+                <div
+                  role="region"
+                  aria-label="Apply resume changes"
+                  className="fixed inset-x-0 bottom-0 z-[200] border-t border-slate-200 dark:border-white/[0.12] bg-white dark:bg-navy-900 shadow-[0_-8px_30px_rgba(15,23,42,0.12)] dark:shadow-[0_-8px_30px_rgba(0,0,0,0.45)]"
+                >
+                  <div className="mx-auto w-full max-w-[70vw] px-4 py-4 sm:px-6 lg:px-8 pr-28 sm:pr-36">
+                    {applyBarInner}
+                  </div>
                 </div>,
                 document.body
               )
