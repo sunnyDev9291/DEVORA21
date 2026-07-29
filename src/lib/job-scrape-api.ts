@@ -16,7 +16,8 @@ export type JobScrapeResult = {
   jobTitle: string;
   companyName: string;
   jobDescription: string;
-  location: string;
+  mustHaveSkills: string;
+  niceToHaveSkills: string;
   confidence: JobScrapeConfidence | string;
   warning?: string;
 };
@@ -43,6 +44,25 @@ function pickString(data: Record<string, unknown>, ...keys: string[]): string {
     if (typeof value === "string" && value.trim()) return value.trim();
   }
   return "";
+}
+
+/** Combine JD + skill sections for the resume form textarea. */
+export function buildCombinedJobDescription(scrape: {
+  jobDescription: string;
+  mustHaveSkills: string;
+  niceToHaveSkills: string;
+}): string {
+  const parts: string[] = [];
+  if (scrape.jobDescription.trim()) {
+    parts.push(scrape.jobDescription.trim());
+  }
+  if (scrape.mustHaveSkills.trim()) {
+    parts.push(`Must Have Skills:\n${scrape.mustHaveSkills.trim()}`);
+  }
+  if (scrape.niceToHaveSkills.trim()) {
+    parts.push(`Nice to Have Skills:\n${scrape.niceToHaveSkills.trim()}`);
+  }
+  return parts.join("\n\n").trim();
 }
 
 /** POST /jobs/scrape on api.devora21.com (session cookies). */
@@ -113,13 +133,19 @@ export async function scrapeJobFromUrl(url: string): Promise<JobScrapeResult> {
 
   const jobTitle = pickString(data, "jobTitle", "title", "job_title");
   const companyName = pickString(data, "companyName", "company", "company_name");
-  const jobDescription = pickString(
+  const jobDescription = pickString(data, "jobDescription", "description", "job_description");
+  const mustHaveSkills = pickString(
     data,
-    "jobDescription",
-    "description",
-    "job_description"
+    "mustHaveSkills",
+    "must_have_skills",
+    "Must Have Skills"
   );
-  const location = pickString(data, "location", "jobLocation", "job_location");
+  const niceToHaveSkills = pickString(
+    data,
+    "niceToHaveSkills",
+    "nice_to_have_skills",
+    "Nice to have Skills"
+  );
 
   if (!jobTitle) {
     throw new ApiError(
@@ -135,7 +161,8 @@ export async function scrapeJobFromUrl(url: string): Promise<JobScrapeResult> {
     jobTitle,
     companyName,
     jobDescription,
-    location,
+    mustHaveSkills,
+    niceToHaveSkills,
     confidence: pickString(data, "confidence") || "medium",
     warning: pickString(data, "warning") || undefined,
   };

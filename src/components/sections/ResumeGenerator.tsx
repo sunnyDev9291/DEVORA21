@@ -10,7 +10,7 @@ import { useAuth } from "@/context/AuthContext";
 import type { UserResumeTemplateAsset } from "@/lib/profile-api";
 import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
 import { generateResume } from "@/lib/resume-generate-client";
-import { scrapeJobFromUrl } from "@/lib/job-scrape-api";
+import { scrapeJobFromUrl, buildCombinedJobDescription } from "@/lib/job-scrape-api";
 import { archiveResume } from "@/lib/resume-archive";
 import { resumeBuilderAccessDeniedMessage } from "@/lib/resume-access";
 import { ApiError } from "@/lib/auth-api";
@@ -127,7 +127,6 @@ export default function ResumeGenerator({
     jobLink: "",
     jobTitle: "",
     companyName: "",
-    location: "",
     jobDescription: "",
     customPrompt: userPrompt,
   });
@@ -257,20 +256,19 @@ export default function ResumeGenerator({
     setImportingJob(true);
     try {
       const data = await scrapeJobFromUrl(url);
-      // Always write scraped values into the form (title is required by the API helper).
+      const combinedDescription = buildCombinedJobDescription(data);
       setForm((prev) => ({
         ...prev,
         jobTitle: data.jobTitle,
         companyName: data.companyName || prev.companyName,
-        location: data.location || prev.location,
-        jobDescription: data.jobDescription || prev.jobDescription,
+        jobDescription: combinedDescription || prev.jobDescription,
       }));
 
       const softNotes: string[] = [];
       if (!data.companyName.trim()) {
         softNotes.push("Company name was not found — enter it manually.");
       }
-      if (!data.jobDescription.trim()) {
+      if (!combinedDescription.trim()) {
         softNotes.push("Job description was incomplete — paste or edit it before generating.");
       }
       if (data.warning?.trim()) softNotes.push(data.warning.trim());
@@ -305,7 +303,6 @@ export default function ResumeGenerator({
       jobLink: "",
       jobTitle: "",
       companyName: "",
-      location: "",
       jobDescription: "",
     }));
     setStep("form");
@@ -338,7 +335,6 @@ export default function ResumeGenerator({
     !!form.jobLink.trim() ||
     !!form.jobTitle.trim() ||
     !!form.companyName.trim() ||
-    !!form.location.trim() ||
     !!form.jobDescription.trim() ||
     !!content ||
     step !== "form" ||
@@ -898,22 +894,6 @@ export default function ResumeGenerator({
                 required
               />
             </div>
-          </div>
-
-          <div>
-            <label htmlFor="location" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-              Location
-            </label>
-            <input
-              id="location"
-              name="location"
-              type="text"
-              value={form.location}
-              onChange={handleChange}
-              placeholder="e.g. Remote · New York, NY"
-              className={inputClass}
-              disabled={generating || applying || importingJob}
-            />
           </div>
 
           <div>
