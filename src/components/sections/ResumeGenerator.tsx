@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
-import ResumeThinkingProgress from "@/components/ui/ResumeThinkingProgress";
 import ResumeRawAiTextarea from "@/components/ui/ResumeRawAiTextarea";
 import ResumeContentReview from "@/components/sections/ResumeContentReview";
 import { resolveResumeWizardStep } from "@/components/sections/ResumeStepper";
@@ -967,12 +966,6 @@ export default function ResumeGenerator({
               Clear
             </button>
           </div>
-
-          {generating && (
-            <div className="mt-6">
-              <ResumeThinkingProgress phase={streamPhase} jobTitle={targetJobLabel} />
-            </div>
-          )}
         </form>
       </div>
 

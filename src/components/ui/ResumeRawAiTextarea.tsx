@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import ClaudeIcon from "@/components/ui/ClaudeIcon";
+import ResumeAiKeyValueView from "@/components/ui/ResumeAiKeyValueView";
 
 interface ResumeRawAiTextareaProps {
   value: string;
@@ -31,10 +33,10 @@ export default function ResumeRawAiTextarea({
       <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-slate-200 dark:border-white/[0.06] bg-orange-500/[0.06] dark:bg-orange-500/[0.08] shrink-0">
         <div className="flex items-center gap-2.5 min-w-0">
           <span
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-orange-400 to-rose-500 text-white text-xs font-bold shadow-sm"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-orange-400 to-rose-500 text-white shadow-sm"
             aria-hidden
           >
-            C
+            <ClaudeIcon className="h-4 w-4" />
           </span>
           <div className="min-w-0">
             <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">{label}</p>
@@ -68,8 +70,8 @@ export default function ResumeRawAiTextarea({
         aria-live="polite"
         aria-busy={streaming}
       >
-        <div className="flex justify-start">
-          <div className="max-w-[95%] sm:max-w-[92%] rounded-2xl rounded-bl-md border border-slate-200/80 dark:border-white/[0.06] bg-white dark:bg-white/[0.06] px-4 py-3 text-sm leading-relaxed text-slate-800 dark:text-slate-200 shadow-sm">
+        <div className="w-full">
+          <div className="w-full rounded-xl border border-slate-200/80 dark:border-white/[0.06] bg-white dark:bg-white/[0.06] px-4 py-3 shadow-sm">
             {showTypingDots ? (
               <span className="inline-flex items-center gap-1.5 text-slate-400" aria-label="Claude is typing">
                 <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
@@ -77,15 +79,7 @@ export default function ResumeRawAiTextarea({
                 <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse [animation-delay:300ms]" />
               </span>
             ) : (
-              <p className="whitespace-pre-wrap break-words font-sans">
-                {value}
-                {showCursor ? (
-                  <span
-                    className="ml-0.5 inline-block h-4 w-0.5 translate-y-0.5 bg-orange-500 align-baseline animate-pulse"
-                    aria-hidden
-                  />
-                ) : null}
-              </p>
+              <ResumeAiKeyValueView text={value} showCursor={showCursor} />
             )}
           </div>
         </div>
