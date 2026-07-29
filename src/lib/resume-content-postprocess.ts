@@ -14,88 +14,59 @@ function escapeRegex(value: string): string {
 
 
 function isInsideBold(text: string, index: number): boolean {
-
   const before = text.slice(0, index);
-
   return ((before.match(/\*\*/g) ?? []).length % 2) === 1;
-
 }
 
+/** Letters/digits count as part of a word — prevents "git" matching inside "Digital". */
+function isTokenChar(ch: string | undefined): boolean {
+  return Boolean(ch && /[A-Za-z0-9]/.test(ch));
+}
 
+/** True when `term` is a whole token at [start, end), not a substring of a larger word. */
+function isStandaloneTermMatch(text: string, start: number, end: number): boolean {
+  if (isInsideBold(text, start)) return false;
+  if (isTokenChar(text[start - 1])) return false;
+  if (isTokenChar(text[end])) return false;
+  return true;
+}
 
 /** Parse concrete tech terms from skills (comma list or grouped "Category: a, b" lines). */
-
 export function extractSkillTerms(skills: string): string[] {
-
   const plain = skills.replace(/\*\*/g, "");
-
   const terms = new Set<string>();
 
-
-
   for (const line of plain.split(/\n+/)) {
-
     const segment = line.includes(":") ? line.split(":").slice(1).join(":") : line;
-
     for (const part of segment.split(/[,;|/]|\s+·\s+|\s+and\s+/i)) {
-
       const token = part.trim().replace(/^[-•]+\s*/, "");
-
       if (token.length >= 2) terms.add(token);
-
     }
-
   }
-
-
 
   return Array.from(terms).sort((a, b) => b.length - a.length);
-
 }
 
-
-
 /** Wrap skill terms in **markers** when they appear in plain text (for Word bold rendering). */
-
 export function boldSkillTermsInText(text: string, terms: string[]): string {
-
   let result = text;
-
   for (const term of terms) {
-
     if (!term) continue;
-
     const regex = new RegExp(escapeRegex(term), "gi");
-
     const replacements: Array<{ start: number; end: number; value: string }> = [];
 
-
-
     let match: RegExpExecArray | null;
-
     while ((match = regex.exec(result)) !== null) {
-
       const start = match.index;
-
       const end = start + match[0].length;
-
-      if (isInsideBold(result, start)) continue;
-
+      if (!isStandaloneTermMatch(result, start, end)) continue;
       replacements.push({ start, end, value: `**${match[0]}**` });
-
     }
-
-
 
     for (const rep of replacements.reverse()) {
-
       result = result.slice(0, rep.start) + rep.value + result.slice(rep.end);
-
     }
-
   }
-
-
 
   return result.replace(/\*\*\*\*([^*]+)\*\*\*\*/g, "**$1**");
 }

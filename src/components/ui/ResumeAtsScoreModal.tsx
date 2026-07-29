@@ -4,7 +4,6 @@ import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
 import ResumeContentReview from "@/components/sections/ResumeContentReview";
 import ResumeImproveProgress from "@/components/ui/ResumeImproveProgress";
-import ResumeThinkingProgress from "@/components/ui/ResumeThinkingProgress";
 import ResumeRawAiTextarea from "@/components/ui/ResumeRawAiTextarea";
 import { ResumeScorePanel, type ResumeScorePanelProps } from "@/components/ui/ResumeScorePanel";
 import { ResumeScoringInstructionsPanel } from "@/components/ui/ResumeScoringInstructionsPanel";
@@ -171,22 +170,14 @@ export default function ResumeAtsScoreModal({
 
           {showContentReview && (
             <div className="relative min-h-0 overflow-y-auto overscroll-contain order-1 lg:order-2">
-              {generating && (
+              {generating && improvingTargetId ? (
                 <div className="sticky top-0 z-10 border-b border-blue-500/20 bg-blue-500/[0.04] dark:bg-blue-500/[0.06]">
-                  {improvingTargetId ? (
-                    <ResumeImproveProgress
-                      phase={streamPhase}
-                      targetLabel={improvingTargetLabel}
-                    />
-                  ) : (
-                    <ResumeThinkingProgress
-                      phase={streamPhase}
-                      jobTitle={jobTitle ?? ""}
-                      embedded
-                    />
-                  )}
+                  <ResumeImproveProgress
+                    phase={streamPhase}
+                    targetLabel={improvingTargetLabel}
+                  />
                 </div>
-              )}
+              ) : null}
               {generateError && (
                 <div className="mx-4 mt-4 flex items-start gap-2 rounded-xl border border-red-500/25 bg-red-500/[0.08] px-3 py-2.5">
                   <p className="text-xs text-red-600 dark:text-red-300 whitespace-pre-wrap">{generateError}</p>

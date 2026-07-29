@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
-import ResumeThinkingProgress from "@/components/ui/ResumeThinkingProgress";
 import ResumeRawAiTextarea from "@/components/ui/ResumeRawAiTextarea";
 import ResumeContentReview from "@/components/sections/ResumeContentReview";
 import { resolveResumeWizardStep } from "@/components/sections/ResumeStepper";
@@ -10,8 +9,10 @@ import { useAuth } from "@/context/AuthContext";
 import type { UserResumeTemplateAsset } from "@/lib/profile-api";
 import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
 import { generateResume } from "@/lib/resume-generate-client";
+import { scrapeJobFromUrl, buildCombinedJobDescription } from "@/lib/job-scrape-api";
 import { archiveResume } from "@/lib/resume-archive";
 import { resumeBuilderAccessDeniedMessage } from "@/lib/resume-access";
+import { ApiError } from "@/lib/auth-api";
 import { buildUnifiedResumeScore } from "@/lib/resume-unified-score";
 import { emptyRuleKeepScore } from "@/lib/resume-rule-keep";
 import type { ResumeScoreResult } from "@/lib/resume-score";
@@ -122,6 +123,7 @@ export default function ResumeGenerator({
   );
 
   const [form, setForm] = useState({
+    jobLink: "",
     jobTitle: "",
     companyName: "",
     jobDescription: "",
@@ -137,6 +139,8 @@ export default function ResumeGenerator({
   const [archiveError, setArchiveError] = useState("");
   const [generating, setGenerating] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [importingJob, setImportingJob] = useState(false);
+  const [jobFetchWarning, setJobFetchWarning] = useState("");
   const [error, setError] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [generationKey, setGenerationKey] = useState(0);
@@ -238,14 +242,64 @@ export default function ResumeGenerator({
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   }
 
+  async function handleImportJobLink() {
+    if (generating || applying || importingJob) return;
+    const url = form.jobLink.trim();
+    if (!url) {
+      setError("Paste a job link first.");
+      return;
+    }
+
+    setError("");
+    setJobFetchWarning("");
+    setImportingJob(true);
+    try {
+      const data = await scrapeJobFromUrl(url);
+      const combinedDescription = buildCombinedJobDescription(data);
+      setForm((prev) => ({
+        ...prev,
+        jobTitle: data.jobTitle,
+        companyName: data.companyName || prev.companyName,
+        jobDescription: combinedDescription || prev.jobDescription,
+      }));
+
+      const softNotes: string[] = [];
+      if (!data.companyName.trim()) {
+        softNotes.push("Company name was not found — enter it manually.");
+      }
+      if (!combinedDescription.trim()) {
+        softNotes.push("Job description was incomplete — paste or edit it before generating.");
+      }
+      if (data.warning?.trim()) softNotes.push(data.warning.trim());
+      if (data.confidence === "low") {
+        softNotes.push(
+          "Low confidence scrape — review title, company, and description before generating."
+        );
+      }
+      setJobFetchWarning(softNotes.join(" "));
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message);
+      } else {
+        setError(
+          (err as Error).message ||
+            "Could not fetch that job link. Paste the job description manually instead."
+        );
+      }
+    } finally {
+      setImportingJob(false);
+    }
+  }
+
   function handleClear() {
-    if (generating || applying) return;
+    if (generating || applying || importingJob) return;
 
     abortRef.current?.abort();
     atsAbortRef.current?.abort();
 
     setForm((prev) => ({
       ...prev,
+      jobLink: "",
       jobTitle: "",
       companyName: "",
       jobDescription: "",
@@ -260,6 +314,7 @@ export default function ResumeGenerator({
     setArchiveError("");
     setPreviewOpen(false);
     setError("");
+    setJobFetchWarning("");
     setStreamPhase("starting");
     setResumeScore(null);
     setScoreError("");
@@ -276,6 +331,7 @@ export default function ResumeGenerator({
   }
 
   const hasClearableContent =
+    !!form.jobLink.trim() ||
     !!form.jobTitle.trim() ||
     !!form.companyName.trim() ||
     !!form.jobDescription.trim() ||
@@ -759,6 +815,53 @@ export default function ResumeGenerator({
         </div>
 
         <form onSubmit={handleGenerate} className="space-y-4">
+          <div>
+            <label htmlFor="jobLink" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+              Job link
+            </label>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                id="jobLink"
+                name="jobLink"
+                type="url"
+                value={form.jobLink}
+                onChange={handleChange}
+                placeholder="https://boards.greenhouse.io/… or Lever / Ashby careers URL"
+                className={`${inputClass} flex-1`}
+                disabled={generating || applying || importingJob}
+              />
+              <button
+                type="button"
+                onClick={() => void handleImportJobLink()}
+                disabled={generating || applying || importingJob || !form.jobLink.trim()}
+                className="shrink-0 inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed px-5 py-3 text-sm font-semibold transition-all"
+              >
+                {importingJob ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Applying…
+                  </>
+                ) : (
+                  "Apply"
+                )}
+              </button>
+            </div>
+            <p className="mt-1.5 text-xs text-slate-400">
+              Apply fills job title, company name, and description from the posting, then you can generate the AI draft.
+            </p>
+            {jobFetchWarning && (
+              <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-3 py-2.5">
+                <svg className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-xs text-amber-800 dark:text-amber-200">{jobFetchWarning}</p>
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label htmlFor="jobTitle" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
@@ -863,12 +966,6 @@ export default function ResumeGenerator({
               Clear
             </button>
           </div>
-
-          {generating && (
-            <div className="mt-6">
-              <ResumeThinkingProgress phase={streamPhase} jobTitle={targetJobLabel} />
-            </div>
-          )}
         </form>
       </div>
 
