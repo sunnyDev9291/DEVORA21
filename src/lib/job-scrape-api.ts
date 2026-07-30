@@ -10,15 +10,14 @@ import type { ApiError as ApiErrorBody } from "@/types/auth";
 export type JobScrapeSource = "greenhouse" | "lever" | "ashby" | "generic";
 export type JobScrapeConfidence = "high" | "medium" | "low";
 
+/** Fixed success shape from POST /jobs/scrape (Zyte → DeepSeek normalized). */
 export type JobScrapeResult = {
   url: string;
-  source: JobScrapeSource | string;
-  jobTitle: string;
+  source: JobScrapeSource;
   companyName: string;
+  jobTitle: string;
   jobDescription: string;
-  mustHaveSkills: string;
-  niceToHaveSkills: string;
-  confidence: JobScrapeConfidence | string;
+  confidence: JobScrapeConfidence;
   warning?: string;
 };
 
@@ -38,31 +37,21 @@ function asApiErrorBody(data: Record<string, unknown>): ApiErrorBody {
   };
 }
 
-function pickString(data: Record<string, unknown>, ...keys: string[]): string {
-  for (const key of keys) {
-    const value = data[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return "";
+function asString(data: Record<string, unknown>, key: string, fallback = ""): string {
+  const value = data[key];
+  return typeof value === "string" ? value.trim() : fallback;
 }
 
-/** Combine JD + skill sections for the resume form textarea. */
-export function buildCombinedJobDescription(scrape: {
-  jobDescription: string;
-  mustHaveSkills: string;
-  niceToHaveSkills: string;
-}): string {
-  const parts: string[] = [];
-  if (scrape.jobDescription.trim()) {
-    parts.push(scrape.jobDescription.trim());
+function asSource(value: string): JobScrapeSource {
+  if (value === "greenhouse" || value === "lever" || value === "ashby" || value === "generic") {
+    return value;
   }
-  if (scrape.mustHaveSkills.trim()) {
-    parts.push(`Must Have Skills:\n${scrape.mustHaveSkills.trim()}`);
-  }
-  if (scrape.niceToHaveSkills.trim()) {
-    parts.push(`Nice to Have Skills:\n${scrape.niceToHaveSkills.trim()}`);
-  }
-  return parts.join("\n\n").trim();
+  return "generic";
+}
+
+function asConfidence(value: string): JobScrapeConfidence {
+  if (value === "high" || value === "medium" || value === "low") return value;
+  return "medium";
 }
 
 /** POST /jobs/scrape on api.devora21.com (session cookies). */
@@ -131,39 +120,16 @@ export async function scrapeJobFromUrl(url: string): Promise<JobScrapeResult> {
     );
   }
 
-  const jobTitle = pickString(data, "jobTitle", "title", "job_title");
-  const companyName = pickString(data, "companyName", "company", "company_name");
-  const jobDescription = pickString(data, "jobDescription", "description", "job_description");
-  const mustHaveSkills = pickString(
-    data,
-    "mustHaveSkills",
-    "must_have_skills",
-    "Must Have Skills"
-  );
-  const niceToHaveSkills = pickString(
-    data,
-    "niceToHaveSkills",
-    "nice_to_have_skills",
-    "Nice to have Skills"
-  );
+  const warning = asString(data, "warning");
 
-  if (!jobTitle) {
-    throw new ApiError(
-      "Could not extract a job title from that link. Check the URL or enter the title manually.",
-      422,
-      { message: "Missing jobTitle in scrape response." }
-    );
-  }
-
+  // Soft failures stay HTTP 200 with empty strings + confidence/warning — never throw here.
   return {
-    url: pickString(data, "url") || trimmed,
-    source: pickString(data, "source") || "generic",
-    jobTitle,
-    companyName,
-    jobDescription,
-    mustHaveSkills,
-    niceToHaveSkills,
-    confidence: pickString(data, "confidence") || "medium",
-    warning: pickString(data, "warning") || undefined,
+    url: asString(data, "url", trimmed),
+    source: asSource(asString(data, "source", "generic")),
+    companyName: asString(data, "companyName"),
+    jobTitle: asString(data, "jobTitle"),
+    jobDescription: asString(data, "jobDescription"),
+    confidence: asConfidence(asString(data, "confidence", "medium")),
+    ...(warning ? { warning } : {}),
   };
 }

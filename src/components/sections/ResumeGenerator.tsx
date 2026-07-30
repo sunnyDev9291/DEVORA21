@@ -9,7 +9,7 @@ import { useAuth } from "@/context/AuthContext";
 import type { UserResumeTemplateAsset } from "@/lib/profile-api";
 import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
 import { generateResume } from "@/lib/resume-generate-client";
-import { scrapeJobFromUrl, buildCombinedJobDescription } from "@/lib/job-scrape-api";
+import { scrapeJobFromUrl } from "@/lib/job-scrape-api";
 import { archiveResume } from "@/lib/resume-archive";
 import { resumeBuilderAccessDeniedMessage } from "@/lib/resume-access";
 import { ApiError } from "@/lib/auth-api";
@@ -255,26 +255,28 @@ export default function ResumeGenerator({
     setImportingJob(true);
     try {
       const data = await scrapeJobFromUrl(url);
-      const combinedDescription = buildCombinedJobDescription(data);
       setForm((prev) => ({
         ...prev,
         jobTitle: data.jobTitle,
-        companyName: data.companyName || prev.companyName,
-        jobDescription: combinedDescription || prev.jobDescription,
+        companyName: data.companyName,
+        jobDescription: data.jobDescription,
       }));
 
       const softNotes: string[] = [];
-      if (!data.companyName.trim()) {
-        softNotes.push("Company name was not found — enter it manually.");
-      }
-      if (!combinedDescription.trim()) {
-        softNotes.push("Job description was incomplete — paste or edit it before generating.");
-      }
       if (data.warning?.trim()) softNotes.push(data.warning.trim());
       if (data.confidence === "low") {
         softNotes.push(
           "Low confidence scrape — review title, company, and description before generating."
         );
+      }
+      if (!data.jobTitle.trim()) {
+        softNotes.push("Job title was not found — enter it manually.");
+      }
+      if (!data.companyName.trim()) {
+        softNotes.push("Company name was not found — enter it manually.");
+      }
+      if (!data.jobDescription.trim()) {
+        softNotes.push("Job description was incomplete — paste or edit it before generating.");
       }
       setJobFetchWarning(softNotes.join(" "));
     } catch (err) {
