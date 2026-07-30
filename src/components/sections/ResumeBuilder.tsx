@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ResumeFromJobPanel from "@/components/sections/ResumeFromJobPanel";
 import ResumeGenerator from "@/components/sections/ResumeGenerator";
 import ResumeStepper from "@/components/sections/ResumeStepper";
 import ResumeTemplatePreviewButton from "@/components/ui/ResumeTemplatePreviewButton";
@@ -64,7 +65,20 @@ export default function ResumeBuilder() {
             {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
           </div>
 
-          <div className="px-6 py-8 sm:px-8 sm:py-10">
+          <div className="px-6 py-8 sm:px-8 sm:py-10 space-y-10">
+            <ResumeFromJobPanel />
+
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center" aria-hidden>
+                <div className="w-full border-t border-slate-200 dark:border-white/[0.08]" />
+              </div>
+              <div className="relative flex justify-center">
+                <span className="bg-white px-3 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:bg-navy-900 dark:text-slate-500">
+                  Or build step-by-step
+                </span>
+              </div>
+            </div>
+
             {loading && !template && !prompt ? (
               <p className="text-sm text-slate-500">Loading your profile…</p>
             ) : (
