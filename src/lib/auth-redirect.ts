@@ -12,7 +12,7 @@ function isResumePath(path: string): boolean {
 }
 
 /** Only allow internal app paths — blocks open redirects. */
-export function getSafeRedirectPath(next: string | null | undefined, fallback = AUTH_LINKS.dashboard): string {
+export function getSafeRedirectPath(next: string | null | undefined, fallback: string = AUTH_LINKS.dashboard): string {
   if (!next || typeof next !== "string") return fallback;
   if (!next.startsWith("/") || next.startsWith("//")) return fallback;
   if (next.includes("://")) return fallback;
@@ -22,6 +22,14 @@ export function getSafeRedirectPath(next: string | null | undefined, fallback = 
 
   const allowed = ALLOWED_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
   return allowed ? next : fallback;
+}
+
+/** After connecting a dv21_ API key — skip email/onboarding; default to resume builder. */
+export function getApiKeyAuthRedirectPath(user: User, next?: string | null): string {
+  if (!isResumeBuilderEnabled(user)) {
+    return resumeAccessPendingUrl();
+  }
+  return getSafeRedirectPath(next, "/resume");
 }
 
 /** After login/register/OAuth — verified users complete onboarding first, then their destination. */

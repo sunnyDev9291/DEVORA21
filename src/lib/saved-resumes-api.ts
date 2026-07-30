@@ -1,5 +1,7 @@
 import { API_BASE_URL } from "@/lib/api-base-url";
+import { apiAuthFetch } from "@/lib/api-auth";
 import { RESUME_BUILDER_ACCESS_MESSAGE } from "@/lib/resume-access";
+import { getUserApiKey } from "@/lib/user-api-key";
 import type { SavedResumeArchive, SavedResumeListResponse } from "@/lib/saved-resumes-types";
 
 export type SavedResumeSearchFilters = {
@@ -44,6 +46,20 @@ function resolveArchiveFileName(
   );
 }
 
+function archivesAuthError(status: number, fallback: string): Error {
+  if (status === 401) {
+    return new Error(
+      getUserApiKey()
+        ? "Authentication failed. Reconnect your dv21_ API key and try again."
+        : "Authentication required. Sign in or connect a dv21_ API key, then try again."
+    );
+  }
+  if (status === 403) {
+    return new Error(RESUME_BUILDER_ACCESS_MESSAGE);
+  }
+  return new Error(fallback);
+}
+
 export async function listSavedResumes(filters: SavedResumeSearchFilters = {}): Promise<SavedResumeArchive[]> {
   const params = new URLSearchParams();
   const company = filters.company?.trim();
@@ -56,9 +72,8 @@ export async function listSavedResumes(filters: SavedResumeSearchFilters = {}): 
   if (dateTo) params.set("to", dateTo);
 
   const url = `${API_BASE_URL}/resume/archives${params.size ? `?${params}` : ""}`;
-  const res = await fetch(url, {
+  const res = await apiAuthFetch(url, {
     method: "GET",
-    credentials: "include",
     headers: { Accept: "application/json" },
   });
 
@@ -68,8 +83,10 @@ export async function listSavedResumes(filters: SavedResumeSearchFilters = {}): 
   };
 
   if (!res.ok) {
-    if (res.status === 403) throw new Error(RESUME_BUILDER_ACCESS_MESSAGE);
-    throw new Error(data.error || data.message || `Could not load saved resumes (${res.status}).`);
+    throw archivesAuthError(
+      res.status,
+      data.error || data.message || `Could not load saved resumes (${res.status}).`
+    );
   }
 
   return data.items ?? [];
@@ -80,15 +97,17 @@ export async function fetchSavedResumeFile(
   format: "docx" | "pdf",
   preferredFileName?: string
 ): Promise<{ blob: Blob; fileName: string }> {
-  const res = await fetch(`${API_BASE_URL}/resume/archives/${encodeURIComponent(id)}/${format}`, {
-    method: "GET",
-    credentials: "include",
-  });
+  const res = await apiAuthFetch(
+    `${API_BASE_URL}/resume/archives/${encodeURIComponent(id)}/${format}`,
+    { method: "GET" }
+  );
 
   if (!res.ok) {
-    if (res.status === 403) throw new Error(RESUME_BUILDER_ACCESS_MESSAGE);
     const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
-    throw new Error(data.error || data.message || `Could not download file (${res.status}).`);
+    throw archivesAuthError(
+      res.status,
+      data.error || data.message || `Could not download file (${res.status}).`
+    );
   }
 
   const blob = await res.blob();

@@ -1,7 +1,10 @@
 import { API_BASE_URL } from "@/lib/api-base-url";
+import { apiAuthFetch } from "@/lib/api-auth";
 import { RESUME_BUILDER_ACCESS_MESSAGE } from "@/lib/resume-access";
+import { getUserApiKey } from "@/lib/user-api-key";
 
 export interface ResumeArchiveResponse {
+  id?: string;
   resumeName: string;
   pdfFileName: string;
   pdfBase64: string;
@@ -47,28 +50,37 @@ function buildArchiveFormData(payload: ResumeArchivePayload): FormData {
   return form;
 }
 
+function archiveAuthError(status: number, fallback: string): Error {
+  if (status === 401) {
+    return new Error(
+      getUserApiKey()
+        ? "Authentication failed for archive. Reconnect your dv21_ API key and try again."
+        : "Authentication required. Sign in or connect a dv21_ API key, then try again."
+    );
+  }
+  if (status === 403) {
+    return new Error(RESUME_BUILDER_ACCESS_MESSAGE);
+  }
+  return new Error(fallback);
+}
+
 /**
- * Call the backend archive API directly so the browser sends session cookies
- * (api.devora21.com). The Next.js /api/resume/archive proxy cannot attach
- * cross-origin httpOnly cookies from the client.
+ * POST /resume/archive — cookies and/or Bearer dv21_ key via apiAuthFetch.
+ * Do not set Content-Type; the browser sets multipart boundary.
  */
 export async function archiveResume(payload: ResumeArchivePayload): Promise<ResumeArchiveResponse> {
   const form = buildArchiveFormData(payload);
 
-  const res = await fetch(`${API_BASE_URL}/resume/archive`, {
+  const res = await apiAuthFetch(`${API_BASE_URL}/resume/archive`, {
     method: "POST",
     body: form,
-    credentials: "include",
   });
 
   const contentType = res.headers.get("content-type") ?? "";
 
   if (contentType.includes("application/pdf")) {
     if (!res.ok) {
-      if (res.status === 403) {
-        throw new Error(RESUME_BUILDER_ACCESS_MESSAGE);
-      }
-      throw new Error(`Archive failed (${res.status}).`);
+      throw archiveAuthError(res.status, `Archive failed (${res.status}).`);
     }
     const pdfBlob = await res.blob();
     const pdfBase64 = await blobToBase64(pdfBlob);
@@ -80,10 +92,10 @@ export async function archiveResume(payload: ResumeArchivePayload): Promise<Resu
   const data = (await res.json()) as ResumeArchiveResponse & { error?: string; message?: string };
 
   if (!res.ok) {
-    if (res.status === 403) {
-      throw new Error(RESUME_BUILDER_ACCESS_MESSAGE);
-    }
-    throw new Error(data.error || data.message || `Archive failed (${res.status}).`);
+    throw archiveAuthError(
+      res.status,
+      data.error || data.message || `Archive failed (${res.status}).`
+    );
   }
 
   if (!data.pdfBase64 || !data.pdfFileName) {
@@ -91,6 +103,7 @@ export async function archiveResume(payload: ResumeArchivePayload): Promise<Resu
   }
 
   return {
+    id: data.id,
     resumeName: data.resumeName || payload.fileName,
     pdfFileName: data.pdfFileName,
     pdfBase64: data.pdfBase64,

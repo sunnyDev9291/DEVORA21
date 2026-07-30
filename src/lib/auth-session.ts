@@ -15,7 +15,7 @@ export type SessionFetchResult =
  */
 export async function fetchSessionUser(): Promise<SessionFetchResult> {
   try {
-    const { data } = await authApi.getMe();
+    const { data } = await authApi.getMe({ cookieOnly: true });
     if (isValidAuthUser(data)) {
       return { status: "authenticated", user: data };
     }
@@ -24,7 +24,7 @@ export async function fetchSessionUser(): Promise<SessionFetchResult> {
     if (error instanceof ApiError && error.status === 401) {
       try {
         await authApi.refreshSession();
-        const { data } = await authApi.getMe();
+        const { data } = await authApi.getMe({ cookieOnly: true });
         if (isValidAuthUser(data)) {
           return { status: "authenticated", user: data };
         }

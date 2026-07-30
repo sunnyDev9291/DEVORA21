@@ -12,16 +12,20 @@ import Button from "@/components/ui/Button";
 import { GuestGuard } from "@/components/auth/AuthGuard";
 import { useAuth } from "@/context/AuthContext";
 import { getLoginErrorMessage, isGoogleAccountAuthError } from "@/lib/auth-password";
-import { getPostAuthRedirectPath } from "@/lib/auth-redirect";
+import { getApiKeyAuthRedirectPath, getPostAuthRedirectPath } from "@/lib/auth-redirect";
+import { getApiErrorMessage } from "@/lib/auth-api";
 import { AUTH_LINKS } from "@/lib/constants";
 import { loginSchema, type LoginFormValues } from "@/lib/auth-schemas";
 
 function LoginForm() {
-  const { login } = useAuth();
+  const { login, connectWithApiKey } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [serverError, setServerError] = useState("");
   const [isGoogleAccount, setIsGoogleAccount] = useState(false);
+  const [apiKey, setApiKey] = useState("");
+  const [apiKeyError, setApiKeyError] = useState("");
+  const [connectingKey, setConnectingKey] = useState(false);
 
   const {
     register,
@@ -34,6 +38,7 @@ function LoginForm() {
 
   const onSubmit = async (values: LoginFormValues) => {
     setServerError("");
+    setApiKeyError("");
     setIsGoogleAccount(false);
     try {
       const user = await login(values.email, values.password, values.rememberMe ?? true);
@@ -44,10 +49,26 @@ function LoginForm() {
     }
   };
 
+  async function onConnectApiKey(e: React.FormEvent) {
+    e.preventDefault();
+    if (connectingKey) return;
+    setApiKeyError("");
+    setServerError("");
+    setConnectingKey(true);
+    try {
+      const user = await connectWithApiKey(apiKey);
+      router.replace(getApiKeyAuthRedirectPath(user, searchParams.get("next")));
+    } catch (error) {
+      setApiKeyError(getApiErrorMessage(error, "Could not connect with that API key."));
+    } finally {
+      setConnectingKey(false);
+    }
+  }
+
   return (
     <AuthLayout
       title="Welcome back"
-      subtitle="Sign in with Google, or use email below"
+      subtitle="Sign in with Google, email, or a dv21_ API key"
       footer={
         <>
           Don&apos;t have an account? <AuthFooterLink href={AUTH_LINKS.register}>Create one</AuthFooterLink>
@@ -85,8 +106,38 @@ function LoginForm() {
             Forgot password?
           </Link>
         </div>
-        <Button type="submit" className="w-full" disabled={isSubmitting}>
+        <Button type="submit" className="w-full" disabled={isSubmitting || connectingKey}>
           {isSubmitting ? "Signing in…" : "Sign in with email"}
+        </Button>
+      </form>
+
+      <AuthDivider />
+
+      <form onSubmit={onConnectApiKey} className="space-y-4" noValidate>
+        <div>
+          <p className="text-sm font-medium text-slate-200">Continue with API key</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Use a <span className="font-mono text-slate-400">dv21_</span> key from your dashboard for job scrape and resume
+            generation without email login. Requires resume builder access.
+          </p>
+        </div>
+        {apiKeyError && (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300" role="alert">
+            {apiKeyError}
+          </div>
+        )}
+        <AuthInput
+          label="API key"
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="dv21_…"
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          error={undefined}
+        />
+        <Button type="submit" className="w-full" disabled={connectingKey || isSubmitting || !apiKey.trim()}>
+          {connectingKey ? "Connecting…" : "Connect API key"}
         </Button>
       </form>
     </AuthLayout>

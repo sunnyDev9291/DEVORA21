@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "@/lib/api-base-url";
+import { apiAuthFetch, type ApiAuthMode } from "@/lib/api-auth";
 import { readEmailVerified, mergeEmailVerifiedState } from "@/lib/email-verification";
 import type {
   AuthResponse,
@@ -29,16 +30,23 @@ async function parseJson<T>(res: Response): Promise<T | null> {
   }
 }
 
-async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      ...options.headers,
+async function apiRequest<T>(
+  path: string,
+  options: RequestInit = {},
+  authMode: ApiAuthMode = "auto"
+): Promise<T> {
+  const res = await apiAuthFetch(
+    `${API_BASE_URL}${path}`,
+    {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        ...options.headers,
+      },
     },
-  });
+    authMode
+  );
 
   const data = await parseJson<ApiErrorBody & T>(res);
 
@@ -265,30 +273,41 @@ export function isValidAuthUser(user: User | null | undefined): user is User {
 }
 
 export const authApi = {
-  getMe: () =>
-    apiRequest<unknown>("/auth/me").then((data) => ({
+  /** Current user. Pass cookieOnly to ignore a stored dv21_ key (session bootstrap). */
+  getMe: (options?: { cookieOnly?: boolean }) =>
+    apiRequest<unknown>("/auth/me", {}, options?.cookieOnly ? "cookie" : "auto").then((data) => ({
       data: normalizeAuthUser(data),
     })),
 
   login: (email: string, password: string, rememberMe = true) =>
-    apiRequest<AuthResponse & Record<string, unknown>>("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password, rememberMe }),
-    }).then((data) => {
+    apiRequest<AuthResponse & Record<string, unknown>>(
+      "/auth/login",
+      {
+        method: "POST",
+        body: JSON.stringify({ email, password, rememberMe }),
+      },
+      "cookie"
+    ).then((data) => {
       const user = normalizeAuthUser(data.user ?? data);
       return { data: { ...data, user } };
     }),
 
   /** Extend an existing session cookie (sliding / long-lived sessions). */
   refreshSession: () =>
-    apiRequest<MessageResponse>("/auth/refresh", { method: "POST" }).then((data) => ({ data })),
+    apiRequest<MessageResponse>("/auth/refresh", { method: "POST" }, "cookie").then((data) => ({
+      data,
+    })),
 
   register: (name: string, email: string, password: string) => {
     const { firstName, lastName } = splitFullName(name);
-    return apiRequest<AuthResponse & Record<string, unknown>>("/auth/register", {
-      method: "POST",
-      body: JSON.stringify({ email, password, firstName, lastName }),
-    }).then((data) => {
+    return apiRequest<AuthResponse & Record<string, unknown>>(
+      "/auth/register",
+      {
+        method: "POST",
+        body: JSON.stringify({ email, password, firstName, lastName }),
+      },
+      "cookie"
+    ).then((data) => {
       const user = normalizeAuthUser(data.user ?? data);
       return { data: { ...data, user } };
     });
@@ -307,7 +326,9 @@ export const authApi = {
     profileApi.completeOnboarding(payload).then((user) => ({ data: user })),
 
   logout: () =>
-    apiRequest<MessageResponse>("/auth/logout", { method: "POST" }).then((data) => ({ data })),
+    apiRequest<MessageResponse>("/auth/logout", { method: "POST" }, "cookie").then((data) => ({
+      data,
+    })),
 
   forgotPassword: (email: string) =>
     apiRequest<MessageResponse>("/auth/forgot-password", {

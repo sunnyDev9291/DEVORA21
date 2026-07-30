@@ -132,6 +132,7 @@ export default function DashboardApiKeysPanel() {
               Authorization: Bearer &lt;key&gt;
             </code>
             . Keys start with <span className="font-mono text-slate-300">dv21_</span>.
+            You can also connect a key on the sign-in page to use job scrape and resume generation without email login.
           </p>
         </div>
       </div>
