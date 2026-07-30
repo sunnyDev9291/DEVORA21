@@ -7,6 +7,7 @@ import {
 } from "@/lib/resume-prompt";
 import { iterateBrowserAiStream } from "@/lib/browser-ai-stream";
 import type { ResumeMergeContext } from "@/lib/resume-generate-prep";
+import { getUserApiKey } from "@/lib/user-api-key";
 
 export interface ResumeGenerateResult {
   content: GeneratedResumeContent;
@@ -30,7 +31,7 @@ function previewRawText(text: string, max = 800): string {
 
 /**
  * Prepare on Next.js (short), then stream Claude plain text directly from api.devora21.com.
- * No Netlify background job / long Claude proxy.
+ * End users with a dv21_ API key authenticate the stream with that key (not AI_INTERNAL_API_KEY).
  */
 export async function generateResume(
   body: Record<string, unknown>,
@@ -58,9 +59,12 @@ export async function generateResume(
       `Unexpected prepare response from resume generator: ${JSON.stringify(prep).slice(0, 400)}`
     );
   }
-  if (!prep.streamAuthToken?.trim()) {
+
+  const userApiKey = getUserApiKey();
+  const streamAuthToken = userApiKey || prep.streamAuthToken?.trim() || "";
+  if (!streamAuthToken) {
     throw new Error(
-      "Prepare did not return stream auth. Set AI_INTERNAL_API_KEY on the Netlify/Next.js server (server-only, not NEXT_PUBLIC_)."
+      "Missing AI stream auth. Connect a dv21_ API key, or set AI_INTERNAL_API_KEY on the server for cookie sessions."
     );
   }
 
@@ -70,7 +74,7 @@ export async function generateResume(
   for await (const delta of iterateBrowserAiStream(prep.messages, RESUME_MAX_TOKENS, {
     jsonObject: true,
     signal: handlers.signal,
-    authToken: prep.streamAuthToken,
+    authToken: streamAuthToken,
   })) {
     if (!delta.content) continue;
     output += delta.content;

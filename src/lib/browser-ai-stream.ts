@@ -33,7 +33,8 @@ function throwIfMidStreamError(accumulated: string): void {
 
 /**
  * Stream chat completions directly from api.devora21.com as raw plain text chunks
- * (not SSE / not JSON envelopes). Auth token comes from prepare (server), not NEXT_PUBLIC.
+ * (not SSE / not JSON envelopes).
+ * Prefer end-user `dv21_` API keys; fall back to prepare-provided server token for cookie sessions.
  */
 export async function* iterateBrowserAiStream(
   messages: BrowserAiChatMessage[],
@@ -43,7 +44,7 @@ export async function* iterateBrowserAiStream(
   const authToken = options.authToken?.trim();
   if (!authToken) {
     throw new Error(
-      "Missing AI stream auth token. Ensure AI_INTERNAL_API_KEY is set on the Next.js / Netlify server."
+      "Missing AI stream auth. Connect a dv21_ API key, or ensure AI_INTERNAL_API_KEY is set on the server for cookie sessions."
     );
   }
 

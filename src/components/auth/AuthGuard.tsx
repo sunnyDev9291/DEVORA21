@@ -51,11 +51,14 @@ export function AuthGuard({
   skipOnboardingRedirect = false,
   requireResumeBuilder = false,
 }: AuthGuardProps) {
-  const { user, isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading, authMethod } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const emailVerified = isUserEmailVerified(user);
-  const onboardingRequired = Boolean(user && emailVerified && needsOnboarding(user));
+  const apiKeyAuth = authMethod === "apiKey";
+  const emailVerified = apiKeyAuth || isUserEmailVerified(user);
+  const onboardingRequired = Boolean(
+    user && emailVerified && !apiKeyAuth && needsOnboarding(user)
+  );
   const resumeAllowed = isResumeBuilderEnabled(user);
 
   useEffect(() => {
@@ -110,9 +113,9 @@ export function AuthGuard({
 
 /** Signed in but email not verified yet — for the verification waiting page. */
 export function PendingVerificationGuard({ children }: { children: ReactNode }) {
-  const { user, isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading, authMethod } = useAuth();
   const router = useRouter();
-  const emailVerified = isUserEmailVerified(user);
+  const emailVerified = authMethod === "apiKey" || isUserEmailVerified(user);
 
   useEffect(() => {
     if (isLoading) return;

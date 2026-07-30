@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "@/lib/api-base-url";
+import { apiAuthFetch } from "@/lib/api-auth";
 import { ApiError, normalizeAuthUser } from "@/lib/auth-api";
 import { dataUrlToBlob } from "@/lib/profile-file";
 import type { User } from "@/types/auth";
@@ -26,9 +27,8 @@ function isUnavailableStatus(status: number): boolean {
 }
 
 async function profileFetch(path: string, options: RequestInit = {}): Promise<Response> {
-  return fetch(`${API_BASE_URL}${path}`, {
+  return apiAuthFetch(`${API_BASE_URL}${path}`, {
     ...options,
-    credentials: "include",
     headers: {
       Accept: "application/json",
       ...options.headers,

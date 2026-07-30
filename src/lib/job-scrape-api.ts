@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "@/lib/api-base-url";
+import { apiAuthFetch } from "@/lib/api-auth";
 import { ApiError } from "@/lib/auth-api";
 import {
   RESUME_BUILDER_ACCESS_MESSAGE,
@@ -63,9 +64,8 @@ export async function scrapeJobFromUrl(url: string): Promise<JobScrapeResult> {
 
   let res: Response;
   try {
-    res = await fetch(`${API_BASE_URL}/jobs/scrape`, {
+    res = await apiAuthFetch(`${API_BASE_URL}/jobs/scrape`, {
       method: "POST",
-      credentials: "include",
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
