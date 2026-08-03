@@ -19,6 +19,8 @@ interface PrepareResponse {
   templateName?: string;
   messages?: Array<{ role: "system" | "user" | "assistant"; content: string }>;
   mergeContext?: ResumeMergeContext;
+  /** Server AI_INTERNAL_API_KEY for direct-stream fallback / older cached clients. */
+  streamAuthToken?: string;
   error?: string;
 }
 
@@ -69,13 +71,20 @@ export async function generateResume(
     );
   }
 
+  const streamAuthToken = userApiKey || prep.streamAuthToken?.trim() || "";
+  if (!usingUserApiKey && !streamAuthToken) {
+    // BFF can still succeed with server-side AI_INTERNAL_API_KEY; only hard-fail when
+    // both are missing after a failed stream attempt would be worse UX — keep soft here.
+  }
+
   handlers.onPhase?.("analyzing");
 
   let output = "";
   for await (const delta of iterateBrowserAiStream(prep.messages, RESUME_MAX_TOKENS, {
     jsonObject: true,
     signal: handlers.signal,
-    authToken: usingUserApiKey ? userApiKey! : undefined,
+    // Prefer dv21_ key; else pass prepare token for direct fallback.
+    authToken: streamAuthToken || undefined,
     userId: userId || undefined,
   })) {
     if (!delta.content) continue;
