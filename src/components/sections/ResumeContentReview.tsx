@@ -205,6 +205,9 @@ export default function ResumeContentReview({
   if (!content.summary.trim()) {
     applyBlockers.push("Add a professional summary");
   }
+  if (!content.skills.trim()) {
+    applyBlockers.push("Add skillsets before applying");
+  }
   const invalidExperienceIndexes = content.experiences
     .map((exp, index) => (experienceValid(exp) ? -1 : index + 1))
     .filter((index) => index > 0);
@@ -216,7 +219,6 @@ export default function ResumeContentReview({
     );
   }
 
-  // Skills may be empty after a truncated AI stream — still allow apply; user can edit later.
   const canApply = applyBlockers.length === 0;
 
   const showNameReset =
