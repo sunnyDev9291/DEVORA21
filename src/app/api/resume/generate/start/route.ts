@@ -35,9 +35,6 @@ export async function POST(req: Request) {
       templateName: prep.templateName,
       messages: prep.messages,
       mergeContext,
-      // Runtime-only auth for browser → api.devora21.com stream.
-      // Kept off NEXT_PUBLIC_* so Netlify secrets scanning does not fail the build.
-      streamAuthToken: process.env.AI_INTERNAL_API_KEY?.trim() || "",
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to prepare resume generation.";

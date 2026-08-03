@@ -19,7 +19,6 @@ interface PrepareResponse {
   templateName?: string;
   messages?: Array<{ role: "system" | "user" | "assistant"; content: string }>;
   mergeContext?: ResumeMergeContext;
-  streamAuthToken?: string;
   error?: string;
 }
 
@@ -30,7 +29,7 @@ function previewRawText(text: string, max = 800): string {
 }
 
 /**
- * Prepare on Next.js, then stream from api.devora21.com.
+ * Prepare on Next.js, then stream via same-origin BFF → api.devora21.com.
  * Sends userId so the backend can apply the saved profile prompt (system messages are ignored server-side).
  */
 export async function generateResume(
@@ -44,6 +43,14 @@ export async function generateResume(
   handlers.onPhase?.("starting");
 
   const userId = typeof body.userId === "string" ? body.userId.trim() : "";
+  const userApiKey = getUserApiKey();
+  const usingUserApiKey = Boolean(userApiKey && isUserApiKey(userApiKey));
+
+  if (!usingUserApiKey && !userId) {
+    throw new Error(
+      "Authentication required so the profile prompt can be applied. Sign in again, then retry Generate."
+    );
+  }
 
   const prepRes = await fetch("/api/resume/generate/start", {
     method: "POST",
@@ -62,31 +69,14 @@ export async function generateResume(
     );
   }
 
-  const userApiKey = getUserApiKey();
-  const streamAuthToken = userApiKey || prep.streamAuthToken?.trim() || "";
-  if (!streamAuthToken) {
-    throw new Error(
-      "Missing AI stream auth. Connect a dv21_ API key, or set AI_INTERNAL_API_KEY on the server for cookie sessions."
-    );
-  }
-
-  const usingUserApiKey = Boolean(userApiKey && isUserApiKey(streamAuthToken));
-  if (!usingUserApiKey && !userId) {
-    throw new Error(
-      "Authentication required so the profile prompt can be applied. Sign in again, then retry Generate."
-    );
-  }
-
   handlers.onPhase?.("analyzing");
 
   let output = "";
   for await (const delta of iterateBrowserAiStream(prep.messages, RESUME_MAX_TOKENS, {
     jsonObject: true,
     signal: handlers.signal,
-    authToken: streamAuthToken,
+    authToken: usingUserApiKey ? userApiKey! : undefined,
     userId: userId || undefined,
-    // When Authorization is the internal key, still forward the user API key if present.
-    userAuthorization: !usingUserApiKey && userApiKey ? userApiKey : undefined,
   })) {
     if (!delta.content) continue;
     output += delta.content;

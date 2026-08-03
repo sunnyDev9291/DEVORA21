@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "@/lib/api-base-url";
+import { isUserApiKey } from "@/lib/user-api-key";
 
 export type BrowserAiChatMessage = {
   role: "system" | "user" | "assistant";
@@ -12,12 +12,13 @@ export type BrowserAiStreamDelta = {
 export type BrowserAiStreamOptions = {
   jsonObject?: boolean;
   signal?: AbortSignal;
-  /** Bearer token for Authorization (dv21_ user key or AI_INTERNAL_API_KEY). */
-  authToken: string;
-  /** Logged-in user id — required when using the internal AI key so profile prompt can load. */
+  /**
+   * Optional dv21_ user API key.
+   * Cookie sessions omit this — the BFF uses AI_INTERNAL_API_KEY + userId.
+   */
+  authToken?: string;
+  /** Logged-in user id — required when not using a dv21_ key. */
   userId?: string;
-  /** Optional end-user Bearer (dv21_ / access token) forwarded as X-User-Authorization. */
-  userAuthorization?: string;
 };
 
 const MID_STREAM_ERROR = /(?:^|\n)\[error\]\s*(.+)$/i;
@@ -43,53 +44,43 @@ function throwIfMidStreamError(accumulated: string): void {
 }
 
 /**
- * Stream chat completions from api.devora21.com as raw plain text.
+ * Stream chat completions via same-origin BFF → api.devora21.com.
  * Backend strips client system messages and applies the user's saved profile prompt —
- * send userId (and/or X-User-Authorization) so it can resolve that prompt.
+ * userId must reach the backend (sent by the BFF as body + X-User-Id).
  */
 export async function* iterateBrowserAiStream(
   messages: BrowserAiChatMessage[],
   maxTokens = 4096,
   options: BrowserAiStreamOptions
 ): AsyncGenerator<BrowserAiStreamDelta> {
-  const authToken = options.authToken?.trim();
-  if (!authToken) {
+  const userId = options.userId?.trim() || "";
+  const authToken = options.authToken?.trim() || "";
+  const usingUserKey = isUserApiKey(authToken);
+
+  if (!usingUserKey && !userId) {
     throw new Error(
-      "Missing AI stream auth. Connect a dv21_ API key, or ensure AI_INTERNAL_API_KEY is set on the server for cookie sessions."
+      "Authentication required so the profile prompt can be applied. Sign in again, then retry Generate."
     );
   }
-
-  const userId = options.userId?.trim() || "";
-  const userAuthorization = options.userAuthorization?.trim() || "";
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "text/plain",
-    Authorization: `Bearer ${authToken}`,
   };
-  if (userId) {
-    headers["X-User-Id"] = userId;
-  }
-  if (userAuthorization) {
-    headers["X-User-Authorization"] = userAuthorization.startsWith("Bearer ")
-      ? userAuthorization
-      : `Bearer ${userAuthorization}`;
+  if (usingUserKey) {
+    headers.Authorization = `Bearer ${authToken}`;
   }
 
-  const body: Record<string, unknown> = {
-    messages,
-    maxTokens,
-    jsonObject: options.jsonObject ?? false,
-  };
-  if (userId) {
-    body.userId = userId;
-  }
-
-  const response = await fetch(`${API_BASE_URL}/ai/chat/completions/stream`, {
+  const response = await fetch("/api/ai/chat/completions/stream", {
     method: "POST",
     credentials: "include",
     headers,
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      messages,
+      maxTokens,
+      jsonObject: options.jsonObject ?? false,
+      userId: userId || undefined,
+    }),
     signal: options.signal,
   });
 

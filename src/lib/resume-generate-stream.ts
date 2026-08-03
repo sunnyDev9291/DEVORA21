@@ -33,6 +33,7 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
 
         for await (const delta of iterateDeepSeekStream(messages, RESUME_MAX_TOKENS, {
           jsonObject: true,
+          userId: prep.userId,
         })) {
           if (delta.reasoning) {
             thinking += delta.reasoning;
