@@ -9,6 +9,17 @@ export type BrowserAiStreamDelta = {
   content?: string;
 };
 
+export type BrowserAiStreamOptions = {
+  jsonObject?: boolean;
+  signal?: AbortSignal;
+  /** Bearer token for Authorization (dv21_ user key or AI_INTERNAL_API_KEY). */
+  authToken: string;
+  /** Logged-in user id — required when using the internal AI key so profile prompt can load. */
+  userId?: string;
+  /** Optional end-user Bearer (dv21_ / access token) forwarded as X-User-Authorization. */
+  userAuthorization?: string;
+};
+
 const MID_STREAM_ERROR = /(?:^|\n)\[error\]\s*(.+)$/i;
 
 async function readHttpError(response: Response): Promise<string> {
@@ -32,14 +43,14 @@ function throwIfMidStreamError(accumulated: string): void {
 }
 
 /**
- * Stream chat completions directly from api.devora21.com as raw plain text chunks
- * (not SSE / not JSON envelopes).
- * Prefer end-user `dv21_` API keys; fall back to prepare-provided server token for cookie sessions.
+ * Stream chat completions from api.devora21.com as raw plain text.
+ * Backend strips client system messages and applies the user's saved profile prompt —
+ * send userId (and/or X-User-Authorization) so it can resolve that prompt.
  */
 export async function* iterateBrowserAiStream(
   messages: BrowserAiChatMessage[],
   maxTokens = 4096,
-  options: { jsonObject?: boolean; signal?: AbortSignal; authToken: string }
+  options: BrowserAiStreamOptions
 ): AsyncGenerator<BrowserAiStreamDelta> {
   const authToken = options.authToken?.trim();
   if (!authToken) {
@@ -48,18 +59,37 @@ export async function* iterateBrowserAiStream(
     );
   }
 
+  const userId = options.userId?.trim() || "";
+  const userAuthorization = options.userAuthorization?.trim() || "";
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "text/plain",
+    Authorization: `Bearer ${authToken}`,
+  };
+  if (userId) {
+    headers["X-User-Id"] = userId;
+  }
+  if (userAuthorization) {
+    headers["X-User-Authorization"] = userAuthorization.startsWith("Bearer ")
+      ? userAuthorization
+      : `Bearer ${userAuthorization}`;
+  }
+
+  const body: Record<string, unknown> = {
+    messages,
+    maxTokens,
+    jsonObject: options.jsonObject ?? false,
+  };
+  if (userId) {
+    body.userId = userId;
+  }
+
   const response = await fetch(`${API_BASE_URL}/ai/chat/completions/stream`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "text/plain",
-      Authorization: `Bearer ${authToken}`,
-    },
-    body: JSON.stringify({
-      messages,
-      maxTokens,
-      jsonObject: options.jsonObject ?? false,
-    }),
+    credentials: "include",
+    headers,
+    body: JSON.stringify(body),
     signal: options.signal,
   });
 

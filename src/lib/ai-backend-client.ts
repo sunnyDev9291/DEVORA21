@@ -8,6 +8,10 @@ export type AiChatMessage = {
 export type AiCompletionOptions = {
   maxTokens?: number;
   jsonObject?: boolean;
+  /** Logged-in user id for profile-prompt application. */
+  userId?: string;
+  /** Optional end-user Bearer forwarded as X-User-Authorization. */
+  userAuthorization?: string;
 };
 
 export type AiStreamDelta = {
@@ -17,7 +21,10 @@ export type AiStreamDelta = {
 
 const MID_STREAM_ERROR = /(?:^|\n)\[error\]\s*(.+)$/i;
 
-function buildAiAuthHeaders(accept = "text/plain"): HeadersInit {
+function buildAiAuthHeaders(
+  accept = "text/plain",
+  options?: Pick<AiCompletionOptions, "userId" | "userAuthorization">
+): HeadersInit {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: accept,
@@ -26,7 +33,34 @@ function buildAiAuthHeaders(accept = "text/plain"): HeadersInit {
   if (key) {
     headers.Authorization = `Bearer ${key}`;
   }
+  const userId = options?.userId?.trim();
+  if (userId) {
+    headers["X-User-Id"] = userId;
+  }
+  const userAuthorization = options?.userAuthorization?.trim();
+  if (userAuthorization) {
+    headers["X-User-Authorization"] = userAuthorization.startsWith("Bearer ")
+      ? userAuthorization
+      : `Bearer ${userAuthorization}`;
+  }
   return headers;
+}
+
+function buildAiBody(
+  messages: AiChatMessage[],
+  maxTokens: number,
+  options?: AiCompletionOptions
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    messages,
+    maxTokens: options?.maxTokens ?? maxTokens,
+    jsonObject: options?.jsonObject ?? false,
+  };
+  const userId = options?.userId?.trim();
+  if (userId) {
+    body.userId = userId;
+  }
+  return body;
 }
 
 function missingBackendConfigMessage(): string {
@@ -65,12 +99,8 @@ export async function completeAiChat(
 
   const response = await fetch(`${BACKEND_API_URL}/ai/chat/completions`, {
     method: "POST",
-    headers: buildAiAuthHeaders("text/plain"),
-    body: JSON.stringify({
-      messages,
-      maxTokens: options?.maxTokens ?? maxTokens,
-      jsonObject: options?.jsonObject ?? false,
-    }),
+    headers: buildAiAuthHeaders("text/plain", options),
+    body: JSON.stringify(buildAiBody(messages, maxTokens, options)),
   });
 
   if (!response.ok) {
@@ -97,12 +127,8 @@ export async function* iterateAiChatStream(
 
   const response = await fetch(`${BACKEND_API_URL}/ai/chat/completions/stream`, {
     method: "POST",
-    headers: buildAiAuthHeaders("text/plain"),
-    body: JSON.stringify({
-      messages,
-      maxTokens: options?.maxTokens ?? maxTokens,
-      jsonObject: options?.jsonObject ?? false,
-    }),
+    headers: buildAiAuthHeaders("text/plain", options),
+    body: JSON.stringify(buildAiBody(messages, maxTokens, options)),
   });
 
   if (!response.ok) {

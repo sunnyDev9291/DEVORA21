@@ -566,6 +566,7 @@ export default function ResumeGenerator({
           templateName: templateForRequest.fileName,
           templateBase64: templateForRequest.templateBase64,
           profileName: chatProfile?.fullName,
+          userId: user?.id,
         },
         {
           onPhase: (phase) => {
@@ -629,6 +630,7 @@ export default function ResumeGenerator({
           templateName: templateForRequest.fileName,
           templateBase64: templateForRequest.templateBase64,
           profileName: chatProfile?.fullName,
+          userId: user?.id,
           previousContent: content,
           atsFeedback: baselineScore.ats,
           ruleKeepFeedback: baselineScore.ruleKeep,
