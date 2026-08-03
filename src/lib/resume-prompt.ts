@@ -5,12 +5,12 @@ import { isProjectLayout, normalizeResumeExperience, normalizeResumeProject } fr
 import { buildRegenerationEvaluationBlock } from "@/lib/resume-regenerate-prompt";
 import { emptyRuleKeepScore } from "@/lib/resume-rule-keep";
 import { buildUnifiedResumeScore } from "@/lib/resume-unified-score";
-import type { AtsScoreResult, GeneratedResumeContent, ResumeTemplateLayout, RuleKeepScoreResult } from "@/lib/resume-types";
+import type { AtsScoreResult, GeneratedResumeContent, ResumeProject, ResumeTemplateLayout, RuleKeepScoreResult } from "@/lib/resume-types";
 
 export const RESUME_AI_MODEL = "claude-sonnet-4-6";
 
-/** Resume generation streams with this budget (backend Claude default). */
-export const RESUME_MAX_TOKENS = 4096;
+/** Resume generation streams with this budget (full multi-role JSON needs headroom). */
+export const RESUME_MAX_TOKENS = 16384;
 
 const BULLETS_JSON_SHAPE = `{
   "title": "string",
@@ -235,7 +235,7 @@ export function pickResumeModelText(output: string, thinking: string): string {
   return out || think;
 }
 
-function repairTruncatedJson(text: string): string {
+function closeOpenJsonStructures(text: string): string {
   let s = text.trimEnd();
   s = s.replace(/,\s*([}\]])/g, "$1");
 
@@ -262,6 +262,8 @@ function repairTruncatedJson(text: string): string {
   }
 
   if (inString) s += '"';
+  // Drop a dangling comma left after closing a truncated value.
+  s = s.replace(/,\s*$/, "");
   while (brackets > 0) {
     s += "]";
     brackets -= 1;
@@ -270,21 +272,120 @@ function repairTruncatedJson(text: string): string {
     s += "}";
     braces -= 1;
   }
-
+  s = s.replace(/,\s*([}\]])/g, "$1");
   return s;
 }
 
+/** Close truncated JSON; also try cutting back to earlier complete values. */
+function repairTruncatedJsonVariants(text: string): string[] {
+  const variants: string[] = [];
+  const seen = new Set<string>();
+  const push = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed || seen.has(trimmed)) return;
+    seen.add(trimmed);
+    variants.push(trimmed);
+  };
+
+  push(text);
+  push(closeOpenJsonStructures(text));
+
+  let cursor = text.trimEnd();
+  for (let i = 0; i < 48 && cursor.length > 32; i += 1) {
+    const cutAt = Math.max(
+      cursor.lastIndexOf(","),
+      cursor.lastIndexOf("}"),
+      cursor.lastIndexOf("]")
+    );
+    if (cutAt < 16) break;
+    cursor = cursor.slice(0, cutAt + (cursor[cutAt] === "," ? 0 : 1)).replace(/,\s*$/, "");
+    push(closeOpenJsonStructures(cursor));
+  }
+
+  return variants;
+}
+
+type LooseResumeJson = {
+  title?: unknown;
+  summary?: unknown;
+  skills?: unknown;
+  fileName?: unknown;
+  experiences?: unknown;
+  experience?: unknown;
+  jobTitle?: unknown;
+  professionalSummary?: unknown;
+  skillsets?: unknown;
+};
+
+function coerceExperienceEntry(raw: unknown): {
+  company: string;
+  role: string;
+  dates: string;
+  bullets: string[];
+  projects?: Array<Partial<ResumeProject>>;
+} | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const exp = raw as Record<string, unknown>;
+  const company = String(exp.company ?? "").trim();
+  const role = String(exp.role ?? exp.title ?? "").trim();
+  const dates = String(exp.dates ?? exp.date ?? "").trim();
+  const bullets = Array.isArray(exp.bullets)
+    ? exp.bullets.map((b) => String(b).trim()).filter(Boolean)
+    : [];
+
+  let projects: Array<Partial<ResumeProject>> | undefined;
+  if (Array.isArray(exp.projects)) {
+    projects = exp.projects.filter((p) => p && typeof p === "object") as Array<Partial<ResumeProject>>;
+  } else if (typeof exp.project === "string" && exp.project.trim()) {
+    // Some models emit a flat "project" string — keep as a bullet so content is not lost.
+    bullets.push(exp.project.trim());
+  }
+
+  if (!company && !role && bullets.length === 0 && !(projects?.length)) return null;
+  return { company, role, dates, bullets, ...(projects ? { projects } : {}) };
+}
+
+function coerceResumePayload(parsed: unknown): GeneratedResumeContent | null {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+  const obj = parsed as LooseResumeJson;
+
+  const experiencesRaw = obj.experiences ?? obj.experience;
+  if (!Array.isArray(experiencesRaw)) return null;
+
+  const experiences = experiencesRaw
+    .map((entry) => coerceExperienceEntry(entry))
+    .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+
+  const title = String(obj.title ?? obj.jobTitle ?? "").trim();
+  const summary = String(obj.summary ?? obj.professionalSummary ?? "").trim();
+  const skills = String(obj.skills ?? obj.skillsets ?? "").trim();
+  const fileName = String(obj.fileName ?? "").trim();
+
+  // Accept partial/truncated payloads: summary or at least one experience is enough to merge.
+  if (!summary && experiences.length === 0) return null;
+
+  return {
+    title: title || experiences[0]?.role || "Resume",
+    summary,
+    skills,
+    ...(fileName ? { fileName } : {}),
+    experiences: experiences.map((e) => ({
+      company: e.company,
+      role: e.role,
+      dates: e.dates,
+      bullets: e.bullets,
+      ...(e.projects ? { projects: e.projects.map((p) => normalizeResumeProject(p)) } : {}),
+    })),
+  };
+}
+
 function tryParseResumeJson(jsonText: string): GeneratedResumeContent | null {
-  const attempts = [jsonText, repairTruncatedJson(jsonText)];
-  for (const attempt of attempts) {
-    if (!attempt) continue;
+  for (const attempt of repairTruncatedJsonVariants(jsonText)) {
     try {
-      const parsed = JSON.parse(attempt) as GeneratedResumeContent;
-      if (parsed?.title && parsed?.summary && parsed?.skills && Array.isArray(parsed.experiences)) {
-        return parsed;
-      }
+      const coerced = coerceResumePayload(JSON.parse(attempt) as unknown);
+      if (coerced) return coerced;
     } catch {
-      // try next
+      // try next variant
     }
   }
   return null;
@@ -514,7 +615,7 @@ export function detectResumeGenerationPhase(
 ): ResumeGenerationPhase {
   const text = output;
   if (/"projects"/.test(text) || /"businessChallenge"/.test(text)) return "experiences";
-  if (/"bullets"/.test(text) || /"experiences"\s*:\s*\[/.test(text)) return "experiences";
+  if (/"bullets"/.test(text) || /"experiences?"\s*:\s*\[/.test(text)) return "experiences";
   if (/"skills"/.test(text)) return "skills";
   if (/"summary"/.test(text)) return "summary";
   if (/"title"/.test(text)) return "title";
