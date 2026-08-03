@@ -19,7 +19,7 @@ interface PrepareResponse {
   templateName?: string;
   messages?: Array<{ role: "system" | "user" | "assistant"; content: string }>;
   mergeContext?: ResumeMergeContext;
-  /** Server AI_INTERNAL_API_KEY for direct-stream fallback / older cached clients. */
+  /** Server AI_INTERNAL_API_KEY for browser → api.devora21.com stream auth. */
   streamAuthToken?: string;
   error?: string;
 }
@@ -31,7 +31,7 @@ function previewRawText(text: string, max = 800): string {
 }
 
 /**
- * Prepare on Next.js, then stream via same-origin BFF → api.devora21.com.
+ * Prepare on Next.js, then stream Claude directly from the browser → api.devora21.com.
  * Sends userId so the backend can apply the saved profile prompt (system messages are ignored server-side).
  */
 export async function generateResume(
@@ -72,9 +72,10 @@ export async function generateResume(
   }
 
   const streamAuthToken = userApiKey || prep.streamAuthToken?.trim() || "";
-  if (!usingUserApiKey && !streamAuthToken) {
-    // BFF can still succeed with server-side AI_INTERNAL_API_KEY; only hard-fail when
-    // both are missing after a failed stream attempt would be worse UX — keep soft here.
+  if (!streamAuthToken) {
+    throw new Error(
+      "Missing AI stream auth. Connect a dv21_ API key, or set AI_INTERNAL_API_KEY on the server for cookie sessions."
+    );
   }
 
   handlers.onPhase?.("analyzing");
@@ -83,8 +84,7 @@ export async function generateResume(
   for await (const delta of iterateBrowserAiStream(prep.messages, RESUME_MAX_TOKENS, {
     jsonObject: true,
     signal: handlers.signal,
-    // Prefer dv21_ key; else pass prepare token for direct fallback.
-    authToken: streamAuthToken || undefined,
+    authToken: streamAuthToken,
     userId: userId || undefined,
   })) {
     if (!delta.content) continue;

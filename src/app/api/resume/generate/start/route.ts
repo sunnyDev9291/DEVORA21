@@ -35,8 +35,7 @@ export async function POST(req: Request) {
       templateName: prep.templateName,
       messages: prep.messages,
       mergeContext,
-      // Kept for older cached clients + direct-stream fallback.
-      // Server-only env (not NEXT_PUBLIC_*) so Netlify secrets scanning stays green.
+      // Runtime auth for browser → api.devora21.com stream (not NEXT_PUBLIC_*).
       streamAuthToken: process.env.AI_INTERNAL_API_KEY?.trim() || "",
     });
   } catch (err) {
