@@ -49,62 +49,21 @@ function throwIfMidStreamError(accumulated: string): void {
   }
 }
 
-/**
- * Stream chat completions directly from the browser → api.devora21.com.
- * Avoids Netlify BFF timeouts on long Claude streams.
- * Backend strips client system messages and applies the saved profile prompt —
- * send userId / X-User-Id when using the internal AI key.
- */
-export async function* iterateBrowserAiStream(
-  messages: BrowserAiChatMessage[],
-  maxTokens = 4096,
-  options: BrowserAiStreamOptions
+function isNetworkFetchError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const message = err.message.toLowerCase();
+  return (
+    err.name === "TypeError" ||
+    message.includes("failed to fetch") ||
+    message.includes("networkerror") ||
+    message.includes("load failed") ||
+    message.includes("cors")
+  );
+}
+
+async function* readPlainTextStream(
+  response: Response
 ): AsyncGenerator<BrowserAiStreamDelta> {
-  const authToken = options.authToken?.trim() || "";
-  if (!authToken) {
-    throw new Error(
-      "Missing AI stream auth. Connect a dv21_ API key, or set AI_INTERNAL_API_KEY on the server for cookie sessions."
-    );
-  }
-
-  const userId = options.userId?.trim() || "";
-  const usingUserKey = isUserApiKey(authToken);
-
-  if (!usingUserKey && !userId) {
-    throw new Error(
-      "Authentication required so the profile prompt can be applied. Sign in again, then retry Generate."
-    );
-  }
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "text/plain",
-    Authorization: `Bearer ${authToken}`,
-  };
-  if (userId) {
-    headers["X-User-Id"] = userId;
-  }
-
-  const body: Record<string, unknown> = {
-    messages,
-    maxTokens,
-    jsonObject: options.jsonObject ?? false,
-  };
-  if (userId) {
-    body.userId = userId;
-  }
-
-  const response = await fetch(`${API_BASE_URL}/ai/chat/completions/stream`, {
-    method: "POST",
-    credentials: "include",
-    headers,
-    body: JSON.stringify(body),
-    signal: options.signal,
-  });
-
-  if (!response.ok) {
-    throw new Error(await readHttpError(response));
-  }
   if (!response.body) {
     throw new Error("No response stream from AI backend.");
   }
@@ -132,4 +91,113 @@ export async function* iterateBrowserAiStream(
     throwIfMidStreamError(accumulated);
     yield { content: tail };
   }
+}
+
+/** Browser → api.devora21.com. userId goes in JSON only (avoids CORS on X-User-Id). */
+async function fetchDirectAiStream(
+  messages: BrowserAiChatMessage[],
+  maxTokens: number,
+  options: BrowserAiStreamOptions
+): Promise<Response> {
+  const authToken = options.authToken.trim();
+  const userId = options.userId?.trim() || "";
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "text/plain",
+    Authorization: `Bearer ${authToken}`,
+  };
+
+  const body: Record<string, unknown> = {
+    messages,
+    maxTokens,
+    jsonObject: options.jsonObject ?? false,
+  };
+  if (userId) {
+    body.userId = userId;
+  }
+
+  // Bearer + body.userId identify the user; omit cookies to avoid credential CORS failures.
+  return fetch(`${API_BASE_URL}/ai/chat/completions/stream`, {
+    method: "POST",
+    credentials: "omit",
+    headers,
+    body: JSON.stringify(body),
+    signal: options.signal,
+  });
+}
+
+/** Same-origin BFF when direct CORS/network fails. */
+async function fetchBffAiStream(
+  messages: BrowserAiChatMessage[],
+  maxTokens: number,
+  options: BrowserAiStreamOptions
+): Promise<Response> {
+  const authToken = options.authToken.trim();
+  const userId = options.userId?.trim() || "";
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "text/plain",
+  };
+  if (isUserApiKey(authToken)) {
+    headers.Authorization = `Bearer ${authToken}`;
+  }
+
+  return fetch("/api/ai/chat/completions/stream", {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify({
+      messages,
+      maxTokens,
+      jsonObject: options.jsonObject ?? false,
+      userId: userId || undefined,
+    }),
+    signal: options.signal,
+  });
+}
+
+/**
+ * Prefer browser → api.devora21.com (long streams).
+ * Fall back to same-origin BFF when CORS/network blocks the direct call.
+ */
+export async function* iterateBrowserAiStream(
+  messages: BrowserAiChatMessage[],
+  maxTokens = 4096,
+  options: BrowserAiStreamOptions
+): AsyncGenerator<BrowserAiStreamDelta> {
+  const authToken = options.authToken?.trim() || "";
+  if (!authToken) {
+    throw new Error(
+      "Missing AI stream auth. Connect a dv21_ API key, or set AI_INTERNAL_API_KEY on the server for cookie sessions."
+    );
+  }
+
+  const userId = options.userId?.trim() || "";
+  const usingUserKey = isUserApiKey(authToken);
+
+  if (!usingUserKey && !userId) {
+    throw new Error(
+      "Authentication required so the profile prompt can be applied. Sign in again, then retry Generate."
+    );
+  }
+
+  let response: Response;
+  try {
+    response = await fetchDirectAiStream(messages, maxTokens, options);
+  } catch (err) {
+    if (options.signal?.aborted) throw err;
+    if (!isNetworkFetchError(err)) throw err;
+    response = await fetchBffAiStream(messages, maxTokens, {
+      ...options,
+      authToken,
+      userId,
+    });
+  }
+
+  if (!response.ok) {
+    throw new Error(await readHttpError(response));
+  }
+
+  yield* readPlainTextStream(response);
 }
