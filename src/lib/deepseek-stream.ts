@@ -20,6 +20,8 @@ export async function completeDeepSeek(
   return completeAiChat(messages, maxTokens, {
     maxTokens: options?.maxTokens ?? maxTokens,
     jsonObject: options?.jsonObject,
+    userId: options?.userId,
+    userAuthorization: options?.userAuthorization,
   });
 }
 
@@ -31,6 +33,8 @@ export async function* iterateDeepSeekStream(
   yield* iterateAiChatStream(messages, maxTokens, {
     maxTokens: options?.maxTokens ?? maxTokens,
     jsonObject: options?.jsonObject,
+    userId: options?.userId,
+    userAuthorization: options?.userAuthorization,
   });
 }
 

@@ -191,8 +191,10 @@ Resume generation streams from the browser to `api.devora21.com`, so CORS must a
 
 - Origins: app domains (`devora21.com`, Netlify preview, localhost)
 - Headers: `Authorization`, `Content-Type`, `Accept`
+- Methods: `POST`, `OPTIONS`
 
-Keep existing CORS for auth/archive routes.
+The browser sends `userId` in the JSON body (not `X-User-Id`) to stay within common Allow-Headers lists.
+If CORS still blocks the browser, the app falls back to a same-origin Netlify BFF proxy.
 
 ---
 

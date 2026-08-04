@@ -7,7 +7,7 @@ import {
 } from "@/lib/resume-prompt";
 import { iterateBrowserAiStream } from "@/lib/browser-ai-stream";
 import type { ResumeMergeContext } from "@/lib/resume-generate-prep";
-import { getUserApiKey } from "@/lib/user-api-key";
+import { getUserApiKey, isUserApiKey } from "@/lib/user-api-key";
 
 export interface ResumeGenerateResult {
   content: GeneratedResumeContent;
@@ -19,6 +19,7 @@ interface PrepareResponse {
   templateName?: string;
   messages?: Array<{ role: "system" | "user" | "assistant"; content: string }>;
   mergeContext?: ResumeMergeContext;
+  /** Server AI_INTERNAL_API_KEY for browser → api.devora21.com stream auth. */
   streamAuthToken?: string;
   error?: string;
 }
@@ -30,8 +31,8 @@ function previewRawText(text: string, max = 800): string {
 }
 
 /**
- * Prepare on Next.js (short), then stream Claude plain text directly from api.devora21.com.
- * End users with a dv21_ API key authenticate the stream with that key (not AI_INTERNAL_API_KEY).
+ * Prepare on Next.js, then stream Claude directly from the browser → api.devora21.com.
+ * Sends userId so the backend can apply the saved profile prompt (system messages are ignored server-side).
  */
 export async function generateResume(
   body: Record<string, unknown>,
@@ -42,6 +43,16 @@ export async function generateResume(
   }
 ): Promise<ResumeGenerateResult> {
   handlers.onPhase?.("starting");
+
+  const userId = typeof body.userId === "string" ? body.userId.trim() : "";
+  const userApiKey = getUserApiKey();
+  const usingUserApiKey = Boolean(userApiKey && isUserApiKey(userApiKey));
+
+  if (!usingUserApiKey && !userId) {
+    throw new Error(
+      "Authentication required so the profile prompt can be applied. Sign in again, then retry Generate."
+    );
+  }
 
   const prepRes = await fetch("/api/resume/generate/start", {
     method: "POST",
@@ -60,7 +71,6 @@ export async function generateResume(
     );
   }
 
-  const userApiKey = getUserApiKey();
   const streamAuthToken = userApiKey || prep.streamAuthToken?.trim() || "";
   if (!streamAuthToken) {
     throw new Error(
@@ -75,6 +85,7 @@ export async function generateResume(
     jsonObject: true,
     signal: handlers.signal,
     authToken: streamAuthToken,
+    userId: userId || undefined,
   })) {
     if (!delta.content) continue;
     output += delta.content;

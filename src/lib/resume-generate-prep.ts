@@ -24,6 +24,8 @@ export interface ResumeGenerateRequest {
   customPrompt?: string;
   templateName?: string;
   templateBase64?: string;
+  /** Logged-in user id — forwarded to the AI backend for profile prompt. */
+  userId?: string;
   /** Prior ATS evaluation — used when regenerating to target a higher score. */
   atsFeedback?: AtsScoreResult;
   /** Prior rule keep evaluation — co-target during regenerate. */
@@ -44,6 +46,7 @@ export interface ResumeGeneratePrep {
   profileName?: string;
   skillsSample: string;
   regenerateBaseline?: GeneratedResumeContent;
+  userId?: string;
 }
 
 export interface ResumeMergeContext {
@@ -150,6 +153,7 @@ export async function prepareResumeGeneration(
     profileName: body.profileName?.trim() || undefined,
     skillsSample,
     regenerateBaseline: isRegenerate ? body.previousContent : undefined,
+    userId: body.userId?.trim() || undefined,
   };
 }
 

@@ -192,13 +192,34 @@ export default function ResumeContentReview({
     return exp.bullets.some((b) => b.trim());
   };
 
-  const canApply =
-    reviewConfirmed &&
-    resumeFileBaseName.trim() &&
-    content.title.trim() &&
-    content.summary.trim() &&
-    content.skills.trim() &&
-    content.experiences.every(experienceValid);
+  const applyBlockers: string[] = [];
+  if (!reviewConfirmed) {
+    applyBlockers.push("Check the box above to enable apply");
+  }
+  if (!resumeFileBaseName.trim()) {
+    applyBlockers.push("Add an expected resume file name");
+  }
+  if (!content.title.trim()) {
+    applyBlockers.push("Add a resume title");
+  }
+  if (!content.summary.trim()) {
+    applyBlockers.push("Add a professional summary");
+  }
+  if (!content.skills.trim()) {
+    applyBlockers.push("Add skillsets before applying");
+  }
+  const invalidExperienceIndexes = content.experiences
+    .map((exp, index) => (experienceValid(exp) ? -1 : index + 1))
+    .filter((index) => index > 0);
+  if (invalidExperienceIndexes.length > 0) {
+    applyBlockers.push(
+      invalidExperienceIndexes.length === 1
+        ? `Fill in experience #${invalidExperienceIndexes[0]} (role + bullets or projects)`
+        : `Fill in experiences #${invalidExperienceIndexes.join(", ")} (role + bullets or projects)`
+    );
+  }
+
+  const canApply = applyBlockers.length === 0;
 
   const showNameReset =
     Boolean(onResumeFileBaseNameReset) &&
@@ -219,7 +240,7 @@ export default function ResumeContentReview({
           type="checkbox"
           checked={reviewConfirmed}
           onChange={(e) => setReviewConfirmed(e.target.checked)}
-          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+          className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
         />
         <span className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
           I&apos;ve reviewed and edited this content. Apply it to my resume file.
@@ -229,7 +250,14 @@ export default function ResumeContentReview({
         type="button"
         onClick={onApply}
         disabled={applying || generating || !canApply}
-        className="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-blue-600/25 transition-all"
+        title={
+          !canApply
+            ? applyBlockers.join(". ")
+            : generating
+              ? "Wait for generation to finish"
+              : undefined
+        }
+        className="relative z-10 w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-blue-600/25 transition-all pointer-events-auto"
       >
         {applying ? (
           <>
@@ -248,8 +276,11 @@ export default function ResumeContentReview({
           </>
         )}
       </button>
-      {!reviewConfirmed && (
-        <p className="text-xs text-slate-400 text-center mt-2">Check the box above to enable apply</p>
+      {!canApply && applyBlockers.length > 0 && (
+        <p className="text-xs text-amber-600 dark:text-amber-400 text-center mt-2" role="status">
+          {applyBlockers[0]}
+          {applyBlockers.length > 1 ? ` · +${applyBlockers.length - 1} more` : ""}
+        </p>
       )}
     </>
   );
@@ -549,9 +580,9 @@ export default function ResumeContentReview({
                 <div
                   role="region"
                   aria-label="Apply resume changes"
-                  className="fixed inset-x-0 bottom-0 z-[200] border-t border-slate-200 dark:border-white/[0.12] bg-white dark:bg-navy-900 shadow-[0_-8px_30px_rgba(15,23,42,0.12)] dark:shadow-[0_-8px_30px_rgba(0,0,0,0.45)]"
+                  className="pointer-events-auto fixed inset-x-0 bottom-0 z-[10050] border-t border-slate-200 dark:border-white/[0.12] bg-white dark:bg-navy-900 shadow-[0_-8px_30px_rgba(15,23,42,0.12)] dark:shadow-[0_-8px_30px_rgba(0,0,0,0.45)]"
                 >
-                  <div className="mx-auto w-full max-w-[70vw] px-4 py-4 sm:px-6 lg:px-8 pr-28 sm:pr-36">
+                  <div className="relative z-10 mx-auto w-full max-w-[70vw] px-4 py-4 sm:px-6 lg:px-8 pr-28 sm:pr-36">
                     {applyBarInner}
                   </div>
                 </div>,

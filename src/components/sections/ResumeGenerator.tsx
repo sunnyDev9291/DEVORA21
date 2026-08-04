@@ -522,6 +522,12 @@ export default function ResumeGenerator({
   async function handleGenerate(e?: React.FormEvent) {
     e?.preventDefault();
     if (applying) return;
+    if (!user?.id) {
+      setError(
+        "Authentication required so the profile prompt can be applied. Sign in again, then retry Generate."
+      );
+      return;
+    }
     if (!activeTemplate) {
       setError("Upload a resume template on your dashboard before generating.");
       return;
@@ -566,6 +572,7 @@ export default function ResumeGenerator({
           templateName: templateForRequest.fileName,
           templateBase64: templateForRequest.templateBase64,
           profileName: chatProfile?.fullName,
+          userId: user?.id,
         },
         {
           onPhase: (phase) => {
@@ -596,6 +603,12 @@ export default function ResumeGenerator({
   async function handleImproveScoreItem(target: ResumeImproveTarget) {
     if (!RESUME_SCORE_SYSTEM_ENABLED) return;
     if (applying || generating || !content || !activeTemplate) return;
+    if (!user?.id) {
+      setError(
+        "Authentication required so the profile prompt can be applied. Sign in again, then retry Generate."
+      );
+      return;
+    }
 
     setAtsModalOpen(true);
     setScoreError("");
@@ -629,6 +642,7 @@ export default function ResumeGenerator({
           templateName: templateForRequest.fileName,
           templateBase64: templateForRequest.templateBase64,
           profileName: chatProfile?.fullName,
+          userId: user?.id,
           previousContent: content,
           atsFeedback: baselineScore.ats,
           ruleKeepFeedback: baselineScore.ruleKeep,
