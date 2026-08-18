@@ -638,7 +638,8 @@ export default function ResumeGenerator({
       const draft = await generateResume(
         {
           ...form,
-          customPrompt: [form.customPrompt.trim(), targetedInstruction].filter(Boolean).join("\n\n"),
+          customPrompt: form.customPrompt,
+          task: targetedInstruction,
           templateName: templateForRequest.fileName,
           templateBase64: templateForRequest.templateBase64,
           profileName: chatProfile?.fullName,

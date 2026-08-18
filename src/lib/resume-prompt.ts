@@ -1,11 +1,7 @@
 import { applyResumeContentPostProcess } from "@/lib/resume-content-postprocess";
-import { extractResumeFileNamePatternFromPrompt } from "@/lib/resume-filename";
 import { buildTemplateSkillsPromptBlock } from "@/lib/resume-skills-style";
 import { isProjectLayout, normalizeResumeExperience, normalizeResumeProject } from "@/lib/resume-experience-utils";
-import { buildRegenerationEvaluationBlock } from "@/lib/resume-regenerate-prompt";
-import { emptyRuleKeepScore } from "@/lib/resume-rule-keep";
-import { buildUnifiedResumeScore } from "@/lib/resume-unified-score";
-import type { AtsScoreResult, GeneratedResumeContent, ResumeProject, ResumeTemplateLayout, RuleKeepScoreResult } from "@/lib/resume-types";
+import type { GeneratedResumeContent, ResumeProject, ResumeTemplateLayout } from "@/lib/resume-types";
 
 export const RESUME_AI_MODEL = "claude-sonnet-4-6";
 
@@ -48,14 +44,11 @@ const PROJECTS_JSON_SHAPE = `{
 /** Minimal system prompt — content/style rules come only from the user's instructions. */
 export function buildResumeSystemPrompt(regenerate = false, layout: ResumeTemplateLayout = "bullets"): string {
   const shape = isProjectLayout(layout) ? PROJECTS_JSON_SHAPE : BULLETS_JSON_SHAPE;
-  const skillRule = isProjectLayout(layout)
-    ? "- Skillsets: follow the template category labels, order, line count, and colon formatting exactly; only replace the technologies."
-    : "- Skillsets: follow the template plain-list style exactly; do not add category labels.";
   const regenerateRules = regenerate
     ? [
-        "- REGENERATE MODE: Start from the previous draft JSON in the user message. Change only fields needed to fix weak scores.",
+        "- REGENERATE MODE: Start from the previous draft JSON in the user message.",
         "- Copy every unchanged field verbatim from the previous draft (same wording, punctuation, and formatting).",
-        "- Do not rewrite high-scoring sections, summaries, or experience sentences unless the evaluation block flags them.",
+        "- Only rewrite fields needed for the Task, if a Task is present.",
       ]
     : [];
   return [
@@ -64,11 +57,10 @@ export function buildResumeSystemPrompt(regenerate = false, layout: ResumeTempla
     "",
     "Technical output rules (not content style):",
     "- Use **double asterisks** around skill category labels (e.g. **Languages:**) and tech terms so Word can render bold.",
-    "- Match the template job count, dates, project/bullet counts, and fixed project names from the user message.",
-    skillRule,
-    "- Set fileName when Instructions specify a resume file name (no .docx extension; substitute real values for placeholders).",
+    "- Match the template job count, companies, dates, and fixed project names from the user message.",
+    "- Skillsets JSON must match the template skillsets layout in the user message (labels, line count, formatting).",
+    "- Bullet count per job is not taken from the template.",
     "- Do not invent employers or projects.",
-    "- All wording, tone, and formatting rules come ONLY from the user Instructions in the user message.",
     "- No markdown fences or commentary.",
     ...regenerateRules,
   ].join("\n");
@@ -85,49 +77,43 @@ function formatTemplateStructureLine(
     const names = projects.map((p) => `"${p.name}"`).join(", ");
     return `${prefix} | ${projects.length} project(s), fixed names: ${names}`;
   }
-  return `${prefix} | ${e.bullets.length} bullet(s)`;
+  return `${prefix} | keep this job; bullet count is not taken from the template (template currently has ${e.bullets.length} slots)`;
 }
 
 export function buildResumeUserPrompt({
   jobTitle,
+  companyName,
   jobDescription,
-  customPrompt,
   existingExperiences,
   templateLayout = "bullets",
   previousContent,
-  atsFeedback,
-  ruleKeepFeedback,
-  priorityKeywords,
   templateSkillsSample,
+  task,
 }: {
   jobTitle: string;
+  companyName?: string;
   jobDescription: string;
-  customPrompt: string;
   existingExperiences: GeneratedResumeContent["experiences"];
   templateLayout?: ResumeTemplateLayout;
   previousContent?: GeneratedResumeContent;
-  atsFeedback?: AtsScoreResult;
-  ruleKeepFeedback?: RuleKeepScoreResult;
-  /** Must-have JD keywords — injected on first generation to improve initial ATS match. */
-  priorityKeywords?: string[];
-  /** Skillsets section from the user's template DOCX. */
+  /** Skillsets section from the user's template DOCX (layout only). */
   templateSkillsSample?: string;
+  /** Extra task for this click only (e.g. improve one score item). Not the profile prompt. */
+  task?: string;
 }): string {
   const layout = previousContent?.layout ?? templateLayout;
   const experiences = previousContent?.experiences ?? existingExperiences;
   const isRegenerate = Boolean(previousContent);
-  const instructions = customPrompt.trim();
 
   const structureBlock = [
-    `Template structure (${experiences.length} job(s) — keep company, dates, project names, and counts fixed):`,
+    `Template layout (${experiences.length} job(s) — keep company, dates, and project names fixed; do not copy the template bullet count):`,
     experiences.map((e, i) => formatTemplateStructureLine(e, i, layout)).join("\n"),
   ].join("\n");
 
   const previousDraftBlock =
     isRegenerate && previousContent
       ? [
-          "Previous draft (revise using only the job description and instructions above):",
-          // Compact JSON — same fields as pretty-print; whitespace only (no quality change).
+          "Previous draft JSON (revise this document; keep template layout):",
           JSON.stringify({
             title: previousContent.title,
             summary: previousContent.summary,
@@ -138,47 +124,15 @@ export function buildResumeUserPrompt({
         ].join("\n")
       : "";
 
-  const evaluationBlock =
-    isRegenerate && atsFeedback
-      ? buildRegenerationEvaluationBlock(
-          atsFeedback,
-          ruleKeepFeedback ?? emptyRuleKeepScore(),
-          buildUnifiedResumeScore(atsFeedback, ruleKeepFeedback ?? emptyRuleKeepScore()).overall
-        )
-      : "";
-
-  const keywordBlock =
-    !isRegenerate && priorityKeywords && priorityKeywords.length > 0
-      ? [
-          "Priority ATS keywords from the job description (include naturally in title, skills, summary, and experience):",
-          priorityKeywords.slice(0, 18).join(", "),
-        ].join("\n")
-      : "";
-
-  const fileNamePattern = instructions ? extractResumeFileNamePatternFromPrompt(instructions) : null;
-  const fileNameBlock = fileNamePattern
-    ? [
-        'Resume file name (required JSON field "fileName"):',
-        "Set fileName to this exact pattern with placeholders replaced using your generated title and top skills.",
-        "Do not include .docx. Example shape only:",
-        fileNamePattern,
-      ].join("\n")
-    : instructions
-      ? 'If Instructions specify a resume file name, set JSON field "fileName" to that resolved name (no .docx extension).'
-      : "";
-
   const templateSkillsBlock = buildTemplateSkillsPromptBlock(templateSkillsSample ?? "", layout);
+  const taskBlock = task?.trim() ? `Task:\n${task.trim()}` : "";
 
   return [
     jobTitle && `Job title:\n${jobTitle}`,
+    companyName?.trim() && `Company:\n${companyName.trim()}`,
     jobDescription && `Job description:\n${jobDescription}`,
-    keywordBlock,
     templateSkillsBlock,
-    fileNameBlock,
-    instructions
-      ? `Instructions:\n${instructions}`
-      : "Instructions: Write all resume content tailored to the job description.",
-    evaluationBlock,
+    taskBlock,
     previousDraftBlock,
     structureBlock,
     `Return exactly ${experiences.length} experience entries. Valid JSON only.`,
@@ -562,15 +516,8 @@ export function mergeResumeWithTemplate(
         : baselineExp?.bullets?.length
           ? baselineExp.bullets
           : existing.bullets;
-      const target = existing.bullets.length;
-      const normalized =
-        sourceBullets.length === target
-          ? sourceBullets
-          : sourceBullets.length > target
-            ? sourceBullets.slice(0, target)
-            : [...sourceBullets, ...(baselineExp?.bullets ?? existing.bullets).slice(sourceBullets.length, target)];
-
-      const bullets = normalized.map((bullet, bulletIndex) =>
+      // Keep AI / Instructions bullet count. Do not slice or pad to the template slot count.
+      const bullets = sourceBullets.map((bullet, bulletIndex) =>
         pickRegenerateText(
           bullet,
           baselineExp?.bullets[bulletIndex],

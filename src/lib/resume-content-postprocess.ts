@@ -90,30 +90,6 @@ export function boldSkillCategoryLabels(skills: string): string {
 
 
 
-function normalizeBulletsToCount(bullets: string[], targetCount: number, fallback: string[]): string[] {
-
-  if (targetCount <= 0) return [];
-
-  const trimmed = bullets.map((b) => b.trim()).filter(Boolean);
-
-  if (trimmed.length === targetCount) return trimmed;
-
-  if (trimmed.length > targetCount) return trimmed.slice(0, targetCount);
-
-  const out = [...trimmed];
-
-  while (out.length < targetCount) {
-
-    out.push(fallback[out.length] ?? fallback[fallback.length - 1] ?? "");
-
-  }
-
-  return out;
-
-}
-
-
-
 function normalizeProjectsToCount(
 
   projects: ResumeProject[],
@@ -176,7 +152,7 @@ function boldProjectFields(project: ResumeProject, skillTerms: string[]): Resume
 
 
 
-/** Enforce template counts and bold skillset terms inside experience content. */
+/** Bold skillset terms in experience content. Keep AI/Instructions bullet counts (do not clip to template). */
 
 export function applyResumeContentPostProcess(
 
@@ -255,14 +231,14 @@ export function applyResumeContentPostProcess(
         };
       }
 
-      const targetCount = template?.bullets.length ?? exp.bullets.length;
-      const bullets = normalizeBulletsToCount(exp.bullets, targetCount, template?.bullets ?? []);
+      const bullets = (exp.bullets ?? []).map((b) => b.trim()).filter(Boolean);
+      const kept = bullets.length > 0 ? bullets : (template?.bullets ?? []).map((b) => b.trim()).filter(Boolean);
 
       return {
         company: template?.company ?? exp.company,
         role: boldSkillTermsInText(exp.role, skillTerms),
         dates: template?.dates ?? exp.dates,
-        bullets: bullets.map((bullet) => boldSkillTermsInText(bullet, skillTerms)),
+        bullets: kept.map((bullet) => boldSkillTermsInText(bullet, skillTerms)),
       };
 
     }),

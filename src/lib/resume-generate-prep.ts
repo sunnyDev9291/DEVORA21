@@ -1,5 +1,4 @@
 import { parseResumeHeaderFromDocxBuffer } from "@/lib/resume-docx";
-import { getCachedJobKeywords } from "@/lib/resume-keywords-cache";
 import { getCachedTemplateParse } from "@/lib/resume-template-cache";
 import { resolveTemplateBuffer } from "@/lib/resume-template-resolve";
 import {
@@ -26,6 +25,8 @@ export interface ResumeGenerateRequest {
   templateBase64?: string;
   /** Logged-in user id — forwarded to the AI backend for profile prompt. */
   userId?: string;
+  /** Extra task for this click only (e.g. improve one score item). Not the profile prompt. */
+  task?: string;
   /** Prior ATS evaluation — used when regenerating to target a higher score. */
   atsFeedback?: AtsScoreResult;
   /** Prior rule keep evaluation — co-target during regenerate. */
@@ -121,23 +122,15 @@ export async function prepareResumeGeneration(
 
   const isRegenerate = Boolean(body.previousContent);
 
-  let priorityKeywords: string[] | undefined;
-  if (!isRegenerate && jobDescription) {
-    const { keywords } = await getCachedJobKeywords(jobTitle, companyName, jobDescription);
-    priorityKeywords = keywords.mustHave.slice(0, 18);
-  }
-
   const userPrompt = buildResumeUserPrompt({
     jobTitle,
+    companyName,
     jobDescription,
-    customPrompt,
     existingExperiences,
     templateLayout,
     previousContent: isRegenerate ? body.previousContent : undefined,
-    atsFeedback: isRegenerate ? body.atsFeedback : undefined,
-    ruleKeepFeedback: isRegenerate ? body.ruleKeepFeedback : undefined,
-    priorityKeywords,
     templateSkillsSample: skillsSample,
+    task: body.task?.trim() || undefined,
   });
 
   return {
