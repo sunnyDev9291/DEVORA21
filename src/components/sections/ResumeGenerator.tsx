@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
 import ResumeRawAiTextarea from "@/components/ui/ResumeRawAiTextarea";
+import AnalogWatch from "@/components/ui/AnalogWatch";
 import ResumeContentReview from "@/components/sections/ResumeContentReview";
 import { resolveResumeWizardStep } from "@/components/sections/ResumeStepper";
 import { useAuth } from "@/context/AuthContext";
@@ -1138,7 +1139,12 @@ export default function ResumeGenerator({
                 </p>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+              {(generating || streamOutput) && (
+                <div className="hidden sm:block rounded-full border border-slate-200/80 bg-white/90 p-1.5 shadow-sm dark:border-white/[0.08] dark:bg-navy-900/80">
+                  <AnalogWatch size={64} />
+                </div>
+              )}
               {RESUME_SCORE_SYSTEM_ENABLED && (resumeScore || scoreLoading) && (
                 <button
                   type="button"
