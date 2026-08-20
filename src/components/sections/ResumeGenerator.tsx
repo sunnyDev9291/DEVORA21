@@ -208,6 +208,7 @@ export default function ResumeGenerator({
     setStreamOutput("");
     setLastGenerateDurationMs(null);
     generateStartedAtRef.current = null;
+    clearResumeGenerateTimer();
     setResumeScore(null);
     setScoreError("");
     setRegenerateNotice("");
@@ -235,10 +236,7 @@ export default function ResumeGenerator({
   }, []);
 
   useEffect(() => {
-    if (!generating) {
-      clearResumeGenerateTimer();
-      return;
-    }
+    if (!generating) return;
     const startedAt = generateStartedAtRef.current ?? Date.now();
     generateStartedAtRef.current = startedAt;
     const tick = () => {
@@ -585,6 +583,7 @@ export default function ResumeGenerator({
     setContent(null);
     generateStartedAtRef.current = Date.now();
     setLastGenerateDurationMs(null);
+    publishResumeGenerateTimer({ active: true, elapsedMs: 0 });
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -619,7 +618,9 @@ export default function ResumeGenerator({
       if (generationRunRef.current !== runId) return;
       const endedAt = Date.now();
       const startedAt = generateStartedAtRef.current ?? endedAt;
-      setLastGenerateDurationMs(endedAt - startedAt);
+      const durationMs = endedAt - startedAt;
+      setLastGenerateDurationMs(durationMs);
+      publishResumeGenerateTimer({ active: true, elapsedMs: durationMs });
       setContent(data.content);
       setGenerationKey((k) => k + 1);
     } catch (err) {
@@ -666,6 +667,7 @@ export default function ResumeGenerator({
     setRegenerateBaselineScore(baselineScore);
     generateStartedAtRef.current = Date.now();
     setLastGenerateDurationMs(null);
+    publishResumeGenerateTimer({ active: true, elapsedMs: 0 });
 
     const templateForRequest = resolveActiveUserTemplate(user?.id, activeTemplate)!;
     const targetedInstruction = buildImproveTargetInstruction(target);
@@ -699,7 +701,9 @@ export default function ResumeGenerator({
 
       const endedAt = Date.now();
       const startedAt = generateStartedAtRef.current ?? endedAt;
-      setLastGenerateDurationMs(endedAt - startedAt);
+      const durationMs = endedAt - startedAt;
+      setLastGenerateDurationMs(durationMs);
+      publishResumeGenerateTimer({ active: true, elapsedMs: durationMs });
 
       const nextScore = await evaluateResumeScores(draft.content, {
         openModal: false,

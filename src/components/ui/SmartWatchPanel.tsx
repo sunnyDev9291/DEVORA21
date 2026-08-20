@@ -181,7 +181,7 @@ export default function SmartWatchPanel({ className = "" }: { className?: string
       role="application"
       aria-roledescription="draggable watch"
       aria-label={`${profileLabel}. Current time ${timeLabel}.${
-        generateDigital ? ` Generating ${generateDigital}.` : ""
+        generateDigital ? ` Generate time ${generateDigital}.` : ""
       } ${
         todayCount == null ? "Loading" : todayCount
       } resumes made today. Drag to move.`}

@@ -1,8 +1,9 @@
-/** Live Generate→draft elapsed time for the always-on smartwatch. */
+/** Live or frozen Generate→draft elapsed time for the always-on smartwatch. */
 
 export const RESUME_GENERATE_TIMER_EVENT = "devora21-resume-generate-timer";
 
 export type ResumeGenerateTimerState = {
+  /** When true, watch shows HH:MM:SS (live while generating, frozen after finish). */
   active: boolean;
   elapsedMs: number;
 };
