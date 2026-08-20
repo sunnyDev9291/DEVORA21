@@ -11,6 +11,7 @@ import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
 import { generateResume } from "@/lib/resume-generate-client";
 import { scrapeJobFromUrl } from "@/lib/job-scrape-api";
 import { archiveResume } from "@/lib/resume-archive";
+import { notifyTodaysResumeCountChanged } from "@/lib/todays-resume-count";
 import { resumeBuilderAccessDeniedMessage } from "@/lib/resume-access";
 import { ApiError } from "@/lib/auth-api";
 import { buildUnifiedResumeScore } from "@/lib/resume-unified-score";
@@ -714,6 +715,7 @@ export default function ResumeGenerator({
       });
       setPdfBase64(result.pdfBase64);
       setPdfFileName(result.pdfFileName);
+      notifyTodaysResumeCountChanged();
     } catch (err) {
       setArchiveError(resumeBuilderAccessDeniedMessage(err));
     } finally {
