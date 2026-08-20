@@ -24,6 +24,8 @@ interface ResumeAtsScoreModalProps extends ResumeScorePanelProps {
   generating?: boolean;
   streamPhase?: ResumeGenerationPhase;
   streamOutput?: string;
+  /** Live/final generate duration label (Generate click → full draft). */
+  streamElapsedLabel?: string;
   generateError?: string;
   regenerateNotice?: string;
   templateName?: string;
@@ -60,6 +62,7 @@ export default function ResumeAtsScoreModal({
   generating = false,
   streamPhase = "starting",
   streamOutput = "",
+  streamElapsedLabel,
   generateError = "",
   regenerateNotice = "",
   templateName = "",
@@ -190,7 +193,11 @@ export default function ResumeAtsScoreModal({
               )}
               {(generating || streamOutput) && (
                 <div className="mx-4 mt-4">
-                  <ResumeRawAiTextarea value={streamOutput} streaming={generating} />
+                  <ResumeRawAiTextarea
+                    value={streamOutput}
+                    streaming={generating}
+                    elapsedLabel={streamElapsedLabel}
+                  />
                 </div>
               )}
               {content && !generating ? (
