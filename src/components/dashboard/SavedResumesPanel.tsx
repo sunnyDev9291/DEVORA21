@@ -11,7 +11,8 @@ import {
   type SavedResumeSearchFilters,
 } from "@/lib/saved-resumes-api";
 import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
-import { countResumesOnLocalDate, getLocalDateKey } from "@/lib/todays-resume-count";
+import { useTodaysResumeCount } from "@/hooks/useTodaysResumeCount";
+import { TODAYS_RESUME_COUNT_CHANGED_EVENT } from "@/lib/todays-resume-count";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
 const Modal = dynamic(() => import("@/components/ui/Modal"), { ssr: false });
@@ -492,11 +493,17 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
     void loadItems(activeFilters);
   }, [activeFilters, loadItems]);
 
+  useEffect(() => {
+    function onArchiveChanged() {
+      void loadItems(activeFilters);
+    }
+    window.addEventListener(TODAYS_RESUME_COUNT_CHANGED_EVENT, onArchiveChanged);
+    return () => window.removeEventListener(TODAYS_RESUME_COUNT_CHANGED_EVENT, onArchiveChanged);
+  }, [activeFilters, loadItems]);
+
+  const { count: todaysCount, loading: todaysCountLoading } = useTodaysResumeCount(true);
+
   const visibleItems = items;
-  const todaysCount = useMemo(
-    () => countResumesOnLocalDate(visibleItems, getLocalDateKey()),
-    [visibleItems]
-  );
 
   const yearGroups = useMemo(() => groupByYearMonthDay(visibleItems), [visibleItems]);
 
@@ -640,7 +647,7 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
             applications.
           </p>
         </div>
-        {!filtersActive && !loading && !error && (
+        {!error && (
           <div
             className={
               variant === "resume"
@@ -652,9 +659,11 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
             title="Resumes saved today (your local time)"
           >
             <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-blue-600 px-1.5 text-xs font-bold text-white tabular-nums">
-              {todaysCount}
+              {todaysCountLoading && todaysCount == null ? "…" : todaysCount ?? 0}
             </span>
-            <span>{todaysCount === 1 ? "resume made today" : "resumes made today"}</span>
+            <span>
+              {(todaysCount ?? 0) === 1 ? "resume made today" : "resumes made today"}
+            </span>
           </div>
         )}
       </div>

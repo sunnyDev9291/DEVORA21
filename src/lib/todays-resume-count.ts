@@ -25,10 +25,12 @@ export function countResumesOnLocalDate(
   return items.reduce((count, item) => count + (isBidOnLocalDate(item.bidAt, localDateKey) ? 1 : 0), 0);
 }
 
-/** Fetch archives for today's local calendar day and return how many were saved. */
+/** Fetch archives and count how many fall on today's local calendar day. */
 export async function fetchTodaysResumeCount(): Promise<number> {
   const today = getLocalDateKey();
-  const items = await listSavedResumes({ dateFrom: today, dateTo: today });
+  // Do not rely on backend from/to filters — they can disagree with local calendar days.
+  // Pull the list and count bidAt in the user's local timezone.
+  const items = await listSavedResumes();
   return countResumesOnLocalDate(items, today);
 }
 
