@@ -1,6 +1,7 @@
 import PageHero from "@/components/layout/PageHero";
 import RequireResumeBuilder from "@/components/auth/RequireResumeBuilder";
 import ResumePanelTabs from "@/components/sections/ResumePanelTabs";
+import SmartWatchPanel from "@/components/ui/SmartWatchPanel";
 import type { ReactNode } from "react";
 
 export default function ResumeLayout({ children }: { children: ReactNode }) {
@@ -15,6 +16,7 @@ export default function ResumeLayout({ children }: { children: ReactNode }) {
           <ResumePanelTabs />
         </div>
         {children}
+        <SmartWatchPanel />
       </RequireResumeBuilder>
     </>
   );

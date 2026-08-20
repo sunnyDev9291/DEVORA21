@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import AnalogWatch from "@/components/ui/AnalogWatch";
 import ClaudeIcon from "@/components/ui/ClaudeIcon";
 import ResumeAiKeyValueView from "@/components/ui/ResumeAiKeyValueView";
 
@@ -51,11 +50,10 @@ export default function ResumeRawAiTextarea({
             </p>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-3">
-          <AnalogWatch size={52} />
+        <div className="flex shrink-0 items-center gap-2">
           {elapsedLabel ? (
             <span
-              className="hidden rounded-full bg-slate-900/5 px-2.5 py-1 text-[11px] font-semibold tabular-nums text-slate-700 dark:bg-white/10 dark:text-slate-200 sm:inline-flex"
+              className="rounded-full bg-slate-900/5 px-2.5 py-1 text-[11px] font-semibold tabular-nums text-slate-700 dark:bg-white/10 dark:text-slate-200"
               title={
                 streaming
                   ? "Time since Generate was clicked"
