@@ -9,8 +9,10 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { useResumeGenerateTimer } from "@/hooks/useResumeGenerateTimer";
 import { useTodaysResumeCount } from "@/hooks/useTodaysResumeCount";
 import { isValidAuthUser } from "@/lib/auth-api";
+import { formatElapsedHms } from "@/lib/format-elapsed";
 import { loadStoredProfile, resolveUserNames } from "@/lib/user-profile";
 
 const WEEKDAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"] as const;
@@ -68,6 +70,7 @@ export default function SmartWatchPanel({ className = "" }: { className?: string
   const uid = useId().replace(/:/g, "");
   const { user } = useAuth();
   const { count, loading } = useTodaysResumeCount(true);
+  const generateTimer = useResumeGenerateTimer();
   const todayCount = loading && count == null ? null : count ?? 0;
 
   const [now, setNow] = useState(() => new Date());
@@ -158,6 +161,7 @@ export default function SmartWatchPanel({ className = "" }: { className?: string
   const weekday = WEEKDAYS[now.getDay()];
   const dayNum = now.getDate();
   const timeLabel = `${pad(now.getHours())}:${pad(minutes)}:${pad(seconds)}`;
+  const generateDigital = generateTimer.active ? formatElapsedHms(generateTimer.elapsedMs) : null;
 
   const faceId = `sw-face-${uid}`;
   const bezelId = `sw-bezel-${uid}`;
@@ -176,7 +180,9 @@ export default function SmartWatchPanel({ className = "" }: { className?: string
       onPointerCancel={onPointerUp}
       role="application"
       aria-roledescription="draggable watch"
-      aria-label={`${profileLabel}. Current time ${timeLabel}. ${
+      aria-label={`${profileLabel}. Current time ${timeLabel}.${
+        generateDigital ? ` Generating ${generateDigital}.` : ""
+      } ${
         todayCount == null ? "Loading" : todayCount
       } resumes made today. Drag to move.`}
       title="Drag to move"
@@ -244,9 +250,25 @@ export default function SmartWatchPanel({ className = "" }: { className?: string
                 </linearGradient>
               </defs>
 
-              <ellipse cx="50" cy="56" rx="40" ry="40" fill={`url(#${glowId})`} />
-              <circle cx="50" cy="56" r="41.5" fill={`url(#${bezelId})`} opacity="0.7" />
-              <circle cx="50" cy="56" r="38.2" fill={`url(#${faceId})`} stroke={`url(#${dialRingId})`} strokeWidth="1.1" />
+              <ellipse cx="50" cy="58" rx="40" ry="40" fill={`url(#${glowId})`} />
+              <circle cx="50" cy="58" r="41.5" fill={`url(#${bezelId})`} opacity="0.7" />
+              <circle cx="50" cy="58" r="38.2" fill={`url(#${faceId})`} stroke={`url(#${dialRingId})`} strokeWidth="1.1" />
+
+              {/* Generate elapsed — digital, above dial */}
+              {generateDigital ? (
+                <text
+                  x="50"
+                  y="11.5"
+                  textAnchor="middle"
+                  fill="#4ade80"
+                  fontSize="6.4"
+                  fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+                  fontWeight="700"
+                  letterSpacing="0.8"
+                >
+                  {generateDigital}
+                </text>
+              ) : null}
 
               {/* Minute ticks */}
               {Array.from({ length: 60 }, (_, i) => {
@@ -256,9 +278,9 @@ export default function SmartWatchPanel({ className = "" }: { className?: string
                   <line
                     key={i}
                     x1={50 + Math.sin(angle) * 34.8}
-                    y1={56 - Math.cos(angle) * 34.8}
+                    y1={58 - Math.cos(angle) * 34.8}
                     x2={50 + Math.sin(angle) * 32.4}
-                    y2={56 - Math.cos(angle) * 32.4}
+                    y2={58 - Math.cos(angle) * 32.4}
                     stroke="#64748b"
                     strokeWidth="0.55"
                     strokeLinecap="round"
@@ -271,7 +293,7 @@ export default function SmartWatchPanel({ className = "" }: { className?: string
                 const angle = (idx * 30 * Math.PI) / 180;
                 const r = 27.5;
                 const x = 50 + Math.sin(angle) * r;
-                const y = 56 - Math.cos(angle) * r + 1.6;
+                const y = 58 - Math.cos(angle) * r + 1.6;
                 return (
                   <text
                     key={n}
@@ -291,7 +313,7 @@ export default function SmartWatchPanel({ className = "" }: { className?: string
               {/* Profile name */}
               <text
                 x="50"
-                y="22"
+                y="24"
                 textAnchor="middle"
                 fill="#7dd3fc"
                 fontSize="4.4"
@@ -305,7 +327,7 @@ export default function SmartWatchPanel({ className = "" }: { className?: string
               {/* Weekday + date */}
               <text
                 x="50"
-                y="41"
+                y="43"
                 textAnchor="middle"
                 fill="#94a3b8"
                 fontSize="3.8"
@@ -315,10 +337,10 @@ export default function SmartWatchPanel({ className = "" }: { className?: string
               >
                 {weekday}
               </text>
-              <rect x="63" y="50" width="13" height="10.5" rx="2" fill="#020617" stroke="#38bdf8" strokeWidth="0.45" opacity="0.95" />
+              <rect x="63" y="52" width="13" height="10.5" rx="2" fill="#020617" stroke="#38bdf8" strokeWidth="0.45" opacity="0.95" />
               <text
                 x="69.5"
-                y="57.8"
+                y="59.8"
                 textAnchor="middle"
                 fill="#e0f2fe"
                 fontSize="5.2"
@@ -329,9 +351,9 @@ export default function SmartWatchPanel({ className = "" }: { className?: string
               </text>
 
               {/* Hour hand */}
-              <g transform={`rotate(${hourDeg} 50 56)`}>
+              <g transform={`rotate(${hourDeg} 50 58)`}>
                 <polygon
-                  points="50,60 47.2,42 50,33 52.8,42"
+                  points="50,62 47.2,44 50,35 52.8,44"
                   fill={`url(#${handMetalId})`}
                   stroke="#cbd5e1"
                   strokeWidth="0.2"
@@ -339,9 +361,9 @@ export default function SmartWatchPanel({ className = "" }: { className?: string
               </g>
 
               {/* Minute hand */}
-              <g transform={`rotate(${minuteDeg} 50 56)`}>
+              <g transform={`rotate(${minuteDeg} 50 58)`}>
                 <polygon
-                  points="50,62 48,38 50,24.5 52,38"
+                  points="50,64 48,40 50,26.5 52,40"
                   fill={`url(#${handMetalId})`}
                   stroke="#e2e8f0"
                   strokeWidth="0.2"
@@ -349,22 +371,22 @@ export default function SmartWatchPanel({ className = "" }: { className?: string
               </g>
 
               {/* Second hand */}
-              <g transform={`rotate(${secondDeg} 50 56)`}>
+              <g transform={`rotate(${secondDeg} 50 58)`}>
                 <line
                   x1="50"
-                  y1="66"
+                  y1="68"
                   x2="50"
-                  y2="23"
+                  y2="25"
                   stroke={`url(#${secondGlowId})`}
                   strokeWidth="1.15"
                   strokeLinecap="round"
                 />
-                <circle cx="50" cy="28" r="1.7" fill="#7dd3fc" />
-                <circle cx="50" cy="66" r="1.1" fill="#2563eb" />
+                <circle cx="50" cy="30" r="1.7" fill="#7dd3fc" />
+                <circle cx="50" cy="68" r="1.1" fill="#2563eb" />
               </g>
 
-              <circle cx="50" cy="56" r="3.1" fill="#f8fafc" />
-              <circle cx="50" cy="56" r="1.45" fill="#2563eb" />
+              <circle cx="50" cy="58" r="3.1" fill="#f8fafc" />
+              <circle cx="50" cy="58" r="1.45" fill="#2563eb" />
 
               {/* Today bids */}
               <text

@@ -13,6 +13,10 @@ import { scrapeJobFromUrl } from "@/lib/job-scrape-api";
 import { archiveResume } from "@/lib/resume-archive";
 import { notifyTodaysResumeCountChanged } from "@/lib/todays-resume-count";
 import { formatElapsedMs } from "@/lib/format-elapsed";
+import {
+  clearResumeGenerateTimer,
+  publishResumeGenerateTimer,
+} from "@/lib/resume-generate-timer";
 import { resumeBuilderAccessDeniedMessage } from "@/lib/resume-access";
 import { ApiError } from "@/lib/auth-api";
 import { buildUnifiedResumeScore } from "@/lib/resume-unified-score";
@@ -150,8 +154,7 @@ export default function ResumeGenerator({
   const [resumeNameTouched, setResumeNameTouched] = useState(false);
   const [streamPhase, setStreamPhase] = useState<ResumeGenerationPhase>("starting");
   const [streamOutput, setStreamOutput] = useState("");
-  /** Live tick while generating; frozen when draft is ready. */
-  const [generateElapsedMs, setGenerateElapsedMs] = useState(0);
+  /** Frozen when draft is ready. */
   const [lastGenerateDurationMs, setLastGenerateDurationMs] = useState<number | null>(null);
   const generateStartedAtRef = useRef<number | null>(null);
   const [resumeScore, setResumeScore] = useState<ResumeUnifiedScoreResult | null>(null);
@@ -203,7 +206,6 @@ export default function ResumeGenerator({
     setError("");
     setStreamPhase("starting");
     setStreamOutput("");
-    setGenerateElapsedMs(0);
     setLastGenerateDurationMs(null);
     generateStartedAtRef.current = null;
     setResumeScore(null);
@@ -229,24 +231,24 @@ export default function ResumeGenerator({
   useEffect(() => () => {
     abortRef.current?.abort();
     atsAbortRef.current?.abort();
+    clearResumeGenerateTimer();
   }, []);
 
   useEffect(() => {
-    if (!generating) return;
+    if (!generating) {
+      clearResumeGenerateTimer();
+      return;
+    }
     const startedAt = generateStartedAtRef.current ?? Date.now();
     generateStartedAtRef.current = startedAt;
-    setGenerateElapsedMs(Date.now() - startedAt);
-    const timer = window.setInterval(() => {
-      setGenerateElapsedMs(Date.now() - startedAt);
-    }, 100);
+    const tick = () => {
+      const elapsedMs = Date.now() - startedAt;
+      publishResumeGenerateTimer({ active: true, elapsedMs });
+    };
+    tick();
+    const timer = window.setInterval(tick, 100);
     return () => window.clearInterval(timer);
   }, [generating]);
-
-  const generateElapsedLabel = useMemo(() => {
-    if (generating) return formatElapsedMs(generateElapsedMs);
-    if (lastGenerateDurationMs != null) return formatElapsedMs(lastGenerateDurationMs);
-    return undefined;
-  }, [generating, generateElapsedMs, lastGenerateDurationMs]);
 
   useEffect(() => {
     const prev = reviewScrollTriggerRef.current;
@@ -582,7 +584,6 @@ export default function ResumeGenerator({
     setStreamOutput("");
     setContent(null);
     generateStartedAtRef.current = Date.now();
-    setGenerateElapsedMs(0);
     setLastGenerateDurationMs(null);
 
     const controller = new AbortController();
@@ -619,7 +620,6 @@ export default function ResumeGenerator({
       const endedAt = Date.now();
       const startedAt = generateStartedAtRef.current ?? endedAt;
       setLastGenerateDurationMs(endedAt - startedAt);
-      setGenerateElapsedMs(endedAt - startedAt);
       setContent(data.content);
       setGenerationKey((k) => k + 1);
     } catch (err) {
@@ -665,7 +665,6 @@ export default function ResumeGenerator({
     setRegenerateBaseline(content);
     setRegenerateBaselineScore(baselineScore);
     generateStartedAtRef.current = Date.now();
-    setGenerateElapsedMs(0);
     setLastGenerateDurationMs(null);
 
     const templateForRequest = resolveActiveUserTemplate(user?.id, activeTemplate)!;
@@ -701,7 +700,6 @@ export default function ResumeGenerator({
       const endedAt = Date.now();
       const startedAt = generateStartedAtRef.current ?? endedAt;
       setLastGenerateDurationMs(endedAt - startedAt);
-      setGenerateElapsedMs(endedAt - startedAt);
 
       const nextScore = await evaluateResumeScores(draft.content, {
         openModal: false,
@@ -1129,9 +1127,7 @@ export default function ResumeGenerator({
                 </h3>
                 <p className="text-sm text-slate-500 dark:text-slate-400">
                   {generating
-                    ? `Raw stream fills first — structured fields appear when complete${
-                        generateElapsedLabel ? ` · ${generateElapsedLabel}` : ""
-                      }`
+                    ? "Raw stream fills first — structured fields appear when complete"
                     : lastGenerateDurationMs != null
                       ? `Review every field, then apply to your template · generated in ${formatElapsedMs(lastGenerateDurationMs)}`
                       : "Review every field, then apply to your template"}
@@ -1181,7 +1177,6 @@ export default function ResumeGenerator({
               <ResumeRawAiTextarea
                 value={streamOutput}
                 streaming={generating}
-                elapsedLabel={generateElapsedLabel}
               />
             </div>
           )}
@@ -1262,7 +1257,6 @@ export default function ResumeGenerator({
           generating={generating}
           streamPhase={streamPhase}
           streamOutput={streamOutput}
-          streamElapsedLabel={generateElapsedLabel}
           generateError={error}
           regenerateNotice={regenerateNotice}
           templateName={userTemplate?.fileName ?? ""}
