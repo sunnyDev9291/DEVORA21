@@ -17,24 +17,33 @@ export async function checkJob(input: JobCheckRequest): Promise<JobCheckResult> 
     throw new ApiError("Company name is required for Job Check.", 400);
   }
 
-  const res = await fetch("/api/job/check", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({
-      jobTitle: input.jobTitle?.trim() ?? "",
-      companyName,
-      jobDescription: input.jobDescription?.trim() ?? "",
-      userId: input.userId,
-    }),
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch("/api/job/check", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        jobTitle: input.jobTitle?.trim() ?? "",
+        companyName,
+        jobDescription: input.jobDescription?.trim() ?? "",
+        userId: input.userId,
+      }),
+      cache: "no-store",
+    });
+  } catch {
+    throw new ApiError("Could not reach Job Check. Check your connection and try again.", 0);
+  }
 
   const data = await readJson(res);
   if (!res.ok) {
-    throw new ApiError(errorMessage(data, "Job Check failed."), res.status);
+    const detail = errorMessage(data, "");
+    const suffix = detail ? `: ${detail}` : res.status === 404
+      ? " (404 — route not found; deploy may be pending)"
+      : ` (HTTP ${res.status})`;
+    throw new ApiError(`Job Check failed${suffix}`, res.status);
   }
 
   return data as JobCheckResult;
