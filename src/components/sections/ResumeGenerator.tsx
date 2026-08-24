@@ -1096,22 +1096,6 @@ export default function ResumeGenerator({
               Clear
             </button>
           </div>
-
-          <JobCheckBoard
-            open={jobCheckOpen}
-            loading={jobChecking}
-            error={jobCheckError}
-            output={jobCheckOutput}
-            jobTitle={form.jobTitle}
-            companyName={form.companyName}
-            onClose={() => {
-              jobCheckAbortRef.current?.abort();
-              jobCheckAbortRef.current = null;
-              setJobCheckOpen(false);
-              setJobChecking(false);
-            }}
-            onRetry={() => void runJobCheck()}
-          />
         </form>
       </div>
 
@@ -1385,6 +1369,22 @@ export default function ResumeGenerator({
         waitingForPdf={archiving}
         error={archiveError}
         onDownload={handleDownloadPdf}
+      />
+
+      <JobCheckBoard
+        open={jobCheckOpen}
+        loading={jobChecking}
+        error={jobCheckError}
+        output={jobCheckOutput}
+        jobTitle={form.jobTitle}
+        companyName={form.companyName}
+        onClose={() => {
+          jobCheckAbortRef.current?.abort();
+          jobCheckAbortRef.current = null;
+          setJobCheckOpen(false);
+          setJobChecking(false);
+        }}
+        onRetry={() => void runJobCheck()}
       />
 
       <ResumeChatDialog
