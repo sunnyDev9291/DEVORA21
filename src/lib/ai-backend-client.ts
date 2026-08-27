@@ -87,6 +87,34 @@ function throwIfMidStreamError(accumulated: string): void {
   }
 }
 
+function extractAiCompletionText(text: string): string {
+  throwIfMidStreamError(text);
+  if (!text) {
+    throw new Error("Empty response from AI backend.");
+  }
+
+  if (text.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(text) as { content?: string; error?: string };
+      if (typeof parsed.error === "string" && parsed.error.trim()) {
+        throw new Error(parsed.error.trim());
+      }
+      if (typeof parsed.content === "string") {
+        const content = parsed.content.trim();
+        if (content) return content;
+      }
+    } catch (err) {
+      if (err instanceof SyntaxError) {
+        // Response looked like JSON but wasn't — use raw text.
+      } else if (err instanceof Error) {
+        throw err;
+      }
+    }
+  }
+
+  return text;
+}
+
 /** Collect a full completion as plain text (non-stream or drained stream body). */
 export async function completeAiChat(
   messages: AiChatMessage[],
@@ -107,12 +135,8 @@ export async function completeAiChat(
     throw new Error(await readBackendError(response));
   }
 
-  const content = (await response.text()).trim();
-  throwIfMidStreamError(content);
-  if (!content) {
-    throw new Error("Empty response from AI backend.");
-  }
-  return content;
+  const text = (await response.text()).trim();
+  return extractAiCompletionText(text);
 }
 
 /** Stream plain-text chunks from the backend (Claude stream=true, no SSE wrappers). */

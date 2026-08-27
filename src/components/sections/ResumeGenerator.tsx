@@ -10,7 +10,15 @@ import type { UserResumeTemplateAsset } from "@/lib/profile-api";
 import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
 import { generateResume } from "@/lib/resume-generate-client";
 import { scrapeJobFromUrl } from "@/lib/job-scrape-api";
+import { iterateJobCheckStream } from "@/lib/job-check-stream";
+import JobCheckBoard from "@/components/ui/JobCheckBoard";
 import { archiveResume } from "@/lib/resume-archive";
+import { notifyTodaysResumeCountChanged } from "@/lib/todays-resume-count";
+import { formatElapsedMs } from "@/lib/format-elapsed";
+import {
+  clearResumeGenerateTimer,
+  publishResumeGenerateTimer,
+} from "@/lib/resume-generate-timer";
 import { resumeBuilderAccessDeniedMessage } from "@/lib/resume-access";
 import { ApiError } from "@/lib/auth-api";
 import { buildUnifiedResumeScore } from "@/lib/resume-unified-score";
@@ -148,6 +156,9 @@ export default function ResumeGenerator({
   const [resumeNameTouched, setResumeNameTouched] = useState(false);
   const [streamPhase, setStreamPhase] = useState<ResumeGenerationPhase>("starting");
   const [streamOutput, setStreamOutput] = useState("");
+  /** Frozen when draft is ready. */
+  const [lastGenerateDurationMs, setLastGenerateDurationMs] = useState<number | null>(null);
+  const generateStartedAtRef = useRef<number | null>(null);
   const [resumeScore, setResumeScore] = useState<ResumeUnifiedScoreResult | null>(null);
   const [scoreLoading, setScoreLoading] = useState(false);
   const [scoreError, setScoreError] = useState("");
@@ -158,7 +169,12 @@ export default function ResumeGenerator({
   const [improvingTargetLabel, setImprovingTargetLabel] = useState("");
   const [atsModalOpen, setAtsModalOpen] = useState(false);
   const [resumeChatOpen, setResumeChatOpen] = useState(false);
+  const [jobCheckOpen, setJobCheckOpen] = useState(false);
+  const [jobChecking, setJobChecking] = useState(false);
+  const [jobCheckOutput, setJobCheckOutput] = useState("");
+  const [jobCheckError, setJobCheckError] = useState("");
   const abortRef = useRef<AbortController | null>(null);
+  const jobCheckAbortRef = useRef<AbortController | null>(null);
   const atsAbortRef = useRef<AbortController | null>(null);
   const generationRunRef = useRef(0);
   const keywordsCacheKeyRef = useRef<string | null>(null);
@@ -196,6 +212,10 @@ export default function ResumeGenerator({
     setPreviewOpen(false);
     setError("");
     setStreamPhase("starting");
+    setStreamOutput("");
+    setLastGenerateDurationMs(null);
+    generateStartedAtRef.current = null;
+    clearResumeGenerateTimer();
     setResumeScore(null);
     setScoreError("");
     setRegenerateNotice("");
@@ -219,7 +239,22 @@ export default function ResumeGenerator({
   useEffect(() => () => {
     abortRef.current?.abort();
     atsAbortRef.current?.abort();
+    jobCheckAbortRef.current?.abort();
+    clearResumeGenerateTimer();
   }, []);
+
+  useEffect(() => {
+    if (!generating) return;
+    const startedAt = generateStartedAtRef.current ?? Date.now();
+    generateStartedAtRef.current = startedAt;
+    const tick = () => {
+      const elapsedMs = Date.now() - startedAt;
+      publishResumeGenerateTimer({ active: true, elapsedMs });
+    };
+    tick();
+    const timer = window.setInterval(tick, 100);
+    return () => window.clearInterval(timer);
+  }, [generating]);
 
   useEffect(() => {
     const prev = reviewScrollTriggerRef.current;
@@ -345,6 +380,43 @@ export default function ResumeGenerator({
   const targetJobLabel = `${form.jobTitle.trim()} at ${form.companyName.trim()}`;
 
   const canGenerate = !!activeTemplate && !!form.jobTitle.trim() && !!form.companyName.trim();
+  const canJobCheck = !!form.companyName.trim();
+
+  async function runJobCheck() {
+    if (!canJobCheck || jobChecking) return;
+
+    jobCheckAbortRef.current?.abort();
+    const controller = new AbortController();
+    jobCheckAbortRef.current = controller;
+
+    setJobCheckOpen(true);
+    setJobChecking(true);
+    setJobCheckOutput("");
+    setJobCheckError("");
+
+    let streamed = "";
+    try {
+      for await (const chunk of iterateJobCheckStream(
+        {
+          jobTitle: form.jobTitle,
+          companyName: form.companyName,
+          jobDescription: form.jobDescription,
+        },
+        controller.signal
+      )) {
+        streamed += chunk;
+        setJobCheckOutput(streamed);
+      }
+    } catch (err) {
+      if ((err as Error).name === "AbortError") return;
+      setJobCheckError((err as Error).message || "Job Check failed.");
+    } finally {
+      if (jobCheckAbortRef.current === controller) {
+        setJobChecking(false);
+        jobCheckAbortRef.current = null;
+      }
+    }
+  }
 
   const suggestedResumeBaseName = useMemo(() => {
     if (!content) return "";
@@ -554,6 +626,9 @@ export default function ResumeGenerator({
     setStreamPhase("starting");
     setStreamOutput("");
     setContent(null);
+    generateStartedAtRef.current = Date.now();
+    setLastGenerateDurationMs(null);
+    publishResumeGenerateTimer({ active: true, elapsedMs: 0 });
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -586,6 +661,11 @@ export default function ResumeGenerator({
       );
 
       if (generationRunRef.current !== runId) return;
+      const endedAt = Date.now();
+      const startedAt = generateStartedAtRef.current ?? endedAt;
+      const durationMs = endedAt - startedAt;
+      setLastGenerateDurationMs(durationMs);
+      publishResumeGenerateTimer({ active: true, elapsedMs: durationMs });
       setContent(data.content);
       setGenerationKey((k) => k + 1);
     } catch (err) {
@@ -630,6 +710,9 @@ export default function ResumeGenerator({
     setRegenerateNotice("");
     setRegenerateBaseline(content);
     setRegenerateBaselineScore(baselineScore);
+    generateStartedAtRef.current = Date.now();
+    setLastGenerateDurationMs(null);
+    publishResumeGenerateTimer({ active: true, elapsedMs: 0 });
 
     const templateForRequest = resolveActiveUserTemplate(user?.id, activeTemplate)!;
     const targetedInstruction = buildImproveTargetInstruction(target);
@@ -638,7 +721,8 @@ export default function ResumeGenerator({
       const draft = await generateResume(
         {
           ...form,
-          customPrompt: [form.customPrompt.trim(), targetedInstruction].filter(Boolean).join("\n\n"),
+          customPrompt: form.customPrompt,
+          task: targetedInstruction,
           templateName: templateForRequest.fileName,
           templateBase64: templateForRequest.templateBase64,
           profileName: chatProfile?.fullName,
@@ -659,6 +743,12 @@ export default function ResumeGenerator({
       );
 
       if (generationRunRef.current !== runId) return;
+
+      const endedAt = Date.now();
+      const startedAt = generateStartedAtRef.current ?? endedAt;
+      const durationMs = endedAt - startedAt;
+      setLastGenerateDurationMs(durationMs);
+      publishResumeGenerateTimer({ active: true, elapsedMs: durationMs });
 
       const nextScore = await evaluateResumeScores(draft.content, {
         openModal: false,
@@ -713,6 +803,7 @@ export default function ResumeGenerator({
       });
       setPdfBase64(result.pdfBase64);
       setPdfFileName(result.pdfFileName);
+      notifyTodaysResumeCountChanged();
     } catch (err) {
       setArchiveError(resumeBuilderAccessDeniedMessage(err));
     } finally {
@@ -972,6 +1063,29 @@ export default function ResumeGenerator({
             </button>
             <button
               type="button"
+              onClick={() => void runJobCheck()}
+              disabled={generating || applying || jobChecking || !canJobCheck}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 border border-sky-500/30 bg-sky-500/10 hover:bg-sky-500/15 disabled:opacity-50 disabled:cursor-not-allowed text-sky-800 dark:text-sky-200 font-semibold px-6 py-3.5 rounded-xl transition-all"
+            >
+              {jobChecking ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Checking job…
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  Job Check
+                </>
+              )}
+            </button>
+            <button
+              type="button"
               onClick={handleClear}
               disabled={generating || applying || !hasClearableContent}
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2 border border-slate-200 dark:border-white/[0.12] bg-white dark:bg-white/[0.03] hover:bg-slate-50 dark:hover:bg-white/[0.06] disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 dark:text-slate-200 font-semibold px-6 py-3.5 rounded-xl transition-all"
@@ -1086,7 +1200,9 @@ export default function ResumeGenerator({
                 <p className="text-sm text-slate-500 dark:text-slate-400">
                   {generating
                     ? "Raw stream fills first — structured fields appear when complete"
-                    : "Review every field, then apply to your template"}
+                    : lastGenerateDurationMs != null
+                      ? `Review every field, then apply to your template · generated in ${formatElapsedMs(lastGenerateDurationMs)}`
+                      : "Review every field, then apply to your template"}
                 </p>
               </div>
             </div>
@@ -1130,7 +1246,10 @@ export default function ResumeGenerator({
 
           {(generating || streamOutput) && (
             <div className="mb-6">
-              <ResumeRawAiTextarea value={streamOutput} streaming={generating} />
+              <ResumeRawAiTextarea
+                value={streamOutput}
+                streaming={generating}
+              />
             </div>
           )}
 
@@ -1250,6 +1369,22 @@ export default function ResumeGenerator({
         waitingForPdf={archiving}
         error={archiveError}
         onDownload={handleDownloadPdf}
+      />
+
+      <JobCheckBoard
+        open={jobCheckOpen}
+        loading={jobChecking}
+        error={jobCheckError}
+        output={jobCheckOutput}
+        jobTitle={form.jobTitle}
+        companyName={form.companyName}
+        onClose={() => {
+          jobCheckAbortRef.current?.abort();
+          jobCheckAbortRef.current = null;
+          setJobCheckOpen(false);
+          setJobChecking(false);
+        }}
+        onRetry={() => void runJobCheck()}
       />
 
       <ResumeChatDialog

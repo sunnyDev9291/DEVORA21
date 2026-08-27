@@ -11,6 +11,8 @@ import {
   type SavedResumeSearchFilters,
 } from "@/lib/saved-resumes-api";
 import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
+import { useTodaysResumeCount } from "@/hooks/useTodaysResumeCount";
+import { TODAYS_RESUME_COUNT_CHANGED_EVENT } from "@/lib/todays-resume-count";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
 const Modal = dynamic(() => import("@/components/ui/Modal"), { ssr: false });
@@ -491,6 +493,16 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
     void loadItems(activeFilters);
   }, [activeFilters, loadItems]);
 
+  useEffect(() => {
+    function onArchiveChanged() {
+      void loadItems(activeFilters);
+    }
+    window.addEventListener(TODAYS_RESUME_COUNT_CHANGED_EVENT, onArchiveChanged);
+    return () => window.removeEventListener(TODAYS_RESUME_COUNT_CHANGED_EVENT, onArchiveChanged);
+  }, [activeFilters, loadItems]);
+
+  const { count: todaysCount, loading: todaysCountLoading } = useTodaysResumeCount(true);
+
   const visibleItems = items;
 
   const yearGroups = useMemo(() => groupByYearMonthDay(visibleItems), [visibleItems]);
@@ -627,12 +639,33 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
 
   return (
     <section className={styles.section}>
-      <div>
-        <h2 className={styles.title}>Saved resumes</h2>
-        <p className={styles.subtitle}>
-          Filter by date range, company, or job description, then pick a year and month to browse
-          applications.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className={styles.title}>Saved resumes</h2>
+          <p className={styles.subtitle}>
+            Filter by date range, company, or job description, then pick a year and month to browse
+            applications.
+          </p>
+        </div>
+        {!error && (
+          <div
+            className={
+              variant === "resume"
+                ? "inline-flex shrink-0 items-center gap-2 rounded-xl border border-blue-500/25 bg-blue-500/[0.08] px-3.5 py-2 text-sm font-semibold text-blue-800 dark:border-blue-400/30 dark:bg-blue-500/15 dark:text-blue-100"
+                : "inline-flex shrink-0 items-center gap-2 rounded-xl border border-blue-500/30 bg-blue-500/15 px-3.5 py-2 text-sm font-semibold text-blue-100"
+            }
+            role="status"
+            aria-live="polite"
+            title="Resumes saved today (your local time)"
+          >
+            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-blue-600 px-1.5 text-xs font-bold text-white tabular-nums">
+              {todaysCountLoading && todaysCount == null ? "…" : todaysCount ?? 0}
+            </span>
+            <span>
+              {(todaysCount ?? 0) === 1 ? "resume made today" : "resumes made today"}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className={styles.searchPanel}>

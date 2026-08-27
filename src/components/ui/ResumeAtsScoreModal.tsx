@@ -190,7 +190,10 @@ export default function ResumeAtsScoreModal({
               )}
               {(generating || streamOutput) && (
                 <div className="mx-4 mt-4">
-                  <ResumeRawAiTextarea value={streamOutput} streaming={generating} />
+                  <ResumeRawAiTextarea
+                    value={streamOutput}
+                    streaming={generating}
+                  />
                 </div>
               )}
               {content && !generating ? (

@@ -226,7 +226,7 @@ export function buildTemplateSkillsPromptBlock(
       "Template skillsets format (required — follow exactly):",
       `Use exactly these category labels in this order: ${labels.join(", ")}.`,
       `Return exactly ${lines.length} newline-separated skill line(s) in the "skills" JSON field.`,
-      "Mirror the template formatting (category labels, colons, line breaks). Only replace the technologies with JD-relevant ones.",
+      "Mirror the template formatting (category labels, colons, line breaks). Only replace the technologies.",
       "Template example:",
       templateSkills.trim(),
     ].join("\n");

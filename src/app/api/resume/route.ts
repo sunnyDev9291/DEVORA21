@@ -112,8 +112,8 @@ export async function POST(req: Request) {
 
     const userPrompt = buildResumeUserPrompt({
       jobTitle,
+      companyName,
       jobDescription,
-      customPrompt,
       existingExperiences,
       templateLayout,
       templateSkillsSample: skillsSample,

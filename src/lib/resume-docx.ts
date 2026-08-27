@@ -534,11 +534,23 @@ function findSectionIndex(paragraphs: string[], pattern: RegExp): number {
 }
 
 const DATE_PATTERN =
-  /(\d{1,2}\/\d{4}\s*[-–—]\s*(?:\d{1,2}\/\d{4}|Present|Current)|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}\s*[-–—]\s*(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|Present|Current|\d{4})|\d{4}\s*[-–—]\s*(?:\d{4}|Present|Current))/i;
+  /(\d{1,2}\/\d{4}\s*[-–—~]\s*(?:\d{1,2}\/\d{4}|Present|Current)|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}\s*[-–—~]\s*(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}|Present|Current|\d{4})|\d{4}\s*[-–—~]\s*(?:\d{4}|Present|Current))/i;
+
+function normalizeExperienceDates(dates: string): string {
+  return dates.replace(/\s*~\s*/g, " – ").replace(/\s+/g, " ").trim();
+}
+
+function isPlainBulletLine(text: string): boolean {
+  return /^[•\u2022\-–—*]\s+\S/.test(text.trim());
+}
+
+function stripPlainBulletPrefix(text: string): string {
+  return text.replace(/^[•\u2022\-–—*]\s+/, "").trim();
+}
 
 function parseDatesFromLine(text: string): string | null {
   const match = text.match(DATE_PATTERN);
-  return match ? match[0].replace(/\s+/g, " ").trim() : null;
+  return match ? normalizeExperienceDates(match[0]) : null;
 }
 
 /** "Senior Engineer, Acme Corp, 08/2023 – 02/2025" on one line (Franco-style templates). */
@@ -655,7 +667,11 @@ export function extractExperienceSectionPlainText(buffer: Buffer): string {
   return paragraphs
     .slice(expIdx + 1, end)
     .filter((p) => p.text && !isSectionHeader(p.text))
-    .map((p) => (p.isListItem ? `• ${p.text}` : p.text))
+    .map((p) => {
+      if (p.isListItem) return `• ${p.text}`;
+      if (isPlainBulletLine(p.text)) return p.text.trim();
+      return p.text;
+    })
     .join("\n");
 }
 
@@ -1198,8 +1214,9 @@ export function parseExperiencesFromDocxBuffer(buffer: Buffer) {
     const line = paragraphs[i];
     if (!line.text || isSectionHeader(line.text)) continue;
 
-    if (line.isListItem) {
-      if (currentHeader) bullets.push(line.text);
+    if (line.isListItem || isPlainBulletLine(line.text)) {
+      const bulletText = line.isListItem ? line.text : stripPlainBulletPrefix(line.text);
+      if (currentHeader && bulletText) bullets.push(bulletText);
       continue;
     }
 
