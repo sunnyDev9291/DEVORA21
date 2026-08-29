@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { getApiErrorMessage } from "@/lib/auth-api";
 import { crawlBuiltInJobs } from "@/lib/builtin-crawl-api";
 import {
@@ -21,15 +21,7 @@ export default function BuiltInCrawlPanel() {
 
   const canCrawl = isBuiltInListingUrl(listingUrl) && !crawling;
 
-  const jobs = useMemo(() => {
-    if (!result?.jobs.length) return [];
-    const seen = new Set<string>();
-    return result.jobs.filter((job) => {
-      if (seen.has(job.jobId)) return false;
-      seen.add(job.jobId);
-      return true;
-    });
-  }, [result]);
+  const jobs = result?.jobs ?? [];
 
   async function handleCrawl() {
     if (!canCrawl) return;
@@ -152,8 +144,8 @@ export default function BuiltInCrawlPanel() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-white/[0.06]">
-                  {jobs.map((job) => (
-                    <tr key={job.jobId} className="hover:bg-slate-50/80 dark:hover:bg-white/[0.02]">
+                  {jobs.map((job, index) => (
+                    <tr key={`${job.jobId}-${index}`} className="hover:bg-slate-50/80 dark:hover:bg-white/[0.02]">
                       <td className="px-4 py-3 font-medium text-slate-900 dark:text-white whitespace-nowrap">
                         {job.companyName || "—"}
                       </td>

@@ -38,28 +38,22 @@ function asNumber(value: unknown, fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-function parseJob(raw: unknown): BuiltInCrawlJob | null {
-  if (!raw || typeof raw !== "object") return null;
+function parseJob(raw: unknown, index: number): BuiltInCrawlJob {
+  if (!raw || typeof raw !== "object") {
+    return { jobId: String(index), companyName: "", jobTitle: "", jobUrl: "" };
+  }
   const obj = raw as Record<string, unknown>;
-  const jobId = asString(obj.jobId);
-  const companyName = asString(obj.companyName);
-  const jobTitle = asString(obj.jobTitle);
-  const jobUrl = asString(obj.jobUrl);
-  if (!jobId || !jobTitle) return null;
-  return { jobId, companyName, jobTitle, jobUrl };
+  return {
+    jobId: asString(obj.jobId) || String(index),
+    companyName: asString(obj.companyName),
+    jobTitle: asString(obj.jobTitle),
+    jobUrl: asString(obj.jobUrl),
+  };
 }
 
 function parseResult(data: Record<string, unknown>, fallbackUrl: string): BuiltInCrawlResult {
   const jobsRaw = Array.isArray(data.jobs) ? data.jobs : [];
-  const seen = new Set<string>();
-  const jobs: BuiltInCrawlJob[] = [];
-
-  for (const item of jobsRaw) {
-    const job = parseJob(item);
-    if (!job || seen.has(job.jobId)) continue;
-    seen.add(job.jobId);
-    jobs.push(job);
-  }
+  const jobs = jobsRaw.map((item, index) => parseJob(item, index));
 
   return {
     sourceUrl: asString(data.sourceUrl, fallbackUrl),
