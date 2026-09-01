@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getApiErrorMessage } from "@/lib/auth-api";
 import { crawlBuiltInJobs, crawlHiringCafeJobs, crawlWorkableJobs } from "@/lib/builtin-crawl-api";
 import {
@@ -21,6 +21,16 @@ import { loadStoredJobCrawl, saveStoredJobCrawl } from "@/lib/job-crawl-storage"
 
 const inputClass =
   "w-full bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.10] hover:border-slate-300 dark:hover:border-white/[0.16] focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 rounded-xl px-4 py-3 text-slate-900 dark:text-white text-sm outline-none transition-all";
+
+const filterInputClass =
+  "w-full bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.10] hover:border-slate-300 dark:hover:border-white/[0.16] focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 rounded-xl px-4 py-3.5 text-base text-slate-900 dark:text-white outline-none transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500";
+
+type JobTableSortMode = "company" | "platform";
+
+const SORT_MODE_OPTIONS: { value: JobTableSortMode; label: string; description: string }[] = [
+  { value: "company", label: "Company name", description: "Sort A–Z and merge duplicate companies" },
+  { value: "platform", label: "Platform order", description: "Original crawl order grouped by platform" },
+];
 
 const PLATFORM_LABEL: Record<JobCrawlPlatform, string> = {
   builtin: "Built In",
@@ -95,10 +105,19 @@ async function copyTextToClipboard(text: string): Promise<boolean> {
   }
 }
 
-function CopyUrlButton({ url }: { url: string }) {
+function CopyUrlButton({
+  url,
+  disabled = false,
+  title = "Copy URL",
+}: {
+  url: string;
+  disabled?: boolean;
+  title?: string;
+}) {
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
+    if (!url.trim() || disabled) return;
     const ok = await copyTextToClipboard(url);
     if (!ok) return;
     setCopied(true);
@@ -109,8 +128,9 @@ function CopyUrlButton({ url }: { url: string }) {
     <button
       type="button"
       onClick={() => void handleCopy()}
-      className="shrink-0 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-500/20 dark:text-emerald-300 dark:hover:bg-emerald-500/15"
-      title="Copy job URL"
+      disabled={disabled || !url.trim()}
+      className="shrink-0 self-stretch rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:text-emerald-300 dark:hover:bg-emerald-500/15"
+      title={title}
     >
       {copied ? "Copied" : "Copy URL"}
     </button>
@@ -183,8 +203,6 @@ type PlatformJobGroup = {
   rows: DisplayJobRow[];
 };
 
-type JobTableSortMode = "company" | "platform";
-
 function buildPlatformOrder(jobs: DiscoveredJobRow[]): JobCrawlPlatform[] {
   const order: JobCrawlPlatform[] = [];
   const seen = new Set<JobCrawlPlatform>();
@@ -242,19 +260,143 @@ function buildPlatformGroups(rows: DisplayJobRow[], platformOrder: JobCrawlPlatf
   return groups;
 }
 
-function sortModeButtonClass(active: boolean): string {
-  const base = "rounded-full px-3 py-1.5 text-xs font-semibold transition-all border";
-  if (!active) {
-    return `${base} border-transparent bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10`;
+function stripFilterTerm(term: string): string {
+  const trimmed = term.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
   }
-  return `${base} ${PLATFORM_SELECTED_CLASS}`;
+  return trimmed;
+}
+
+function parseTitleFilter(filter: string): { operator: "or" | "and" | "single"; terms: string[] } {
+  const trimmed = filter.trim();
+  if (!trimmed) return { operator: "single", terms: [] };
+
+  const orParts = trimmed.split(/\s+OR\s+/i).map(stripFilterTerm).filter(Boolean);
+  if (orParts.length > 1) return { operator: "or", terms: orParts };
+
+  const andParts = trimmed.split(/\s+AND\s+/i).map(stripFilterTerm).filter(Boolean);
+  if (andParts.length > 1) return { operator: "and", terms: andParts };
+
+  return { operator: "single", terms: [stripFilterTerm(trimmed)].filter(Boolean) };
+}
+
+function jobTitleMatchesFilter(title: string | undefined | null, filter: string): boolean {
+  const parsed = parseTitleFilter(filter);
+  if (parsed.terms.length === 0) return true;
+
+  const normalizedTitle = (title ?? "").toLowerCase();
+  const normalizedTerms = parsed.terms.map((term) => term.toLowerCase());
+
+  if (parsed.operator === "or") {
+    return normalizedTerms.some((term) => normalizedTitle.includes(term));
+  }
+  if (parsed.operator === "and") {
+    return normalizedTerms.every((term) => normalizedTitle.includes(term));
+  }
+  return normalizedTitle.includes(normalizedTerms[0]);
+}
+
+function JobTableSortDropdown({
+  value,
+  onChange,
+}: {
+  value: JobTableSortMode;
+  onChange: (mode: JobTableSortMode) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const selected = SORT_MODE_OPTIONS.find((option) => option.value === value) ?? SORT_MODE_OPTIONS[0];
+
+  useEffect(() => {
+    if (!open) return;
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="relative shrink-0 w-full sm:w-[15.5rem]">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-left shadow-sm transition-all hover:border-emerald-400/40 hover:shadow-md focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-white/[0.10] dark:bg-white/[0.03] dark:hover:border-emerald-400/30"
+      >
+        <span className="min-w-0">
+          <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+            Sort by
+          </span>
+          <span className="block truncate text-base font-semibold text-slate-900 dark:text-white">
+            {selected.label}
+          </span>
+        </span>
+        <svg
+          className={`h-5 w-5 shrink-0 text-emerald-600 transition-transform dark:text-emerald-400 ${open ? "rotate-180" : ""}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open ? (
+        <ul
+          role="listbox"
+          aria-label="Sort jobs by"
+          className="absolute right-0 z-20 mt-2 w-full overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 shadow-xl shadow-slate-200/60 dark:border-white/[0.10] dark:bg-navy-900 dark:shadow-black/40"
+        >
+          {SORT_MODE_OPTIONS.map((option) => {
+            const active = option.value === value;
+            return (
+              <li key={option.value} role="option" aria-selected={active}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange(option.value);
+                    setOpen(false);
+                  }}
+                  className={`flex w-full flex-col items-start gap-0.5 px-4 py-3 text-left transition-colors ${
+                    active
+                      ? "bg-emerald-500/10 text-emerald-800 dark:bg-emerald-400/10 dark:text-emerald-200"
+                      : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-white/[0.04]"
+                  }`}
+                >
+                  <span className="text-base font-semibold">{option.label}</span>
+                  <span className="text-sm text-slate-500 dark:text-slate-400">{option.description}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </div>
+  );
 }
 
 function filterJobsByTitle(jobs: DiscoveredJobRow[], titleFilter: string): DisplayJobRow[] {
-  const query = titleFilter.trim().toLowerCase();
+  const trimmed = titleFilter.trim();
   return jobs
     .map((job, originalIndex) => ({ job, originalIndex }))
-    .filter(({ job }) => !query || (job.jobTitle ?? "").toLowerCase().includes(query));
+    .filter(({ job }) => !trimmed || jobTitleMatchesFilter(job.jobTitle, trimmed));
 }
 
 function MergedJobTable({
@@ -292,7 +434,7 @@ function MergedJobTable({
 
   return (
     <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-white/[0.08]">
-      <table className="min-w-full text-sm">
+      <table className="min-w-full text-base">
         <thead className="border-b border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.02] text-left text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
           <tr>
             <th className="px-4 py-3 font-semibold whitespace-nowrap">Company name</th>
@@ -624,16 +766,23 @@ export default function BuiltInCrawlPanel() {
                 >
                   {PLATFORM_LABEL[platform]} listing URL
                 </label>
-                <input
-                  id={`listingUrl-${platform}`}
-                  type="url"
-                  value={listingUrls[platform]}
-                  onChange={(e) => updateListingUrl(platform, e.target.value)}
-                  placeholder={PLATFORM_PLACEHOLDER[platform]}
-                  className={inputClass}
-                  disabled={crawling}
-                  spellCheck={false}
-                />
+                <div className="flex items-stretch gap-2">
+                  <input
+                    id={`listingUrl-${platform}`}
+                    type="url"
+                    value={listingUrls[platform]}
+                    onChange={(e) => updateListingUrl(platform, e.target.value)}
+                    placeholder={PLATFORM_PLACEHOLDER[platform]}
+                    className={`${inputClass} min-w-0 flex-1`}
+                    disabled={crawling}
+                    spellCheck={false}
+                  />
+                  <CopyUrlButton
+                    url={listingUrls[platform]}
+                    disabled={crawling}
+                    title={`Copy ${PLATFORM_LABEL[platform]} listing URL`}
+                  />
+                </div>
                 <p className="mt-1.5 text-xs text-slate-400">{PLATFORM_HINT[platform]}</p>
               </div>
             ))}
@@ -692,51 +841,43 @@ export default function BuiltInCrawlPanel() {
 
       {hydrated && jobList.length > 0 ? (
         <div className="mt-8 space-y-3">
-          <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between">
-            <div className="flex flex-wrap items-center gap-3 text-sm">
-              <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-3 py-1 font-semibold text-emerald-800 dark:text-emerald-300">
-                {hasTitleFilter
-                  ? `${filteredJobRows.length} of ${jobList.length} job${jobList.length === 1 ? "" : "s"}`
-                  : `${jobList.length} job${jobList.length === 1 ? "" : "s"}`}
+          <div className="flex flex-wrap items-center gap-3 text-base">
+            <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-3.5 py-1.5 font-semibold text-emerald-800 dark:text-emerald-300">
+              {hasTitleFilter
+                ? `${filteredJobRows.length} of ${jobList.length} job${jobList.length === 1 ? "" : "s"}`
+                : `${jobList.length} job${jobList.length === 1 ? "" : "s"}`}
+            </span>
+            {checkedJobKeys.size > 0 ? (
+              <span className="text-slate-500 dark:text-slate-400">
+                {checkedJobKeys.size} selected
               </span>
-              {checkedJobKeys.size > 0 ? (
-                <span className="text-slate-500 dark:text-slate-400">
-                  {checkedJobKeys.size} selected
-                </span>
-              ) : null}
-              <div className="flex items-center gap-2">
-                <span className="text-slate-500 dark:text-slate-400">Sort</span>
-                <button
-                  type="button"
-                  onClick={() => setJobTableSortMode("company")}
-                  className={sortModeButtonClass(jobTableSortMode === "company")}
-                >
-                  Company
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setJobTableSortMode("platform")}
-                  className={sortModeButtonClass(jobTableSortMode === "platform")}
-                >
-                  Platform
-                </button>
-              </div>
-            </div>
-            <div className="w-full sm:w-auto sm:min-w-[16rem] sm:max-w-xs">
-              <label htmlFor="jobTitleFilter" className="sr-only">
-                Filter by job title
+            ) : null}
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+            <div className="min-w-0 flex-1">
+              <label htmlFor="jobTitleFilter" className="mb-1.5 block text-sm font-medium text-slate-600 dark:text-slate-300">
+                Job title filter
               </label>
               <input
                 id="jobTitleFilter"
                 type="search"
                 value={jobTitleFilter}
                 onChange={(e) => setJobTitleFilter(e.target.value)}
-                placeholder="Filter by job title…"
-                className={inputClass}
+                placeholder={'Engineer OR Developer OR Scientist'}
+                className={filterInputClass}
                 spellCheck={false}
               />
+              <p className="mt-1.5 text-sm text-slate-400 dark:text-slate-500">
+                Use <span className="font-semibold text-slate-500 dark:text-slate-400">OR</span> to match any term, or{" "}
+                <span className="font-semibold text-slate-500 dark:text-slate-400">AND</span> to require every term.
+              </p>
+            </div>
+            <div className="sm:pt-7">
+              <JobTableSortDropdown value={jobTableSortMode} onChange={setJobTableSortMode} />
             </div>
           </div>
+
           <MergedJobTable
             rows={filteredJobRows}
             sortMode={jobTableSortMode}
