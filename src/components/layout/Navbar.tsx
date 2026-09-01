@@ -51,7 +51,7 @@ export default function Navbar() {
       data-nav-overlay={!scrolled}
       className={`fixed top-0 left-0 right-0 z-50 transition-[background-color,box-shadow,border-color] duration-300 [transform:translateZ(0)] ${
         scrolled
-          ? "bg-white/90 dark:bg-warm-950/95 border-b border-orange-200/60 dark:border-orange-500/10 shadow-gloss dark:shadow-card-dark"
+          ? "bg-white/82 dark:bg-warm-950/84 border-b border-orange-200/60 dark:border-orange-500/10 shadow-gloss dark:shadow-card-dark backdrop-blur-md"
           : "bg-transparent border-b border-transparent shadow-none"
       }`}
     >

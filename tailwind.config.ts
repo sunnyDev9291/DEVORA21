@@ -78,9 +78,9 @@ export default {
         "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",
         "brand-gradient": "linear-gradient(135deg, #DC4533 0%, #F97316 45%, #FBBF24 100%)",
         "gloss-warm":
-          "linear-gradient(145deg, rgba(255,255,255,0.96) 0%, rgba(255,244,232,0.92) 45%, rgba(255,237,213,0.88) 100%)",
+          "linear-gradient(145deg, rgba(255,255,255,0.84) 0%, rgba(255,244,232,0.8) 45%, rgba(255,237,213,0.76) 100%)",
         "gloss-warm-dark":
-          "linear-gradient(145deg, rgba(42,24,16,0.96) 0%, rgba(38,24,20,0.94) 50%, rgba(26,16,12,0.98) 100%)",
+          "linear-gradient(145deg, rgba(42,24,16,0.84) 0%, rgba(38,24,20,0.82) 50%, rgba(26,16,12,0.86) 100%)",
       },
       animation: {
         "fade-up": "fadeUp 0.6s ease-out forwards",

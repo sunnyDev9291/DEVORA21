@@ -25,9 +25,9 @@ export const ui = {
     "rounded-2xl border border-orange-200/60 bg-gloss-warm p-6 shadow-card backdrop-blur-md dark:border-orange-500/12 dark:bg-gloss-warm-dark dark:shadow-card-dark",
 
   tabBar:
-    "relative inline-flex w-full max-w-md rounded-xl border border-orange-200/70 bg-white/85 p-1 shadow-gloss backdrop-blur-md dark:border-orange-500/15 dark:bg-warm-900/90 dark:shadow-card-dark sm:w-auto",
+    "relative inline-flex w-full max-w-md rounded-xl border border-orange-200/70 bg-white/78 p-1 shadow-gloss backdrop-blur-md dark:border-orange-500/15 dark:bg-warm-900/82 dark:shadow-card-dark sm:w-auto",
 
-  input: `w-full rounded-xl border border-orange-200/80 bg-white/90 px-4 py-3 text-[17px] leading-snug text-stone-900 shadow-sm outline-none transition-all placeholder:text-stone-400 hover:border-orange-300 ${brand.focusRing} dark:border-orange-500/15 dark:bg-white/[0.05] dark:text-stone-100 dark:placeholder:text-stone-500 dark:hover:border-orange-400/30`,
+  input: `w-full rounded-xl border border-orange-200/80 bg-white/78 px-4 py-3 text-[17px] leading-snug text-stone-900 shadow-sm outline-none transition-all backdrop-blur-sm placeholder:text-stone-400 hover:border-orange-300 ${brand.focusRing} dark:border-orange-500/15 dark:bg-white/[0.04] dark:text-stone-100 dark:placeholder:text-stone-500 dark:hover:border-orange-400/30`,
 
   label: "mb-1.5 block text-sm font-medium text-stone-700 dark:text-stone-300",
 

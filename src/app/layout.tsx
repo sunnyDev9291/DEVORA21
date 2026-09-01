@@ -5,6 +5,7 @@ import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import SkipLink from "@/components/layout/SkipLink";
 import DeferredChatWidgets from "@/components/layout/DeferredChatWidgets";
+import DeferredSmartCursor from "@/components/layout/DeferredSmartCursor";
 import ThemeProvider from "@/providers/ThemeProvider";
 import { AuthProvider } from "@/context/AuthContext";
 import JsonLd from "@/components/seo/JsonLd";
@@ -85,6 +86,7 @@ export default function RootLayout({
             <main id="main-content">{children}</main>
             <Footer />
             <DeferredChatWidgets />
+            <DeferredSmartCursor />
           </AuthProvider>
         </ThemeProvider>
       </body>
