@@ -10,6 +10,8 @@ export type BuiltInCrawlJob = JobCrawlJob;
 
 export type JobCrawlPlatform = "builtin" | "hiringcafe";
 
+export const ALL_JOB_CRAWL_PLATFORMS: JobCrawlPlatform[] = ["builtin", "hiringcafe"];
+
 export type JobCrawlResult = {
   sourceUrl: string;
   platform: JobCrawlPlatform;
