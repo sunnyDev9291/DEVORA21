@@ -100,7 +100,7 @@ export default function PdfPreviewModal({
               {title}
             </h2>
             {(subtitle || fileName) && (
-              <p className="truncate text-[11px] text-slate-500 dark:text-slate-400 hidden sm:block">
+              <p className="truncate text-[13px] text-slate-500 dark:text-slate-400 hidden sm:block">
                 {subtitle ?? fileName}
               </p>
             )}

@@ -163,7 +163,7 @@ function LastCrawledBanner({ iso }: { iso: string }) {
             </svg>
           </div>
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-orange-700/80 dark:text-orange-300/80">
+            <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-orange-700/80 dark:text-orange-300/80">
               Last crawled
             </p>
             <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{parts.date}</p>
@@ -347,7 +347,7 @@ function JobTableSortDropdown({
         className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-left shadow-sm transition-all hover:border-orange-400/40 hover:shadow-md focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20 dark:border-white/[0.10] dark:bg-white/[0.03] dark:hover:border-orange-400/30"
       >
         <span className="min-w-0">
-          <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+          <span className="block text-[13px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
             Sort by
           </span>
           <span className="block truncate text-base font-semibold text-slate-900 dark:text-white">

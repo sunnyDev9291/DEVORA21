@@ -370,7 +370,7 @@ export default function ResumeContentReview({
             id="resume-summary"
             value={content.summary}
             onChange={(summary) => onChange({ ...content, summary })}
-            className={`${fieldClass} min-h-[220px] resize-y text-[15px] leading-7 ${changedRing("summary")}`}
+            className={`${fieldClass} min-h-[220px] resize-y text-[17px] leading-7 ${changedRing("summary")}`}
             rows={8}
             minHeight={220}
             maxHeight={520}

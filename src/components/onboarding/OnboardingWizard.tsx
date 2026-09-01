@@ -404,7 +404,7 @@ export default function OnboardingWizard({ user }: OnboardingWizardProps) {
 
         <div className="border-b border-white/[0.06] px-6 py-5 text-center sm:px-8">
 
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-orange-400">
+          <p className="text-[13px] font-semibold uppercase tracking-widest text-orange-400">
 
             Step {stepIndex + 1} of {ONBOARDING_STEPS.length}
 
@@ -556,7 +556,7 @@ export default function OnboardingWizard({ user }: OnboardingWizardProps) {
 
                 </Button>
 
-                <p className="text-center text-[11px] text-slate-500">JPG, PNG, WebP or GIF · max 5 MB</p>
+                <p className="text-center text-[13px] text-slate-500">JPG, PNG, WebP or GIF · max 5 MB</p>
 
               </div>
 

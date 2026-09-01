@@ -36,7 +36,7 @@ export function ResumeScoringInstructionsPanel({
       >
         <div className="min-w-0">
           <h4 className="text-sm font-bold text-slate-900 dark:text-white">Your prompt instructions</h4>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+          <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5">
             {lineCount} line{lineCount === 1 ? "" : "s"} · used for generation and Rule Keep checks
           </p>
         </div>

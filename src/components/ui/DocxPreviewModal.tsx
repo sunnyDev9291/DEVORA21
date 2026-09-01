@@ -143,7 +143,7 @@ export default function DocxPreviewModal({
               {title}
             </h2>
             {(subtitle || fileName) && (
-              <p className="truncate text-[11px] text-slate-500 dark:text-slate-400 hidden sm:block">
+              <p className="truncate text-[13px] text-slate-500 dark:text-slate-400 hidden sm:block">
                 {subtitle ?? fileName}
               </p>
             )}
@@ -181,7 +181,7 @@ export default function DocxPreviewModal({
               type="button"
               onClick={() => setZoom(fitWidthScale)}
               disabled={!ready || Math.abs(zoom - fitWidthScale) < 0.02}
-              className="px-2 py-1 rounded-md text-[11px] font-semibold text-orange-600 dark:text-orange-400 hover:bg-white dark:hover:bg-navy-800 disabled:opacity-40 transition-colors"
+              className="px-2 py-1 rounded-md text-[13px] font-semibold text-orange-600 dark:text-orange-400 hover:bg-white dark:hover:bg-navy-800 disabled:opacity-40 transition-colors"
               title="Fit width"
             >
               Fit

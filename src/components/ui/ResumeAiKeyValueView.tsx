@@ -69,7 +69,7 @@ export default function ResumeAiKeyValueView({
 
   if (!sections) {
     return (
-      <div className="whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed">
+      <div className="whitespace-pre-wrap break-words font-mono text-[15px] leading-relaxed">
         <MarkdownBoldText text={text} />
         {showCursor ? (
           <span
@@ -82,7 +82,7 @@ export default function ResumeAiKeyValueView({
   }
 
   return (
-    <div className="space-y-5 text-[13px] leading-relaxed font-sans">
+    <div className="space-y-5 text-[15px] leading-relaxed font-sans">
       {sections.map((section) => (
         <KeyValueSection key={section.key} section={section} />
       ))}

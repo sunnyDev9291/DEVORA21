@@ -30,7 +30,7 @@ export default function OnboardingStepProgress({ currentStep }: OnboardingStepPr
                 {done ? "✓" : index + 1}
               </div>
               <span
-                className={`hidden text-center text-[10px] font-medium sm:block ${
+                className={`hidden text-center text-[12px] font-medium sm:block ${
                   active ? "text-white" : "text-slate-500"
                 }`}
               >

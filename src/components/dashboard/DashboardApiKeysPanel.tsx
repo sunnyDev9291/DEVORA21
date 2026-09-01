@@ -214,7 +214,7 @@ export default function DashboardApiKeysPanel() {
                   <tr key={key.id} className="align-middle opacity-60">
                     <td className="px-4 py-3 font-medium text-slate-300">
                       {key.name || "API key"}
-                      <span className="ml-2 rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-400">
+                      <span className="ml-2 rounded-full bg-white/[0.06] px-2 py-0.5 text-[12px] uppercase tracking-wide text-slate-400">
                         Revoked
                       </span>
                     </td>
@@ -270,7 +270,7 @@ export default function DashboardApiKeysPanel() {
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
             Use it as{" "}
-            <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] dark:bg-white/[0.06]">
+            <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[13px] dark:bg-white/[0.06]">
               Authorization: Bearer {createdRawKey?.slice(0, 12)}…
             </code>
           </p>

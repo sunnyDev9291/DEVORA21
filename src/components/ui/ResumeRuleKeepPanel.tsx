@@ -56,7 +56,7 @@ function RuleRing({ overall, hasRules }: { overall: number; hasRules: boolean })
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className={`text-2xl font-bold tabular-nums ${scoreColor(overall, hasRules)}`}>{display}</span>
-        <span className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">/ {RULE_KEEP_SCORE_MAX}</span>
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">/ {RULE_KEEP_SCORE_MAX}</span>
       </div>
     </div>
   );
@@ -108,7 +108,7 @@ export function ResumeRuleKeepPanel({
               <h4 className="text-base font-bold text-slate-900 dark:text-white">Rule Keep Score</h4>
               {hasRules && (
                 <span
-                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[12px] font-bold ${
                     score.passed
                       ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
                       : "bg-amber-500/15 text-amber-700 dark:text-amber-300"
@@ -122,7 +122,7 @@ export function ResumeRuleKeepPanel({
             </div>
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">{score.summary}</p>
             {hasPrompt && !hasRules && (
-              <p className="text-[11px] text-amber-700 dark:text-amber-300 mt-2">
+              <p className="text-[13px] text-amber-700 dark:text-amber-300 mt-2">
                 Your prompt is loaded but no checkable rules were detected. Expand your prompt above to verify the text.
               </p>
             )}
@@ -138,7 +138,7 @@ export function ResumeRuleKeepPanel({
             className="flex w-full items-center justify-between gap-3 px-5 py-3 sm:px-6 text-left hover:bg-emerald-500/[0.04] transition-colors"
             aria-expanded={rulesExpanded}
           >
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <p className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Parsed rules ({score.totalRules})
               {failedCount > 0 && (
                 <span className="ml-2 text-amber-600 dark:text-amber-400">{failedCount} need attention</span>
@@ -177,12 +177,12 @@ export function ResumeRuleKeepPanel({
                       <div className="flex flex-wrap items-center gap-2 mb-1">
                         <span className="font-semibold text-slate-800 dark:text-slate-200">Rule {index + 1}</span>
                         {item.category && item.category !== "General" && (
-                          <span className="rounded-md bg-slate-200/80 dark:bg-white/[0.08] px-1.5 py-0.5 text-[10px] font-medium text-slate-600 dark:text-slate-400">
+                          <span className="rounded-md bg-slate-200/80 dark:bg-white/[0.08] px-1.5 py-0.5 text-[12px] font-medium text-slate-600 dark:text-slate-400">
                             {item.category}
                           </span>
                         )}
                         <span
-                          className={`text-[10px] font-bold uppercase ${
+                          className={`text-[12px] font-bold uppercase ${
                             item.passed ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"
                           }`}
                         >
@@ -203,14 +203,14 @@ export function ResumeRuleKeepPanel({
                               })
                             }
                             disabled={Boolean(improvingTargetId)}
-                            className="rounded-md border border-emerald-500/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-500/10 disabled:opacity-50 dark:text-emerald-300"
+                            className="rounded-md border border-emerald-500/30 px-2 py-0.5 text-[12px] font-semibold text-emerald-700 hover:bg-emerald-500/10 disabled:opacity-50 dark:text-emerald-300"
                           >
                             {improvingTargetId === `custom-rule:${item.id}` ? "Improving..." : "Improve"}
                           </button>
                         )}
                       </div>
                       <p className="text-slate-700 dark:text-slate-300 leading-relaxed">{item.rule}</p>
-                      <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                      <p className="mt-1.5 text-[13px] text-slate-500 dark:text-slate-400 leading-relaxed">
                         <span className="font-medium text-slate-600 dark:text-slate-500">Auditor: </span>
                         {item.detail}
                       </p>
@@ -225,12 +225,12 @@ export function ResumeRuleKeepPanel({
 
       {score.recommendations.length > 0 && (
         <div className="px-5 py-3 sm:px-6 border-t border-emerald-500/10 bg-emerald-500/[0.02]">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+          <p className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
             Recommendations
           </p>
           <ul className="space-y-1.5">
             {score.recommendations.map((rec) => (
-              <li key={rec} className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed flex gap-2">
+              <li key={rec} className="text-[13px] text-slate-600 dark:text-slate-300 leading-relaxed flex gap-2">
                 <span className="text-amber-500 shrink-0">•</span>
                 <span>{rec}</span>
               </li>
@@ -241,7 +241,7 @@ export function ResumeRuleKeepPanel({
 
       {!score.passed && hasRules && (
         <div className={`border-t border-emerald-500/10 bg-emerald-500/[0.02] ${embedded ? "py-3 mt-4" : "px-5 py-3 sm:px-6"}`}>
-          <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+          <p className="text-[13px] text-slate-600 dark:text-slate-300 leading-relaxed">
             Use Improve beside a failed rule to make a targeted edit without rewriting the full draft.
           </p>
         </div>

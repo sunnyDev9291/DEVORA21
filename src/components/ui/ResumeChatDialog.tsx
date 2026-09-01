@@ -181,7 +181,7 @@ export default function ResumeChatDialog({
           <div className="min-w-0 flex flex-col gap-1">
             <span className="text-xs font-medium text-orange-700 dark:text-orange-300 truncate">{targetLabel}</span>
             {profileLabel && (
-              <span className="text-[11px] text-orange-600/80 dark:text-orange-300/80 truncate">
+              <span className="text-[13px] text-orange-600/80 dark:text-orange-300/80 truncate">
                 Profile: {profileLabel}
               </span>
             )}
@@ -223,7 +223,7 @@ export default function ResumeChatDialog({
 
         {content && (
           <div className="shrink-0 border-t border-slate-200 dark:border-white/[0.06] px-3 pt-3 pb-1">
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            <p className="mb-2 text-[12px] font-semibold uppercase tracking-wider text-slate-400">
               Quick prompts
             </p>
             <div className="flex flex-wrap gap-1.5">
@@ -233,7 +233,7 @@ export default function ResumeChatDialog({
                   type="button"
                   disabled={loading}
                   onClick={() => void sendMessage(prompt)}
-                  className="rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.03] px-2.5 py-1.5 text-left text-[11px] font-medium text-slate-600 dark:text-slate-300 transition-colors hover:border-orange-500/30 hover:bg-blue-500/[0.06] hover:text-orange-700 dark:hover:text-orange-300 disabled:opacity-50"
+                  className="rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.03] px-2.5 py-1.5 text-left text-[13px] font-medium text-slate-600 dark:text-slate-300 transition-colors hover:border-orange-500/30 hover:bg-blue-500/[0.06] hover:text-orange-700 dark:hover:text-orange-300 disabled:opacity-50"
                 >
                   {prompt}
                 </button>

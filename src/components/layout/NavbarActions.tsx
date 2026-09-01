@@ -34,7 +34,10 @@ const toolActiveClasses = {
 } as const;
 
 const toolIdleClasses =
-  "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-white/[0.06]";
+  "text-stone-600 dark:text-stone-200 hover:text-stone-900 dark:hover:text-white hover:bg-stone-200/60 dark:hover:bg-white/[0.06]";
+
+const toolIdleOverlayClasses =
+  "text-stone-100 hover:text-white hover:bg-white/10 drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]";
 
 const mobileAccentClasses = {
   blue: "border-orange-500/25 bg-blue-500/[0.06] hover:border-orange-500/40 hover:bg-blue-500/[0.1]",
@@ -48,10 +51,11 @@ const allFeatures = [
 
 interface NavbarActionsProps {
   variant: "desktop" | "mobile";
+  overlay?: boolean;
   onNavigate?: () => void;
 }
 
-export default function NavbarActions({ variant, onNavigate }: NavbarActionsProps) {
+export default function NavbarActions({ variant, overlay = false, onNavigate }: NavbarActionsProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isAuthenticated, isLoading, isEmailVerified, isResumeBuilderEnabled, authMethod, logout } =
@@ -91,19 +95,25 @@ export default function NavbarActions({ variant, onNavigate }: NavbarActionsProp
     isAuthenticated && !sessionReady ? AUTH_LINKS.verifyEmailPending : href;
 
   const authButtonsDesktop = isLoading ? (
-    <div className="h-9 w-24 animate-pulse rounded-xl bg-slate-200/50 dark:bg-white/[0.06]" aria-hidden />
+    <div className={`h-9 w-24 animate-pulse rounded-xl ${overlay ? "bg-white/10" : "bg-stone-200/50 dark:bg-white/[0.06]"}`} aria-hidden />
   ) : isAuthenticated ? (
     <>
       <Link
         href={protectedHref(AUTH_LINKS.dashboard)}
         className={`hidden lg:inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs xl:text-sm font-semibold transition-all duration-200 whitespace-nowrap ${
           pathname === AUTH_LINKS.dashboard
-            ? "text-orange-600 dark:text-orange-300 bg-orange-500/10"
-            : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-white/[0.06]"
+            ? overlay
+              ? "text-orange-300 bg-white/15"
+              : "text-orange-600 dark:text-orange-300 bg-orange-500/10"
+            : overlay
+              ? "text-stone-100 hover:text-white hover:bg-white/10 drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]"
+              : "text-stone-700 dark:text-stone-200 hover:text-stone-900 dark:hover:text-white hover:bg-stone-200/60 dark:hover:bg-white/[0.06]"
         }`}
         title={sessionReady ? "Account dashboard" : "Verify email to open dashboard"}
       >
-        <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-orange-500/15 text-[10px] font-bold text-orange-600 dark:text-orange-300">
+        <span className={`flex h-6 w-6 items-center justify-center rounded-lg text-[12px] font-bold ${
+          overlay ? "bg-white/15 text-orange-300" : "bg-orange-500/15 text-orange-600 dark:text-orange-300"
+        }`}>
           {userInitial}
         </span>
         <span className="hidden xl:inline max-w-[8rem] truncate">{user?.name?.split(" ")[0] ?? "Dashboard"}</span>
@@ -113,7 +123,11 @@ export default function NavbarActions({ variant, onNavigate }: NavbarActionsProp
         type="button"
         onClick={handleLogout}
         disabled={isLoggingOut}
-        className="inline-flex items-center px-3.5 py-2 rounded-xl text-xs xl:text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-white/[0.06] transition-all disabled:opacity-50"
+        className={`inline-flex items-center px-3.5 py-2 rounded-xl text-xs xl:text-sm font-semibold transition-all disabled:opacity-50 ${
+          overlay
+            ? "text-stone-100 hover:text-white hover:bg-white/10 drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]"
+            : "text-stone-700 dark:text-stone-200 hover:text-stone-900 dark:hover:text-white hover:bg-stone-200/60 dark:hover:bg-white/[0.06]"
+        }`}
       >
         {isLoggingOut ? "Signing out…" : "Sign out"}
       </button>
@@ -122,7 +136,11 @@ export default function NavbarActions({ variant, onNavigate }: NavbarActionsProp
     <>
       <Link
         href={AUTH_LINKS.login}
-        className="inline-flex items-center px-3.5 py-2 rounded-xl text-xs xl:text-sm font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-white/[0.06] transition-all whitespace-nowrap"
+        className={`inline-flex items-center px-3.5 py-2 rounded-xl text-xs xl:text-sm font-semibold transition-all whitespace-nowrap ${
+          overlay
+            ? "text-stone-100 hover:text-white hover:bg-white/10 drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]"
+            : "text-stone-700 dark:text-stone-200 hover:text-stone-900 dark:hover:text-white hover:bg-stone-200/60 dark:hover:bg-white/[0.06]"
+        }`}
       >
         Sign in
       </Link>
@@ -139,7 +157,11 @@ export default function NavbarActions({ variant, onNavigate }: NavbarActionsProp
     return (
       <div className="flex items-center gap-2 xl:gap-3">
         <div
-          className="inline-flex items-center gap-0.5 p-1 rounded-xl bg-slate-100/90 dark:bg-white/[0.04] border border-slate-200/80 dark:border-white/[0.08] backdrop-blur-sm"
+          className={`inline-flex items-center gap-0.5 p-1 rounded-xl backdrop-blur-sm ${
+            overlay
+              ? "bg-white/10 border border-white/15"
+              : "bg-stone-100/90 dark:bg-white/[0.04] border border-stone-200/80 dark:border-white/[0.08]"
+          }`}
           role="group"
           aria-label="Devora21 tools"
         >
@@ -155,7 +177,7 @@ export default function NavbarActions({ variant, onNavigate }: NavbarActionsProp
                 aria-current={isActive ? "page" : undefined}
                 title={sessionReady ? feature.label : "Verify email to use this tool"}
                 className={`inline-flex items-center gap-1.5 px-2.5 xl:px-3.5 py-2 rounded-lg text-xs xl:text-sm font-semibold transition-all duration-200 ${
-                  isActive ? toolActiveClasses[accent] : toolIdleClasses
+                  isActive ? toolActiveClasses[accent] : overlay ? toolIdleOverlayClasses : toolIdleClasses
                 }`}
               >
                 <Icon className="w-3.5 h-3.5 xl:w-4 xl:h-4 flex-shrink-0" />
@@ -185,7 +207,7 @@ export default function NavbarActions({ variant, onNavigate }: NavbarActionsProp
 
   return (
     <div className="pt-4 mt-2 border-t border-white/[0.06] space-y-3">
-      <p className="px-1 text-[11px] font-semibold uppercase tracking-widest text-slate-500">Account</p>
+      <p className="px-1 text-[13px] font-semibold uppercase tracking-widest text-slate-500">Account</p>
       <div className="grid grid-cols-2 gap-2">
         {isLoading ? (
           <div className="col-span-2 h-11 animate-pulse rounded-xl bg-white/[0.06]" aria-hidden />
@@ -227,7 +249,7 @@ export default function NavbarActions({ variant, onNavigate }: NavbarActionsProp
         )}
       </div>
 
-      <p className="px-1 text-[11px] font-semibold uppercase tracking-widest text-slate-500">Tools</p>
+      <p className="px-1 text-[13px] font-semibold uppercase tracking-widest text-slate-500">Tools</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
         {features.map((feature) => {
           const Icon = featureIcons[feature.key];

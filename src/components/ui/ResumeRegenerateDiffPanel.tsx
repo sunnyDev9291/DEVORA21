@@ -137,7 +137,7 @@ export default function ResumeRegenerateDiffPanel({
                 <button
                   type="button"
                   onClick={() => setShowUnchanged((v) => !v)}
-                  className="text-[11px] text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                  className="text-[13px] text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
                 >
                   {showUnchanged ? "Hide details" : "Show all changes"}
                 </button>

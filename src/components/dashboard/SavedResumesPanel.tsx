@@ -80,7 +80,7 @@ const STYLES = {
     chip:
       "rounded-lg border border-white/10 bg-white/[0.03] px-2 py-2 text-sm font-medium text-slate-300 transition-all hover:border-orange-500/30 hover:bg-blue-500/[0.06] disabled:cursor-not-allowed disabled:opacity-35",
     chipSelected: "border-orange-500/50 bg-blue-500/20 text-white shadow-sm shadow-blue-500/20",
-    chipCount: "mt-0.5 block text-[10px] font-normal text-slate-500",
+    chipCount: "mt-0.5 block text-[12px] font-normal text-slate-500",
     daysSection: "mt-6 space-y-2",
     daysHeading: "text-xs font-semibold uppercase tracking-wider text-slate-500",
     dayButton:
@@ -132,7 +132,7 @@ const STYLES = {
       "rounded-lg border border-slate-200/80 bg-slate-50/80 px-2 py-2 text-sm font-medium text-slate-700 transition-all hover:border-orange-500/35 hover:bg-blue-50/80 dark:border-white/[0.08] dark:bg-white/[0.02] dark:text-slate-200 dark:hover:border-orange-500/30 dark:hover:bg-blue-500/[0.06] disabled:cursor-not-allowed disabled:opacity-35",
     chipSelected:
       "border-orange-500/50 bg-orange-500/15 text-orange-700 shadow-sm shadow-blue-500/15 dark:bg-blue-500/20 dark:text-white",
-    chipCount: "mt-0.5 block text-[10px] font-normal text-slate-500 dark:text-slate-400",
+    chipCount: "mt-0.5 block text-[12px] font-normal text-slate-500 dark:text-slate-400",
     daysSection: "mt-6 space-y-2",
     daysHeading: "text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400",
     dayButton:

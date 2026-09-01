@@ -54,7 +54,7 @@ function ScoreRing({ overall }: { overall: number }) {
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className={`text-3xl font-bold tabular-nums ${scoreColor(display)}`}>{display}</span>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">/ {ATS_SCORE_MAX}</span>
+        <span className="text-[12px] font-semibold uppercase tracking-wider text-slate-400">/ {ATS_SCORE_MAX}</span>
       </div>
     </div>
   );
@@ -146,7 +146,7 @@ export function ResumeAtsScorePanel({
                       })
                     }
                     disabled={Boolean(improvingTargetId)}
-                    className="rounded-md border border-violet-500/30 px-2 py-0.5 text-[10px] font-semibold text-violet-700 hover:bg-orange-500/10 disabled:opacity-50 dark:text-violet-300"
+                    className="rounded-md border border-violet-500/30 px-2 py-0.5 text-[12px] font-semibold text-violet-700 hover:bg-orange-500/10 disabled:opacity-50 dark:text-violet-300"
                   >
                     {improvingTargetId === `ats-category:${item.category}` ? "Improving..." : "Improve"}
                   </button>
@@ -160,7 +160,7 @@ export function ResumeAtsScorePanel({
               />
             </div>
             {item.notes && (
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">{item.notes}</p>
+              <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">{item.notes}</p>
             )}
           </div>
         ))}
@@ -177,7 +177,7 @@ export function ResumeAtsScorePanel({
                 {score.matchedKeywords.map((kw) => (
                   <span
                     key={kw}
-                    className="inline-block rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-800 dark:text-emerald-200"
+                    className="inline-block rounded-md bg-emerald-500/10 px-2 py-0.5 text-[13px] font-medium text-emerald-800 dark:text-emerald-200"
                   >
                     {kw}
                   </span>
@@ -203,7 +203,7 @@ export function ResumeAtsScorePanel({
                       })
                     }
                     disabled={Boolean(improvingTargetId)}
-                    className="rounded-md border border-amber-500/30 px-2 py-0.5 text-[10px] font-semibold text-amber-700 hover:bg-amber-500/10 disabled:opacity-50 dark:text-amber-300"
+                    className="rounded-md border border-amber-500/30 px-2 py-0.5 text-[12px] font-semibold text-amber-700 hover:bg-amber-500/10 disabled:opacity-50 dark:text-amber-300"
                   >
                     {improvingTargetId === "ats-keywords:missing" ? "Improving..." : "Improve"}
                   </button>
@@ -213,7 +213,7 @@ export function ResumeAtsScorePanel({
                 {score.missingKeywords.map((kw) => (
                   <span
                     key={kw}
-                    className="inline-block rounded-md bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:text-amber-200"
+                    className="inline-block rounded-md bg-amber-500/10 px-2 py-0.5 text-[13px] font-medium text-amber-800 dark:text-amber-200"
                   >
                     {kw}
                   </span>
@@ -245,7 +245,7 @@ export function ResumeAtsScorePanel({
                       })
                     }
                     disabled={Boolean(improvingTargetId)}
-                    className="ml-2 rounded-md border border-violet-500/30 px-2 py-0.5 text-[10px] font-semibold text-violet-700 hover:bg-orange-500/10 disabled:opacity-50 dark:text-violet-300"
+                    className="ml-2 rounded-md border border-violet-500/30 px-2 py-0.5 text-[12px] font-semibold text-violet-700 hover:bg-orange-500/10 disabled:opacity-50 dark:text-violet-300"
                   >
                     {improvingTargetId === `ats-recommendation:${rec}` ? "Improving..." : "Improve"}
                   </button>
@@ -286,7 +286,7 @@ export function ResumeAtsScorePanel({
                         })
                       }
                       disabled={Boolean(improvingTargetId)}
-                      className="ml-2 rounded-md border border-red-500/30 px-2 py-0.5 text-[10px] font-semibold text-red-700 hover:bg-red-500/10 disabled:opacity-50 dark:text-red-300"
+                      className="ml-2 rounded-md border border-red-500/30 px-2 py-0.5 text-[12px] font-semibold text-red-700 hover:bg-red-500/10 disabled:opacity-50 dark:text-red-300"
                     >
                       {improvingTargetId === `ats-gate:${gate.name}` ? "Improving..." : "Improve"}
                     </button>
@@ -296,7 +296,7 @@ export function ResumeAtsScorePanel({
             ))}
           </ul>
           {score.mustHaveCoverage !== undefined && (
-            <p className="mt-2 text-[10px] text-slate-400 dark:text-slate-500">
+            <p className="mt-2 text-[12px] text-slate-400 dark:text-slate-500">
               Algorithm: {score.algorithm ?? "strict"} · Must-have coverage: {score.mustHaveCoverage}%
             </p>
           )}

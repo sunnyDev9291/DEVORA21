@@ -8,13 +8,26 @@ export default {
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
+    fontSize: {
+      "2xs": ["0.8125rem", { lineHeight: "1.125rem", letterSpacing: "0.02em" }],
+      xs: ["0.875rem", { lineHeight: "1.25rem" }],
+      sm: ["1rem", { lineHeight: "1.5rem" }],
+      base: ["1.125rem", { lineHeight: "1.75rem" }],
+      lg: ["1.25rem", { lineHeight: "1.75rem" }],
+      xl: ["1.375rem", { lineHeight: "1.875rem" }],
+      "2xl": ["1.625rem", { lineHeight: "2rem" }],
+      "3xl": ["2rem", { lineHeight: "2.25rem" }],
+      "4xl": ["2.375rem", { lineHeight: "2.5rem" }],
+      "5xl": ["3.125rem", { lineHeight: "1" }],
+      "6xl": ["3.875rem", { lineHeight: "1" }],
+      "7xl": ["4.625rem", { lineHeight: "1" }],
+      "8xl": ["6.125rem", { lineHeight: "1" }],
+      "9xl": ["8.125rem", { lineHeight: "1" }],
+    },
     extend: {
       fontFamily: {
         sans: ["var(--font-sans)", "system-ui", "sans-serif"],
         display: ["var(--font-sans)", "system-ui", "sans-serif"],
-      },
-      fontSize: {
-        "2xs": ["0.6875rem", { lineHeight: "1rem", letterSpacing: "0.02em" }],
       },
       colors: {
         navy: {
