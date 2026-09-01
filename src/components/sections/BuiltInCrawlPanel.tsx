@@ -155,6 +155,49 @@ function LastCrawledBanner({ iso }: { iso: string }) {
   );
 }
 
+function normalizeCompanyName(name: string | undefined | null): string {
+  return (name ?? "").trim();
+}
+
+function companySortKey(name: string | undefined | null): string {
+  const normalized = normalizeCompanyName(name);
+  return normalized ? normalized.toLowerCase() : "\uffff";
+}
+
+type DisplayJobRow = {
+  job: DiscoveredJobRow;
+  originalIndex: number;
+};
+
+type CompanyJobGroup = {
+  companyLabel: string;
+  sortKey: string;
+  rows: DisplayJobRow[];
+};
+
+function buildCompanyGroups(jobs: DiscoveredJobRow[]): CompanyJobGroup[] {
+  const sorted: DisplayJobRow[] = jobs
+    .map((job, originalIndex) => ({ job, originalIndex }))
+    .sort((a, b) => {
+      const byCompany = companySortKey(a.job.companyName).localeCompare(companySortKey(b.job.companyName));
+      if (byCompany !== 0) return byCompany;
+      return a.originalIndex - b.originalIndex;
+    });
+
+  const groups: CompanyJobGroup[] = [];
+  for (const row of sorted) {
+    const sortKey = companySortKey(row.job.companyName);
+    const companyLabel = normalizeCompanyName(row.job.companyName) || "—";
+    const last = groups[groups.length - 1];
+    if (last && last.sortKey === sortKey) {
+      last.rows.push(row);
+    } else {
+      groups.push({ companyLabel, sortKey, rows: [row] });
+    }
+  }
+  return groups;
+}
+
 function MergedJobTable({
   jobs,
   checkedKeys,
@@ -168,6 +211,8 @@ function MergedJobTable({
   onToggleAll: () => void;
   allChecked: boolean;
 }) {
+  const companyGroups = useMemo(() => buildCompanyGroups(jobs), [jobs]);
+
   if (jobs.length === 0) {
     return (
       <p className="rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
@@ -181,10 +226,10 @@ function MergedJobTable({
       <table className="min-w-full text-sm">
         <thead className="border-b border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.02] text-left text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
           <tr>
-            <th className="px-4 py-3 font-semibold whitespace-nowrap">Platform</th>
-            <th className="px-4 py-3 font-semibold whitespace-nowrap">Company</th>
+            <th className="px-4 py-3 font-semibold whitespace-nowrap">Company name</th>
             <th className="px-4 py-3 font-semibold min-w-[12rem]">Job title</th>
-            <th className="px-4 py-3 font-semibold min-w-[10rem]">URL</th>
+            <th className="px-4 py-3 font-semibold min-w-[10rem]">Job URL</th>
+            <th className="px-4 py-3 font-semibold whitespace-nowrap">Platform</th>
             <th className="px-4 py-3 font-semibold text-center w-12">
               <input
                 type="checkbox"
@@ -197,54 +242,61 @@ function MergedJobTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-white/[0.06]">
-          {jobs.map((job, index) => {
-            const key = jobRowKey(job, index);
-            const checked = checkedKeys.has(key);
+          {companyGroups.map((group) =>
+            group.rows.map((row, rowIndex) => {
+              const key = jobRowKey(row.job, row.originalIndex);
+              const checked = checkedKeys.has(key);
 
-            return (
-              <tr
-                key={key}
-                className={
-                  checked
-                    ? "bg-emerald-500/[0.06] hover:bg-emerald-500/[0.08]"
-                    : "hover:bg-slate-50/80 dark:hover:bg-white/[0.02]"
-                }
-              >
-                <td className="px-4 py-3 whitespace-nowrap">
-                  <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${PLATFORM_BADGE_CLASS}`}
-                  >
-                    {PLATFORM_LABEL[job.platform]}
-                  </span>
-                </td>
-                <td className="px-4 py-3 font-medium text-slate-900 dark:text-white whitespace-nowrap">
-                  {job.companyName || "—"}
-                </td>
-                <td className="px-4 py-3 text-slate-800 dark:text-slate-100">{job.jobTitle || "—"}</td>
-                <td className="px-4 py-3 max-w-[20rem]">
-                  {job.jobUrl ? (
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span title={job.jobUrl} className="truncate text-blue-600 dark:text-blue-400 select-all">
-                        {job.jobUrl}
-                      </span>
-                      <CopyUrlButton url={job.jobUrl} />
-                    </div>
-                  ) : (
-                    <span className="text-slate-400">—</span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-center">
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={() => onToggleRow(key)}
-                    aria-label={`Select ${job.jobTitle || "job"}`}
-                    className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30 dark:border-white/20 dark:bg-white/5"
-                  />
-                </td>
-              </tr>
-            );
-          })}
+              return (
+                <tr
+                  key={key}
+                  className={
+                    checked
+                      ? "bg-emerald-500/[0.06] hover:bg-emerald-500/[0.08]"
+                      : "hover:bg-slate-50/80 dark:hover:bg-white/[0.02]"
+                  }
+                >
+                  {rowIndex === 0 ? (
+                    <td
+                      rowSpan={group.rows.length}
+                      className="px-4 py-3 align-middle font-medium text-slate-900 dark:text-white whitespace-nowrap border-r border-slate-100 dark:border-white/[0.06]"
+                    >
+                      {group.companyLabel}
+                    </td>
+                  ) : null}
+                  <td className="px-4 py-3 text-slate-800 dark:text-slate-100">{row.job.jobTitle || "—"}</td>
+                  <td className="px-4 py-3 max-w-[20rem]">
+                    {row.job.jobUrl ? (
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span title={row.job.jobUrl} className="truncate text-blue-600 dark:text-blue-400 select-all">
+                          {row.job.jobUrl}
+                        </span>
+                        <CopyUrlButton url={row.job.jobUrl} />
+                      </div>
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <span
+                      className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${PLATFORM_BADGE_CLASS}`}
+                    >
+                      {PLATFORM_LABEL[row.job.platform]}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => onToggleRow(key)}
+                      aria-label={`Select ${row.job.jobTitle || "job"}`}
+                      className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30 dark:border-white/20 dark:bg-white/5"
+                    />
+                  </td>
+                </tr>
+              );
+            })
+          )}
         </tbody>
       </table>
     </div>
@@ -275,7 +327,7 @@ export default function BuiltInCrawlPanel() {
   const allPlatformSelected = ALL_JOB_CRAWL_PLATFORMS.every((p) => selectedPlatforms.includes(p));
   const canCrawl =
     !crawling &&
-    selectedPlatforms.length > 1 &&
+    selectedPlatforms.length > 0 &&
     selectedPlatforms.every((p) => {
       const url = listingUrls[p]?.trim() ?? "";
       return url.length > 0 && PLATFORM_URL_VALID[p](url);
@@ -409,11 +461,9 @@ export default function BuiltInCrawlPanel() {
           </div>
         </div>
 
-        {selectedPlatforms.length < 2 ? (
+        {selectedPlatforms.length === 0 ? (
           <p className="text-sm text-amber-700 dark:text-amber-300">
-            {selectedPlatforms.length === 0
-              ? "Select at least two platforms to crawl."
-              : "Select at least one more platform to crawl."}
+            Select at least one platform to crawl.
           </p>
         ) : (
           <div className="space-y-4">
