@@ -235,13 +235,13 @@
   }
 }
 
-/* Neon custom cursor — desktop pointer devices only */
+/* Warm custom cursor — desktop pointer devices only */
 html.custom-cursor-active,
 html.custom-cursor-active * {
   cursor: none !important;
 }
 
-.neon-cursor-layer {
+.warm-cursor-layer {
   position: fixed;
   inset: 0;
   z-index: 100000;
@@ -249,7 +249,14 @@ html.custom-cursor-active * {
   overflow: hidden;
 }
 
-.neon-cursor {
+.warm-cursor-wake-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.warm-cursor {
   position: fixed;
   top: 0;
   left: 0;
@@ -259,158 +266,77 @@ html.custom-cursor-active * {
   will-change: transform;
 }
 
-.neon-cursor.is-visible {
+.warm-cursor.is-visible {
   opacity: 1;
 }
 
-.neon-cursor.is-pointer {
+.warm-cursor.is-pointer {
   margin-left: -4px;
   margin-top: -2px;
 }
 
-.neon-cursor:not(.is-pointer) {
+.warm-cursor:not(.is-pointer) {
   margin-left: -2px;
   margin-top: -2px;
 }
 
-.neon-cursor-icon {
+.warm-cursor-icon {
   display: block;
   filter:
-    drop-shadow(0 0 2px rgba(224, 242, 254, 0.95))
-    drop-shadow(0 0 8px rgba(56, 189, 248, 0.85))
-    drop-shadow(0 0 18px rgba(14, 165, 233, 0.65))
-    drop-shadow(0 0 32px rgba(2, 132, 199, 0.45));
+    drop-shadow(0 0 2px rgba(255, 237, 213, 0.95))
+    drop-shadow(0 0 8px rgba(251, 146, 60, 0.85))
+    drop-shadow(0 0 18px rgba(249, 115, 22, 0.65))
+    drop-shadow(0 0 32px rgba(234, 88, 12, 0.45));
 }
 
-.neon-cursor-ripple {
+.warm-cursor-ripple {
   position: fixed;
   top: 0;
   left: 0;
-  z-index: 1;
+  z-index: 2;
   pointer-events: none;
   will-change: transform;
 }
 
-.neon-cursor-ripple-svg {
+.warm-cursor-ripple-svg {
   overflow: visible;
-  color: #38bdf8;
+  color: #fb923c;
 }
 
-.neon-cursor-ripple-svg--click {
+.warm-cursor-ripple-svg--click {
   width: 180px;
   height: 180px;
   margin-left: -90px;
   margin-top: -90px;
 }
 
-.neon-cursor-ripple-svg--wake {
-  width: 120px;
-  height: 120px;
-  margin-left: -60px;
-  margin-top: -60px;
+.warm-cursor-ripple-glow {
+  transform-origin: center;
+  animation: warm-cursor-ripple-glow 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-.neon-cursor-wake-glow {
+.warm-cursor-ripple-ring {
   transform-origin: center;
-  animation: neon-cursor-wake-glow 1.3s ease-out forwards;
-}
-
-.neon-cursor-wake-ring {
-  transform-origin: center;
-  animation: neon-cursor-wake-ring 1.3s ease-out forwards;
+  animation: warm-cursor-ripple-ring 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   opacity: 0;
 }
 
-.neon-cursor-wake-ring-inner {
-  color: rgba(56, 189, 248, 0.85);
+.warm-cursor-ripple-ring-inner {
+  color: #ea580c;
 }
 
-.neon-cursor-wake-ring-outer {
-  color: rgba(125, 211, 252, 0.65);
+.warm-cursor-ripple-ring-outer {
+  color: #fb923c;
 }
 
-.neon-cursor-wake-chevron {
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 2;
-  pointer-events: none;
-  color: #7dd3fc;
-  transition: opacity 0.15s ease;
-  will-change: transform, opacity;
-}
-
-.neon-cursor-wake-chevron-svg {
-  width: 80px;
-  height: 60px;
-  margin-left: -40px;
-  margin-top: -8px;
-  overflow: visible;
-  filter:
-    drop-shadow(0 0 4px rgba(56, 189, 248, 0.55))
-    drop-shadow(0 0 10px rgba(14, 165, 233, 0.35));
-}
-
-.neon-cursor-wake-chevron-line {
-  opacity: 0.85;
-}
-
-.neon-cursor-wake-chevron-line--inner {
-  opacity: 0.55;
-}
-
-@keyframes neon-cursor-wake-glow {
-  0% {
-    transform: scale(0.5);
-    opacity: 0.55;
-  }
-  100% {
-    transform: scale(1.45);
-    opacity: 0;
-  }
-}
-
-@keyframes neon-cursor-wake-ring {
-  0% {
-    transform: scale(0.55);
-    opacity: 0.7;
-  }
-  35% {
-    opacity: 0.45;
-  }
-  100% {
-    transform: scale(1.65);
-    opacity: 0;
-  }
-}
-
-.neon-cursor-ripple-glow {
+.warm-cursor-ripple-particle {
+  fill: #fbbf24;
   transform-origin: center;
-  animation: neon-cursor-ripple-glow 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-.neon-cursor-ripple-ring {
-  transform-origin: center;
-  animation: neon-cursor-ripple-ring 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: warm-cursor-ripple-particle 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   opacity: 0;
 }
 
-.neon-cursor-ripple-ring-inner {
-  color: #1d4ed8;
-}
-
-.neon-cursor-ripple-ring-outer {
-  color: #60a5fa;
-}
-
-.neon-cursor-ripple-particle {
-  fill: #38bdf8;
-  transform-origin: center;
-  animation: neon-cursor-ripple-particle 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-  opacity: 0;
-}
-
-@keyframes neon-cursor-ripple-glow {
+@keyframes warm-cursor-ripple-glow {
   0% {
     transform: scale(0.35);
     opacity: 0.75;
@@ -424,7 +350,7 @@ html.custom-cursor-active * {
   }
 }
 
-@keyframes neon-cursor-ripple-ring {
+@keyframes warm-cursor-ripple-ring {
   0% {
     transform: scale(0.28) rotate(0deg);
     opacity: 0.95;
@@ -438,7 +364,7 @@ html.custom-cursor-active * {
   }
 }
 
-@keyframes neon-cursor-ripple-particle {
+@keyframes warm-cursor-ripple-particle {
   0% {
     transform: scale(0.4);
     opacity: 0.9;
@@ -453,11 +379,9 @@ html.custom-cursor-active * {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .neon-cursor-ripple-glow,
-  .neon-cursor-ripple-ring,
-  .neon-cursor-ripple-particle,
-  .neon-cursor-wake-glow,
-  .neon-cursor-wake-ring {
+  .warm-cursor-ripple-glow,
+  .warm-cursor-ripple-ring,
+  .warm-cursor-ripple-particle {
     animation-duration: 0.01ms;
     animation-iteration-count: 1;
   }

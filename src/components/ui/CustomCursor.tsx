@@ -10,11 +10,22 @@ type ClickRipple = {
   y: number;
 };
 
-type WakeRipple = {
-  id: number;
+type WakePoint = {
   x: number;
   y: number;
   angle: number;
+  speed: number;
+  age: number;
+  maxAge: number;
+  wobble: number;
+};
+
+type PathNode = {
+  x: number;
+  y: number;
+  angle: number;
+  speed: number;
+  age: number;
 };
 
 const POINTER_SELECTOR =
@@ -22,10 +33,20 @@ const POINTER_SELECTOR =
 
 const LERP_CURSOR = 0.22;
 const CLICK_RIPPLE_DURATION_MS = 920;
-const WAKE_RIPPLE_DURATION_MS = 1300;
 const MAX_CLICK_RIPPLES = 8;
-const MAX_WAKE_RIPPLES = 16;
-const WAKE_SPAWN_DISTANCE = 14;
+const WAKE_SPAWN_DISTANCE = 7;
+const MAX_WAKE_POINTS = 42;
+const MAX_PATH_NODES = 14;
+
+const WARM = {
+  glow: "#FFEDD5",
+  stroke: "#FED7AA",
+  fill: "rgba(251, 146, 60, 0.32)",
+  ring: "rgba(249, 115, 22",
+  ringSoft: "rgba(251, 191, 36",
+  crest: "rgba(253, 186, 116",
+  wake: "rgba(234, 88, 12",
+} as const;
 
 const CLICK_RIPPLE_RINGS = [
   { radius: 16, dash: "3 7", width: 2.8, delay: 0 },
@@ -34,12 +55,6 @@ const CLICK_RIPPLE_RINGS = [
   { radius: 48, dash: "9 13", width: 1.8, delay: 0.12 },
   { radius: 60, dash: "11 15", width: 1.5, delay: 0.16 },
   { radius: 72, dash: "13 17", width: 1.2, delay: 0.2 },
-] as const;
-
-const WAKE_RIPPLE_RINGS = [
-  { radius: 10, dash: "4 10", width: 1.8, delay: 0 },
-  { radius: 18, dash: "6 12", width: 1.5, delay: 0.06 },
-  { radius: 28, dash: "8 14", width: 1.2, delay: 0.12 },
 ] as const;
 
 const CLICK_RIPPLE_PARTICLES = [
@@ -57,18 +72,18 @@ function lerp(start: number, end: number, amount: number) {
   return start + (end - start) * amount;
 }
 
-function NeonGlowDefs() {
+function WarmGlowDefs() {
   return (
     <defs>
-      <filter id="neon-cursor-glow" x="-80%" y="-80%" width="260%" height="260%">
+      <filter id="warm-cursor-glow" x="-80%" y="-80%" width="260%" height="260%">
         <feGaussianBlur in="SourceGraphic" stdDeviation="1.2" result="blur" />
         <feColorMatrix
           in="blur"
           type="matrix"
-          values="0 0 0 0 0.22
-                  0 0 0 0 0.74
-                  0 0 0 0 0.98
-                  0 0 0 0.9 0"
+          values="0 0 0 0 0.98
+                  0 0 0 0 0.57
+                  0 0 0 0 0.18
+                  0 0 0 0.85 0"
           result="glow"
         />
         <feMerge>
@@ -81,7 +96,7 @@ function NeonGlowDefs() {
   );
 }
 
-function NeonArrowCursor() {
+function WarmArrowCursor() {
   return (
     <svg
       width="28"
@@ -89,23 +104,23 @@ function NeonArrowCursor() {
       viewBox="0 0 28 28"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className="neon-cursor-icon"
+      className="warm-cursor-icon"
       aria-hidden="true"
     >
-      <NeonGlowDefs />
+      <WarmGlowDefs />
       <path
         d="M4.5 3.5L4.5 19.5L9.5 14.5L13.5 23.5L16.5 21.5L12.5 12.5H20.5L4.5 3.5Z"
-        fill="rgba(125, 211, 252, 0.28)"
-        stroke="#E0F2FE"
+        fill={WARM.fill}
+        stroke={WARM.stroke}
         strokeWidth="1.6"
         strokeLinejoin="round"
-        filter="url(#neon-cursor-glow)"
+        filter="url(#warm-cursor-glow)"
       />
     </svg>
   );
 }
 
-function NeonHandCursor() {
+function WarmHandCursor() {
   return (
     <svg
       width="28"
@@ -113,18 +128,18 @@ function NeonHandCursor() {
       viewBox="0 0 28 28"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className="neon-cursor-icon"
+      className="warm-cursor-icon"
       aria-hidden="true"
     >
-      <NeonGlowDefs />
+      <WarmGlowDefs />
       <path
         d="M10 12.5V8.25C10 7.007 11.007 6 12.25 6C13.493 6 14.5 7.007 14.5 8.25V12.5M14.5 12.5V6.75C14.5 5.507 15.507 4.5 16.75 4.5C17.993 4.5 19 5.507 19 6.75V13.25C19 17.807 15.307 21.5 10.75 21.5H9.75C6.574 21.5 4 18.926 4 15.75V14.25C4 13.007 5.007 12 6.25 12C7.493 12 8.5 13.007 8.5 14.25V12.5H10"
-        stroke="#E0F2FE"
+        stroke={WARM.stroke}
         strokeWidth="1.6"
         strokeLinecap="round"
         strokeLinejoin="round"
-        fill="rgba(125, 211, 252, 0.22)"
-        filter="url(#neon-cursor-glow)"
+        fill={WARM.fill}
+        filter="url(#warm-cursor-glow)"
       />
     </svg>
   );
@@ -136,27 +151,23 @@ function ClickRippleBurst({ id, x, y, onDone }: { id: number; x: number; y: numb
     return () => window.clearTimeout(timer);
   }, [onDone]);
 
-  const glowId = `neon-cursor-click-glow-${id}`;
+  const glowId = `warm-cursor-click-glow-${id}`;
 
   return (
-    <div className="neon-cursor-ripple neon-cursor-ripple--click" style={{ transform: `translate3d(${x}px, ${y}px, 0)` }}>
-      <svg viewBox="-90 -90 180 180" className="neon-cursor-ripple-svg neon-cursor-ripple-svg--click" aria-hidden="true">
+    <div className="warm-cursor-ripple warm-cursor-ripple--click" style={{ transform: `translate3d(${x}px, ${y}px, 0)` }}>
+      <svg viewBox="-90 -90 180 180" className="warm-cursor-ripple-svg warm-cursor-ripple-svg--click" aria-hidden="true">
         <defs>
           <radialGradient id={glowId} cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="rgba(56, 189, 248, 0.42)" />
-            <stop offset="55%" stopColor="rgba(37, 99, 235, 0.16)" />
-            <stop offset="100%" stopColor="rgba(37, 99, 235, 0)" />
+            <stop offset="0%" stopColor="rgba(251, 146, 60, 0.45)" />
+            <stop offset="55%" stopColor="rgba(249, 115, 22, 0.18)" />
+            <stop offset="100%" stopColor="rgba(234, 88, 12, 0)" />
           </radialGradient>
         </defs>
 
-        <circle r="34" fill={`url(#${glowId})`} className="neon-cursor-ripple-glow" />
+        <circle r="34" fill={`url(#${glowId})`} className="warm-cursor-ripple-glow" />
 
         {CLICK_RIPPLE_RINGS.map((ring, index) => (
-          <g
-            key={ring.radius}
-            className="neon-cursor-ripple-ring"
-            style={{ animationDelay: `${ring.delay}s` }}
-          >
+          <g key={ring.radius} className="warm-cursor-ripple-ring" style={{ animationDelay: `${ring.delay}s` }}>
             <circle
               r={ring.radius}
               fill="none"
@@ -164,7 +175,7 @@ function ClickRippleBurst({ id, x, y, onDone }: { id: number; x: number; y: numb
               strokeWidth={ring.width}
               strokeDasharray={ring.dash}
               strokeLinecap="round"
-              className={index % 2 === 0 ? "neon-cursor-ripple-ring-inner" : "neon-cursor-ripple-ring-outer"}
+              className={index % 2 === 0 ? "warm-cursor-ripple-ring-inner" : "warm-cursor-ripple-ring-outer"}
             />
           </g>
         ))}
@@ -180,7 +191,7 @@ function ClickRippleBurst({ id, x, y, onDone }: { id: number; x: number; y: numb
               cx={px}
               cy={py}
               r={particle.size}
-              className="neon-cursor-ripple-particle"
+              className="warm-cursor-ripple-particle"
               style={{ animationDelay: `${particle.delay}s` }}
             />
           );
@@ -190,102 +201,167 @@ function ClickRippleBurst({ id, x, y, onDone }: { id: number; x: number; y: numb
   );
 }
 
-function WakeRippleRing({ id, x, y, angle, onDone }: { id: number; x: number; y: number; angle: number; onDone: () => void }) {
-  useEffect(() => {
-    const timer = window.setTimeout(onDone, WAKE_RIPPLE_DURATION_MS);
-    return () => window.clearTimeout(timer);
-  }, [onDone]);
+function drawSpreadingRing(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radius: number,
+  angle: number,
+  opacity: number,
+  wobble: number,
+  age: number,
+) {
+  const distortion = Math.sin(age * 0.14 + wobble) * 2.5;
+  const rx = radius + distortion;
+  const ry = radius * (0.48 + Math.sin(age * 0.11 + wobble * 1.3) * 0.06);
 
-  const glowId = `neon-cursor-wake-glow-${id}`;
-
-  return (
-    <div
-      className="neon-cursor-ripple neon-cursor-ripple--wake"
-      style={{ transform: `translate3d(${x}px, ${y}px, 0) rotate(${angle}deg)` }}
-    >
-      <svg viewBox="-60 -60 120 120" className="neon-cursor-ripple-svg neon-cursor-ripple-svg--wake" aria-hidden="true">
-        <defs>
-          <radialGradient id={glowId} cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="rgba(125, 211, 252, 0.28)" />
-            <stop offset="60%" stopColor="rgba(56, 189, 248, 0.1)" />
-            <stop offset="100%" stopColor="rgba(56, 189, 248, 0)" />
-          </radialGradient>
-        </defs>
-
-        <ellipse rx="22" ry="14" fill={`url(#${glowId})`} className="neon-cursor-wake-glow" />
-
-        {WAKE_RIPPLE_RINGS.map((ring, index) => (
-          <g
-            key={ring.radius}
-            className="neon-cursor-wake-ring"
-            style={{ animationDelay: `${ring.delay}s` }}
-          >
-            <ellipse
-              rx={ring.radius}
-              ry={ring.radius * 0.62}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={ring.width}
-              strokeDasharray={ring.dash}
-              strokeLinecap="round"
-              className={index % 2 === 0 ? "neon-cursor-wake-ring-inner" : "neon-cursor-wake-ring-outer"}
-            />
-          </g>
-        ))}
-      </svg>
-    </div>
-  );
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+  ctx.strokeStyle = `${WARM.ring}, ${opacity})`;
+  ctx.lineWidth = Math.max(0.4, 2.2 - radius * 0.018);
+  ctx.setLineDash([5 + wobble, 8 + wobble * 0.5]);
+  ctx.lineDashOffset = -age * 1.6;
+  ctx.stroke();
+  ctx.restore();
 }
 
-function ShipWakeChevron({ x, y, angle, speed, visible }: { x: number; y: number; angle: number; speed: number; visible: boolean }) {
-  const intensity = Math.min(speed / 18, 1);
+function drawLateralCrest(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  angle: number,
+  side: -1 | 1,
+  spread: number,
+  opacity: number,
+  age: number,
+  wobble: number,
+) {
+  const lateral = angle + (side * Math.PI) / 2;
+  const length = 10 + spread * 22 + Math.sin(age * 0.2 + wobble) * 3;
+  const bulge = 6 + spread * 14;
 
-  return (
-    <div
-      className={`neon-cursor-wake-chevron ${visible ? "is-visible" : ""}`}
-      style={{
-        transform: `translate3d(${x}px, ${y}px, 0) rotate(${angle}deg)`,
-        opacity: visible ? 0.35 + intensity * 0.45 : 0,
-      }}
-    >
-      <svg viewBox="-40 -30 80 60" className="neon-cursor-wake-chevron-svg" aria-hidden="true">
-        <path
-          d="M0 -4 C-14 8 -22 18 -28 26"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          className="neon-cursor-wake-chevron-line"
-        />
-        <path
-          d="M0 -4 C14 8 22 18 28 26"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          className="neon-cursor-wake-chevron-line"
-        />
-        <path
-          d="M0 -4 C-8 10 -12 20 -16 28"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1"
-          strokeLinecap="round"
-          strokeDasharray="3 6"
-          className="neon-cursor-wake-chevron-line neon-cursor-wake-chevron-line--inner"
-        />
-        <path
-          d="M0 -4 C8 10 12 20 16 28"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1"
-          strokeLinecap="round"
-          strokeDasharray="3 6"
-          className="neon-cursor-wake-chevron-line neon-cursor-wake-chevron-line--inner"
-        />
-      </svg>
-    </div>
-  );
+  const startX = x + Math.cos(lateral) * 2;
+  const startY = y + Math.sin(lateral) * 2;
+  const endX = x + Math.cos(lateral) * length;
+  const endY = y + Math.sin(lateral) * length;
+  const ctrlX = x + Math.cos(lateral + side * 0.55) * bulge;
+  const ctrlY = y + Math.sin(lateral + side * 0.55) * bulge;
+
+  ctx.beginPath();
+  ctx.moveTo(startX, startY);
+  ctx.quadraticCurveTo(ctrlX, ctrlY, endX, endY);
+  ctx.strokeStyle = `${WARM.crest}, ${opacity})`;
+  ctx.lineWidth = Math.max(0.35, 1.6 - spread * 0.8);
+  ctx.lineCap = "round";
+  ctx.stroke();
+}
+
+function drawKelvinWakeArms(
+  ctx: CanvasRenderingContext2D,
+  path: PathNode[],
+  time: number,
+) {
+  if (path.length < 2) return;
+
+  const head = path[0];
+  const intensity = Math.min(head.speed / 16, 1);
+  if (intensity < 0.08) return;
+
+  const wakeAngle = head.angle + Math.PI;
+  const armLength = 18 + intensity * 34;
+  const spread = 0.42 + intensity * 0.18;
+
+  for (const side of [-1, 1] as const) {
+    const armAngle = wakeAngle + side * spread;
+    const wobble = Math.sin(time * 0.004 + side) * 4;
+
+    ctx.beginPath();
+    ctx.moveTo(head.x, head.y);
+    ctx.quadraticCurveTo(
+      head.x + Math.cos(armAngle - side * 0.15) * armLength * 0.45 + wobble,
+      head.y + Math.sin(armAngle - side * 0.15) * armLength * 0.45,
+      head.x + Math.cos(armAngle) * armLength,
+      head.y + Math.sin(armAngle) * armLength,
+    );
+    ctx.strokeStyle = `${WARM.wake}, ${0.22 + intensity * 0.28})`;
+    ctx.lineWidth = 1.2 + intensity * 0.8;
+    ctx.lineCap = "round";
+    ctx.stroke();
+  }
+
+  for (let i = 1; i < path.length - 1; i += 1) {
+    const node = path[i];
+    const fade = 1 - node.age / (MAX_PATH_NODES + 2);
+    if (fade <= 0) continue;
+
+    for (const side of [-1, 1] as const) {
+      const rippleAngle = node.angle + Math.PI + side * 0.35;
+      const dist = 6 + fade * 16 + Math.sin(time * 0.003 + i + side) * 2;
+
+      ctx.beginPath();
+      ctx.arc(
+        node.x + Math.cos(rippleAngle) * dist * 0.35,
+        node.y + Math.sin(rippleAngle) * dist * 0.35,
+        dist * 0.55,
+        rippleAngle - 0.8,
+        rippleAngle + 0.8,
+      );
+      ctx.strokeStyle = `${WARM.ringSoft}, ${fade * 0.18})`;
+      ctx.lineWidth = 0.9;
+      ctx.stroke();
+    }
+  }
+}
+
+function drawWakeField(
+  ctx: CanvasRenderingContext2D,
+  wakePoints: WakePoint[],
+  pathNodes: PathNode[],
+  time: number,
+  width: number,
+  height: number,
+) {
+  ctx.clearRect(0, 0, width, height);
+
+  for (const point of wakePoints) {
+    const life = 1 - point.age / point.maxAge;
+    if (life <= 0) continue;
+
+    const spread = point.age * (0.55 + point.speed * 0.04);
+    const ringCount = 4;
+
+    for (let ring = 0; ring < ringCount; ring += 1) {
+      const ringRadius = spread - ring * 7;
+      if (ringRadius <= 2) continue;
+
+      const ringOpacity = life * (0.34 - ring * 0.07) * (0.7 + Math.min(point.speed / 20, 0.3));
+      drawSpreadingRing(ctx, point.x, point.y, ringRadius, point.angle, ringOpacity, point.wobble + ring, point.age);
+    }
+
+    if (life > 0.25) {
+      const crestOpacity = life * 0.32 * Math.min(point.speed / 12, 1);
+      const crestSpread = point.age / point.maxAge;
+      drawLateralCrest(ctx, point.x, point.y, point.angle, -1, crestSpread, crestOpacity, point.age, point.wobble);
+      drawLateralCrest(ctx, point.x, point.y, point.angle, 1, crestSpread, crestOpacity, point.age, point.wobble);
+    }
+
+    const glowRadius = spread * 0.65;
+    if (glowRadius > 1) {
+      const gradient = ctx.createRadialGradient(point.x, point.y, 0, point.x, point.y, glowRadius);
+      gradient.addColorStop(0, `rgba(251, 191, 36, ${life * 0.12})`);
+      gradient.addColorStop(0.55, `rgba(249, 115, 22, ${life * 0.06})`);
+      gradient.addColorStop(1, "rgba(234, 88, 12, 0)");
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.ellipse(point.x, point.y, glowRadius, glowRadius * 0.5, point.angle, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  drawKelvinWakeArms(ctx, pathNodes, time);
 }
 
 export default function CustomCursor() {
@@ -294,33 +370,40 @@ export default function CustomCursor() {
   const [mode, setMode] = useState<CursorMode>("default");
   const [cursorPos, setCursorPos] = useState({ x: -100, y: -100 });
   const [clickRipples, setClickRipples] = useState<ClickRipple[]>([]);
-  const [wakeRipples, setWakeRipples] = useState<WakeRipple[]>([]);
-  const [moveAngle, setMoveAngle] = useState(90);
-  const [moveSpeed, setMoveSpeed] = useState(0);
 
   const targetRef = useRef({ x: -100, y: -100 });
   const cursorPosRef = useRef({ x: -100, y: -100 });
   const lastWakeSpawnRef = useRef({ x: -100, y: -100 });
+  const wakePointsRef = useRef<WakePoint[]>([]);
+  const pathNodesRef = useRef<PathNode[]>([]);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number | null>(null);
   const rippleIdRef = useRef(0);
-  const moveSpeedRef = useRef(0);
+  const timeRef = useRef(0);
 
   const removeClickRipple = useCallback((id: number) => {
     setClickRipples((current) => current.filter((ripple) => ripple.id !== id));
   }, []);
 
-  const removeWakeRipple = useCallback((id: number) => {
-    setWakeRipples((current) => current.filter((ripple) => ripple.id !== id));
-  }, []);
-
-  const spawnWakeRipple = useCallback((x: number, y: number, angle: number) => {
-    rippleIdRef.current += 1;
-    const id = rippleIdRef.current;
-
-    setWakeRipples((current) => {
-      const next = [...current, { id, x, y, angle }];
-      return next.length > MAX_WAKE_RIPPLES ? next.slice(next.length - MAX_WAKE_RIPPLES) : next;
+  const addWakePoint = useCallback((x: number, y: number, angle: number, speed: number) => {
+    wakePointsRef.current.push({
+      x,
+      y,
+      angle,
+      speed,
+      age: 0,
+      maxAge: 78 + Math.min(speed * 2.5, 24),
+      wobble: Math.random() * Math.PI * 2,
     });
+
+    if (wakePointsRef.current.length > MAX_WAKE_POINTS) {
+      wakePointsRef.current.splice(0, wakePointsRef.current.length - MAX_WAKE_POINTS);
+    }
+
+    pathNodesRef.current.unshift({ x, y, angle, speed, age: 0 });
+    if (pathNodesRef.current.length > MAX_PATH_NODES) {
+      pathNodesRef.current.length = MAX_PATH_NODES;
+    }
   }, []);
 
   useEffect(() => {
@@ -335,7 +418,21 @@ export default function CustomCursor() {
 
     const cursorLerp = reducedMotion ? 1 : LERP_CURSOR;
 
-    const animate = () => {
+    const resizeCanvas = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.floor(window.innerWidth * dpr);
+      canvas.height = Math.floor(window.innerHeight * dpr);
+      canvas.style.width = `${window.innerWidth}px`;
+      canvas.style.height = `${window.innerHeight}px`;
+    };
+
+    resizeCanvas();
+    window.addEventListener("resize", resizeCanvas);
+
+    const animate = (timestamp: number) => {
+      timeRef.current = timestamp;
       const target = targetRef.current;
       const nextCursor = {
         x: lerp(cursorPosRef.current.x, target.x, cursorLerp),
@@ -345,8 +442,30 @@ export default function CustomCursor() {
       cursorPosRef.current = nextCursor;
       setCursorPos(nextCursor);
 
-      moveSpeedRef.current *= 0.88;
-      setMoveSpeed(moveSpeedRef.current);
+      wakePointsRef.current = wakePointsRef.current
+        .map((point) => ({ ...point, age: point.age + 1 }))
+        .filter((point) => point.age < point.maxAge);
+
+      pathNodesRef.current = pathNodesRef.current
+        .map((node) => ({ ...node, age: node.age + 1 }))
+        .filter((node) => node.age < MAX_PATH_NODES + 4);
+
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d");
+      if (canvas && ctx) {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.filter = "blur(0.35px)";
+        drawWakeField(
+          ctx,
+          wakePointsRef.current,
+          pathNodesRef.current,
+          timestamp,
+          window.innerWidth,
+          window.innerHeight,
+        );
+        ctx.filter = "none";
+      }
 
       rafRef.current = requestAnimationFrame(animate);
     };
@@ -363,20 +482,18 @@ export default function CustomCursor() {
       targetRef.current = next;
       setVisible(true);
 
-      if (distance > 0.5) {
-        const angle = (Math.atan2(dy, dx) * 180) / Math.PI + 90;
-        setMoveAngle(angle);
-        moveSpeedRef.current = Math.max(moveSpeedRef.current, distance);
-        setMoveSpeed(moveSpeedRef.current);
-
+      if (distance > 0.4) {
+        const angle = Math.atan2(dy, dx);
         const lastWake = lastWakeSpawnRef.current;
         const wakeDx = next.x - lastWake.x;
         const wakeDy = next.y - lastWake.y;
         const wakeDistance = Math.hypot(wakeDx, wakeDy);
 
         if (wakeDistance >= WAKE_SPAWN_DISTANCE) {
-          const wakeAngle = (Math.atan2(wakeDy, wakeDx) * 180) / Math.PI + 90;
-          spawnWakeRipple(next.x, next.y, wakeAngle);
+          addWakePoint(next.x, next.y, angle, Math.min(distance, 28));
+          lastWakeSpawnRef.current = next;
+        } else if (wakeDistance > 0 && wakePointsRef.current.length === 0) {
+          addWakePoint(next.x, next.y, angle, Math.min(distance, 28));
           lastWakeSpawnRef.current = next;
         }
       }
@@ -394,6 +511,8 @@ export default function CustomCursor() {
       rippleIdRef.current += 1;
       const id = rippleIdRef.current;
 
+      addWakePoint(event.clientX, event.clientY, 0, 14);
+
       setClickRipples((current) => {
         const next = [...current, { id, x: event.clientX, y: event.clientY }];
         return next.length > MAX_CLICK_RIPPLES ? next.slice(next.length - MAX_CLICK_RIPPLES) : next;
@@ -407,28 +526,20 @@ export default function CustomCursor() {
 
     return () => {
       document.documentElement.classList.remove("custom-cursor-active");
+      window.removeEventListener("resize", resizeCanvas);
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mousedown", handleMouseDown);
       document.documentElement.removeEventListener("mouseleave", handleMouseLeave);
       document.documentElement.removeEventListener("mouseenter", handleMouseEnter);
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
-  }, [spawnWakeRipple]);
+  }, [addWakePoint]);
 
   if (!enabled) return null;
 
   return (
-    <div className="neon-cursor-layer" aria-hidden="true">
-      {wakeRipples.map((ripple) => (
-        <WakeRippleRing
-          key={`wake-${ripple.id}`}
-          id={ripple.id}
-          x={ripple.x}
-          y={ripple.y}
-          angle={ripple.angle}
-          onDone={() => removeWakeRipple(ripple.id)}
-        />
-      ))}
+    <div className="warm-cursor-layer" aria-hidden="true">
+      <canvas ref={canvasRef} className="warm-cursor-wake-canvas" />
       {clickRipples.map((ripple) => (
         <ClickRippleBurst
           key={`click-${ripple.id}`}
@@ -438,18 +549,11 @@ export default function CustomCursor() {
           onDone={() => removeClickRipple(ripple.id)}
         />
       ))}
-      <ShipWakeChevron
-        x={cursorPos.x}
-        y={cursorPos.y}
-        angle={moveAngle}
-        speed={moveSpeed}
-        visible={visible && moveSpeed > 1.5}
-      />
       <div
-        className={`neon-cursor ${visible ? "is-visible" : ""} ${mode === "pointer" ? "is-pointer" : ""}`}
+        className={`warm-cursor ${visible ? "is-visible" : ""} ${mode === "pointer" ? "is-pointer" : ""}`}
         style={{ transform: `translate3d(${cursorPos.x}px, ${cursorPos.y}px, 0)` }}
       >
-        {mode === "pointer" ? <NeonHandCursor /> : <NeonArrowCursor />}
+        {mode === "pointer" ? <WarmHandCursor /> : <WarmArrowCursor />}
       </div>
     </div>
   );
