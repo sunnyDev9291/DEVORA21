@@ -50,8 +50,11 @@ const PLATFORM_HINT: Record<JobCrawlPlatform, string> = {
 
 const PLATFORM_SELECTED_CLASS =
   "border-emerald-500/30 bg-emerald-600 text-white shadow-md shadow-emerald-600/25";
-const PLATFORM_BADGE_CLASS =
-  "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/20";
+const PLATFORM_TABLE_BADGE_CLASS: Record<JobCrawlPlatform, string> = {
+  builtin: "bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-1 ring-violet-500/20",
+  hiringcafe: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/20",
+  workable: "bg-amber-500/15 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500/20",
+};
 
 function defaultListingUrls(): Record<JobCrawlPlatform, string> {
   return mergeListingUrls(null);
@@ -175,14 +178,35 @@ type CompanyJobGroup = {
   rows: DisplayJobRow[];
 };
 
-function buildCompanyGroups(jobs: DiscoveredJobRow[]): CompanyJobGroup[] {
-  const sorted: DisplayJobRow[] = jobs
-    .map((job, originalIndex) => ({ job, originalIndex }))
-    .sort((a, b) => {
-      const byCompany = companySortKey(a.job.companyName).localeCompare(companySortKey(b.job.companyName));
-      if (byCompany !== 0) return byCompany;
-      return a.originalIndex - b.originalIndex;
-    });
+type PlatformJobGroup = {
+  platform: JobCrawlPlatform;
+  rows: DisplayJobRow[];
+};
+
+type JobTableSortMode = "company" | "platform";
+
+function buildPlatformOrder(jobs: DiscoveredJobRow[]): JobCrawlPlatform[] {
+  const order: JobCrawlPlatform[] = [];
+  const seen = new Set<JobCrawlPlatform>();
+  for (const job of jobs) {
+    if (seen.has(job.platform)) continue;
+    seen.add(job.platform);
+    order.push(job.platform);
+  }
+  return order;
+}
+
+function platformOrderIndex(platform: JobCrawlPlatform, platformOrder: JobCrawlPlatform[]): number {
+  const index = platformOrder.indexOf(platform);
+  return index === -1 ? ALL_JOB_CRAWL_PLATFORMS.indexOf(platform) : index;
+}
+
+function buildCompanyGroups(rows: DisplayJobRow[]): CompanyJobGroup[] {
+  const sorted = [...rows].sort((a, b) => {
+    const byCompany = companySortKey(a.job.companyName).localeCompare(companySortKey(b.job.companyName));
+    if (byCompany !== 0) return byCompany;
+    return a.originalIndex - b.originalIndex;
+  });
 
   const groups: CompanyJobGroup[] = [];
   for (const row of sorted) {
@@ -198,25 +222,70 @@ function buildCompanyGroups(jobs: DiscoveredJobRow[]): CompanyJobGroup[] {
   return groups;
 }
 
+function buildPlatformGroups(rows: DisplayJobRow[], platformOrder: JobCrawlPlatform[]): PlatformJobGroup[] {
+  const sorted = [...rows].sort((a, b) => {
+    const byPlatform =
+      platformOrderIndex(a.job.platform, platformOrder) - platformOrderIndex(b.job.platform, platformOrder);
+    if (byPlatform !== 0) return byPlatform;
+    return a.originalIndex - b.originalIndex;
+  });
+
+  const groups: PlatformJobGroup[] = [];
+  for (const row of sorted) {
+    const last = groups[groups.length - 1];
+    if (last && last.platform === row.job.platform) {
+      last.rows.push(row);
+    } else {
+      groups.push({ platform: row.job.platform, rows: [row] });
+    }
+  }
+  return groups;
+}
+
+function sortModeButtonClass(active: boolean): string {
+  const base = "rounded-full px-3 py-1.5 text-xs font-semibold transition-all border";
+  if (!active) {
+    return `${base} border-transparent bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10`;
+  }
+  return `${base} ${PLATFORM_SELECTED_CLASS}`;
+}
+
+function filterJobsByTitle(jobs: DiscoveredJobRow[], titleFilter: string): DisplayJobRow[] {
+  const query = titleFilter.trim().toLowerCase();
+  return jobs
+    .map((job, originalIndex) => ({ job, originalIndex }))
+    .filter(({ job }) => !query || (job.jobTitle ?? "").toLowerCase().includes(query));
+}
+
 function MergedJobTable({
-  jobs,
+  rows,
+  sortMode,
+  platformOrder,
   checkedKeys,
   onToggleRow,
   onToggleAll,
   allChecked,
+  emptyMessage,
 }: {
-  jobs: DiscoveredJobRow[];
+  rows: DisplayJobRow[];
+  sortMode: JobTableSortMode;
+  platformOrder: JobCrawlPlatform[];
   checkedKeys: Set<string>;
   onToggleRow: (key: string) => void;
   onToggleAll: () => void;
   allChecked: boolean;
+  emptyMessage?: string;
 }) {
-  const companyGroups = useMemo(() => buildCompanyGroups(jobs), [jobs]);
+  const companyGroups = useMemo(() => buildCompanyGroups(rows), [rows]);
+  const platformGroups = useMemo(
+    () => buildPlatformGroups(rows, platformOrder),
+    [rows, platformOrder]
+  );
 
-  if (jobs.length === 0) {
+  if (rows.length === 0) {
     return (
       <p className="rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
-        Crawl finished but no jobs were returned.
+        {emptyMessage ?? "Crawl finished but no jobs were returned."}
       </p>
     );
   }
@@ -242,61 +311,117 @@ function MergedJobTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-white/[0.06]">
-          {companyGroups.map((group) =>
-            group.rows.map((row, rowIndex) => {
-              const key = jobRowKey(row.job, row.originalIndex);
-              const checked = checkedKeys.has(key);
+          {sortMode === "company"
+            ? companyGroups.map((group) =>
+                group.rows.map((row, rowIndex) => {
+                  const key = jobRowKey(row.job, row.originalIndex);
+                  const checked = checkedKeys.has(key);
 
-              return (
-                <tr
-                  key={key}
-                  className={
-                    checked
-                      ? "bg-emerald-500/[0.06] hover:bg-emerald-500/[0.08]"
-                      : "hover:bg-slate-50/80 dark:hover:bg-white/[0.02]"
-                  }
-                >
-                  {rowIndex === 0 ? (
-                    <td
-                      rowSpan={group.rows.length}
-                      className="px-4 py-3 align-middle font-medium text-slate-900 dark:text-white whitespace-nowrap border-r border-slate-100 dark:border-white/[0.06]"
+                  return (
+                    <tr
+                      key={key}
+                      className={
+                        checked
+                          ? "bg-emerald-500/[0.06] hover:bg-emerald-500/[0.08]"
+                          : "hover:bg-slate-50/80 dark:hover:bg-white/[0.02]"
+                      }
                     >
-                      {group.companyLabel}
-                    </td>
-                  ) : null}
-                  <td className="px-4 py-3 text-slate-800 dark:text-slate-100">{row.job.jobTitle || "—"}</td>
-                  <td className="px-4 py-3 max-w-[20rem]">
-                    {row.job.jobUrl ? (
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span title={row.job.jobUrl} className="truncate text-blue-600 dark:text-blue-400 select-all">
-                          {row.job.jobUrl}
+                      {rowIndex === 0 ? (
+                        <td
+                          rowSpan={group.rows.length}
+                          className="px-4 py-3 align-middle font-medium text-slate-900 dark:text-white whitespace-nowrap border-r border-slate-100 dark:border-white/[0.06]"
+                        >
+                          {group.companyLabel}
+                        </td>
+                      ) : null}
+                      <td className="px-4 py-3 text-slate-800 dark:text-slate-100">{row.job.jobTitle || "—"}</td>
+                      <td className="px-4 py-3 max-w-[20rem]">
+                        {row.job.jobUrl ? (
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span title={row.job.jobUrl} className="truncate text-blue-600 dark:text-blue-400 select-all">
+                              {row.job.jobUrl}
+                            </span>
+                            <CopyUrlButton url={row.job.jobUrl} />
+                          </div>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${PLATFORM_TABLE_BADGE_CLASS[row.job.platform]}`}
+                        >
+                          {PLATFORM_LABEL[row.job.platform]}
                         </span>
-                        <CopyUrlButton url={row.job.jobUrl} />
-                      </div>
-                    ) : (
-                      <span className="text-slate-400">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <span
-                      className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${PLATFORM_BADGE_CLASS}`}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => onToggleRow(key)}
+                          aria-label={`Select ${row.job.jobTitle || "job"}`}
+                          className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30 dark:border-white/20 dark:bg-white/5"
+                        />
+                      </td>
+                    </tr>
+                  );
+                })
+              )
+            : platformGroups.map((group) =>
+                group.rows.map((row, rowIndex) => {
+                  const key = jobRowKey(row.job, row.originalIndex);
+                  const checked = checkedKeys.has(key);
+
+                  return (
+                    <tr
+                      key={key}
+                      className={
+                        checked
+                          ? "bg-emerald-500/[0.06] hover:bg-emerald-500/[0.08]"
+                          : "hover:bg-slate-50/80 dark:hover:bg-white/[0.02]"
+                      }
                     >
-                      {PLATFORM_LABEL[row.job.platform]}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => onToggleRow(key)}
-                      aria-label={`Select ${row.job.jobTitle || "job"}`}
-                      className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30 dark:border-white/20 dark:bg-white/5"
-                    />
-                  </td>
-                </tr>
-              );
-            })
-          )}
+                      <td className="px-4 py-3 font-medium text-slate-900 dark:text-white whitespace-nowrap">
+                        {normalizeCompanyName(row.job.companyName) || "—"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-800 dark:text-slate-100">{row.job.jobTitle || "—"}</td>
+                      <td className="px-4 py-3 max-w-[20rem]">
+                        {row.job.jobUrl ? (
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span title={row.job.jobUrl} className="truncate text-blue-600 dark:text-blue-400 select-all">
+                              {row.job.jobUrl}
+                            </span>
+                            <CopyUrlButton url={row.job.jobUrl} />
+                          </div>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
+                      {rowIndex === 0 ? (
+                        <td
+                          rowSpan={group.rows.length}
+                          className="px-4 py-3 align-middle whitespace-nowrap border-l border-slate-100 dark:border-white/[0.06]"
+                        >
+                          <span
+                            className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${PLATFORM_TABLE_BADGE_CLASS[group.platform]}`}
+                          >
+                            {PLATFORM_LABEL[group.platform]}
+                          </span>
+                        </td>
+                      ) : null}
+                      <td className="px-4 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => onToggleRow(key)}
+                          aria-label={`Select ${row.job.jobTitle || "job"}`}
+                          className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30 dark:border-white/20 dark:bg-white/5"
+                        />
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
         </tbody>
       </table>
     </div>
@@ -308,6 +433,8 @@ export default function BuiltInCrawlPanel() {
   const [listingUrls, setListingUrls] = useState<Record<JobCrawlPlatform, string>>(defaultListingUrls);
   const [jobList, setJobList] = useState<DiscoveredJobRow[]>([]);
   const [checkedJobKeys, setCheckedJobKeys] = useState<Set<string>>(() => new Set());
+  const [jobTitleFilter, setJobTitleFilter] = useState("");
+  const [jobTableSortMode, setJobTableSortMode] = useState<JobTableSortMode>("company");
   const [platformErrors, setPlatformErrors] = useState<Partial<Record<JobCrawlPlatform, string>>>({});
   const [crawling, setCrawling] = useState(false);
   const [hydrated, setHydrated] = useState(false);
@@ -333,10 +460,19 @@ export default function BuiltInCrawlPanel() {
       return url.length > 0 && PLATFORM_URL_VALID[p](url);
     });
 
+  const filteredJobRows = useMemo(
+    () => filterJobsByTitle(jobList, jobTitleFilter),
+    [jobList, jobTitleFilter]
+  );
+  const hasTitleFilter = jobTitleFilter.trim().length > 0;
+  const crawlPlatformOrder = useMemo(() => buildPlatformOrder(jobList), [jobList]);
+
   const allJobsChecked = useMemo(() => {
-    if (jobList.length === 0) return false;
-    return jobList.every((job, index) => checkedJobKeys.has(jobRowKey(job, index)));
-  }, [jobList, checkedJobKeys]);
+    if (filteredJobRows.length === 0) return false;
+    return filteredJobRows.every(({ job, originalIndex }) =>
+      checkedJobKeys.has(jobRowKey(job, originalIndex))
+    );
+  }, [filteredJobRows, checkedJobKeys]);
 
   function selectAllPlatforms() {
     setSelectedPlatforms([...ALL_JOB_CRAWL_PLATFORMS]);
@@ -374,10 +510,22 @@ export default function BuiltInCrawlPanel() {
 
   function toggleAllJobs() {
     if (allJobsChecked) {
-      setCheckedJobKeys(new Set());
+      setCheckedJobKeys((current) => {
+        const next = new Set(current);
+        for (const { job, originalIndex } of filteredJobRows) {
+          next.delete(jobRowKey(job, originalIndex));
+        }
+        return next;
+      });
       return;
     }
-    setCheckedJobKeys(new Set(jobList.map((job, index) => jobRowKey(job, index))));
+    setCheckedJobKeys((current) => {
+      const next = new Set(current);
+      for (const { job, originalIndex } of filteredJobRows) {
+        next.add(jobRowKey(job, originalIndex));
+      }
+      return next;
+    });
   }
 
   async function handleCrawl() {
@@ -412,6 +560,7 @@ export default function BuiltInCrawlPanel() {
 
       setJobList(freshJobs);
       setCheckedJobKeys(new Set());
+      setJobTitleFilter("");
       setLastCrawledAt(savedAt);
       saveStoredJobCrawl({
         selectedPlatforms,
@@ -543,22 +692,62 @@ export default function BuiltInCrawlPanel() {
 
       {hydrated && jobList.length > 0 ? (
         <div className="mt-8 space-y-3">
-          <div className="flex flex-wrap items-center gap-3 text-sm">
-            <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-3 py-1 font-semibold text-emerald-800 dark:text-emerald-300">
-              {jobList.length} job{jobList.length === 1 ? "" : "s"}
-            </span>
-            {checkedJobKeys.size > 0 ? (
-              <span className="text-slate-500 dark:text-slate-400">
-                {checkedJobKeys.size} selected
+          <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between">
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-3 py-1 font-semibold text-emerald-800 dark:text-emerald-300">
+                {hasTitleFilter
+                  ? `${filteredJobRows.length} of ${jobList.length} job${jobList.length === 1 ? "" : "s"}`
+                  : `${jobList.length} job${jobList.length === 1 ? "" : "s"}`}
               </span>
-            ) : null}
+              {checkedJobKeys.size > 0 ? (
+                <span className="text-slate-500 dark:text-slate-400">
+                  {checkedJobKeys.size} selected
+                </span>
+              ) : null}
+              <div className="flex items-center gap-2">
+                <span className="text-slate-500 dark:text-slate-400">Sort</span>
+                <button
+                  type="button"
+                  onClick={() => setJobTableSortMode("company")}
+                  className={sortModeButtonClass(jobTableSortMode === "company")}
+                >
+                  Company
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setJobTableSortMode("platform")}
+                  className={sortModeButtonClass(jobTableSortMode === "platform")}
+                >
+                  Platform
+                </button>
+              </div>
+            </div>
+            <div className="w-full sm:w-auto sm:min-w-[16rem] sm:max-w-xs">
+              <label htmlFor="jobTitleFilter" className="sr-only">
+                Filter by job title
+              </label>
+              <input
+                id="jobTitleFilter"
+                type="search"
+                value={jobTitleFilter}
+                onChange={(e) => setJobTitleFilter(e.target.value)}
+                placeholder="Filter by job title…"
+                className={inputClass}
+                spellCheck={false}
+              />
+            </div>
           </div>
           <MergedJobTable
-            jobs={jobList}
+            rows={filteredJobRows}
+            sortMode={jobTableSortMode}
+            platformOrder={crawlPlatformOrder}
             checkedKeys={checkedJobKeys}
             onToggleRow={toggleJobRow}
             onToggleAll={toggleAllJobs}
             allChecked={allJobsChecked}
+            emptyMessage={
+              hasTitleFilter ? "No jobs match this job title filter." : undefined
+            }
           />
         </div>
       ) : null}
