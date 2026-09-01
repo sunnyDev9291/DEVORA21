@@ -93,7 +93,7 @@ function LoginForm() {
         <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3">
           <input
             type="checkbox"
-            className="mt-0.5 h-4 w-4 rounded border-white/20 bg-navy-900 text-blue-500 focus:ring-blue-500/40"
+            className="mt-0.5 h-4 w-4 rounded border-white/20 bg-navy-900 text-blue-500 focus:ring-orange-500/40"
             {...register("rememberMe")}
           />
           <span className="text-sm text-slate-300">
@@ -102,7 +102,7 @@ function LoginForm() {
           </span>
         </label>
         <div className="flex justify-end">
-          <Link href={AUTH_LINKS.forgotPassword} className="text-sm text-blue-400 hover:text-blue-300">
+          <Link href={AUTH_LINKS.forgotPassword} className="text-sm text-orange-400 hover:text-orange-300">
             Forgot password?
           </Link>
         </div>
@@ -149,8 +149,8 @@ export default function LoginPage() {
     <GuestGuard>
       <Suspense
         fallback={
-          <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center bg-navy-950">
-            <div className="h-10 w-10 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+          <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center bg-warm-950">
+            <div className="h-10 w-10 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
           </div>
         }
       >

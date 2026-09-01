@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { brand } from "@/lib/ui-styles";
 
 type Variant = "primary" | "secondary" | "outline" | "ghost";
 type Size = "sm" | "md" | "lg";
@@ -16,14 +17,13 @@ interface ButtonProps {
 }
 
 const variantClasses: Record<Variant, string> = {
-  primary:
-    "bg-gradient-to-r from-indigo-600 via-violet-600 to-blue-600 hover:from-indigo-500 hover:via-violet-500 hover:to-blue-500 text-white shadow-lg shadow-indigo-600/25 hover:shadow-indigo-500/35",
+  primary: `${brand.gradientButton}`,
   secondary:
-    "bg-slate-900 hover:bg-slate-800 text-white shadow-lg shadow-slate-900/20 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 dark:shadow-white/10",
+    "bg-stone-900 hover:bg-stone-800 text-white shadow-lg shadow-stone-900/20 dark:bg-orange-500/90 dark:text-white dark:hover:bg-orange-400 dark:shadow-orange-500/20",
   outline:
-    "border border-slate-300 bg-white text-slate-700 shadow-sm hover:border-indigo-300 hover:bg-indigo-50/60 hover:text-indigo-800 dark:border-white/20 dark:bg-white/[0.05] dark:text-white dark:hover:border-indigo-400/40 dark:hover:bg-indigo-500/10 dark:hover:text-white",
+    "border border-orange-200 bg-white/90 text-stone-700 shadow-sm hover:border-orange-300 hover:bg-orange-50/80 hover:text-orange-800 dark:border-orange-500/20 dark:bg-white/[0.05] dark:text-stone-100 dark:hover:border-orange-400/40 dark:hover:bg-orange-500/10",
   ghost:
-    "text-slate-600 hover:text-indigo-700 hover:bg-indigo-50/80 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.05]",
+    "text-stone-600 hover:text-orange-700 hover:bg-orange-50/80 dark:text-stone-400 dark:hover:text-orange-300 dark:hover:bg-orange-500/10",
 };
 
 const sizeClasses: Record<Size, string> = {

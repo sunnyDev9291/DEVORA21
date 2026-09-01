@@ -21,7 +21,7 @@ const companyLinks = [
 
 export default function Footer() {
   return (
-    <footer className="bg-white dark:bg-navy-900 border-t border-slate-200 dark:border-white/[0.06]" role="contentinfo">
+    <footer className="bg-white dark:bg-warm-900 border-t border-slate-200 dark:border-white/[0.06]" role="contentinfo">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 mb-12">
           <div className="lg:col-span-2">
@@ -33,7 +33,7 @@ export default function Footer() {
                 height={72}
                 className="h-12 w-auto object-contain"
               />
-              <span className="font-display text-2xl font-extrabold bg-gradient-to-r from-indigo-600 via-violet-600 to-blue-600 bg-clip-text text-transparent tracking-tight dark:from-indigo-400 dark:via-violet-400 dark:to-blue-400">
+              <span className="font-display text-2xl font-extrabold bg-gradient-to-r from-tomato-600 via-orange-500 to-sun-400 bg-clip-text text-transparent tracking-tight dark:from-tomato-400 dark:via-orange-400 dark:to-sun-300">
                 Devora21
               </span>
             </Link>
@@ -43,7 +43,7 @@ export default function Footer() {
             <address className="not-italic">
               <a
                 href={`mailto:${CONTACT_INFO.email}`}
-                className="text-slate-600 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-300 text-sm transition-colors"
+                className="text-slate-600 hover:text-orange-600 dark:text-stone-400 dark:hover:text-orange-300 text-sm transition-colors"
               >
                 {CONTACT_INFO.email}
               </a>
@@ -54,7 +54,7 @@ export default function Footer() {
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="Devora21 on LinkedIn"
-                className="w-9 h-9 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-600 hover:text-white hover:bg-indigo-600 hover:border-indigo-600 transition-all dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-500"
+                className="w-9 h-9 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-600 hover:text-white hover:bg-orange-600 hover:border-orange-600 transition-all dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-500"
               >
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
@@ -90,7 +90,7 @@ export default function Footer() {
             <ul className="space-y-2.5 list-none m-0 p-0">
               {serviceLinks.map((link) => (
                 <li key={link.href}>
-                  <Link href={link.href} className="text-slate-600 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-300 text-sm transition-colors">
+                  <Link href={link.href} className="text-slate-600 hover:text-orange-600 dark:text-stone-400 dark:hover:text-orange-300 text-sm transition-colors">
                     {link.label}
                   </Link>
                 </li>
@@ -105,7 +105,7 @@ export default function Footer() {
             <ul className="space-y-2.5 list-none m-0 p-0">
               {companyLinks.map((link) => (
                 <li key={link.href}>
-                  <Link href={link.href} className="text-slate-600 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-300 text-sm transition-colors">
+                  <Link href={link.href} className="text-slate-600 hover:text-orange-600 dark:text-stone-400 dark:hover:text-orange-300 text-sm transition-colors">
                     {link.label}
                   </Link>
                 </li>

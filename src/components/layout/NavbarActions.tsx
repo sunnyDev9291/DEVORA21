@@ -29,7 +29,7 @@ const featureIcons = {
 } as const;
 
 const toolActiveClasses = {
-  blue: "bg-blue-500/15 text-blue-600 dark:text-blue-300 shadow-sm shadow-blue-500/10",
+  blue: "bg-orange-500/15 text-orange-600 dark:text-orange-300 shadow-sm shadow-blue-500/10",
   violet: "bg-violet-500/15 text-violet-600 dark:text-violet-300 shadow-sm shadow-violet-500/10",
 } as const;
 
@@ -37,8 +37,8 @@ const toolIdleClasses =
   "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-white/[0.06]";
 
 const mobileAccentClasses = {
-  blue: "border-blue-500/25 bg-blue-500/[0.06] hover:border-blue-500/40 hover:bg-blue-500/[0.1]",
-  violet: "border-violet-500/25 bg-violet-500/[0.06] hover:border-violet-500/40 hover:bg-violet-500/[0.1]",
+  blue: "border-orange-500/25 bg-blue-500/[0.06] hover:border-orange-500/40 hover:bg-blue-500/[0.1]",
+  violet: "border-violet-500/25 bg-violet-500/[0.06] hover:border-violet-500/40 hover:bg-orange-500/[0.1]",
 } as const;
 
 const allFeatures = [
@@ -98,12 +98,12 @@ export default function NavbarActions({ variant, onNavigate }: NavbarActionsProp
         href={protectedHref(AUTH_LINKS.dashboard)}
         className={`hidden lg:inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs xl:text-sm font-semibold transition-all duration-200 whitespace-nowrap ${
           pathname === AUTH_LINKS.dashboard
-            ? "text-blue-600 dark:text-blue-300 bg-blue-500/10"
+            ? "text-orange-600 dark:text-orange-300 bg-orange-500/10"
             : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-white/[0.06]"
         }`}
         title={sessionReady ? "Account dashboard" : "Verify email to open dashboard"}
       >
-        <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-500/15 text-[10px] font-bold text-blue-600 dark:text-blue-300">
+        <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-orange-500/15 text-[10px] font-bold text-orange-600 dark:text-orange-300">
           {userInitial}
         </span>
         <span className="hidden xl:inline max-w-[8rem] truncate">{user?.name?.split(" ")[0] ?? "Dashboard"}</span>
@@ -128,7 +128,7 @@ export default function NavbarActions({ variant, onNavigate }: NavbarActionsProp
       </Link>
       <Link
         href={AUTH_LINKS.register}
-        className="inline-flex items-center px-3.5 xl:px-4 py-2 rounded-xl text-xs xl:text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white transition-all shadow-md shadow-blue-600/20 whitespace-nowrap"
+        className="inline-flex items-center px-3.5 xl:px-4 py-2 rounded-xl text-xs xl:text-sm font-semibold bg-orange-600 hover:bg-orange-500 text-white transition-all shadow-md shadow-orange-500/20 whitespace-nowrap"
       >
         Sign up
       </Link>
@@ -171,7 +171,7 @@ export default function NavbarActions({ variant, onNavigate }: NavbarActionsProp
           href={CONTACT_INFO.calendly}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs xl:text-sm font-semibold px-3.5 xl:px-5 py-2.5 rounded-xl transition-all duration-200 shadow-lg shadow-blue-600/25 hover:shadow-blue-500/35 hover:-translate-y-px whitespace-nowrap"
+          className="inline-flex items-center gap-2 bg-gradient-to-r from-tomato-600 to-sun-400 hover:from-tomato-500 hover:to-sun-300 text-white text-xs xl:text-sm font-semibold px-3.5 xl:px-5 py-2.5 rounded-xl transition-all duration-200 shadow-lg shadow-orange-500/25 hover:shadow-orange-400/35 hover:-translate-y-px whitespace-nowrap"
         >
           <span className="hidden 2xl:inline">Book Free Consultation</span>
           <span className="2xl:hidden">Book Call</span>
@@ -219,7 +219,7 @@ export default function NavbarActions({ variant, onNavigate }: NavbarActionsProp
             <Link
               href={AUTH_LINKS.register}
               onClick={onNavigate}
-              className="flex items-center justify-center rounded-xl bg-blue-600 hover:bg-blue-500 px-4 py-3 text-sm font-semibold text-white transition-colors"
+              className="flex items-center justify-center rounded-xl bg-orange-600 hover:bg-orange-500 px-4 py-3 text-sm font-semibold text-white transition-colors"
             >
               Sign up
             </Link>
@@ -263,7 +263,7 @@ export default function NavbarActions({ variant, onNavigate }: NavbarActionsProp
         target="_blank"
         rel="noopener noreferrer"
         onClick={onNavigate}
-        className="flex items-center justify-center gap-2 w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-sm font-semibold px-5 py-3.5 rounded-xl transition-all shadow-lg shadow-blue-600/25"
+        className="flex items-center justify-center gap-2 w-full bg-gradient-to-r from-tomato-600 to-sun-400 hover:from-tomato-500 hover:to-sun-300 text-white text-sm font-semibold px-5 py-3.5 rounded-xl transition-all shadow-lg shadow-orange-500/25"
       >
         Book Free Consultation
         <svg className="w-4 h-4 opacity-90" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">

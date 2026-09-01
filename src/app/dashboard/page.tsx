@@ -35,7 +35,7 @@ function DashboardContent() {
             title: APP_FEATURES.resume.label,
             description: APP_FEATURES.resume.description,
             href: APP_FEATURES.resume.href,
-            accent: "border-blue-500/20 hover:border-blue-500/40 bg-blue-500/[0.06]",
+            accent: "border-orange-500/20 hover:border-orange-500/40 bg-blue-500/[0.06]",
           },
         ]
       : []),
@@ -131,7 +131,7 @@ export default function DashboardPage() {
       <Suspense
         fallback={
           <div className={`flex min-h-[calc(100vh-5rem)] items-center justify-center ${ui.page}`}>
-            <div className="h-10 w-10 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+            <div className="h-10 w-10 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
           </div>
         }
       >

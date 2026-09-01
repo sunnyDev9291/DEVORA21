@@ -70,7 +70,7 @@ export default function HowItWorksPage() {
       <HowItWorksSection />
 
       {/* Deep-dive detail */}
-      <section className="bg-slate-50 dark:bg-navy-950 py-24 sm:py-32">
+      <section className="bg-gradient-to-b from-warm-50 via-orange-50/50 to-amber-50/30 dark:from-warm-950 dark:via-warm-950 dark:to-warm-900 py-24 sm:py-32">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="space-y-16">
             {details.map((item, index) => (
@@ -82,19 +82,19 @@ export default function HowItWorksPage() {
               >
                 {/* Step badge */}
                 <div className="flex-shrink-0">
-                  <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-600/20 to-indigo-600/20 border border-blue-500/30 flex items-center justify-center">
-                    <span className="text-blue-400 font-bold text-2xl">{item.step}</span>
+                  <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-600/20 to-sun-400/20 border border-orange-500/30 flex items-center justify-center">
+                    <span className="text-orange-400 font-bold text-2xl">{item.step}</span>
                   </div>
                 </div>
                 {/* Content */}
                 <div className="flex-1">
                   <h2 className="text-slate-900 dark:text-white text-2xl font-bold mb-1">{item.title}</h2>
-                  <p className="text-blue-400 text-sm font-medium mb-4">{item.heading}</p>
+                  <p className="text-orange-400 text-sm font-medium mb-4">{item.heading}</p>
                   <p className="text-slate-500 dark:text-slate-400 leading-relaxed mb-5">{item.body}</p>
                   <ul className="space-y-2">
                     {item.points.map((pt) => (
                       <li key={pt} className="flex items-center gap-2.5 text-sm text-slate-500 dark:text-slate-300">
-                        <svg className="w-4 h-4 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4 text-orange-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                         </svg>
                         {pt}
@@ -109,7 +109,7 @@ export default function HowItWorksPage() {
       </section>
 
       {/* CTA */}
-      <section className="bg-white dark:bg-navy-900 py-16">
+      <section className="bg-white dark:bg-warm-900 py-16">
         <div className="max-w-xl mx-auto px-4 text-center">
           <h2 className="text-slate-900 dark:text-white text-2xl font-bold mb-3">Ready to get started?</h2>
           <p className="text-slate-500 dark:text-slate-400 mb-6">Your free consultation is one click away.</p>
@@ -117,7 +117,7 @@ export default function HowItWorksPage() {
             href={CONTACT_INFO.calendly}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex bg-blue-600 hover:bg-blue-500 text-white font-semibold px-8 py-4 rounded-xl transition-all shadow-lg shadow-blue-600/25"
+            className="inline-flex bg-orange-600 hover:bg-orange-500 text-white font-semibold px-8 py-4 rounded-xl transition-all shadow-lg shadow-orange-500/25"
           >
             Book Free Consultation
           </a>

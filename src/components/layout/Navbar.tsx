@@ -36,7 +36,7 @@ export default function Navbar() {
     <header
       className={`fixed top-0 left-0 right-0 z-50 transition-[background-color,box-shadow,border-color] duration-300 [transform:translateZ(0)] ${
         scrolled
-          ? "bg-white dark:bg-navy-950 border-b border-slate-200 dark:border-white/[0.06] shadow-xl shadow-black/10 dark:shadow-black/20"
+          ? "bg-white/90 dark:bg-warm-950/95 border-b border-orange-200/60 dark:border-orange-500/10 shadow-gloss dark:shadow-card-dark"
           : "bg-transparent border-b border-transparent shadow-none"
       }`}
     >
@@ -54,7 +54,7 @@ export default function Navbar() {
               className="w-[72px] h-auto object-contain"
               priority
             />
-            <span className="font-display text-2xl font-extrabold bg-gradient-to-r from-indigo-600 via-violet-600 to-blue-600 bg-clip-text text-transparent tracking-tight dark:from-indigo-400 dark:via-violet-400 dark:to-blue-400">
+            <span className="font-display text-2xl font-extrabold bg-gradient-to-r from-tomato-600 via-orange-500 to-sun-400 bg-clip-text text-transparent tracking-tight dark:from-tomato-400 dark:via-orange-400 dark:to-sun-300">
               Devora21
             </span>
           </Link>
@@ -67,7 +67,7 @@ export default function Navbar() {
                   aria-current={pathname === link.href ? "page" : undefined}
                   className={`px-3 xl:px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150 whitespace-nowrap ${
                     pathname === link.href
-                      ? "text-indigo-700 dark:text-indigo-300 bg-indigo-500/10"
+                      ? "text-orange-700 dark:text-orange-300 bg-orange-500/10"
                       : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.05]"
                   }`}
                 >
@@ -113,7 +113,7 @@ export default function Navbar() {
         }`}
         aria-hidden={!isOpen}
       >
-        <nav aria-label="Mobile navigation" className="bg-navy-950/98 backdrop-blur-md border-b border-white/[0.06] px-4 py-4">
+        <nav aria-label="Mobile navigation" className="bg-warm-950/98 backdrop-blur-md border-b border-white/[0.06] px-4 py-4">
           <ul className="space-y-1 list-none m-0 p-0" role="list">
             {NAV_LINKS.map((link) => (
               <li key={link.href}>
@@ -122,7 +122,7 @@ export default function Navbar() {
                   aria-current={pathname === link.href ? "page" : undefined}
                   className={`block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                     pathname === link.href
-                      ? "text-blue-400 bg-blue-500/10"
+                      ? "text-orange-400 bg-orange-500/10"
                       : "text-slate-400 hover:text-white hover:bg-white/[0.05]"
                   }`}
                 >

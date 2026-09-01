@@ -71,7 +71,7 @@ export default function Modal({
         aria-modal="true"
         aria-labelledby={titleId}
         aria-label={ariaLabel}
-        className={`pointer-events-auto fixed bottom-24 right-4 sm:right-6 w-[calc(100vw-2rem)] max-w-[400px] h-[min(560px,calc(100dvh-7rem))] bg-white dark:bg-navy-900 border border-slate-200 dark:border-white/[0.10] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-fade-up ${className}`}
+        className={`pointer-events-auto fixed bottom-24 right-4 sm:right-6 w-[calc(100vw-2rem)] max-w-[400px] h-[min(560px,calc(100dvh-7rem))] bg-white dark:bg-warm-900 border border-slate-200 dark:border-white/[0.10] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-fade-up ${className}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-white/[0.08] shrink-0">
@@ -110,7 +110,7 @@ export default function Modal({
         aria-modal="true"
         aria-labelledby={titleId}
         aria-label={ariaLabel}
-        className={`relative z-10 w-full bg-white dark:bg-navy-900 border border-slate-200 dark:border-white/[0.10] rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-[min(90dvh,calc(100dvh-6rem))] pointer-events-auto animate-dialog-enter ${className || "max-w-lg"}`}
+        className={`relative z-10 w-full bg-white dark:bg-warm-900 border border-slate-200 dark:border-white/[0.10] rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-[min(90dvh,calc(100dvh-6rem))] pointer-events-auto animate-dialog-enter ${className || "max-w-lg"}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-white/[0.08] shrink-0">

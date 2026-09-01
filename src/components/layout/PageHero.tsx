@@ -21,7 +21,7 @@ export default function PageHero({ title, description, children, priority = fals
           priority={priority}
           quality={75}
         />
-        <div className="absolute inset-0 bg-slate-900/60 dark:bg-navy-950/80" />
+        <div className="absolute inset-0 bg-slate-900/60 dark:bg-warm-950/80" />
       </div>
 
       <div className="relative z-10 w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">

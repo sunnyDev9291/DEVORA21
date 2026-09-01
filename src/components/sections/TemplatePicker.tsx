@@ -47,13 +47,13 @@ export default function TemplatePicker({ selected, onSelect }: TemplatePickerPro
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
         {selected ? (
           <div className="flex items-start gap-4 min-w-0 flex-1">
-            <div className="w-12 h-12 rounded-2xl bg-blue-500/15 border border-blue-500/25 flex items-center justify-center shrink-0">
+            <div className="w-12 h-12 rounded-2xl bg-orange-500/15 border border-orange-500/25 flex items-center justify-center shrink-0">
               <svg className="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400 mb-1">
+              <p className="text-xs font-semibold uppercase tracking-wider text-orange-600 dark:text-orange-400 mb-1">
                 Step 1 · Template selected
               </p>
               <h3 className="text-lg font-bold text-slate-900 dark:text-white truncate">{selected.name}</h3>
@@ -96,7 +96,7 @@ export default function TemplatePicker({ selected, onSelect }: TemplatePickerPro
           <button
             type="button"
             onClick={openPicker}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-600/25 transition-all"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-orange-600 hover:bg-orange-500 text-white shadow-lg shadow-orange-500/25 transition-all"
           >
             {selected ? "Change template" : "Browse templates"}
           </button>
@@ -106,7 +106,7 @@ export default function TemplatePicker({ selected, onSelect }: TemplatePickerPro
       {pickerOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Select a resume template">
           <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-md animate-backdrop-enter" onClick={() => setPickerOpen(false)} />
-          <div className="relative z-10 w-full max-w-2xl bg-white dark:bg-navy-900 border border-slate-200 dark:border-white/[0.10] rounded-2xl shadow-2xl shadow-black/30 overflow-hidden animate-dialog-enter">
+          <div className="relative z-10 w-full max-w-2xl bg-white dark:bg-warm-900 border border-slate-200 dark:border-white/[0.10] rounded-2xl shadow-2xl shadow-black/30 overflow-hidden animate-dialog-enter">
             <div className="px-6 py-5 border-b border-slate-200 dark:border-white/[0.08] flex items-center justify-between bg-gradient-to-r from-slate-50 to-white dark:from-navy-950 dark:to-navy-900">
               <div>
                 <h2 className="text-xl font-bold text-slate-900 dark:text-white">Resume templates</h2>
@@ -138,7 +138,7 @@ export default function TemplatePicker({ selected, onSelect }: TemplatePickerPro
                         onClick={() => openTemplate(template)}
                         className={`group text-left p-4 rounded-2xl border-2 transition-all ${
                           isSelected
-                            ? "border-blue-500 bg-blue-500/10 shadow-lg shadow-blue-500/10"
+                            ? "border-orange-500 bg-orange-500/10 shadow-lg shadow-blue-500/10"
                             : "border-slate-200 dark:border-white/[0.08] hover:border-blue-400/60 hover:bg-slate-50 dark:hover:bg-white/[0.03]"
                         }`}
                       >

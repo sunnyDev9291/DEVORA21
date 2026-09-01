@@ -142,7 +142,7 @@ export default function AiChatDialog({ open, onClose }: AiChatDialogProps) {
             <div
               className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
                 msg.role === "user"
-                  ? "bg-violet-600 text-white rounded-br-md"
+                  ? "bg-orange-600 text-white rounded-br-md"
                   : "bg-slate-100 dark:bg-white/[0.06] text-slate-800 dark:text-slate-200 rounded-bl-md border border-slate-200/80 dark:border-white/[0.06]"
               }`}
             >
@@ -181,7 +181,7 @@ export default function AiChatDialog({ open, onClose }: AiChatDialogProps) {
           <button
             type="submit"
             disabled={loading || !input.trim()}
-            className="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors"
+            className="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl bg-orange-600 hover:bg-orange-500 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors"
             aria-label="Send message"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

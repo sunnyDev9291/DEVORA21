@@ -4,23 +4,23 @@
 
 @layer base {
   :root {
-    --surface-page: 248 250 252;
+    --surface-page: 255 251 245;
     --surface-elevated: 255 255 255;
-    --text-primary: 15 23 42;
-    --text-secondary: 71 85 105;
-    --border-default: 226 232 240;
-    --accent: 99 102 241;
-    --accent-soft: 238 242 255;
+    --text-primary: 28 25 23;
+    --text-secondary: 87 83 78;
+    --border-default: 254 215 170;
+    --accent: 234 88 12;
+    --accent-soft: 255 237 213;
   }
 
   .dark {
-    --surface-page: 6 11 24;
-    --surface-elevated: 10 15 30;
-    --text-primary: 248 250 252;
-    --text-secondary: 148 163 184;
-    --border-default: 255 255 255;
-    --accent: 129 140 248;
-    --accent-soft: 30 27 75;
+    --surface-page: 26 16 12;
+    --surface-elevated: 42 24 16;
+    --text-primary: 250 250 249;
+    --text-secondary: 168 162 158;
+    --border-default: 249 115 22;
+    --accent: 251 146 60;
+    --accent-soft: 67 20 7;
   }
 
   html {
@@ -43,7 +43,7 @@
   h4,
   h5,
   h6 {
-    @apply font-display tracking-tight text-slate-900 dark:text-white;
+    @apply font-display tracking-tight text-stone-900 dark:text-stone-50;
     letter-spacing: -0.025em;
   }
 
@@ -64,13 +64,13 @@
   }
 
   ::selection {
-    background: rgba(99, 102, 241, 0.22);
-    color: rgb(15 23 42);
+    background: rgba(249, 115, 22, 0.22);
+    color: rgb(28 25 23);
   }
 
   .dark ::selection {
-    background: rgba(129, 140, 248, 0.28);
-    color: rgb(248 250 252);
+    background: rgba(251, 146, 60, 0.28);
+    color: rgb(250 250 249);
   }
 }
 
@@ -86,20 +86,20 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: rgb(241 245 249);
+  background: rgb(255 247 237);
 }
 
 .dark ::-webkit-scrollbar-track {
-  background: rgb(10 15 30);
+  background: rgb(26 16 12);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgb(165 180 252);
+  background: rgb(251 146 60);
   border-radius: 999px;
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background: rgb(79 70 229);
+  background: rgb(234 88 12);
 }
 
 /* docx-preview — isolated from app dark theme; render as Word print layout */
@@ -205,32 +205,32 @@
   }
 
   .text-gradient {
-    @apply bg-gradient-to-r from-indigo-600 via-violet-600 to-blue-600 bg-clip-text text-transparent;
+    @apply bg-gradient-to-r from-tomato-600 via-orange-500 to-sun-400 bg-clip-text text-transparent;
   }
 
   .dark .text-gradient {
-    @apply from-indigo-400 via-violet-400 to-blue-400;
+    @apply from-tomato-400 via-orange-400 to-sun-300;
   }
 
   .bg-glass {
-    background: rgba(255, 255, 255, 0.72);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.82) 0%, rgba(255, 244, 232, 0.78) 100%);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
   }
 
   .dark .bg-glass {
-    background: rgba(255, 255, 255, 0.04);
+    background: linear-gradient(145deg, rgba(42, 24, 16, 0.88) 0%, rgba(26, 16, 12, 0.92) 100%);
   }
 
   .border-glass {
-    border-color: rgba(148, 163, 184, 0.35);
+    border-color: rgba(251, 146, 60, 0.28);
   }
 
   .dark .border-glass {
-    border-color: rgba(255, 255, 255, 0.08);
+    border-color: rgba(251, 146, 60, 0.15);
   }
 
   .glow-brand {
-    box-shadow: 0 0 48px rgba(99, 102, 241, 0.18);
+    box-shadow: 0 0 48px rgba(249, 115, 22, 0.2);
   }
 }

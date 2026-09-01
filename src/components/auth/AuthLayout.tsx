@@ -13,7 +13,7 @@ export default function AuthLayout({ title, subtitle, children, footer }: AuthLa
   return (
     <div className={`${ui.page} relative flex items-center justify-center overflow-hidden px-4 py-12`}>
       <div
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(99,102,241,0.14),_transparent_55%)] dark:bg-[radial-gradient(ellipse_at_top,_rgba(99,102,241,0.18),_transparent_50%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(249,115,22,0.16),_transparent_55%)] dark:bg-[radial-gradient(ellipse_at_top,_rgba(251,146,60,0.14),_transparent_50%)]"
         aria-hidden
       />
       <div className="relative w-full max-w-md animate-fade-up">
@@ -37,7 +37,7 @@ export function AuthDivider({ label = "or continue with email" }: { label?: stri
         <div className="w-full border-t border-slate-200 dark:border-white/10" />
       </div>
       <div className="relative flex justify-center text-xs uppercase tracking-wider">
-        <span className="bg-white px-3 text-slate-500 dark:bg-navy-900/85 dark:text-slate-400">{label}</span>
+        <span className="bg-white px-3 text-slate-500 dark:bg-warm-900/85 dark:text-slate-400">{label}</span>
       </div>
     </div>
   );
@@ -45,7 +45,7 @@ export function AuthDivider({ label = "or continue with email" }: { label?: stri
 
 export function AuthFooterLink({ href, children }: { href: string; children: ReactNode }) {
   return (
-    <Link href={href} className="font-semibold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300">
+    <Link href={href} className="font-semibold text-orange-600 hover:text-orange-500 dark:text-orange-400 dark:hover:text-orange-300">
       {children}
     </Link>
   );

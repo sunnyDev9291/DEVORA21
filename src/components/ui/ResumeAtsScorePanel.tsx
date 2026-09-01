@@ -146,7 +146,7 @@ export function ResumeAtsScorePanel({
                       })
                     }
                     disabled={Boolean(improvingTargetId)}
-                    className="rounded-md border border-violet-500/30 px-2 py-0.5 text-[10px] font-semibold text-violet-700 hover:bg-violet-500/10 disabled:opacity-50 dark:text-violet-300"
+                    className="rounded-md border border-violet-500/30 px-2 py-0.5 text-[10px] font-semibold text-violet-700 hover:bg-orange-500/10 disabled:opacity-50 dark:text-violet-300"
                   >
                     {improvingTargetId === `ats-category:${item.category}` ? "Improving..." : "Improve"}
                   </button>
@@ -155,7 +155,7 @@ export function ResumeAtsScorePanel({
             </div>
             <div className="h-1.5 rounded-full bg-slate-200 dark:bg-white/10 overflow-hidden">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all duration-700"
+                className="h-full rounded-full bg-gradient-to-r from-orange-500 to-sun-400 transition-all duration-700"
                 style={{ width: `${item.maxScore ? (item.score / item.maxScore) * 100 : 0}%` }}
               />
             </div>
@@ -245,7 +245,7 @@ export function ResumeAtsScorePanel({
                       })
                     }
                     disabled={Boolean(improvingTargetId)}
-                    className="ml-2 rounded-md border border-violet-500/30 px-2 py-0.5 text-[10px] font-semibold text-violet-700 hover:bg-violet-500/10 disabled:opacity-50 dark:text-violet-300"
+                    className="ml-2 rounded-md border border-violet-500/30 px-2 py-0.5 text-[10px] font-semibold text-violet-700 hover:bg-orange-500/10 disabled:opacity-50 dark:text-violet-300"
                   >
                     {improvingTargetId === `ats-recommendation:${rec}` ? "Improving..." : "Improve"}
                   </button>

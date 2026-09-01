@@ -13,7 +13,7 @@ export const metadata: Metadata = pageMetadata({
 export default function ContactPage() {
   return (
     <>
-      <section className="bg-slate-50 dark:bg-navy-950 min-h-screen pt-28 pb-24 relative overflow-hidden" aria-labelledby="contact-heading">
+      <section className="bg-gradient-to-b from-warm-50 via-orange-50/50 to-amber-50/30 dark:from-warm-950 dark:via-warm-950 dark:to-warm-900 min-h-screen pt-28 pb-24 relative overflow-hidden" aria-labelledby="contact-heading">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[400px] bg-blue-600/10 blur-[130px] rounded-full pointer-events-none" aria-hidden="true" />
 
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -33,15 +33,15 @@ export default function ContactPage() {
                 href={CONTACT_INFO.calendly}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-4 bg-blue-500/[0.07] border border-blue-500/30 hover:border-blue-500/50 hover:bg-blue-500/[0.12] rounded-2xl p-5 transition-all group"
+                className="flex items-center gap-4 bg-blue-500/[0.07] border border-orange-500/30 hover:border-orange-500/50 hover:bg-blue-500/[0.12] rounded-2xl p-5 transition-all group"
               >
-                <div className="w-12 h-12 bg-blue-500/15 border border-blue-500/25 rounded-xl flex items-center justify-center flex-shrink-0">
-                  <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <div className="w-12 h-12 bg-orange-500/15 border border-orange-500/25 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <svg className="w-6 h-6 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
                 </div>
                 <div>
-                  <p className="text-slate-900 dark:text-white font-semibold text-sm group-hover:text-blue-600 dark:group-hover:text-blue-300 transition-colors">
+                  <p className="text-slate-900 dark:text-white font-semibold text-sm group-hover:text-orange-600 dark:group-hover:text-orange-300 transition-colors">
                     Book Free Consultation
                   </p>
                   <p className="text-slate-500 text-xs mt-0.5">Pick a 30-minute slot on Calendly</p>
@@ -71,15 +71,15 @@ export default function ContactPage() {
                 href={CONTACT_INFO.linkedin}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-4 bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] hover:border-blue-500/30 hover:bg-blue-500/[0.05] rounded-2xl p-5 transition-all group"
+                className="flex items-center gap-4 bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] hover:border-orange-500/30 hover:bg-blue-500/[0.05] rounded-2xl p-5 transition-all group"
               >
-                <div className="w-12 h-12 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-center justify-center flex-shrink-0">
-                  <svg className="w-6 h-6 text-blue-400" fill="currentColor" viewBox="0 0 24 24">
+                <div className="w-12 h-12 bg-orange-500/10 border border-orange-500/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <svg className="w-6 h-6 text-orange-400" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
                   </svg>
                 </div>
                 <div>
-                  <p className="text-slate-900 dark:text-white font-semibold text-sm group-hover:text-blue-600 dark:group-hover:text-blue-300 transition-colors">
+                  <p className="text-slate-900 dark:text-white font-semibold text-sm group-hover:text-orange-600 dark:group-hover:text-orange-300 transition-colors">
                     LinkedIn
                   </p>
                   <p className="text-slate-500 text-xs mt-0.5">Connect professionally</p>
@@ -104,7 +104,7 @@ export default function ContactPage() {
               </a>
 
               {/* Guarantee box */}
-              <div className="bg-blue-500/[0.07] border border-blue-500/20 rounded-2xl p-5 space-y-3 mt-2">
+              <div className="bg-blue-500/[0.07] border border-orange-500/20 rounded-2xl p-5 space-y-3 mt-2">
                 <p className="text-slate-900 dark:text-white text-sm font-semibold">What to expect:</p>
                 {[
                   "Response within 24 hours",
@@ -113,7 +113,7 @@ export default function ContactPage() {
                   "100% confidential",
                 ].map((item) => (
                   <div key={item} className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-                    <svg className="w-4 h-4 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 text-orange-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                     </svg>
                     {item}

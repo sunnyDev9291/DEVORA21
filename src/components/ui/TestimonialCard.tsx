@@ -7,12 +7,12 @@ interface TestimonialCardProps {
 }
 
 const avatarColors = [
-  "from-blue-500 to-blue-700",
+  "from-orange-500 to-blue-700",
   "from-indigo-500 to-indigo-700",
   "from-violet-500 to-violet-700",
   "from-cyan-500 to-cyan-700",
   "from-sky-500 to-sky-700",
-  "from-blue-400 to-indigo-600",
+  "from-blue-400 to-sun-400",
 ];
 
 export default function TestimonialCard({

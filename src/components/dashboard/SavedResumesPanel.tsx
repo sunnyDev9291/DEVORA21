@@ -66,7 +66,7 @@ const STYLES = {
     title: "text-lg font-semibold text-white",
     subtitle: "mt-1 text-sm text-slate-400",
     input:
-      "w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40",
+      "w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/40",
     searchPanel: "mt-5 rounded-2xl border border-white/10 bg-white/[0.02] p-4 sm:p-5",
     searchGrid: "grid gap-4 sm:grid-cols-2",
     searchField: "space-y-1.5",
@@ -78,14 +78,14 @@ const STYLES = {
     chipGrid: "mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6",
     monthGrid: "mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6",
     chip:
-      "rounded-lg border border-white/10 bg-white/[0.03] px-2 py-2 text-sm font-medium text-slate-300 transition-all hover:border-blue-500/30 hover:bg-blue-500/[0.06] disabled:cursor-not-allowed disabled:opacity-35",
-    chipSelected: "border-blue-500/50 bg-blue-500/20 text-white shadow-sm shadow-blue-500/20",
+      "rounded-lg border border-white/10 bg-white/[0.03] px-2 py-2 text-sm font-medium text-slate-300 transition-all hover:border-orange-500/30 hover:bg-blue-500/[0.06] disabled:cursor-not-allowed disabled:opacity-35",
+    chipSelected: "border-orange-500/50 bg-blue-500/20 text-white shadow-sm shadow-blue-500/20",
     chipCount: "mt-0.5 block text-[10px] font-normal text-slate-500",
     daysSection: "mt-6 space-y-2",
     daysHeading: "text-xs font-semibold uppercase tracking-wider text-slate-500",
     dayButton:
-      "flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left transition-all hover:border-blue-500/30 hover:bg-blue-500/[0.06]",
-    dayButtonOpen: "border-blue-500/35 bg-blue-500/[0.08]",
+      "flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left transition-all hover:border-orange-500/30 hover:bg-blue-500/[0.06]",
+    dayButtonOpen: "border-orange-500/35 bg-blue-500/[0.08]",
     dayLabel: "text-sm font-semibold text-white",
     dayMeta: "ml-auto text-xs text-slate-400",
     chevron: "h-4 w-4 shrink-0 text-slate-400 transition-transform",
@@ -98,9 +98,9 @@ const STYLES = {
     jobTitle: "px-4 py-3 text-slate-200",
     description: "max-w-xs px-4 py-3 text-slate-400 md:max-w-md",
     descLink:
-      "text-left text-xs text-blue-400 underline-offset-2 hover:text-blue-300 hover:underline line-clamp-2",
+      "text-left text-xs text-orange-400 underline-offset-2 hover:text-orange-300 hover:underline line-clamp-2",
     fileName:
-      "block text-left font-mono text-xs leading-relaxed whitespace-normal break-all text-blue-400 underline-offset-2 hover:text-blue-300 hover:underline",
+      "block text-left font-mono text-xs leading-relaxed whitespace-normal break-all text-orange-400 underline-offset-2 hover:text-orange-300 hover:underline",
     fileNameCell: "min-w-[14rem] px-4 py-3 align-top whitespace-normal",
     actionsCell:
       "sticky right-0 z-[1] whitespace-nowrap bg-navy-900/95 px-4 py-3 shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.45)] group-hover:bg-white/[0.04]",
@@ -116,7 +116,7 @@ const STYLES = {
     title: "text-lg font-semibold text-slate-900 dark:text-white",
     subtitle: "mt-1 text-sm text-slate-500 dark:text-slate-400",
     input:
-      "w-full rounded-xl border border-slate-200 dark:border-white/[0.10] bg-slate-50 dark:bg-white/[0.03] px-4 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40",
+      "w-full rounded-xl border border-slate-200 dark:border-white/[0.10] bg-slate-50 dark:bg-white/[0.03] px-4 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/40",
     searchPanel:
       "mt-5 rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4 dark:border-white/[0.08] dark:bg-white/[0.02] sm:p-5",
     searchGrid: "grid gap-4 sm:grid-cols-2",
@@ -129,16 +129,16 @@ const STYLES = {
     chipGrid: "mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6",
     monthGrid: "mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6",
     chip:
-      "rounded-lg border border-slate-200/80 bg-slate-50/80 px-2 py-2 text-sm font-medium text-slate-700 transition-all hover:border-blue-500/35 hover:bg-blue-50/80 dark:border-white/[0.08] dark:bg-white/[0.02] dark:text-slate-200 dark:hover:border-blue-500/30 dark:hover:bg-blue-500/[0.06] disabled:cursor-not-allowed disabled:opacity-35",
+      "rounded-lg border border-slate-200/80 bg-slate-50/80 px-2 py-2 text-sm font-medium text-slate-700 transition-all hover:border-orange-500/35 hover:bg-blue-50/80 dark:border-white/[0.08] dark:bg-white/[0.02] dark:text-slate-200 dark:hover:border-orange-500/30 dark:hover:bg-blue-500/[0.06] disabled:cursor-not-allowed disabled:opacity-35",
     chipSelected:
-      "border-blue-500/50 bg-blue-500/15 text-blue-700 shadow-sm shadow-blue-500/15 dark:bg-blue-500/20 dark:text-white",
+      "border-orange-500/50 bg-orange-500/15 text-orange-700 shadow-sm shadow-blue-500/15 dark:bg-blue-500/20 dark:text-white",
     chipCount: "mt-0.5 block text-[10px] font-normal text-slate-500 dark:text-slate-400",
     daysSection: "mt-6 space-y-2",
     daysHeading: "text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400",
     dayButton:
-      "flex w-full items-center gap-3 rounded-xl border border-slate-200/80 bg-slate-50/80 px-4 py-3 text-left transition-all hover:border-blue-500/35 hover:bg-blue-50/80 dark:border-white/[0.08] dark:bg-white/[0.02] dark:hover:border-blue-500/30 dark:hover:bg-blue-500/[0.06]",
+      "flex w-full items-center gap-3 rounded-xl border border-slate-200/80 bg-slate-50/80 px-4 py-3 text-left transition-all hover:border-orange-500/35 hover:bg-blue-50/80 dark:border-white/[0.08] dark:bg-white/[0.02] dark:hover:border-orange-500/30 dark:hover:bg-blue-500/[0.06]",
     dayButtonOpen:
-      "border-blue-500/40 bg-blue-50/90 dark:border-blue-500/35 dark:bg-blue-500/[0.08]",
+      "border-orange-500/40 bg-blue-50/90 dark:border-orange-500/35 dark:bg-blue-500/[0.08]",
     dayLabel: "text-sm font-semibold text-slate-900 dark:text-white",
     dayMeta: "ml-auto text-xs text-slate-500 dark:text-slate-400",
     chevron: "h-4 w-4 shrink-0 text-slate-500 transition-transform dark:text-slate-400",
@@ -153,12 +153,12 @@ const STYLES = {
     jobTitle: "px-4 py-3 text-slate-700 dark:text-slate-200",
     description: "max-w-xs px-4 py-3 text-slate-500 md:max-w-md dark:text-slate-400",
     descLink:
-      "text-left text-xs text-blue-600 underline-offset-2 hover:text-blue-500 hover:underline line-clamp-2 dark:text-blue-400 dark:hover:text-blue-300",
+      "text-left text-xs text-orange-600 underline-offset-2 hover:text-orange-500 hover:underline line-clamp-2 dark:text-orange-400 dark:hover:text-orange-300",
     fileName:
-      "block text-left font-mono text-xs leading-relaxed whitespace-normal break-all text-blue-600 underline-offset-2 hover:text-blue-500 hover:underline dark:text-blue-400 dark:hover:text-blue-300",
+      "block text-left font-mono text-xs leading-relaxed whitespace-normal break-all text-orange-600 underline-offset-2 hover:text-orange-500 hover:underline dark:text-orange-400 dark:hover:text-orange-300",
     fileNameCell: "min-w-[14rem] px-4 py-3 align-top whitespace-normal",
     actionsCell:
-      "sticky right-0 z-[1] whitespace-nowrap bg-white/95 px-4 py-3 shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.08)] group-hover:bg-slate-50/95 dark:bg-navy-900/95 dark:shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.45)] dark:group-hover:bg-white/[0.04]",
+      "sticky right-0 z-[1] whitespace-nowrap bg-white/95 px-4 py-3 shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.08)] group-hover:bg-slate-50/95 dark:bg-warm-900/95 dark:shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.45)] dark:group-hover:bg-white/[0.04]",
     actionsHead:
       "sticky right-0 z-[1] bg-slate-50/95 px-4 py-3 text-right font-medium shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.08)] dark:bg-white/[0.02] dark:shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.45)]",
     actionGroup: "inline-flex flex-row flex-nowrap items-center gap-2",
@@ -717,7 +717,7 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
       {loading ? (
         <div className={`${styles.empty} mt-5`}>
           <span className="inline-flex items-center gap-2">
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
             Loading saved resumes…
           </span>
         </div>

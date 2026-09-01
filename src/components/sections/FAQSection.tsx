@@ -52,7 +52,7 @@ export default function FAQSection({ limit }: FAQSectionProps) {
   const faqs = limit ? FAQS.slice(0, limit) : FAQS;
 
   return (
-    <section className="bg-white dark:bg-navy-900 py-24 sm:py-32" aria-labelledby="faq-heading">
+    <section className="bg-white dark:bg-warm-900 py-24 sm:py-32" aria-labelledby="faq-heading">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         <header className="text-center mb-12">
           <h2 id="faq-heading" className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">

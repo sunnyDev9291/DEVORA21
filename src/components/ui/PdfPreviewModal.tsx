@@ -77,13 +77,13 @@ export default function PdfPreviewModal({
       />
 
       <div
-        className="relative z-10 flex h-full w-full max-w-6xl flex-col overflow-hidden bg-white dark:bg-navy-900 shadow-2xl shadow-black/20 animate-dialog-enter"
+        className="relative z-10 flex h-full w-full max-w-6xl flex-col overflow-hidden bg-white dark:bg-warm-900 shadow-2xl shadow-black/20 animate-dialog-enter"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         aria-label="PDF preview"
       >
-        <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 dark:border-white/[0.08] bg-white/95 dark:bg-navy-900/95 px-4 sm:px-5 h-12 backdrop-blur-sm">
+        <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 dark:border-white/[0.08] bg-white/95 dark:bg-warm-900/95 px-4 sm:px-5 h-12 backdrop-blur-sm">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-500/15">
             <svg className="h-4 w-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path
@@ -122,7 +122,7 @@ export default function PdfPreviewModal({
               type="button"
               onClick={onDownload}
               disabled={!blob}
-              className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-40 transition-colors"
+              className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-orange-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-40 transition-colors"
             >
               <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -143,7 +143,7 @@ export default function PdfPreviewModal({
           </button>
         </header>
 
-        <div className="relative flex-1 min-h-0 w-full overflow-y-auto bg-slate-100 dark:bg-navy-950">
+        <div className="relative flex-1 min-h-0 w-full overflow-y-auto bg-slate-100 dark:bg-warm-950">
           {waiting && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
               <div
@@ -162,7 +162,7 @@ export default function PdfPreviewModal({
                   href={openTabUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-4 text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+                  className="mt-4 text-sm font-semibold text-orange-600 dark:text-orange-400 hover:underline"
                 >
                   Open PDF in new tab
                 </a>
@@ -195,7 +195,7 @@ export default function PdfPreviewModal({
           )}
         </div>
 
-        <footer className="relative flex shrink-0 items-center justify-center gap-3 border-t border-slate-200 dark:border-white/[0.08] bg-white/95 dark:bg-navy-900/95 h-11 px-4 backdrop-blur-sm">
+        <footer className="relative flex shrink-0 items-center justify-center gap-3 border-t border-slate-200 dark:border-white/[0.08] bg-white/95 dark:bg-warm-900/95 h-11 px-4 backdrop-blur-sm">
           <span className="text-xs text-slate-400 dark:text-slate-500">
             {waiting
               ? "Preparing your PDF…"
@@ -215,7 +215,7 @@ export default function PdfPreviewModal({
               type="button"
               onClick={onDownload}
               disabled={!blob}
-              className="sm:hidden absolute right-3 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+              className="sm:hidden absolute right-3 rounded-lg bg-orange-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
             >
               Download PDF
             </button>

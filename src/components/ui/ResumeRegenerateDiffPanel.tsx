@@ -164,7 +164,7 @@ export default function ResumeRegenerateDiffPanel({
                   <button
                     type="button"
                     onClick={() => setShowUnchanged(true)}
-                    className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                    className="text-xs font-medium text-orange-600 dark:text-orange-400 hover:underline"
                   >
                     Show {changes.length - 6} more change{changes.length - 6 === 1 ? "" : "s"}
                   </button>

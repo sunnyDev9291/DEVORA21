@@ -29,7 +29,7 @@ export default function ChatWidgets() {
         className={`fixed bottom-[5.5rem] right-6 z-[101] flex items-center gap-2 text-white text-sm font-semibold pl-3.5 pr-4 h-11 rounded-full shadow-xl transition-all duration-200 hover:-translate-y-1 hover:scale-105 ${
           aiOpen
             ? "bg-slate-700 hover:bg-slate-600 shadow-slate-700/30"
-            : "bg-violet-600 hover:bg-violet-500 shadow-violet-600/30 hover:shadow-violet-500/40"
+            : "bg-orange-600 hover:bg-orange-500 shadow-violet-600/30 hover:shadow-violet-500/40"
         }`}
       >
         {aiOpen ? (
@@ -58,7 +58,7 @@ export default function ChatWidgets() {
         className={`fixed bottom-6 right-6 z-[101] flex items-center gap-2.5 text-white text-sm font-semibold pl-4 pr-5 h-12 rounded-full shadow-xl transition-all duration-200 hover:-translate-y-1 hover:scale-105 ${
           liveOpen
             ? "bg-slate-700 hover:bg-slate-600 shadow-slate-700/30"
-            : "bg-blue-600 hover:bg-blue-500 shadow-blue-600/30 hover:shadow-blue-500/40"
+            : "bg-orange-600 hover:bg-orange-500 shadow-orange-500/30 hover:shadow-blue-500/40"
         }`}
       >
         {liveOpen ? (

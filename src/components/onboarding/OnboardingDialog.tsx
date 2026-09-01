@@ -8,7 +8,7 @@ interface OnboardingDialogProps {
 export default function OnboardingDialog({ children }: OnboardingDialogProps) {
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-navy-950/95 px-4 py-8 backdrop-blur-sm sm:px-6"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-warm-950/95 px-4 py-8 backdrop-blur-sm sm:px-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="onboarding-title"

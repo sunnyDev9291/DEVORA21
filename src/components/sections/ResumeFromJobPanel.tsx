@@ -19,7 +19,7 @@ import {
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
 
 const inputClass =
-  "w-full bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.10] hover:border-slate-300 dark:hover:border-white/[0.16] focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-4 py-3 text-slate-900 dark:text-white text-sm outline-none transition-all";
+  "w-full bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.10] hover:border-slate-300 dark:hover:border-white/[0.16] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 rounded-xl px-4 py-3 text-slate-900 dark:text-white text-sm outline-none transition-all";
 
 function base64ToBlob(base64: string, mime: string): Blob {
   const binary = atob(base64);
@@ -194,7 +194,7 @@ export default function ResumeFromJobPanel() {
   return (
     <div className="space-y-5">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+        <p className="text-xs font-semibold uppercase tracking-wider text-orange-600 dark:text-orange-400">
           One-shot · Job link → PDF
         </p>
         <h3 className="mt-1 text-lg font-bold text-slate-900 dark:text-white">

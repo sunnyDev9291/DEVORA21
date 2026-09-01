@@ -30,7 +30,7 @@ export default function UserAvatar({
 
   return (
     <div
-      className={`relative shrink-0 overflow-hidden rounded-2xl ring-1 ring-blue-500/25 bg-blue-500/15 ${sizeClasses[size]} ${className}`}
+      className={`relative shrink-0 overflow-hidden rounded-2xl ring-1 ring-blue-500/25 bg-orange-500/15 ${sizeClasses[size]} ${className}`}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img

@@ -25,9 +25,9 @@ export default function ResumeStepper({ currentStep }: ResumeStepperProps) {
                 <div
                   className={`flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 text-sm font-bold transition-all duration-300 ${
                     done
-                      ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-600/30"
+                      ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-orange-500/30"
                       : active
-                        ? "bg-blue-500/15 border-blue-500 text-blue-600 dark:text-blue-300 ring-4 ring-blue-500/10"
+                        ? "bg-orange-500/15 border-orange-500 text-orange-600 dark:text-orange-300 ring-4 ring-blue-500/10"
                         : "bg-slate-100 dark:bg-white/[0.04] border-slate-200 dark:border-white/10 text-slate-400"
                   }`}
                 >

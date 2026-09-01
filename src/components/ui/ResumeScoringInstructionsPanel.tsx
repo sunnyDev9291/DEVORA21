@@ -52,7 +52,7 @@ export function ResumeScoringInstructionsPanel({
       </button>
       {expanded && (
         <div className="px-5 pb-4 sm:px-6">
-          <pre className="max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-navy-950/50 p-4 text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words font-mono leading-relaxed">
+          <pre className="max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-warm-950/50 p-4 text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words font-mono leading-relaxed">
             {trimmed}
           </pre>
         </div>

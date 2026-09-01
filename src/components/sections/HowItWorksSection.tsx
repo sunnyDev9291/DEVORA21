@@ -3,7 +3,7 @@ import { HOW_IT_WORKS } from "@/lib/constants";
 
 export default function HowItWorksSection() {
   return (
-    <section className="bg-white dark:bg-navy-900 py-24 sm:py-32" aria-labelledby="how-it-works-heading">
+    <section className="bg-white dark:bg-warm-900 py-24 sm:py-32" aria-labelledby="how-it-works-heading">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <header className="text-center mb-16">
           <h2 id="how-it-works-heading" className="text-3xl sm:text-4xl lg:text-5xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
@@ -22,8 +22,8 @@ export default function HowItWorksSection() {
             <li className="relative flex flex-col items-center text-center p-6">
               {/* Step number */}
               <div className="relative mb-6">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-600/20 to-indigo-600/20 border border-blue-500/30 flex items-center justify-center">
-                  <span className="text-blue-400 font-bold text-xl">{item.step}</span>
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-600/20 to-sun-400/20 border border-orange-500/30 flex items-center justify-center">
+                  <span className="text-orange-400 font-bold text-xl">{item.step}</span>
                 </div>
                 {index < HOW_IT_WORKS.length - 1 && (
                   <div className="lg:hidden absolute top-1/2 -right-3 w-6 h-px bg-blue-500/30" />

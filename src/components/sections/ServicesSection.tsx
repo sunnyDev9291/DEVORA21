@@ -12,7 +12,7 @@ export default function ServicesSection({ limit, showCTA = true }: ServicesSecti
   const services = limit ? SERVICES.slice(0, limit) : SERVICES;
 
   return (
-    <section className="bg-slate-50 dark:bg-navy-950 py-24 sm:py-32" aria-labelledby="services-heading">
+    <section className="bg-gradient-to-b from-warm-50 via-orange-50/50 to-amber-50/30 dark:from-warm-950 dark:via-warm-950 dark:to-warm-900 py-24 sm:py-32" aria-labelledby="services-heading">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <header className="text-center mb-14">
           <h2 id="services-heading" className="text-3xl sm:text-4xl lg:text-5xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">

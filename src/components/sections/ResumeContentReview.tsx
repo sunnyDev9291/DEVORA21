@@ -42,7 +42,7 @@ const PROJECT_FIELDS: Array<{ key: keyof ResumeProject; label: string }> = [
 ];
 
 const fieldClass =
-  "w-full bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.10] hover:border-slate-300 dark:hover:border-white/[0.16] focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-4 py-3 text-slate-900 dark:text-white text-sm outline-none transition-all";
+  "w-full bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.10] hover:border-slate-300 dark:hover:border-white/[0.16] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 rounded-xl px-4 py-3 text-slate-900 dark:text-white text-sm outline-none transition-all";
 
 function getScrollContainer(start: HTMLElement | null): HTMLElement | Window {
   let node = start?.parentElement ?? null;
@@ -240,7 +240,7 @@ export default function ResumeContentReview({
           type="checkbox"
           checked={reviewConfirmed}
           onChange={(e) => setReviewConfirmed(e.target.checked)}
-          className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+          className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
         />
         <span className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
           I&apos;ve reviewed and edited this content. Apply it to my resume file.
@@ -257,7 +257,7 @@ export default function ResumeContentReview({
               ? "Wait for generation to finish"
               : undefined
         }
-        className="relative z-10 w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-blue-600/25 transition-all pointer-events-auto"
+        className="relative z-10 w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-tomato-600 to-sun-400 hover:from-tomato-500 hover:to-sun-300 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-orange-500/25 transition-all pointer-events-auto"
       >
         {applying ? (
           <>
@@ -296,11 +296,11 @@ export default function ResumeContentReview({
       )}
 
       <div className={`grid grid-cols-1 ${embedded ? "" : "lg:grid-cols-2"} gap-4`}>
-        <div className={`${embedded ? "" : "lg:col-span-2"} rounded-2xl border border-blue-500/20 bg-blue-500/[0.05] px-5 py-4`}>
+        <div className={`${embedded ? "" : "lg:col-span-2"} rounded-2xl border border-orange-500/20 bg-blue-500/[0.05] px-5 py-4`}>
           <div>
             <div>
-              <p className="text-sm font-semibold text-blue-800 dark:text-blue-200">AI draft — edit before applying</p>
-              <p className="text-xs text-blue-700/70 dark:text-blue-300/70 mt-0.5">
+              <p className="text-sm font-semibold text-orange-800 dark:text-blue-200">AI draft — edit before applying</p>
+              <p className="text-xs text-orange-700/70 dark:text-orange-300/70 mt-0.5">
                 Template: <span className="font-medium">{templateName}</span>
                 {regenerateChanges.length > 0 ? (
                   <span> · {regenerateChanges.length} change{regenerateChanges.length === 1 ? "" : "s"} from last draft</span>
@@ -314,7 +314,7 @@ export default function ResumeContentReview({
 
         <div className="rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.02] p-5">
           <label htmlFor="resume-title" className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white mb-2">
-            <span className="w-6 h-6 rounded-md bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center text-xs">T</span>
+            <span className="w-6 h-6 rounded-md bg-orange-500/15 text-orange-600 dark:text-orange-400 flex items-center justify-center text-xs">T</span>
             Resume title
           </label>
           <MarkdownBoldTextarea
@@ -505,9 +505,9 @@ export default function ResumeContentReview({
                                 className="shrink-0 mt-1.5 w-7 h-7 rounded-lg flex items-center justify-center border transition-all
                                   border-slate-200 dark:border-white/[0.10]
                                   bg-white dark:bg-white/[0.04]
-                                  text-slate-400 hover:text-blue-600 dark:hover:text-blue-400
-                                  hover:border-blue-400 dark:hover:border-blue-500
-                                  hover:bg-blue-50 dark:hover:bg-blue-500/10"
+                                  text-slate-400 hover:text-orange-600 dark:hover:text-orange-400
+                                  hover:border-blue-400 dark:hover:border-orange-500
+                                  hover:bg-blue-50 dark:hover:bg-orange-500/10"
                               >
                                 {copiedKey === `${index}-${bulletIndex}` ? (
                                   <svg className="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -559,7 +559,7 @@ export default function ResumeContentReview({
             <button
               type="button"
               onClick={onResumeFileBaseNameReset}
-              className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
+              className="text-orange-600 dark:text-orange-400 hover:underline font-medium"
             >
               Reset to suggested
             </button>
@@ -568,7 +568,7 @@ export default function ResumeContentReview({
       </div>
 
       {embedded ? (
-        <div className="sticky bottom-0 z-10 -mx-4 sm:-mx-5 mt-2 border-t border-slate-200 dark:border-white/[0.10] bg-white/95 dark:bg-navy-900/95 backdrop-blur-md px-4 sm:px-5 py-4">
+        <div className="sticky bottom-0 z-10 -mx-4 sm:-mx-5 mt-2 border-t border-slate-200 dark:border-white/[0.10] bg-white/95 dark:bg-warm-900/95 backdrop-blur-md px-4 sm:px-5 py-4">
           {applyBarInner}
         </div>
       ) : (
@@ -580,7 +580,7 @@ export default function ResumeContentReview({
                 <div
                   role="region"
                   aria-label="Apply resume changes"
-                  className="pointer-events-auto fixed inset-x-0 bottom-0 z-[10050] border-t border-slate-200 dark:border-white/[0.12] bg-white dark:bg-navy-900 shadow-[0_-8px_30px_rgba(15,23,42,0.12)] dark:shadow-[0_-8px_30px_rgba(0,0,0,0.45)]"
+                  className="pointer-events-auto fixed inset-x-0 bottom-0 z-[10050] border-t border-slate-200 dark:border-white/[0.12] bg-white dark:bg-warm-900 shadow-[0_-8px_30px_rgba(15,23,42,0.12)] dark:shadow-[0_-8px_30px_rgba(0,0,0,0.45)]"
                 >
                   <div className="relative z-10 mx-auto w-full max-w-[70vw] px-4 py-4 sm:px-6 lg:px-8 pr-28 sm:pr-36">
                     {applyBarInner}

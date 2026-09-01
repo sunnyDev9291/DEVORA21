@@ -58,7 +58,7 @@ export default function SuccessStoriesPage() {
         description="Real stories from real engineers. No fabricated case studies — just outcomes we're proud of."
       />
 
-      <section className="bg-white dark:bg-navy-900 py-24" aria-labelledby="case-studies-heading">
+      <section className="bg-white dark:bg-warm-900 py-24" aria-labelledby="case-studies-heading">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
           {caseStudies.map((cs) => (
             <div
@@ -66,7 +66,7 @@ export default function SuccessStoriesPage() {
               className="bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] rounded-2xl p-8 hover:border-slate-300 dark:hover:border-white/[0.14] transition-all"
             >
               <div className="flex flex-wrap items-center gap-3 mb-5">
-                <span className="bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-300 text-xs font-semibold px-3 py-1 rounded-full">
+                <span className="bg-orange-500/10 border border-orange-500/20 text-orange-600 dark:text-orange-300 text-xs font-semibold px-3 py-1 rounded-full">
                   {cs.tag}
                 </span>
                 <span className="text-slate-400 dark:text-slate-600 text-xs font-mono">{cs.tech}</span>

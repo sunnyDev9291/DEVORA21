@@ -916,7 +916,7 @@ export default function ResumeGenerator({
       {/* Step 2: Job details */}
       <div className={`transition-all duration-300 ${showReview ? "mb-8" : ""}`}>
         <div className="flex items-center gap-3 mb-5">
-          <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-500/15 text-blue-600 dark:text-blue-400 text-sm font-bold">2</span>
+          <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-orange-500/15 text-orange-600 dark:text-orange-400 text-sm font-bold">2</span>
           <div>
             <h3 className="text-base font-bold text-slate-900 dark:text-white">Target job details</h3>
             <p className="text-sm text-slate-500 dark:text-slate-400">Tell the AI what role you&apos;re applying for</p>
@@ -1050,7 +1050,7 @@ export default function ResumeGenerator({
             <button
               type="submit"
               disabled={generating || applying || !canGenerate}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold px-8 py-3.5 rounded-xl transition-all shadow-lg shadow-blue-600/25 hover:shadow-blue-500/30 hover:-translate-y-px"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-gradient-to-r from-tomato-600 to-sun-400 hover:from-tomato-500 hover:to-sun-300 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold px-8 py-3.5 rounded-xl transition-all shadow-lg shadow-orange-500/25 hover:shadow-blue-500/30 hover:-translate-y-px"
             >
               {generating ? (
                 <>
@@ -1248,7 +1248,7 @@ export default function ResumeGenerator({
                 <button
                   type="button"
                   onClick={() => setResumeChatOpen(true)}
-                  className="inline-flex items-center gap-2 shrink-0 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2.5 text-sm font-semibold text-blue-700 transition-all hover:bg-blue-500/15 dark:text-blue-300"
+                  className="inline-flex items-center gap-2 shrink-0 rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-2.5 text-sm font-semibold text-orange-700 transition-all hover:bg-orange-500/15 dark:text-orange-300"
                 >
                   <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -1276,7 +1276,7 @@ export default function ResumeGenerator({
               <button
                 type="button"
                 onClick={() => setAtsModalOpen(true)}
-                className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-violet-500 transition-all"
+                className="inline-flex items-center gap-2 rounded-xl bg-orange-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-orange-500 transition-all"
               >
                 Open review panel
               </button>

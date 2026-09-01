@@ -70,7 +70,7 @@ function ResetPasswordForm() {
             {isSubmitting ? "Resetting…" : "Reset password"}
           </Button>
           {!token && (
-            <Link href={AUTH_LINKS.forgotPassword} className="block text-center text-sm text-blue-400 hover:text-blue-300">
+            <Link href={AUTH_LINKS.forgotPassword} className="block text-center text-sm text-orange-400 hover:text-orange-300">
               Request a new reset link
             </Link>
           )}
@@ -82,7 +82,7 @@ function ResetPasswordForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <Suspense fallback={<div className="flex min-h-[calc(100vh-5rem)] items-center justify-center bg-navy-950"><div className="h-10 w-10 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" /></div>}>
+    <Suspense fallback={<div className="flex min-h-[calc(100vh-5rem)] items-center justify-center bg-warm-950"><div className="h-10 w-10 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" /></div>}>
       <ResetPasswordForm />
     </Suspense>
   );

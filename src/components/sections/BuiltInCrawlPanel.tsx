@@ -64,10 +64,10 @@ const PLATFORM_HINT: Record<JobCrawlPlatform, string> = {
 };
 
 const PLATFORM_SELECTED_CLASS =
-  "border-emerald-500/30 bg-emerald-600 text-white shadow-md shadow-emerald-600/25";
+  "border-orange-500/30 bg-orange-600 text-white shadow-md shadow-orange-500/25";
 const PLATFORM_TABLE_BADGE_CLASS: Record<JobCrawlPlatform, string> = {
   builtin: "bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-1 ring-violet-500/20",
-  hiringcafe: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/20",
+  hiringcafe: "bg-orange-500/15 text-orange-700 dark:text-orange-300 ring-1 ring-orange-500/20",
   workable: "bg-amber-500/15 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500/20",
   workingnomads: "bg-sky-500/15 text-sky-800 dark:text-sky-300 ring-1 ring-sky-500/20",
 };
@@ -136,7 +136,7 @@ function CopyUrlButton({
       type="button"
       onClick={() => void handleCopy()}
       disabled={disabled || !url.trim()}
-      className="shrink-0 self-stretch rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:text-emerald-300 dark:hover:bg-emerald-500/15"
+      className="shrink-0 self-stretch rounded-xl border border-orange-500/30 bg-orange-500/10 px-3 py-2 text-sm font-semibold text-orange-700 transition-colors hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:text-orange-300 dark:hover:bg-orange-500/15"
       title={title}
     >
       {copied ? "Copied" : "Copy URL"}
@@ -149,10 +149,10 @@ function LastCrawledBanner({ iso }: { iso: string }) {
   if (!parts) return null;
 
   return (
-    <div className="mt-4 overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-r from-emerald-500/[0.08] via-teal-500/[0.06] to-green-500/[0.08] shadow-sm dark:border-emerald-400/15">
+    <div className="mt-4 overflow-hidden rounded-2xl border border-orange-500/20 bg-gradient-to-r from-orange-500/[0.08] via-amber-500/[0.06] to-sun-400/[0.08] shadow-sm dark:border-orange-400/15">
       <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600/15 text-emerald-600 dark:bg-emerald-400/15 dark:text-emerald-300">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-600/15 text-orange-600 dark:bg-orange-400/15 dark:text-orange-300">
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path
                 strokeLinecap="round"
@@ -163,7 +163,7 @@ function LastCrawledBanner({ iso }: { iso: string }) {
             </svg>
           </div>
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700/80 dark:text-emerald-300/80">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-orange-700/80 dark:text-orange-300/80">
               Last crawled
             </p>
             <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{parts.date}</p>
@@ -176,7 +176,7 @@ function LastCrawledBanner({ iso }: { iso: string }) {
           >
             {parts.time}
           </time>
-          <span className="inline-flex items-center rounded-full bg-emerald-600/10 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300">
+          <span className="inline-flex items-center rounded-full bg-orange-600/10 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-orange-700 dark:bg-orange-400/10 dark:text-orange-300">
             {parts.zone}
           </span>
         </div>
@@ -344,7 +344,7 @@ function JobTableSortDropdown({
         onClick={() => setOpen((current) => !current)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-left shadow-sm transition-all hover:border-emerald-400/40 hover:shadow-md focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-white/[0.10] dark:bg-white/[0.03] dark:hover:border-emerald-400/30"
+        className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-left shadow-sm transition-all hover:border-orange-400/40 hover:shadow-md focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20 dark:border-white/[0.10] dark:bg-white/[0.03] dark:hover:border-orange-400/30"
       >
         <span className="min-w-0">
           <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
@@ -355,7 +355,7 @@ function JobTableSortDropdown({
           </span>
         </span>
         <svg
-          className={`h-5 w-5 shrink-0 text-emerald-600 transition-transform dark:text-emerald-400 ${open ? "rotate-180" : ""}`}
+          className={`h-5 w-5 shrink-0 text-orange-600 transition-transform dark:text-orange-400 ${open ? "rotate-180" : ""}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -369,7 +369,7 @@ function JobTableSortDropdown({
         <ul
           role="listbox"
           aria-label="Sort jobs by"
-          className="absolute right-0 z-20 mt-2 w-full overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 shadow-xl shadow-slate-200/60 dark:border-white/[0.10] dark:bg-navy-900 dark:shadow-black/40"
+          className="absolute right-0 z-20 mt-2 w-full overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 shadow-xl shadow-slate-200/60 dark:border-white/[0.10] dark:bg-warm-900 dark:shadow-black/40"
         >
           {SORT_MODE_OPTIONS.map((option) => {
             const active = option.value === value;
@@ -383,7 +383,7 @@ function JobTableSortDropdown({
                   }}
                   className={`flex w-full flex-col items-start gap-0.5 px-4 py-3 text-left transition-colors ${
                     active
-                      ? "bg-emerald-500/10 text-emerald-800 dark:bg-emerald-400/10 dark:text-emerald-200"
+                      ? "bg-orange-500/10 text-orange-800 dark:bg-orange-400/10 dark:text-orange-200"
                       : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-white/[0.04]"
                   }`}
                 >
@@ -454,7 +454,7 @@ function MergedJobTable({
                 checked={allChecked}
                 onChange={onToggleAll}
                 aria-label="Select all jobs"
-                className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30 dark:border-white/20 dark:bg-white/5"
+                className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500/30 dark:border-white/20 dark:bg-white/5"
               />
             </th>
           </tr>
@@ -471,7 +471,7 @@ function MergedJobTable({
                       key={key}
                       className={
                         checked
-                          ? "bg-emerald-500/[0.06] hover:bg-emerald-500/[0.08]"
+                          ? "bg-orange-500/[0.06] hover:bg-orange-500/[0.08]"
                           : "hover:bg-slate-50/80 dark:hover:bg-white/[0.02]"
                       }
                     >
@@ -487,7 +487,7 @@ function MergedJobTable({
                       <td className="px-4 py-3 max-w-[20rem]">
                         {row.job.jobUrl ? (
                           <div className="flex items-center gap-2 min-w-0">
-                            <span title={row.job.jobUrl} className="truncate text-blue-600 dark:text-blue-400 select-all">
+                            <span title={row.job.jobUrl} className="truncate text-orange-600 dark:text-orange-400 select-all">
                               {row.job.jobUrl}
                             </span>
                             <CopyUrlButton url={row.job.jobUrl} />
@@ -509,7 +509,7 @@ function MergedJobTable({
                           checked={checked}
                           onChange={() => onToggleRow(key)}
                           aria-label={`Select ${row.job.jobTitle || "job"}`}
-                          className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30 dark:border-white/20 dark:bg-white/5"
+                          className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500/30 dark:border-white/20 dark:bg-white/5"
                         />
                       </td>
                     </tr>
@@ -526,7 +526,7 @@ function MergedJobTable({
                       key={key}
                       className={
                         checked
-                          ? "bg-emerald-500/[0.06] hover:bg-emerald-500/[0.08]"
+                          ? "bg-orange-500/[0.06] hover:bg-orange-500/[0.08]"
                           : "hover:bg-slate-50/80 dark:hover:bg-white/[0.02]"
                       }
                     >
@@ -537,7 +537,7 @@ function MergedJobTable({
                       <td className="px-4 py-3 max-w-[20rem]">
                         {row.job.jobUrl ? (
                           <div className="flex items-center gap-2 min-w-0">
-                            <span title={row.job.jobUrl} className="truncate text-blue-600 dark:text-blue-400 select-all">
+                            <span title={row.job.jobUrl} className="truncate text-orange-600 dark:text-orange-400 select-all">
                               {row.job.jobUrl}
                             </span>
                             <CopyUrlButton url={row.job.jobUrl} />
@@ -564,7 +564,7 @@ function MergedJobTable({
                           checked={checked}
                           onChange={() => onToggleRow(key)}
                           aria-label={`Select ${row.job.jobTitle || "job"}`}
-                          className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30 dark:border-white/20 dark:bg-white/5"
+                          className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500/30 dark:border-white/20 dark:bg-white/5"
                         />
                       </td>
                     </tr>
@@ -801,7 +801,7 @@ export default function BuiltInCrawlPanel() {
             type="button"
             onClick={() => void handleCrawl()}
             disabled={!canCrawl}
-            className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold px-6 py-3 rounded-xl transition-all shadow-lg shadow-emerald-600/25"
+            className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-tomato-600 via-orange-500 to-sun-400 hover:from-tomato-500 hover:via-orange-400 hover:to-sun-300 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold px-6 py-3 rounded-xl transition-all shadow-lg shadow-orange-500/25"
           >
             {crawling ? (
               <>
@@ -849,7 +849,7 @@ export default function BuiltInCrawlPanel() {
       {hydrated && jobList.length > 0 ? (
         <div className="mt-8 space-y-3">
           <div className="flex flex-wrap items-center gap-3 text-base">
-            <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-3.5 py-1.5 font-semibold text-emerald-800 dark:text-emerald-300">
+            <span className="inline-flex items-center rounded-full bg-orange-500/10 px-3.5 py-1.5 font-semibold text-orange-800 dark:text-orange-300">
               {hasTitleFilter
                 ? `${filteredJobRows.length} of ${jobList.length} job${jobList.length === 1 ? "" : "s"}`
                 : `${jobList.length} job${jobList.length === 1 ? "" : "s"}`}
