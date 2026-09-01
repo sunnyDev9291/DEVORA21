@@ -44,6 +44,23 @@ export const DEFAULT_HIRINGCAFE_LISTING_URL =
 export const DEFAULT_WORKABLE_LISTING_URL =
   "https://jobs.workable.com/search?location=Argentina&day_range=1&query=specialist++%7C+engineer+%7C+developer+%7C+Scientist&workplace=remote";
 
+export const DEFAULT_LISTING_URLS: Record<JobCrawlPlatform, string> = {
+  builtin: DEFAULT_BUILTIN_LISTING_URL,
+  hiringcafe: DEFAULT_HIRINGCAFE_LISTING_URL,
+  workable: DEFAULT_WORKABLE_LISTING_URL,
+};
+
+/** Fill missing platform URLs from defaults (e.g. after adding Workable to saved sessions). */
+export function mergeListingUrls(
+  stored: Partial<Record<JobCrawlPlatform, string>> | null | undefined
+): Record<JobCrawlPlatform, string> {
+  return {
+    builtin: stored?.builtin?.trim() || DEFAULT_BUILTIN_LISTING_URL,
+    hiringcafe: stored?.hiringcafe?.trim() || DEFAULT_HIRINGCAFE_LISTING_URL,
+    workable: stored?.workable?.trim() || DEFAULT_WORKABLE_LISTING_URL,
+  };
+}
+
 /** Client timeout — crawl can take 30–90s+ across multiple Zyte calls. */
 export const BUILTIN_CRAWL_TIMEOUT_MS = 120_000;
 

@@ -1,4 +1,5 @@
 import type { DiscoveredJobRow, JobCrawlPlatform, JobCrawlResult } from "@/lib/builtin-crawl-types";
+import { mergeListingUrls } from "@/lib/builtin-crawl-types";
 import { flattenCrawlResults } from "@/lib/job-crawl-list";
 
 const STORAGE_KEY = "dv21:job-discovery-crawl:v3";
@@ -38,11 +39,11 @@ function parseJobs(raw: unknown): DiscoveredJobRow[] {
 function parseListingUrls(raw: unknown): Record<JobCrawlPlatform, string> | null {
   if (!raw || typeof raw !== "object") return null;
   const obj = raw as Record<string, unknown>;
-  return {
+  return mergeListingUrls({
     builtin: typeof obj.builtin === "string" ? obj.builtin : "",
     hiringcafe: typeof obj.hiringcafe === "string" ? obj.hiringcafe : "",
     workable: typeof obj.workable === "string" ? obj.workable : "",
-  };
+  });
 }
 
 function parsePlatforms(raw: unknown): JobCrawlPlatform[] {
@@ -142,11 +143,11 @@ function migrateLegacy(rawKey: string): StoredJobCrawlSession | null {
 
       return {
         selectedPlatforms: [platform],
-        listingUrls: {
+        listingUrls: mergeListingUrls({
           builtin: platform === "builtin" ? listingUrl : "",
           hiringcafe: platform === "hiringcafe" ? listingUrl : "",
           workable: platform === "workable" ? listingUrl : "",
-        },
+        }),
         jobs: flattenCrawlResults({ [platform]: result }, [platform]),
         savedAt: typeof obj.savedAt === "string" ? obj.savedAt : "",
       };

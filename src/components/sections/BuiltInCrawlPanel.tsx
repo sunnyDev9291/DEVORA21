@@ -1,14 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getApiErrorMessage } from "@/lib/auth-api";
 import { crawlBuiltInJobs, crawlHiringCafeJobs, crawlWorkableJobs } from "@/lib/builtin-crawl-api";
 import {
   ALL_JOB_CRAWL_PLATFORMS,
   BUILTIN_CRAWL_TIMEOUT_MS,
-  DEFAULT_BUILTIN_LISTING_URL,
-  DEFAULT_HIRINGCAFE_LISTING_URL,
-  DEFAULT_WORKABLE_LISTING_URL,
+  DEFAULT_LISTING_URLS,
+  mergeListingUrls,
   isBuiltInListingUrl,
   isHiringCafeListingUrl,
   isWorkableListingUrl,
@@ -21,7 +20,7 @@ import { flattenCrawlResults } from "@/lib/job-crawl-list";
 import { loadStoredJobCrawl, saveStoredJobCrawl } from "@/lib/job-crawl-storage";
 
 const inputClass =
-  "w-full bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.10] hover:border-slate-300 dark:hover:border-white/[0.16] focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-4 py-3 text-slate-900 dark:text-white text-sm outline-none transition-all";
+  "w-full bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.10] hover:border-slate-300 dark:hover:border-white/[0.16] focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 rounded-xl px-4 py-3 text-slate-900 dark:text-white text-sm outline-none transition-all";
 
 const PLATFORM_LABEL: Record<JobCrawlPlatform, string> = {
   builtin: "Built In",
@@ -29,11 +28,7 @@ const PLATFORM_LABEL: Record<JobCrawlPlatform, string> = {
   workable: "Workable",
 };
 
-const PLATFORM_DEFAULT_URL: Record<JobCrawlPlatform, string> = {
-  builtin: DEFAULT_BUILTIN_LISTING_URL,
-  hiringcafe: DEFAULT_HIRINGCAFE_LISTING_URL,
-  workable: DEFAULT_WORKABLE_LISTING_URL,
-};
+const PLATFORM_DEFAULT_URL = DEFAULT_LISTING_URLS;
 
 const PLATFORM_URL_VALID: Record<JobCrawlPlatform, (url: string) => boolean> = {
   builtin: isBuiltInListingUrl,
@@ -53,36 +48,29 @@ const PLATFORM_HINT: Record<JobCrawlPlatform, string> = {
   workable: "Copy the full /search URL from Workable after setting filters (single page, no pagination).",
 };
 
+const PLATFORM_SELECTED_CLASS =
+  "border-emerald-500/30 bg-emerald-600 text-white shadow-md shadow-emerald-600/25";
+const PLATFORM_BADGE_CLASS =
+  "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/20";
+
 function defaultListingUrls(): Record<JobCrawlPlatform, string> {
-  return { ...PLATFORM_DEFAULT_URL };
+  return mergeListingUrls(null);
 }
 
 function defaultSelectedPlatforms(): JobCrawlPlatform[] {
   return [...ALL_JOB_CRAWL_PLATFORMS];
 }
 
-function platformButtonClass(platform: JobCrawlPlatform, selected: boolean): string {
+function jobRowKey(job: DiscoveredJobRow, index: number): string {
+  return `${job.platform}-${job.jobId}-${index}`;
+}
+
+function platformButtonClass(selected: boolean): string {
   const base = "rounded-full px-4 py-1.5 text-sm font-semibold transition-all border";
   if (!selected) {
     return `${base} border-transparent bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10`;
   }
-  if (platform === "hiringcafe") {
-    return `${base} border-emerald-500/30 bg-emerald-600 text-white shadow-md shadow-emerald-600/25`;
-  }
-  if (platform === "workable") {
-    return `${base} border-amber-500/30 bg-amber-600 text-white shadow-md shadow-amber-600/25`;
-  }
-  return `${base} border-violet-500/30 bg-violet-600 text-white shadow-md shadow-violet-600/25`;
-}
-
-function platformBadgeClass(platform: JobCrawlPlatform): string {
-  if (platform === "hiringcafe") {
-    return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/20";
-  }
-  if (platform === "workable") {
-    return "bg-amber-500/15 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500/20";
-  }
-  return "bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-1 ring-violet-500/20";
+  return `${base} ${PLATFORM_SELECTED_CLASS}`;
 }
 
 function crawlPlatform(
@@ -95,15 +83,46 @@ function crawlPlatform(
   return crawlWorkableJobs(url, signal);
 }
 
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function CopyUrlButton({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    const ok = await copyTextToClipboard(url);
+    if (!ok) return;
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handleCopy()}
+      className="shrink-0 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-500/20 dark:text-emerald-300 dark:hover:bg-emerald-500/15"
+      title="Copy job URL"
+    >
+      {copied ? "Copied" : "Copy URL"}
+    </button>
+  );
+}
+
 function LastCrawledBanner({ iso }: { iso: string }) {
   const parts = formatEstDateTimeParts(iso);
   if (!parts) return null;
 
   return (
-    <div className="mt-4 overflow-hidden rounded-2xl border border-blue-500/20 bg-gradient-to-r from-blue-500/[0.08] via-indigo-500/[0.06] to-violet-500/[0.08] shadow-sm dark:border-blue-400/15">
+    <div className="mt-4 overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-r from-emerald-500/[0.08] via-teal-500/[0.06] to-green-500/[0.08] shadow-sm dark:border-emerald-400/15">
       <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600/15 text-blue-600 dark:bg-blue-400/15 dark:text-blue-300">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600/15 text-emerald-600 dark:bg-emerald-400/15 dark:text-emerald-300">
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path
                 strokeLinecap="round"
@@ -114,7 +133,7 @@ function LastCrawledBanner({ iso }: { iso: string }) {
             </svg>
           </div>
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-blue-700/80 dark:text-blue-300/80">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700/80 dark:text-emerald-300/80">
               Last crawled
             </p>
             <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{parts.date}</p>
@@ -127,7 +146,7 @@ function LastCrawledBanner({ iso }: { iso: string }) {
           >
             {parts.time}
           </time>
-          <span className="inline-flex items-center rounded-full bg-blue-600/10 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-blue-700 dark:bg-blue-400/10 dark:text-blue-300">
+          <span className="inline-flex items-center rounded-full bg-emerald-600/10 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300">
             {parts.zone}
           </span>
         </div>
@@ -136,7 +155,19 @@ function LastCrawledBanner({ iso }: { iso: string }) {
   );
 }
 
-function MergedJobTable({ jobs }: { jobs: DiscoveredJobRow[] }) {
+function MergedJobTable({
+  jobs,
+  checkedKeys,
+  onToggleRow,
+  onToggleAll,
+  allChecked,
+}: {
+  jobs: DiscoveredJobRow[];
+  checkedKeys: Set<string>;
+  onToggleRow: (key: string) => void;
+  onToggleAll: () => void;
+  allChecked: boolean;
+}) {
   if (jobs.length === 0) {
     return (
       <p className="rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
@@ -153,40 +184,67 @@ function MergedJobTable({ jobs }: { jobs: DiscoveredJobRow[] }) {
             <th className="px-4 py-3 font-semibold whitespace-nowrap">Platform</th>
             <th className="px-4 py-3 font-semibold whitespace-nowrap">Company</th>
             <th className="px-4 py-3 font-semibold min-w-[12rem]">Job title</th>
-            <th className="px-4 py-3 font-semibold min-w-[10rem] max-w-[18rem]">URL</th>
+            <th className="px-4 py-3 font-semibold min-w-[10rem]">URL</th>
+            <th className="px-4 py-3 font-semibold text-center w-12">
+              <input
+                type="checkbox"
+                checked={allChecked}
+                onChange={onToggleAll}
+                aria-label="Select all jobs"
+                className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30 dark:border-white/20 dark:bg-white/5"
+              />
+            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-white/[0.06]">
-          {jobs.map((job, index) => (
-            <tr key={`${job.platform}-${job.jobId}-${index}`} className="hover:bg-slate-50/80 dark:hover:bg-white/[0.02]">
-              <td className="px-4 py-3 whitespace-nowrap">
-                <span
-                  className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${platformBadgeClass(job.platform)}`}
-                >
-                  {PLATFORM_LABEL[job.platform]}
-                </span>
-              </td>
-              <td className="px-4 py-3 font-medium text-slate-900 dark:text-white whitespace-nowrap">
-                {job.companyName || "—"}
-              </td>
-              <td className="px-4 py-3 text-slate-800 dark:text-slate-100">{job.jobTitle || "—"}</td>
-              <td className="px-4 py-3 max-w-[18rem]">
-                {job.jobUrl ? (
-                  <a
-                    href={job.jobUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title={job.jobUrl}
-                    className="block truncate text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 hover:underline underline-offset-2"
+          {jobs.map((job, index) => {
+            const key = jobRowKey(job, index);
+            const checked = checkedKeys.has(key);
+
+            return (
+              <tr
+                key={key}
+                className={
+                  checked
+                    ? "bg-emerald-500/[0.06] hover:bg-emerald-500/[0.08]"
+                    : "hover:bg-slate-50/80 dark:hover:bg-white/[0.02]"
+                }
+              >
+                <td className="px-4 py-3 whitespace-nowrap">
+                  <span
+                    className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${PLATFORM_BADGE_CLASS}`}
                   >
-                    {job.jobUrl}
-                  </a>
-                ) : (
-                  <span className="text-slate-400">—</span>
-                )}
-              </td>
-            </tr>
-          ))}
+                    {PLATFORM_LABEL[job.platform]}
+                  </span>
+                </td>
+                <td className="px-4 py-3 font-medium text-slate-900 dark:text-white whitespace-nowrap">
+                  {job.companyName || "—"}
+                </td>
+                <td className="px-4 py-3 text-slate-800 dark:text-slate-100">{job.jobTitle || "—"}</td>
+                <td className="px-4 py-3 max-w-[20rem]">
+                  {job.jobUrl ? (
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span title={job.jobUrl} className="truncate text-blue-600 dark:text-blue-400 select-all">
+                        {job.jobUrl}
+                      </span>
+                      <CopyUrlButton url={job.jobUrl} />
+                    </div>
+                  ) : (
+                    <span className="text-slate-400">—</span>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-center">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => onToggleRow(key)}
+                    aria-label={`Select ${job.jobTitle || "job"}`}
+                    className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30 dark:border-white/20 dark:bg-white/5"
+                  />
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -197,6 +255,7 @@ export default function BuiltInCrawlPanel() {
   const [selectedPlatforms, setSelectedPlatforms] = useState<JobCrawlPlatform[]>(defaultSelectedPlatforms);
   const [listingUrls, setListingUrls] = useState<Record<JobCrawlPlatform, string>>(defaultListingUrls);
   const [jobList, setJobList] = useState<DiscoveredJobRow[]>([]);
+  const [checkedJobKeys, setCheckedJobKeys] = useState<Set<string>>(() => new Set());
   const [platformErrors, setPlatformErrors] = useState<Partial<Record<JobCrawlPlatform, string>>>({});
   const [crawling, setCrawling] = useState(false);
   const [hydrated, setHydrated] = useState(false);
@@ -206,18 +265,26 @@ export default function BuiltInCrawlPanel() {
     const stored = loadStoredJobCrawl();
     if (stored) {
       setSelectedPlatforms(stored.selectedPlatforms);
-      setListingUrls(stored.listingUrls);
+      setListingUrls(mergeListingUrls(stored.listingUrls));
       setJobList(stored.jobs);
       if (stored.savedAt) setLastCrawledAt(stored.savedAt);
     }
     setHydrated(true);
   }, []);
 
-  const allSelected = ALL_JOB_CRAWL_PLATFORMS.every((p) => selectedPlatforms.includes(p));
+  const allPlatformSelected = ALL_JOB_CRAWL_PLATFORMS.every((p) => selectedPlatforms.includes(p));
   const canCrawl =
     !crawling &&
-    selectedPlatforms.length > 0 &&
-    selectedPlatforms.every((p) => PLATFORM_URL_VALID[p](listingUrls[p]));
+    selectedPlatforms.length > 1 &&
+    selectedPlatforms.every((p) => {
+      const url = listingUrls[p]?.trim() ?? "";
+      return url.length > 0 && PLATFORM_URL_VALID[p](url);
+    });
+
+  const allJobsChecked = useMemo(() => {
+    if (jobList.length === 0) return false;
+    return jobList.every((job, index) => checkedJobKeys.has(jobRowKey(job, index)));
+  }, [jobList, checkedJobKeys]);
 
   function selectAllPlatforms() {
     setSelectedPlatforms([...ALL_JOB_CRAWL_PLATFORMS]);
@@ -228,8 +295,13 @@ export default function BuiltInCrawlPanel() {
     setPlatformErrors({});
     setSelectedPlatforms((current) => {
       if (current.includes(platform)) {
-        if (current.length === 1) return current;
         return current.filter((p) => p !== platform);
+      }
+      if (!listingUrls[platform]?.trim()) {
+        setListingUrls((urls) => ({
+          ...urls,
+          [platform]: PLATFORM_DEFAULT_URL[platform],
+        }));
       }
       return [...current, platform];
     });
@@ -237,6 +309,23 @@ export default function BuiltInCrawlPanel() {
 
   function updateListingUrl(platform: JobCrawlPlatform, url: string) {
     setListingUrls((current) => ({ ...current, [platform]: url }));
+  }
+
+  function toggleJobRow(key: string) {
+    setCheckedJobKeys((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function toggleAllJobs() {
+    if (allJobsChecked) {
+      setCheckedJobKeys(new Set());
+      return;
+    }
+    setCheckedJobKeys(new Set(jobList.map((job, index) => jobRowKey(job, index))));
   }
 
   async function handleCrawl() {
@@ -270,6 +359,7 @@ export default function BuiltInCrawlPanel() {
       const savedAt = new Date().toISOString();
 
       setJobList(freshJobs);
+      setCheckedJobKeys(new Set());
       setLastCrawledAt(savedAt);
       saveStoredJobCrawl({
         selectedPlatforms,
@@ -301,12 +391,7 @@ export default function BuiltInCrawlPanel() {
               type="button"
               onClick={selectAllPlatforms}
               disabled={crawling}
-              className={[
-                "rounded-full px-4 py-1.5 text-sm font-semibold transition-all border",
-                allSelected
-                  ? "border-blue-500/40 bg-blue-600 text-white shadow-md shadow-blue-600/25"
-                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10",
-              ].join(" ")}
+              className={platformButtonClass(allPlatformSelected)}
             >
               All
             </button>
@@ -316,7 +401,7 @@ export default function BuiltInCrawlPanel() {
                 type="button"
                 onClick={() => togglePlatform(platform)}
                 disabled={crawling}
-                className={platformButtonClass(platform, selectedPlatforms.includes(platform))}
+                className={platformButtonClass(selectedPlatforms.includes(platform))}
               >
                 {PLATFORM_LABEL[platform]}
               </button>
@@ -324,8 +409,12 @@ export default function BuiltInCrawlPanel() {
           </div>
         </div>
 
-        {selectedPlatforms.length === 0 ? (
-          <p className="text-sm text-amber-700 dark:text-amber-300">Select at least one platform to crawl.</p>
+        {selectedPlatforms.length < 2 ? (
+          <p className="text-sm text-amber-700 dark:text-amber-300">
+            {selectedPlatforms.length === 0
+              ? "Select at least two platforms to crawl."
+              : "Select at least one more platform to crawl."}
+          </p>
         ) : (
           <div className="space-y-4">
             {selectedPlatforms.map((platform) => (
@@ -357,7 +446,7 @@ export default function BuiltInCrawlPanel() {
             type="button"
             onClick={() => void handleCrawl()}
             disabled={!canCrawl}
-            className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold px-6 py-3 rounded-xl transition-all shadow-lg shadow-blue-600/25"
+            className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold px-6 py-3 rounded-xl transition-all shadow-lg shadow-emerald-600/25"
           >
             {crawling ? (
               <>
@@ -370,7 +459,7 @@ export default function BuiltInCrawlPanel() {
             ) : (
               <>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0118 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
                 Crawl jobs
               </>
@@ -405,11 +494,22 @@ export default function BuiltInCrawlPanel() {
       {hydrated && jobList.length > 0 ? (
         <div className="mt-8 space-y-3">
           <div className="flex flex-wrap items-center gap-3 text-sm">
-            <span className="inline-flex items-center rounded-full bg-slate-500/10 px-3 py-1 font-semibold text-slate-700 dark:text-slate-300">
+            <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-3 py-1 font-semibold text-emerald-800 dark:text-emerald-300">
               {jobList.length} job{jobList.length === 1 ? "" : "s"}
             </span>
+            {checkedJobKeys.size > 0 ? (
+              <span className="text-slate-500 dark:text-slate-400">
+                {checkedJobKeys.size} selected
+              </span>
+            ) : null}
           </div>
-          <MergedJobTable jobs={jobList} />
+          <MergedJobTable
+            jobs={jobList}
+            checkedKeys={checkedJobKeys}
+            onToggleRow={toggleJobRow}
+            onToggleAll={toggleAllJobs}
+            allChecked={allJobsChecked}
+          />
         </div>
       ) : null}
     </div>
