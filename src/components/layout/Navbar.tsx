@@ -54,7 +54,7 @@ export default function Navbar() {
               className="w-[72px] h-auto object-contain"
               priority
             />
-            <span className="text-2xl font-extrabold bg-gradient-to-r from-blue-500 to-violet-600 bg-clip-text text-transparent tracking-tight">
+            <span className="font-display text-2xl font-extrabold bg-gradient-to-r from-indigo-600 via-violet-600 to-blue-600 bg-clip-text text-transparent tracking-tight dark:from-indigo-400 dark:via-violet-400 dark:to-blue-400">
               Devora21
             </span>
           </Link>
@@ -65,10 +65,10 @@ export default function Navbar() {
                 <Link
                   href={link.href}
                   aria-current={pathname === link.href ? "page" : undefined}
-                  className={`px-3 xl:px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 whitespace-nowrap ${
+                  className={`px-3 xl:px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150 whitespace-nowrap ${
                     pathname === link.href
-                      ? "text-blue-600 dark:text-blue-400 bg-blue-500/10"
-                      : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.05]"
+                      ? "text-indigo-700 dark:text-indigo-300 bg-indigo-500/10"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.05]"
                   }`}
                 >
                   {link.label}

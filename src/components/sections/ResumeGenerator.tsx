@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
 import ResumeRawAiTextarea from "@/components/ui/ResumeRawAiTextarea";
+import CopyIconButton from "@/components/ui/CopyIconButton";
 import ResumeContentReview from "@/components/sections/ResumeContentReview";
 import { resolveResumeWizardStep } from "@/components/sections/ResumeStepper";
 import { useAuth } from "@/context/AuthContext";
@@ -83,8 +84,9 @@ interface ResumeGeneratorProps {
 
 type Step = "form" | "review" | "done";
 
-const inputClass =
-  "w-full bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.10] hover:border-slate-300 dark:hover:border-white/[0.16] focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-4 py-3.5 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 dark:placeholder:text-slate-600 outline-none transition-all";
+import { ui } from "@/lib/ui-styles";
+
+const inputClass = ui.input;
 
 // Keep the scoring code available, but disable the feature in the UI and network flow.
 const RESUME_SCORE_SYSTEM_ENABLED = false;
@@ -934,27 +936,34 @@ export default function ResumeGenerator({
                 value={form.jobLink}
                 onChange={handleChange}
                 placeholder="https://boards.greenhouse.io/… or Lever / Ashby careers URL"
-                className={`${inputClass} flex-1`}
+                className={`${inputClass} flex-1 min-w-0`}
                 disabled={generating || applying || importingJob}
               />
-              <button
-                type="button"
-                onClick={() => void handleImportJobLink()}
-                disabled={generating || applying || importingJob || !form.jobLink.trim()}
-                className="shrink-0 inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed px-5 py-3 text-sm font-semibold transition-all"
-              >
-                {importingJob ? (
-                  <>
-                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Applying…
-                  </>
-                ) : (
-                  "Apply"
-                )}
-              </button>
+              <div className="flex shrink-0 gap-2">
+                <CopyIconButton
+                  text={form.jobLink}
+                  label="Copy job link"
+                  disabled={generating || applying || importingJob}
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleImportJobLink()}
+                  disabled={generating || applying || importingJob || !form.jobLink.trim()}
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed px-5 py-3 text-sm font-semibold transition-all"
+                >
+                  {importingJob ? (
+                    <>
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Applying…
+                    </>
+                  ) : (
+                    "Apply"
+                  )}
+                </button>
+              </div>
             </div>
             <p className="mt-1.5 text-xs text-slate-400">
               Apply fills job title, company name, and description from the posting, then you can generate the AI draft.
@@ -974,31 +983,37 @@ export default function ResumeGenerator({
               <label htmlFor="jobTitle" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                 Job title <span className="text-red-400">*</span>
               </label>
-              <input
-                id="jobTitle"
-                name="jobTitle"
-                type="text"
-                value={form.jobTitle}
-                onChange={handleChange}
-                placeholder="e.g. Senior Backend Engineer"
-                className={inputClass}
-                required
-              />
+              <div className="flex items-stretch gap-2">
+                <input
+                  id="jobTitle"
+                  name="jobTitle"
+                  type="text"
+                  value={form.jobTitle}
+                  onChange={handleChange}
+                  placeholder="e.g. Senior Backend Engineer"
+                  className={`${inputClass} min-w-0 flex-1`}
+                  required
+                />
+                <CopyIconButton text={form.jobTitle} label="Copy job title" disabled={generating} />
+              </div>
             </div>
             <div>
               <label htmlFor="companyName" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                 Company name <span className="text-red-400">*</span>
               </label>
-              <input
-                id="companyName"
-                name="companyName"
-                type="text"
-                value={form.companyName}
-                onChange={handleChange}
-                placeholder="e.g. Acme Corp"
-                className={inputClass}
-                required
-              />
+              <div className="flex items-stretch gap-2">
+                <input
+                  id="companyName"
+                  name="companyName"
+                  type="text"
+                  value={form.companyName}
+                  onChange={handleChange}
+                  placeholder="e.g. Acme Corp"
+                  className={`${inputClass} min-w-0 flex-1`}
+                  required
+                />
+                <CopyIconButton text={form.companyName} label="Copy company name" disabled={generating} />
+              </div>
             </div>
           </div>
 

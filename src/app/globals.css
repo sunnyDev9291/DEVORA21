@@ -2,24 +2,76 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer utilities {
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border-width: 0;
+@layer base {
+  :root {
+    --surface-page: 248 250 252;
+    --surface-elevated: 255 255 255;
+    --text-primary: 15 23 42;
+    --text-secondary: 71 85 105;
+    --border-default: 226 232 240;
+    --accent: 99 102 241;
+    --accent-soft: 238 242 255;
   }
-}
 
-:root {
-  --bg-primary: #060B18;
-  --bg-secondary: #0A0F1E;
-  --bg-card: #0F172A;
+  .dark {
+    --surface-page: 6 11 24;
+    --surface-elevated: 10 15 30;
+    --text-primary: 248 250 252;
+    --text-secondary: 148 163 184;
+    --border-default: 255 255 255;
+    --accent: 129 140 248;
+    --accent-soft: 30 27 75;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply font-sans antialiased;
+    font-size: 15px;
+    line-height: 1.6;
+    letter-spacing: -0.011em;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-display tracking-tight text-slate-900 dark:text-white;
+    letter-spacing: -0.025em;
+  }
+
+  h1 {
+    @apply text-3xl sm:text-4xl font-bold leading-tight;
+  }
+
+  h2 {
+    @apply text-2xl font-bold leading-snug;
+  }
+
+  h3 {
+    @apply text-xl font-semibold leading-snug;
+  }
+
+  p {
+    @apply leading-relaxed;
+  }
+
+  ::selection {
+    background: rgba(99, 102, 241, 0.22);
+    color: rgb(15 23 42);
+  }
+
+  .dark ::selection {
+    background: rgba(129, 140, 248, 0.28);
+    color: rgb(248 250 252);
+  }
 }
 
 *,
@@ -28,36 +80,26 @@
   box-sizing: border-box;
 }
 
-html {
-  scroll-behavior: smooth;
-}
-
-html,
-body {
-  transition: background-color 0.3s ease, color 0.3s ease;
-}
-
-body {
-  background-color: var(--bg-primary);
-  color: #f8fafc;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
 ::-webkit-scrollbar {
-  width: 5px;
+  width: 6px;
+  height: 6px;
 }
+
 ::-webkit-scrollbar-track {
-  background: #0a0f1e;
+  background: rgb(241 245 249);
 }
+
+.dark ::-webkit-scrollbar-track {
+  background: rgb(10 15 30);
+}
+
 ::-webkit-scrollbar-thumb {
-  background: #3b82f6;
+  background: rgb(165 180 252);
   border-radius: 999px;
 }
 
-::selection {
-  background: rgba(59, 130, 246, 0.25);
-  color: #f8fafc;
+.dark ::-webkit-scrollbar-thumb {
+  background: rgb(79 70 229);
 }
 
 /* docx-preview — isolated from app dark theme; render as Word print layout */
@@ -150,18 +192,45 @@ body {
 }
 
 @layer utilities {
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+
   .text-gradient {
-    @apply text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600;
+    @apply bg-gradient-to-r from-indigo-600 via-violet-600 to-blue-600 bg-clip-text text-transparent;
   }
+
+  .dark .text-gradient {
+    @apply from-indigo-400 via-violet-400 to-blue-400;
+  }
+
   .bg-glass {
-    background: rgba(255, 255, 255, 0.03);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
   }
+
+  .dark .bg-glass {
+    background: rgba(255, 255, 255, 0.04);
+  }
+
   .border-glass {
+    border-color: rgba(148, 163, 184, 0.35);
+  }
+
+  .dark .border-glass {
     border-color: rgba(255, 255, 255, 0.08);
   }
-  .glow-blue {
-    box-shadow: 0 0 40px rgba(59, 130, 246, 0.15);
+
+  .glow-brand {
+    box-shadow: 0 0 48px rgba(99, 102, 241, 0.18);
   }
 }

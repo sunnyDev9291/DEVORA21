@@ -184,7 +184,7 @@ export default function HeroSection() {
           style={{ animation: "fadeUp 0.6s ease 0.1s both" }}
         >
           <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-          <span className="text-blue-600 dark:text-blue-300 text-sm font-medium">Currently accepting new clients</span>
+          <span className="text-indigo-700 dark:text-indigo-300 text-sm font-medium">Currently accepting new clients</span>
         </div>
 
         {/* Headline */}
@@ -220,7 +220,7 @@ export default function HeroSection() {
             href={CONTACT_INFO.calendly}
             target="_blank"
             rel="noopener noreferrer"
-            className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-xl shadow-blue-600/30 hover:shadow-blue-500/40 hover:-translate-y-0.5 text-base text-center"
+            className="w-full sm:w-auto bg-gradient-to-r from-indigo-600 via-violet-600 to-blue-600 hover:from-indigo-500 hover:via-violet-500 hover:to-blue-500 text-white font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-xl shadow-indigo-600/30 hover:shadow-indigo-500/40 hover:-translate-y-0.5 text-base text-center"
           >
             Get a Free Consultation
           </a>

@@ -9,6 +9,13 @@ export default {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+        display: ["var(--font-sans)", "system-ui", "sans-serif"],
+      },
+      fontSize: {
+        "2xs": ["0.6875rem", { lineHeight: "1rem", letterSpacing: "0.02em" }],
+      },
       colors: {
         navy: {
           950: "#060B18",
@@ -17,9 +24,27 @@ export default {
           700: "#1A2540",
           600: "#1E293B",
         },
+        brand: {
+          50: "#eef2ff",
+          100: "#e0e7ff",
+          200: "#c7d2fe",
+          300: "#a5b4fc",
+          400: "#818cf8",
+          500: "#6366f1",
+          600: "#4f46e5",
+          700: "#4338ca",
+          800: "#3730a3",
+          900: "#312e81",
+        },
+      },
+      boxShadow: {
+        card: "0 4px 24px -4px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04)",
+        "card-dark": "0 8px 32px -8px rgba(0, 0, 0, 0.45)",
+        elevated: "0 12px 40px -12px rgba(79, 70, 229, 0.18)",
       },
       backgroundImage: {
         "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",
+        "brand-gradient": "linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #2563eb 100%)",
       },
       animation: {
         "fade-up": "fadeUp 0.6s ease-out forwards",

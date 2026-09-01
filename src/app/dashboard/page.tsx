@@ -13,6 +13,7 @@ import { useAuth } from "@/context/AuthContext";
 import { getApiErrorMessage, isValidAuthUser } from "@/lib/auth-api";
 import { resolveUserNames, loadStoredProfile } from "@/lib/user-profile";
 import { AUTH_LINKS, APP_FEATURES } from "@/lib/constants";
+import { ui } from "@/lib/ui-styles";
 
 function DashboardContent() {
   const { user, logout, refreshUser, isResumeBuilderEnabled } = useAuth();
@@ -64,14 +65,14 @@ function DashboardContent() {
       : { firstName: "", lastName: "", fullName: "" };
 
   return (
-    <div className="min-h-[calc(100vh-5rem)] bg-navy-950 px-4 py-12 sm:px-6">
+    <div className={`${ui.page} px-4 py-12 sm:px-6`}>
       <div className="mx-auto max-w-5xl animate-fade-up">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-white">
+            <h1 className={ui.headingLg}>
               Welcome{names.firstName ? `, ${names.firstName}` : ""}
             </h1>
-            <p className="mt-1 text-slate-400">{user?.email}</p>
+            <p className={`mt-1 ${ui.muted}`}>{user?.email}</p>
           </div>
           <Button variant="outline" size="sm" onClick={handleLogout} disabled={isLoggingOut}>
             {isLoggingOut ? "Signing out…" : "Sign out"}
@@ -86,7 +87,7 @@ function DashboardContent() {
         )}
 
         {error && (
-          <div className="mt-6 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300" role="alert">
+          <div className="mt-6 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-300" role="alert">
             {error}
           </div>
         )}
@@ -104,8 +105,8 @@ function DashboardContent() {
           </div>
         )}
 
-        <div className="mt-8 rounded-2xl border border-white/10 bg-navy-900/60 p-6">
-          <h2 className="text-sm font-medium uppercase tracking-wider text-slate-500">Your tools</h2>
+        <div className={`mt-8 ${ui.cardCompact}`}>
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Your tools</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {quickActions.map((action) => (
               <Link
@@ -113,8 +114,8 @@ function DashboardContent() {
                 href={action.href}
                 className={`rounded-xl border p-4 transition-all ${action.accent}`}
               >
-                <p className="text-sm font-semibold text-white">{action.title}</p>
-                <p className="mt-1 text-xs text-slate-400 leading-relaxed">{action.description}</p>
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">{action.title}</p>
+                <p className={`mt-1 text-xs leading-relaxed ${ui.mutedSm}`}>{action.description}</p>
               </Link>
             ))}
           </div>
@@ -129,7 +130,7 @@ export default function DashboardPage() {
     <AuthGuard>
       <Suspense
         fallback={
-          <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center bg-navy-950">
+          <div className={`flex min-h-[calc(100vh-5rem)] items-center justify-center ${ui.page}`}>
             <div className="h-10 w-10 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
           </div>
         }

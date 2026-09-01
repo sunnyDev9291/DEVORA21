@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
@@ -17,7 +17,12 @@ import {
   websiteJsonLd,
 } from "@/lib/seo";
 
-const inter = Inter({ subsets: ["latin"], display: "swap" });
+const plusJakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-sans",
+  weight: ["400", "500", "600", "700", "800"],
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -63,7 +68,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
+    <html lang="en" className={`${plusJakarta.variable} dark`} suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{
@@ -71,7 +76,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className={`${inter.className} bg-slate-50 dark:bg-navy-950 text-slate-900 dark:text-slate-100`}>
+      <body className="font-sans bg-slate-50 text-slate-900 dark:bg-navy-950 dark:text-slate-100">
         <JsonLd data={[organizationJsonLd(), websiteJsonLd()]} />
         <ThemeProvider>
           <AuthProvider>

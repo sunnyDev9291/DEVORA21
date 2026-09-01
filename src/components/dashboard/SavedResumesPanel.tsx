@@ -12,6 +12,7 @@ import {
 } from "@/lib/saved-resumes-api";
 import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
 import { TODAYS_RESUME_COUNT_CHANGED_EVENT } from "@/lib/todays-resume-count";
+import { ui } from "@/lib/ui-styles";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
 const Modal = dynamic(() => import("@/components/ui/Modal"), { ssr: false });
@@ -111,8 +112,7 @@ const STYLES = {
     error: "mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300",
   },
   resume: {
-    section:
-      "overflow-hidden rounded-3xl border border-slate-200/80 bg-white/90 p-6 shadow-xl shadow-slate-200/50 backdrop-blur-sm dark:border-white/[0.08] dark:bg-navy-900/80 dark:shadow-black/30 sm:p-8",
+    section: ui.card,
     title: "text-lg font-semibold text-slate-900 dark:text-white",
     subtitle: "mt-1 text-sm text-slate-500 dark:text-slate-400",
     input:

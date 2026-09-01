@@ -19,12 +19,11 @@ import {
 import { formatEstDateTimeParts } from "@/lib/format-est-datetime";
 import { flattenCrawlResults } from "@/lib/job-crawl-list";
 import { loadStoredJobCrawl, saveStoredJobCrawl } from "@/lib/job-crawl-storage";
+import { ui } from "@/lib/ui-styles";
 
-const inputClass =
-  "w-full bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.10] hover:border-slate-300 dark:hover:border-white/[0.16] focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 rounded-xl px-4 py-3 text-slate-900 dark:text-white text-sm outline-none transition-all";
+const inputClass = ui.input;
 
-const filterInputClass =
-  "w-full bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.10] hover:border-slate-300 dark:hover:border-white/[0.16] focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 rounded-xl px-4 py-3.5 text-base text-slate-900 dark:text-white outline-none transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500";
+const filterInputClass = `${ui.input} py-3.5 text-base placeholder:text-slate-400 dark:placeholder:text-slate-500`;
 
 type JobTableSortMode = "company" | "platform";
 
@@ -725,7 +724,7 @@ export default function BuiltInCrawlPanel() {
   }
 
   return (
-    <div className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white/90 p-6 shadow-xl shadow-slate-200/50 backdrop-blur-sm dark:border-white/[0.08] dark:bg-navy-900/80 dark:shadow-black/30 sm:p-8">
+    <div className={ui.card}>
       <div className="mb-6">
         <h2 className="text-xl font-bold text-slate-900 dark:text-white">Job discovery</h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 max-w-2xl">
