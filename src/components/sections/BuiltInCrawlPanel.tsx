@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getApiErrorMessage } from "@/lib/auth-api";
-import { crawlBuiltInJobs, crawlHiringCafeJobs, crawlWorkableJobs } from "@/lib/builtin-crawl-api";
+import { crawlBuiltInJobs, crawlHiringCafeJobs, crawlWorkableJobs, crawlWorkingNomadsJobs } from "@/lib/builtin-crawl-api";
 import {
   ALL_JOB_CRAWL_PLATFORMS,
   BUILTIN_CRAWL_TIMEOUT_MS,
@@ -11,6 +11,7 @@ import {
   isBuiltInListingUrl,
   isHiringCafeListingUrl,
   isWorkableListingUrl,
+  isWorkingNomadsListingUrl,
   type DiscoveredJobRow,
   type JobCrawlPlatform,
   type JobCrawlResult,
@@ -36,6 +37,7 @@ const PLATFORM_LABEL: Record<JobCrawlPlatform, string> = {
   builtin: "Built In",
   hiringcafe: "HiringCafe",
   workable: "Workable",
+  workingnomads: "Working Nomads",
 };
 
 const PLATFORM_DEFAULT_URL = DEFAULT_LISTING_URLS;
@@ -44,18 +46,22 @@ const PLATFORM_URL_VALID: Record<JobCrawlPlatform, (url: string) => boolean> = {
   builtin: isBuiltInListingUrl,
   hiringcafe: isHiringCafeListingUrl,
   workable: isWorkableListingUrl,
+  workingnomads: isWorkingNomadsListingUrl,
 };
 
 const PLATFORM_PLACEHOLDER: Record<JobCrawlPlatform, string> = {
   builtin: "https://builtin.com/jobs/…",
   hiringcafe: "https://hiringcafe.com/?searchState=…",
   workable: "https://jobs.workable.com/search?…",
+  workingnomads: "https://www.workingnomads.com/jobs?…",
 };
 
 const PLATFORM_HINT: Record<JobCrawlPlatform, string> = {
   builtin: "Page 1 listing — backend handles pagination.",
   hiringcafe: "Page 0 listing with searchState — backend handles pagination.",
   workable: "Copy the full /search URL from Workable after setting filters (single page, no pagination).",
+  workingnomads:
+    "Copy the full /jobs URL from Working Nomads after setting filters (single page, no pagination).",
 };
 
 const PLATFORM_SELECTED_CLASS =
@@ -64,6 +70,7 @@ const PLATFORM_TABLE_BADGE_CLASS: Record<JobCrawlPlatform, string> = {
   builtin: "bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-1 ring-violet-500/20",
   hiringcafe: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/20",
   workable: "bg-amber-500/15 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500/20",
+  workingnomads: "bg-sky-500/15 text-sky-800 dark:text-sky-300 ring-1 ring-sky-500/20",
 };
 
 function defaultListingUrls(): Record<JobCrawlPlatform, string> {
@@ -93,7 +100,8 @@ function crawlPlatform(
 ): Promise<JobCrawlResult> {
   if (platform === "builtin") return crawlBuiltInJobs(url, signal);
   if (platform === "hiringcafe") return crawlHiringCafeJobs(url, signal);
-  return crawlWorkableJobs(url, signal);
+  if (platform === "workable") return crawlWorkableJobs(url, signal);
+  return crawlWorkingNomadsJobs(url, signal);
 }
 
 async function copyTextToClipboard(text: string): Promise<boolean> {

@@ -12,7 +12,12 @@ export type StoredJobCrawlSession = {
 };
 
 function isPlatform(value: unknown): value is JobCrawlPlatform {
-  return value === "builtin" || value === "hiringcafe" || value === "workable";
+  return (
+    value === "builtin" ||
+    value === "hiringcafe" ||
+    value === "workable" ||
+    value === "workingnomads"
+  );
 }
 
 function parseJobRow(raw: unknown, index: number): DiscoveredJobRow | null {
@@ -43,6 +48,7 @@ function parseListingUrls(raw: unknown): Record<JobCrawlPlatform, string> | null
     builtin: typeof obj.builtin === "string" ? obj.builtin : "",
     hiringcafe: typeof obj.hiringcafe === "string" ? obj.hiringcafe : "",
     workable: typeof obj.workable === "string" ? obj.workable : "",
+    workingnomads: typeof obj.workingnomads === "string" ? obj.workingnomads : "",
   });
 }
 
@@ -92,6 +98,10 @@ function parseResults(raw: unknown): Partial<Record<JobCrawlPlatform, JobCrawlRe
   if (obj.workable) {
     const parsed = parseResult(obj.workable);
     if (parsed) out.workable = parsed;
+  }
+  if (obj.workingnomads) {
+    const parsed = parseResult(obj.workingnomads);
+    if (parsed) out.workingnomads = parsed;
   }
 
   return out;
@@ -147,6 +157,7 @@ function migrateLegacy(rawKey: string): StoredJobCrawlSession | null {
           builtin: platform === "builtin" ? listingUrl : "",
           hiringcafe: platform === "hiringcafe" ? listingUrl : "",
           workable: platform === "workable" ? listingUrl : "",
+          workingnomads: platform === "workingnomads" ? listingUrl : "",
         }),
         jobs: flattenCrawlResults({ [platform]: result }, [platform]),
         savedAt: typeof obj.savedAt === "string" ? obj.savedAt : "",

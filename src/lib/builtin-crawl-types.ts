@@ -8,9 +8,14 @@ export type JobCrawlJob = {
 /** @deprecated Use JobCrawlJob */
 export type BuiltInCrawlJob = JobCrawlJob;
 
-export type JobCrawlPlatform = "builtin" | "hiringcafe" | "workable";
+export type JobCrawlPlatform = "builtin" | "hiringcafe" | "workable" | "workingnomads";
 
-export const ALL_JOB_CRAWL_PLATFORMS: JobCrawlPlatform[] = ["builtin", "hiringcafe", "workable"];
+export const ALL_JOB_CRAWL_PLATFORMS: JobCrawlPlatform[] = [
+  "builtin",
+  "hiringcafe",
+  "workable",
+  "workingnomads",
+];
 
 export type JobCrawlResult = {
   sourceUrl: string;
@@ -44,10 +49,15 @@ export const DEFAULT_HIRINGCAFE_LISTING_URL =
 export const DEFAULT_WORKABLE_LISTING_URL =
   "https://jobs.workable.com/search?location=Argentina&day_range=1&query=specialist++%7C+engineer+%7C+developer+%7C+Scientist&workplace=remote";
 
+/** Default Working Nomads listing URL (single page — copy filters from browser). */
+export const DEFAULT_WORKINGNOMADS_LISTING_URL =
+  "https://www.workingnomads.com/jobs?category=development&location=argentina&postedDate=1";
+
 export const DEFAULT_LISTING_URLS: Record<JobCrawlPlatform, string> = {
   builtin: DEFAULT_BUILTIN_LISTING_URL,
   hiringcafe: DEFAULT_HIRINGCAFE_LISTING_URL,
   workable: DEFAULT_WORKABLE_LISTING_URL,
+  workingnomads: DEFAULT_WORKINGNOMADS_LISTING_URL,
 };
 
 /** Fill missing platform URLs from defaults (e.g. after adding Workable to saved sessions). */
@@ -58,6 +68,7 @@ export function mergeListingUrls(
     builtin: stored?.builtin?.trim() || DEFAULT_BUILTIN_LISTING_URL,
     hiringcafe: stored?.hiringcafe?.trim() || DEFAULT_HIRINGCAFE_LISTING_URL,
     workable: stored?.workable?.trim() || DEFAULT_WORKABLE_LISTING_URL,
+    workingnomads: stored?.workingnomads?.trim() || DEFAULT_WORKINGNOMADS_LISTING_URL,
   };
 }
 
@@ -101,10 +112,23 @@ export function isWorkableListingUrl(url: string): boolean {
   }
 }
 
+export function isWorkingNomadsListingUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url.trim());
+    if (parsed.protocol !== "https:") return false;
+    const host = parsed.hostname.replace(/^www\./, "");
+    if (host !== "workingnomads.com") return false;
+    return parsed.pathname === "/jobs";
+  } catch {
+    return false;
+  }
+}
+
 export function detectJobCrawlPlatform(url: string): JobCrawlPlatform | null {
   if (isBuiltInListingUrl(url)) return "builtin";
   if (isHiringCafeListingUrl(url)) return "hiringcafe";
   if (isWorkableListingUrl(url)) return "workable";
+  if (isWorkingNomadsListingUrl(url)) return "workingnomads";
   return null;
 }
 

@@ -14,6 +14,8 @@ import {
 
   isWorkableListingUrl,
 
+  isWorkingNomadsListingUrl,
+
   stripListingPageParam,
 
   type JobCrawlJob,
@@ -126,7 +128,9 @@ function parseJob(raw: unknown, index: number): JobCrawlJob {
 
 function parsePlatform(value: unknown, fallback: JobCrawlPlatform): JobCrawlPlatform {
 
-  return value === "hiringcafe" || value === "builtin" || value === "workable" ? value : fallback;
+  return value === "hiringcafe" || value === "builtin" || value === "workable" || value === "workingnomads"
+    ? value
+    : fallback;
 
 }
 
@@ -172,7 +176,7 @@ type CrawlConfig = {
 
   platform: JobCrawlPlatform;
 
-  path: "/jobs/crawl/builtin" | "/jobs/crawl/hiringcafe" | "/jobs/crawl/workable";
+  path: "/jobs/crawl/builtin" | "/jobs/crawl/hiringcafe" | "/jobs/crawl/workable" | "/jobs/crawl/workingnomads";
 
   label: string;
 
@@ -233,6 +237,22 @@ const CRAWL_CONFIG: Record<JobCrawlPlatform, CrawlConfig> = {
     invalidMessage: "URL must be a valid https://jobs.workable.com/search?… listing URL.",
 
     emptyMessage: "No jobs found for this search. The listing may be empty or Workable changed their layout.",
+
+  },
+
+  workingnomads: {
+
+    platform: "workingnomads",
+
+    path: "/jobs/crawl/workingnomads",
+
+    label: "Working Nomads",
+
+    validate: isWorkingNomadsListingUrl,
+
+    invalidMessage: "URL must be a valid https://www.workingnomads.com/jobs?… listing URL.",
+
+    emptyMessage: "No jobs found for this search. The listing may be empty or Working Nomads changed their layout.",
 
   },
 
@@ -436,6 +456,16 @@ export async function crawlWorkableJobs(url: string, signal?: AbortSignal): Prom
 
 
 
+/** POST /jobs/crawl/workingnomads — single-page Working Nomads listing via Zyte. */
+
+export async function crawlWorkingNomadsJobs(url: string, signal?: AbortSignal): Promise<JobCrawlResult> {
+
+  return postJobCrawl("workingnomads", url, signal);
+
+}
+
+
+
 /** POST /jobs/discover/hiringcafe — page 0 only. */
 
 export async function discoverHiringCafeJobs(url: string, signal?: AbortSignal): Promise<JobCrawlResult> {
@@ -510,7 +540,12 @@ export async function crawlJobs(url: string, signal?: AbortSignal): Promise<JobC
 
   if (platform === "workable") return crawlWorkableJobs(url, signal);
 
-  throw new ApiError("URL must be a builtin.com, hiringcafe.com, or jobs.workable.com listing.", 400);
+  if (platform === "workingnomads") return crawlWorkingNomadsJobs(url, signal);
+
+  throw new ApiError(
+    "URL must be a builtin.com, hiringcafe.com, jobs.workable.com, or workingnomads.com listing.",
+    400
+  );
 
 }
 
