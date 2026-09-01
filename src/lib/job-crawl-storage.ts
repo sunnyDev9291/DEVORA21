@@ -1,16 +1,53 @@
-import type { JobCrawlPlatform, JobCrawlResult } from "@/lib/builtin-crawl-types";
+import type { DiscoveredJobRow, JobCrawlPlatform, JobCrawlResult } from "@/lib/builtin-crawl-types";
+import { flattenCrawlResults } from "@/lib/job-crawl-list";
 
-const STORAGE_KEY = "dv21:job-discovery-crawl:v2";
+const STORAGE_KEY = "dv21:job-discovery-crawl:v3";
 
 export type StoredJobCrawlSession = {
   selectedPlatforms: JobCrawlPlatform[];
   listingUrls: Record<JobCrawlPlatform, string>;
-  results: Partial<Record<JobCrawlPlatform, JobCrawlResult>>;
+  jobs: DiscoveredJobRow[];
   savedAt: string;
 };
 
 function isPlatform(value: unknown): value is JobCrawlPlatform {
-  return value === "builtin" || value === "hiringcafe";
+  return value === "builtin" || value === "hiringcafe" || value === "workable";
+}
+
+function parseJobRow(raw: unknown, index: number): DiscoveredJobRow | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  if (!isPlatform(obj.platform)) return null;
+
+  return {
+    platform: obj.platform,
+    jobId: typeof obj.jobId === "string" ? obj.jobId : String(index),
+    companyName: typeof obj.companyName === "string" ? obj.companyName : "",
+    jobTitle: typeof obj.jobTitle === "string" ? obj.jobTitle : "",
+    jobUrl: typeof obj.jobUrl === "string" ? obj.jobUrl : "",
+  };
+}
+
+function parseJobs(raw: unknown): DiscoveredJobRow[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item, index) => parseJobRow(item, index))
+    .filter((row): row is DiscoveredJobRow => row !== null);
+}
+
+function parseListingUrls(raw: unknown): Record<JobCrawlPlatform, string> | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  return {
+    builtin: typeof obj.builtin === "string" ? obj.builtin : "",
+    hiringcafe: typeof obj.hiringcafe === "string" ? obj.hiringcafe : "",
+    workable: typeof obj.workable === "string" ? obj.workable : "",
+  };
+}
+
+function parsePlatforms(raw: unknown): JobCrawlPlatform[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(isPlatform);
 }
 
 function parseResult(raw: unknown): JobCrawlResult | null {
@@ -38,14 +75,6 @@ function parseResult(raw: unknown): JobCrawlResult | null {
   };
 }
 
-function parseListingUrls(raw: unknown): Record<JobCrawlPlatform, string> | null {
-  if (!raw || typeof raw !== "object") return null;
-  const obj = raw as Record<string, unknown>;
-  const builtin = typeof obj.builtin === "string" ? obj.builtin : "";
-  const hiringcafe = typeof obj.hiringcafe === "string" ? obj.hiringcafe : "";
-  return { builtin, hiringcafe };
-}
-
 function parseResults(raw: unknown): Partial<Record<JobCrawlPlatform, JobCrawlResult>> {
   if (!raw || typeof raw !== "object") return {};
   const obj = raw as Record<string, unknown>;
@@ -59,39 +88,71 @@ function parseResults(raw: unknown): Partial<Record<JobCrawlPlatform, JobCrawlRe
     const parsed = parseResult(obj.hiringcafe);
     if (parsed) out.hiringcafe = parsed;
   }
+  if (obj.workable) {
+    const parsed = parseResult(obj.workable);
+    if (parsed) out.workable = parsed;
+  }
 
   return out;
 }
 
-function parsePlatforms(raw: unknown): JobCrawlPlatform[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.filter(isPlatform);
-}
-
-function migrateV1(): StoredJobCrawlSession | null {
+function migrateLegacy(rawKey: string): StoredJobCrawlSession | null {
   try {
-    const raw = localStorage.getItem("dv21:job-discovery-crawl:v1");
+    const raw = localStorage.getItem(rawKey);
     if (!raw) return null;
 
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== "object") return null;
 
     const obj = parsed as Record<string, unknown>;
-    const result = parseResult(obj.result);
-    if (!result || !isPlatform(obj.platform)) return null;
 
-    const listingUrl = typeof obj.listingUrl === "string" ? obj.listingUrl : "";
-    const platform = obj.platform;
+    if (Array.isArray(obj.jobs)) {
+      const jobs = parseJobs(obj.jobs);
+      const listingUrls = parseListingUrls(obj.listingUrls);
+      const selectedPlatforms = parsePlatforms(obj.selectedPlatforms);
+      if (!listingUrls || selectedPlatforms.length === 0) return null;
 
-    return {
-      selectedPlatforms: [platform],
-      listingUrls: {
-        builtin: platform === "builtin" ? listingUrl : "",
-        hiringcafe: platform === "hiringcafe" ? listingUrl : "",
-      },
-      results: { [platform]: result },
-      savedAt: typeof obj.savedAt === "string" ? obj.savedAt : "",
-    };
+      return {
+        selectedPlatforms,
+        listingUrls,
+        jobs,
+        savedAt: typeof obj.savedAt === "string" ? obj.savedAt : "",
+      };
+    }
+
+    if (obj.results) {
+      const listingUrls = parseListingUrls(obj.listingUrls);
+      const selectedPlatforms = parsePlatforms(obj.selectedPlatforms);
+      const results = parseResults(obj.results);
+      if (!listingUrls || selectedPlatforms.length === 0) return null;
+
+      return {
+        selectedPlatforms,
+        listingUrls,
+        jobs: flattenCrawlResults(results, selectedPlatforms),
+        savedAt: typeof obj.savedAt === "string" ? obj.savedAt : "",
+      };
+    }
+
+    if (obj.result && isPlatform(obj.platform)) {
+      const result = parseResult(obj.result);
+      if (!result) return null;
+      const listingUrl = typeof obj.listingUrl === "string" ? obj.listingUrl : "";
+      const platform = obj.platform;
+
+      return {
+        selectedPlatforms: [platform],
+        listingUrls: {
+          builtin: platform === "builtin" ? listingUrl : "",
+          hiringcafe: platform === "hiringcafe" ? listingUrl : "",
+          workable: platform === "workable" ? listingUrl : "",
+        },
+        jobs: flattenCrawlResults({ [platform]: result }, [platform]),
+        savedAt: typeof obj.savedAt === "string" ? obj.savedAt : "",
+      };
+    }
+
+    return null;
   } catch {
     return null;
   }
@@ -100,29 +161,11 @@ function migrateV1(): StoredJobCrawlSession | null {
 export function loadStoredJobCrawl(): StoredJobCrawlSession | null {
   if (typeof window === "undefined") return null;
 
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return migrateV1();
-
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object") return migrateV1();
-
-    const obj = parsed as Record<string, unknown>;
-    const listingUrls = parseListingUrls(obj.listingUrls);
-    const selectedPlatforms = parsePlatforms(obj.selectedPlatforms);
-    const results = parseResults(obj.results);
-
-    if (!listingUrls || selectedPlatforms.length === 0) return migrateV1();
-
-    return {
-      selectedPlatforms,
-      listingUrls,
-      results,
-      savedAt: typeof obj.savedAt === "string" ? obj.savedAt : "",
-    };
-  } catch {
-    return migrateV1();
-  }
+  return (
+    migrateLegacy(STORAGE_KEY) ??
+    migrateLegacy("dv21:job-discovery-crawl:v2") ??
+    migrateLegacy("dv21:job-discovery-crawl:v1")
+  );
 }
 
 export function saveStoredJobCrawl(session: StoredJobCrawlSession): void {
@@ -130,6 +173,7 @@ export function saveStoredJobCrawl(session: StoredJobCrawlSession): void {
 
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+    localStorage.removeItem("dv21:job-discovery-crawl:v2");
     localStorage.removeItem("dv21:job-discovery-crawl:v1");
   } catch {
     // ignore quota / private mode
@@ -141,6 +185,7 @@ export function clearStoredJobCrawl(): void {
 
   try {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem("dv21:job-discovery-crawl:v2");
     localStorage.removeItem("dv21:job-discovery-crawl:v1");
   } catch {
     // ignore

@@ -17,7 +17,7 @@ const BuiltInCrawlPanel = dynamic(
 
 export const metadata: Metadata = pageMetadata({
   title: "Job Discovery",
-  description: "Crawl Built In or HiringCafe job listings and browse roles in one merged list.",
+  description: "Crawl Built In, HiringCafe, or Workable job listings in one merged list.",
   path: "/resume/discover",
 });
 
