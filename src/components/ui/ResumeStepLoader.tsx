@@ -21,9 +21,9 @@ const ACCENT = {
     border: "border-emerald-500/15",
   },
   blue: {
-    box: "bg-blue-500/15",
+    box: "bg-orange-500/15",
     spinner: "text-blue-500",
-    border: "border-blue-500/15",
+    border: "border-orange-500/15",
   },
 } as const;
 

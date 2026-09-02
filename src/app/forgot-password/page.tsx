@@ -52,7 +52,7 @@ export default function ForgotPasswordPage() {
           </>
         }
       >
-        <div className="mb-6 rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-100">
+        <div className="mb-6 rounded-xl border border-orange-500/20 bg-orange-500/10 px-4 py-3 text-sm text-blue-100">
           <p>
             Signed up with <span className="font-semibold text-white">Google</span>? You don&apos;t have a Devora21
             password. Use{" "}

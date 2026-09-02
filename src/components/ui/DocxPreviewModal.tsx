@@ -126,8 +126,8 @@ export default function DocxPreviewModal({
         aria-labelledby={titleId}
         aria-label="Document preview"
       >
-        <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 dark:border-white/[0.08] bg-white/95 dark:bg-navy-900/95 px-4 sm:px-5 h-12 backdrop-blur-sm">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/15">
+        <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 dark:border-white/[0.08] bg-white/95 dark:bg-warm-900/95 px-4 sm:px-5 h-12 backdrop-blur-sm">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-orange-500/15">
             <svg className="h-4 w-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path
                 strokeLinecap="round"
@@ -143,7 +143,7 @@ export default function DocxPreviewModal({
               {title}
             </h2>
             {(subtitle || fileName) && (
-              <p className="truncate text-[11px] text-slate-500 dark:text-slate-400 hidden sm:block">
+              <p className="truncate text-[13px] text-slate-500 dark:text-slate-400 hidden sm:block">
                 {subtitle ?? fileName}
               </p>
             )}
@@ -181,7 +181,7 @@ export default function DocxPreviewModal({
               type="button"
               onClick={() => setZoom(fitWidthScale)}
               disabled={!ready || Math.abs(zoom - fitWidthScale) < 0.02}
-              className="px-2 py-1 rounded-md text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:bg-white dark:hover:bg-navy-800 disabled:opacity-40 transition-colors"
+              className="px-2 py-1 rounded-md text-[13px] font-semibold text-orange-600 dark:text-orange-400 hover:bg-white dark:hover:bg-navy-800 disabled:opacity-40 transition-colors"
               title="Fit width"
             >
               Fit
@@ -193,7 +193,7 @@ export default function DocxPreviewModal({
               type="button"
               onClick={onDownload}
               disabled={!blob && !source}
-              className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-40 transition-colors"
+              className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-orange-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-40 transition-colors"
             >
               <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -269,7 +269,7 @@ export default function DocxPreviewModal({
           </div>
         </div>
 
-        <footer className="relative flex shrink-0 items-center justify-center gap-3 border-t border-slate-200 dark:border-white/[0.08] bg-white/95 dark:bg-navy-900/95 h-11 px-4 backdrop-blur-sm">
+        <footer className="relative flex shrink-0 items-center justify-center gap-3 border-t border-slate-200 dark:border-white/[0.08] bg-white/95 dark:bg-warm-900/95 h-11 px-4 backdrop-blur-sm">
           {renderPaginationControls() ?? (
             <span className="text-xs text-slate-400 dark:text-slate-500">
               {loading ? "Loading…" : ""}
@@ -281,7 +281,7 @@ export default function DocxPreviewModal({
               type="button"
               onClick={onDownload}
               disabled={!blob && !source}
-              className="sm:hidden absolute right-3 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+              className="sm:hidden absolute right-3 rounded-lg bg-orange-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
             >
               Download
             </button>

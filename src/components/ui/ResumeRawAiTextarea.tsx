@@ -48,7 +48,7 @@ export default function ResumeRawAiTextarea({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span
-            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[13px] font-medium ${
               streaming
                 ? "bg-orange-500/15 text-orange-700 dark:text-orange-300"
                 : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
@@ -87,7 +87,7 @@ export default function ResumeRawAiTextarea({
         </div>
 
         {!streaming && value ? (
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 px-1">
+          <p className="text-[13px] text-slate-400 dark:text-slate-500 px-1">
             Structured fields below are filled from this response · {value.length.toLocaleString()}{" "}
             characters
           </p>

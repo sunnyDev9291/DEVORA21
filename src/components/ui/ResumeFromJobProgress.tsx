@@ -12,8 +12,8 @@ const STATE_STYLES: Record<
     label: "Pending",
   },
   active: {
-    dot: "border-blue-500 bg-blue-500 animate-pulse",
-    text: "text-blue-700 dark:text-blue-300 font-semibold",
+    dot: "border-orange-500 bg-blue-500 animate-pulse",
+    text: "text-orange-700 dark:text-orange-300 font-semibold",
     label: "In progress",
   },
   done: {
@@ -48,7 +48,7 @@ export default function ResumeFromJobProgress({
   const clamped = Math.max(0, Math.min(100, Math.round(progressPercent)));
 
   return (
-    <div className="rounded-2xl border border-blue-500/20 bg-blue-500/[0.04] p-5 dark:bg-blue-500/[0.06]">
+    <div className="rounded-2xl border border-orange-500/20 bg-blue-500/[0.04] p-5 dark:bg-blue-500/[0.06]">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-slate-900 dark:text-white">{message || "Working…"}</p>
@@ -58,7 +58,7 @@ export default function ResumeFromJobProgress({
             </p>
           )}
         </div>
-        <span className="shrink-0 text-sm font-bold tabular-nums text-blue-700 dark:text-blue-300">
+        <span className="shrink-0 text-sm font-bold tabular-nums text-orange-700 dark:text-orange-300">
           {clamped}%
         </span>
       </div>
@@ -72,7 +72,7 @@ export default function ResumeFromJobProgress({
         aria-label="Resume generation progress"
       >
         <div
-          className="h-full rounded-full bg-gradient-to-r from-blue-600 to-indigo-500 transition-[width] duration-500 ease-out"
+          className="h-full rounded-full bg-gradient-to-r from-tomato-600 to-sun-400 transition-[width] duration-500 ease-out"
           style={{ width: `${clamped}%` }}
         />
       </div>

@@ -22,12 +22,12 @@ export default function ServiceCard({
       id={id}
       className={`group relative flex flex-col rounded-2xl border p-6 transition-all duration-300 hover:-translate-y-1 ${
         featured
-          ? "bg-gradient-to-br from-blue-600/20 to-indigo-600/10 border-blue-500/30 hover:border-blue-400/50"
+          ? "bg-gradient-to-br from-blue-600/20 to-sun-400/10 border-orange-500/30 hover:border-blue-400/50"
           : "bg-white dark:bg-white/[0.03] border-slate-200 dark:border-white/[0.08] hover:border-slate-300 dark:hover:border-white/[0.16] shadow-sm dark:shadow-none"
       }`}
     >
       {featured && (
-        <span className="absolute top-4 right-4 bg-blue-500/20 text-blue-300 text-xs font-semibold px-2.5 py-1 rounded-full border border-blue-500/20">
+        <span className="absolute top-4 right-4 bg-blue-500/20 text-orange-300 text-xs font-semibold px-2.5 py-1 rounded-full border border-orange-500/20">
           Popular
         </span>
       )}
@@ -41,7 +41,7 @@ export default function ServiceCard({
         {features.map((feature) => (
           <li key={feature} className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
             <svg
-              className="w-4 h-4 text-blue-400 flex-shrink-0"
+              className="w-4 h-4 text-orange-400 flex-shrink-0"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -55,7 +55,7 @@ export default function ServiceCard({
 
       <Link
         href={`/contact?service=${id}`}
-        className="mt-auto text-sm font-semibold text-blue-400 hover:text-blue-300 flex items-center gap-1.5 transition-colors group-hover:gap-2.5"
+        className="mt-auto text-sm font-semibold text-orange-400 hover:text-orange-300 flex items-center gap-1.5 transition-colors group-hover:gap-2.5"
       >
         Get started
         <svg className="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">

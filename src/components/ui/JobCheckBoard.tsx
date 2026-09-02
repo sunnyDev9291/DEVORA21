@@ -48,12 +48,12 @@ export default function JobCheckBoard({
             {subtitle || "Analyze company, role, and job description"}
           </p>
           {loading ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-500/15 px-2.5 py-1 text-[11px] font-semibold text-sky-700 dark:text-sky-300 shrink-0">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-500/15 px-2.5 py-1 text-[13px] font-semibold text-sky-700 dark:text-sky-300 shrink-0">
               <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
               Analyzing…
             </span>
           ) : output && !error ? (
-            <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 shrink-0">
+            <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2.5 py-1 text-[13px] font-semibold text-emerald-700 dark:text-emerald-300 shrink-0">
               Complete
             </span>
           ) : null}

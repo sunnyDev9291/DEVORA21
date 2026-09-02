@@ -59,7 +59,7 @@ export default function AboutPage() {
         description="Devora21 was built out of a simple observation: software engineers face real, hard challenges — in job searches, in technical interviews, and in their day-to-day work — and most of the support available is generic, outdated, or disconnected from how the tech industry actually works."
       />
 
-      <section className="bg-white dark:bg-navy-900 py-20" aria-labelledby="mission-heading">
+      <section className="bg-white dark:bg-warm-900 py-20" aria-labelledby="mission-heading">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <div>
@@ -100,7 +100,7 @@ export default function AboutPage() {
       </section>
 
       {/* Values */}
-      <section className="bg-slate-50 dark:bg-navy-950 py-24">
+      <section className="bg-gradient-to-b from-warm-50 via-orange-50/50 to-amber-50/30 dark:from-warm-950 dark:via-warm-950 dark:to-warm-900 py-24">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-14">
 
@@ -124,7 +124,7 @@ export default function AboutPage() {
       </section>
 
       {/* Who we serve */}
-      <section className="bg-white dark:bg-navy-900 py-20">
+      <section className="bg-white dark:bg-warm-900 py-20">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-5 tracking-tight">
             Who We Work With
@@ -157,7 +157,7 @@ export default function AboutPage() {
       </section>
 
       {/* CTA */}
-      <section className="bg-slate-50 dark:bg-navy-950 py-16">
+      <section className="bg-gradient-to-b from-warm-50 via-orange-50/50 to-amber-50/30 dark:from-warm-950 dark:via-warm-950 dark:to-warm-900 py-16">
         <div className="max-w-xl mx-auto px-4 text-center">
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-3">Have a question about us?</h2>
           <p className="text-slate-500 dark:text-slate-400 mb-6">We&apos;re happy to chat — no commitment required.</p>
@@ -166,7 +166,7 @@ export default function AboutPage() {
               href={CONTACT_INFO.calendly}
               target="_blank"
               rel="noopener noreferrer"
-              className="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-7 py-3.5 rounded-xl transition-all shadow-lg shadow-blue-600/25"
+              className="bg-orange-600 hover:bg-orange-500 text-white font-semibold px-7 py-3.5 rounded-xl transition-all shadow-lg shadow-orange-500/25"
             >
               Book Free Consultation
             </a>

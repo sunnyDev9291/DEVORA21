@@ -42,7 +42,7 @@ export default function AlreadyRegisteredNotice() {
             type="button"
             onClick={() => void handleUseDifferentEmail()}
             disabled={signingOut}
-            className="font-semibold text-blue-400 hover:text-blue-300 disabled:opacity-50"
+            className="font-semibold text-orange-400 hover:text-orange-300 disabled:opacity-50"
           >
             {signingOut ? "Signing out…" : "Sign out and register"}
           </button>

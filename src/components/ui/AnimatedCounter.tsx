@@ -50,7 +50,7 @@ export default function AnimatedCounter({ value, label, description, icon, gradi
   return (
     <article
       ref={ref as React.RefObject<HTMLElement>}
-      className="relative group flex flex-col items-center text-center p-8 rounded-2xl bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] hover:border-blue-500/40 dark:hover:border-blue-500/30 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-blue-500/10 h-full"
+      className="relative group flex flex-col items-center text-center p-8 rounded-2xl bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] hover:border-orange-500/40 dark:hover:border-orange-500/30 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-blue-500/10 h-full"
     >
       {/* Subtle glow on hover */}
       <div className={`absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-20 transition-opacity duration-300 bg-gradient-to-br ${gradient} blur-2xl -z-10`} />

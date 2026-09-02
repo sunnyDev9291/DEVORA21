@@ -115,13 +115,13 @@ export default function ResumeAtsScoreModal({
       <div
         className={`relative z-10 flex w-full ${
           showContentReview ? "max-w-7xl" : "max-w-2xl"
-        } max-h-[min(92dvh,900px)] flex-col overflow-hidden rounded-2xl border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-navy-900 shadow-2xl shadow-black/30 animate-dialog-enter pointer-events-auto`}
+        } max-h-[min(92dvh,900px)] flex-col overflow-hidden rounded-2xl border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-warm-900 shadow-2xl shadow-black/30 animate-dialog-enter pointer-events-auto`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 dark:border-white/[0.08] bg-gradient-to-r from-violet-500/[0.08] to-indigo-500/[0.05] dark:from-violet-500/[0.12] dark:to-indigo-500/[0.08] px-5 py-4">
+        <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 dark:border-white/[0.08] bg-gradient-to-r from-violet-500/[0.08] to-sun-400/[0.05] dark:from-violet-500/[0.12] dark:to-sun-400/[0.08] px-5 py-4">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-500/20">
             <svg className="h-5 w-5 text-violet-600 dark:text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -171,7 +171,7 @@ export default function ResumeAtsScoreModal({
           {showContentReview && (
             <div className="relative min-h-0 overflow-y-auto overscroll-contain order-1 lg:order-2">
               {generating && improvingTargetId ? (
-                <div className="sticky top-0 z-10 border-b border-blue-500/20 bg-blue-500/[0.04] dark:bg-blue-500/[0.06]">
+                <div className="sticky top-0 z-10 border-b border-orange-500/20 bg-blue-500/[0.04] dark:bg-blue-500/[0.06]">
                   <ResumeImproveProgress
                     phase={streamPhase}
                     targetLabel={improvingTargetLabel}
@@ -229,12 +229,12 @@ export default function ResumeAtsScoreModal({
           )}
         </div>
 
-        <footer className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-200 dark:border-white/[0.08] bg-white/95 dark:bg-navy-900/95 px-5 py-3 backdrop-blur-sm">
+        <footer className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-200 dark:border-white/[0.08] bg-white/95 dark:bg-warm-900/95 px-5 py-3 backdrop-blur-sm">
           {onOpenResumeChat && content && (
             <button
               type="button"
               onClick={onOpenResumeChat}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-sm font-semibold text-blue-700 dark:text-blue-300 hover:bg-blue-500/15 transition-all mr-auto"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-2 text-sm font-semibold text-orange-700 dark:text-orange-300 hover:bg-orange-500/15 transition-all mr-auto"
             >
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -258,7 +258,7 @@ export default function ResumeAtsScoreModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl bg-violet-600 px-5 py-2 text-sm font-semibold text-white hover:bg-violet-500 transition-all"
+            className="rounded-xl bg-orange-600 px-5 py-2 text-sm font-semibold text-white hover:bg-orange-500 transition-all"
           >
             {score?.passed ? "Continue editing" : "Close & improve"}
           </button>

@@ -41,15 +41,15 @@ const accentStyles = {
     arrow: "text-green-400",
   },
   blue: {
-    card: "border-blue-500/25 bg-blue-500/[0.05] hover:border-blue-500/45 hover:bg-blue-500/[0.1]",
-    icon: "bg-blue-500/15 border-blue-500/25 text-blue-400",
-    arrow: "text-blue-400",
+    card: "border-orange-500/25 bg-blue-500/[0.05] hover:border-orange-500/45 hover:bg-blue-500/[0.1]",
+    icon: "bg-orange-500/15 border-orange-500/25 text-orange-400",
+    arrow: "text-orange-400",
   },
 } as const;
 
 export default function RealTimeInterviewContent() {
   return (
-    <section className="bg-white dark:bg-navy-900 py-20 sm:py-24" aria-labelledby="rti-heading">
+    <section className="bg-white dark:bg-warm-900 py-20 sm:py-24" aria-labelledby="rti-heading">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
           <h2 id="rti-heading" className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white mb-4">

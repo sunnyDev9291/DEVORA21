@@ -93,9 +93,9 @@ function OAuthCompleteContent() {
   }, [router, searchParams, refreshUser]);
 
   return (
-    <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center bg-navy-950">
+    <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center bg-warm-950">
       <div className="text-center">
-        <div className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+        <div className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
         <p className="mt-4 text-sm text-slate-400">Completing Google sign-in…</p>
       </div>
     </div>
@@ -106,8 +106,8 @@ export default function OAuthCompletePage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center bg-navy-950">
-          <div className="h-10 w-10 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+        <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center bg-warm-950">
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
         </div>
       }
     >

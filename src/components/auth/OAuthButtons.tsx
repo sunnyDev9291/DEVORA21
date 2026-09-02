@@ -63,7 +63,7 @@ export default function OAuthButtons({ mode }: OAuthButtonsProps) {
         </p>
       )}
       {mode === "signup" && !busy && (
-        <p className="text-center text-[11px] text-slate-500">
+        <p className="text-center text-[13px] text-slate-500">
           You will choose your Google account on the next screen.
         </p>
       )}

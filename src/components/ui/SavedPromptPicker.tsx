@@ -98,7 +98,7 @@ export default function SavedPromptPicker({
           open
             ? "border-violet-500/40 bg-violet-500/[0.08] shadow-lg shadow-violet-500/10"
             : selected
-              ? "border-violet-500/25 bg-gradient-to-r from-violet-500/[0.08] to-indigo-500/[0.05] hover:border-violet-500/35"
+              ? "border-violet-500/25 bg-gradient-to-r from-violet-500/[0.08] to-sun-400/[0.05] hover:border-violet-500/35"
               : "border-slate-200 dark:border-white/[0.10] bg-slate-50 dark:bg-white/[0.03] hover:border-slate-300 dark:hover:border-white/[0.16]"
         }`}
       >
@@ -153,7 +153,7 @@ export default function SavedPromptPicker({
         <div
           role="listbox"
           aria-label="Saved prompts"
-          className="absolute z-30 mt-2 w-full overflow-hidden rounded-2xl border border-slate-200/80 dark:border-white/[0.10] bg-white dark:bg-navy-900 shadow-2xl shadow-black/40 animate-dialog-enter"
+          className="absolute z-30 mt-2 w-full overflow-hidden rounded-2xl border border-slate-200/80 dark:border-white/[0.10] bg-white dark:bg-warm-900 shadow-2xl shadow-black/40 animate-dialog-enter"
         >
           <div className="border-b border-slate-100 dark:border-white/[0.06] bg-gradient-to-r from-slate-50 to-white dark:from-navy-950 dark:to-navy-900 px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">

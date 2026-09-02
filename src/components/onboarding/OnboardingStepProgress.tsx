@@ -30,7 +30,7 @@ export default function OnboardingStepProgress({ currentStep }: OnboardingStepPr
                 {done ? "✓" : index + 1}
               </div>
               <span
-                className={`hidden text-center text-[10px] font-medium sm:block ${
+                className={`hidden text-center text-[12px] font-medium sm:block ${
                   active ? "text-white" : "text-slate-500"
                 }`}
               >
@@ -42,7 +42,7 @@ export default function OnboardingStepProgress({ currentStep }: OnboardingStepPr
       </div>
       <div className="mt-4 h-1 overflow-hidden rounded-full bg-white/[0.06]">
         <div
-          className="h-full rounded-full bg-gradient-to-r from-blue-600 to-indigo-500 transition-all duration-300"
+          className="h-full rounded-full bg-gradient-to-r from-tomato-600 to-sun-400 transition-all duration-300"
           style={{ width: `${((currentIndex + 1) / ONBOARDING_STEPS.length) * 100}%` }}
         />
       </div>

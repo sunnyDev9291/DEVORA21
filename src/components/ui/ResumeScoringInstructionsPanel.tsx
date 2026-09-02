@@ -36,7 +36,7 @@ export function ResumeScoringInstructionsPanel({
       >
         <div className="min-w-0">
           <h4 className="text-sm font-bold text-slate-900 dark:text-white">Your prompt instructions</h4>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+          <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5">
             {lineCount} line{lineCount === 1 ? "" : "s"} · used for generation and Rule Keep checks
           </p>
         </div>
@@ -52,7 +52,7 @@ export function ResumeScoringInstructionsPanel({
       </button>
       {expanded && (
         <div className="px-5 pb-4 sm:px-6">
-          <pre className="max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-navy-950/50 p-4 text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words font-mono leading-relaxed">
+          <pre className="max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-warm-950/50 p-4 text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words font-mono leading-relaxed">
             {trimmed}
           </pre>
         </div>

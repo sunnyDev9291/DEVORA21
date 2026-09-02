@@ -41,7 +41,7 @@ function TypewriterText() {
   return (
     <span className="text-gradient">
       {displayed}
-      <span className="animate-pulse text-blue-400">|</span>
+      <span className="animate-pulse text-orange-400">|</span>
     </span>
   );
 }
@@ -163,7 +163,7 @@ function Particles() {
 export default function HeroSection() {
   return (
     <section
-      className="relative min-h-screen flex items-center justify-center overflow-hidden bg-slate-50 dark:bg-navy-950"
+      className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-b from-warm-50 via-orange-50/50 to-amber-50/30 dark:from-warm-950 dark:via-warm-950 dark:to-warm-900"
       aria-labelledby="hero-heading"
     >
       <div
@@ -174,17 +174,17 @@ export default function HeroSection() {
       <Particles />
 
       {/* Glow blobs */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-blue-600/15 blur-[140px] rounded-full pointer-events-none" aria-hidden="true" />
-      <div className="absolute bottom-0 right-1/3 w-[500px] h-[350px] bg-indigo-600/10 blur-[120px] rounded-full pointer-events-none" aria-hidden="true" />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-orange-500/15 blur-[140px] rounded-full pointer-events-none" aria-hidden="true" />
+      <div className="absolute bottom-0 right-1/3 w-[500px] h-[350px] bg-orange-500/10 blur-[120px] rounded-full pointer-events-none" aria-hidden="true" />
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-20 text-center">
         {/* Status badge */}
         <div
-          className="inline-flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 rounded-full px-4 py-1.5 mb-10"
+          className="inline-flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-full px-4 py-1.5 mb-10"
           style={{ animation: "fadeUp 0.6s ease 0.1s both" }}
         >
           <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-          <span className="text-blue-600 dark:text-blue-300 text-sm font-medium">Currently accepting new clients</span>
+          <span className="text-orange-700 dark:text-orange-300 text-sm font-medium">Currently accepting new clients</span>
         </div>
 
         {/* Headline */}
@@ -220,7 +220,7 @@ export default function HeroSection() {
             href={CONTACT_INFO.calendly}
             target="_blank"
             rel="noopener noreferrer"
-            className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-xl shadow-blue-600/30 hover:shadow-blue-500/40 hover:-translate-y-0.5 text-base text-center"
+            className="w-full sm:w-auto bg-gradient-to-r from-tomato-600 via-orange-500 to-sun-400 hover:from-tomato-500 hover:via-orange-400 hover:to-sun-300 text-white font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-xl shadow-orange-500/30 hover:shadow-orange-400/40 hover:-translate-y-0.5 text-base text-center"
           >
             Get a Free Consultation
           </a>

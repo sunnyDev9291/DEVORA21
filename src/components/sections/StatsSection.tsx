@@ -7,7 +7,7 @@ const stats = [
     value: "50+",
     label: "Engineers Helped",
     description: "Real engineers, real outcomes — from first jobs to senior roles.",
-    gradient: "from-blue-500 to-cyan-400",
+    gradient: "from-orange-500 to-cyan-400",
     icon: (
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" className="w-full h-full">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -51,7 +51,7 @@ const stats = [
 
 export default function StatsSection() {
   return (
-    <section className="bg-slate-50 dark:bg-navy-950 py-24 sm:py-32" aria-labelledby="stats-heading">
+    <section className="bg-gradient-to-b from-warm-50 via-orange-50/50 to-amber-50/30 dark:from-warm-950 dark:via-warm-950 dark:to-warm-900 py-24 sm:py-32" aria-labelledby="stats-heading">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <header className="text-center mb-14">
           <h2 id="stats-heading" className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white tracking-tight">

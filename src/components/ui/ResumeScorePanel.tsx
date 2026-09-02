@@ -58,7 +58,7 @@ function ScoreRing({ overall, passed }: { overall: number; passed: boolean }) {
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className={`text-3xl font-bold tabular-nums ${scoreColor(display, passed)}`}>{display}</span>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">/ {RESUME_SCORE_MAX}</span>
+        <span className="text-[12px] font-semibold uppercase tracking-wider text-slate-400">/ {RESUME_SCORE_MAX}</span>
       </div>
     </div>
   );
@@ -84,7 +84,7 @@ function ComponentBar({
             {value}/100
           </span>
           <span
-            className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+            className={`rounded-full px-1.5 py-0.5 text-[12px] font-bold ${
               passed ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-amber-500/15 text-amber-700 dark:text-amber-300"
             }`}
           >
@@ -94,7 +94,7 @@ function ComponentBar({
       </div>
       <div className="h-1.5 rounded-full bg-slate-200 dark:bg-white/10 overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all duration-700 ${passed ? "bg-emerald-500" : "bg-gradient-to-r from-violet-500 to-indigo-500"}`}
+          className={`h-full rounded-full transition-all duration-700 ${passed ? "bg-emerald-500" : "bg-gradient-to-r from-orange-500 to-sun-400"}`}
           style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
         />
       </div>
@@ -191,10 +191,10 @@ export function ResumeScorePanel({
         <button
           type="button"
           onClick={() => setAtsExpanded((open) => !open)}
-          className="flex w-full items-center justify-between gap-3 px-5 py-3 sm:px-6 text-left hover:bg-violet-500/[0.04] transition-colors"
+          className="flex w-full items-center justify-between gap-3 px-5 py-3 sm:px-6 text-left hover:bg-orange-500/[0.04] transition-colors"
           aria-expanded={atsExpanded}
         >
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          <p className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             ATS breakdown
           </p>
           <svg
@@ -229,7 +229,7 @@ export function ResumeScorePanel({
             className="flex w-full items-center justify-between gap-3 px-5 py-3 sm:px-6 text-left hover:bg-emerald-500/[0.04] transition-colors"
             aria-expanded={rulesExpanded}
           >
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <p className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Custom rules ({score.ruleKeep.passedRules}/{score.ruleKeep.totalRules} passed)
             </p>
             <svg

@@ -11,8 +11,8 @@ import { AUTH_LINKS } from "@/lib/constants";
 
 function AuthLoadingSpinner() {
   return (
-    <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center bg-navy-950">
-      <div className="h-10 w-10 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+    <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center bg-warm-950">
+      <div className="h-10 w-10 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
     </div>
   );
 }

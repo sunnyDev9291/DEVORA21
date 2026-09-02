@@ -2,9 +2,9 @@ import { CONTACT_INFO } from "@/lib/constants";
 
 export default function CTASection() {
   return (
-    <section className="bg-slate-50 dark:bg-navy-950 py-24 sm:py-32" aria-labelledby="cta-heading">
+    <section className="bg-gradient-to-b from-warm-50 via-orange-50/50 to-amber-50/30 dark:from-warm-950 dark:via-warm-950 dark:to-warm-900 py-24 sm:py-32" aria-labelledby="cta-heading">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <div className="relative rounded-3xl bg-gradient-to-br from-blue-600/20 via-indigo-600/10 to-navy-900 border border-blue-500/20 p-10 sm:p-16 overflow-hidden">
+        <div className="relative rounded-3xl bg-gradient-to-br from-blue-600/20 via-indigo-600/10 to-navy-900 border border-orange-500/20 p-10 sm:p-16 overflow-hidden">
           {/* Glow */}
           <div className="absolute inset-0 bg-gradient-to-br from-blue-600/10 to-transparent pointer-events-none" />
           <div className="absolute -top-20 -right-20 w-64 h-64 bg-blue-600/10 blur-[80px] rounded-full pointer-events-none" />
@@ -25,7 +25,7 @@ export default function CTASection() {
                 href={CONTACT_INFO.calendly}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-xl shadow-blue-600/30 hover:shadow-blue-500/40 hover:-translate-y-0.5 text-center"
+                className="w-full sm:w-auto bg-orange-600 hover:bg-orange-500 text-white font-semibold px-8 py-4 rounded-xl transition-all duration-200 shadow-xl shadow-orange-500/30 hover:shadow-blue-500/40 hover:-translate-y-0.5 text-center"
               >
                 Get a Free Consultation
               </a>

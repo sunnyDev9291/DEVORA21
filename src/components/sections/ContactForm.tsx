@@ -87,7 +87,7 @@ export default function ContactForm() {
             value={form.name}
             onChange={handleChange}
             placeholder="Jane Smith"
-            className="w-full bg-white/[0.04] border border-white/[0.10] hover:border-white/[0.18] focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 rounded-xl px-4 py-3 text-white text-sm placeholder:text-slate-600 outline-none transition-all"
+            className="w-full bg-white/[0.04] border border-white/[0.10] hover:border-white/[0.18] focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 rounded-xl px-4 py-3 text-white text-sm placeholder:text-slate-600 outline-none transition-all"
           />
         </div>
         <div>
@@ -102,7 +102,7 @@ export default function ContactForm() {
             value={form.email}
             onChange={handleChange}
             placeholder="john@example.com"
-            className="w-full bg-white/[0.04] border border-white/[0.10] hover:border-white/[0.18] focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 rounded-xl px-4 py-3 text-white text-sm placeholder:text-slate-600 outline-none transition-all"
+            className="w-full bg-white/[0.04] border border-white/[0.10] hover:border-white/[0.18] focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 rounded-xl px-4 py-3 text-white text-sm placeholder:text-slate-600 outline-none transition-all"
           />
         </div>
       </div>
@@ -116,7 +116,7 @@ export default function ContactForm() {
           name="service"
           value={form.service}
           onChange={handleChange}
-          className="w-full bg-navy-800 border border-white/[0.10] hover:border-white/[0.18] focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 rounded-xl px-4 py-3 text-sm text-white outline-none transition-all appearance-none"
+          className="w-full bg-navy-800 border border-white/[0.10] hover:border-white/[0.18] focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 rounded-xl px-4 py-3 text-sm text-white outline-none transition-all appearance-none"
         >
           <option value="" className="text-slate-500">Pick the closest option...</option>
           {services.map((s) => (
@@ -137,14 +137,14 @@ export default function ContactForm() {
           value={form.message}
           onChange={handleChange}
           placeholder="Give us a quick overview — where you are, what you're trying to do, and what's blocking you. The more context, the better we can help."
-          className="w-full bg-white/[0.04] border border-white/[0.10] hover:border-white/[0.18] focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 rounded-xl px-4 py-3 text-white text-sm placeholder:text-slate-600 outline-none transition-all resize-none"
+          className="w-full bg-white/[0.04] border border-white/[0.10] hover:border-white/[0.18] focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 rounded-xl px-4 py-3 text-white text-sm placeholder:text-slate-600 outline-none transition-all resize-none"
         />
       </div>
 
       <button
         type="submit"
         disabled={loading}
-        className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white font-semibold py-4 rounded-xl transition-all duration-200 shadow-lg shadow-blue-600/25 hover:shadow-blue-500/35 hover:-translate-y-0.5 flex items-center justify-center gap-2"
+        className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-60 text-white font-semibold py-4 rounded-xl transition-all duration-200 shadow-lg shadow-orange-500/25 hover:shadow-orange-400/35 hover:-translate-y-0.5 flex items-center justify-center gap-2"
       >
         {loading ? (
           <>

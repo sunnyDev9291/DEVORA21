@@ -10,7 +10,7 @@ export default function TestimonialsSection({ limit }: TestimonialsSectionProps)
   const testimonials = limit ? TESTIMONIALS.slice(0, limit) : TESTIMONIALS;
 
   return (
-    <section className="bg-slate-50 dark:bg-navy-950 py-24 sm:py-32" aria-labelledby="testimonials-heading">
+    <section className="bg-gradient-to-b from-warm-50 via-orange-50/50 to-amber-50/30 dark:from-warm-950 dark:via-warm-950 dark:to-warm-900 py-24 sm:py-32" aria-labelledby="testimonials-heading">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <header className="text-center mb-14">
           <h2 id="testimonials-heading" className="text-3xl sm:text-4xl lg:text-5xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
