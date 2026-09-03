@@ -25,6 +25,8 @@ const inputClass = ui.input;
 
 const filterInputClass = `${ui.input} py-3.5 text-base placeholder:text-slate-400 dark:placeholder:text-slate-500`;
 
+const DEFAULT_JOB_TITLE_FILTER = "Engine OR Dev OR Scientist OR Specialist OR Architect";
+
 type JobTableSortMode = "company" | "platform";
 
 const SORT_MODE_OPTIONS: { value: JobTableSortMode; label: string; description: string }[] = [
@@ -582,7 +584,7 @@ export default function BuiltInCrawlPanel() {
   const [listingUrls, setListingUrls] = useState<Record<JobCrawlPlatform, string>>(defaultListingUrls);
   const [jobList, setJobList] = useState<DiscoveredJobRow[]>([]);
   const [checkedJobKeys, setCheckedJobKeys] = useState<Set<string>>(() => new Set());
-  const [jobTitleFilter, setJobTitleFilter] = useState("");
+  const [jobTitleFilter, setJobTitleFilter] = useState(DEFAULT_JOB_TITLE_FILTER);
   const [jobTableSortMode, setJobTableSortMode] = useState<JobTableSortMode>("company");
   const [platformErrors, setPlatformErrors] = useState<Partial<Record<JobCrawlPlatform, string>>>({});
   const [crawling, setCrawling] = useState(false);
@@ -871,7 +873,7 @@ export default function BuiltInCrawlPanel() {
                 type="search"
                 value={jobTitleFilter}
                 onChange={(e) => setJobTitleFilter(e.target.value)}
-                placeholder={'Engineer OR Developer OR Scientist'}
+                placeholder={DEFAULT_JOB_TITLE_FILTER}
                 className={filterInputClass}
                 spellCheck={false}
               />
