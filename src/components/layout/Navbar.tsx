@@ -5,21 +5,16 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { NAV_LINKS } from "@/lib/constants";
+import { brand } from "@/lib/ui-styles";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import NavbarActions from "@/components/layout/NavbarActions";
 
-function navLinkClass(pathname: string, href: string, overlay: boolean) {
+function navLinkClass(pathname: string, href: string) {
   const isActive = pathname === href;
 
-  if (overlay) {
-    return isActive
-      ? "text-orange-300 bg-white/15 shadow-sm shadow-black/20"
-      : "text-stone-100 hover:text-white hover:bg-white/10 drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]";
-  }
-
   return isActive
-    ? "text-orange-700 dark:text-orange-300 bg-orange-500/10"
-    : "text-stone-700 dark:text-stone-200 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-white/[0.05]";
+    ? "text-orange-800 dark:text-orange-300 bg-orange-500/10"
+    : "text-stone-800 dark:text-stone-100 hover:text-stone-950 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-white/[0.05]";
 }
 
 export default function Navbar() {
@@ -48,11 +43,10 @@ export default function Navbar() {
 
   return (
     <header
-      data-nav-overlay={!scrolled}
-      className={`fixed top-0 left-0 right-0 z-50 transition-[background-color,box-shadow,border-color] duration-300 [transform:translateZ(0)] ${
+      className={`fixed top-0 left-0 right-0 z-50 transition-[background-color,box-shadow,border-color] duration-300 [transform:translateZ(0)] bg-white/95 dark:bg-warm-950/95 backdrop-blur-md border-b ${
         scrolled
-          ? "bg-white/82 dark:bg-warm-950/84 border-b border-orange-200/60 dark:border-orange-500/10 shadow-gloss dark:shadow-card-dark backdrop-blur-md"
-          : "bg-transparent border-b border-transparent shadow-none"
+          ? "border-orange-200/80 dark:border-orange-500/20 shadow-gloss dark:shadow-card-dark"
+          : "border-orange-200/70 dark:border-orange-500/15"
       }`}
     >
       <nav
@@ -69,7 +63,7 @@ export default function Navbar() {
               className="w-[72px] h-auto object-contain"
               priority
             />
-            <span className="font-display text-2xl font-extrabold bg-gradient-to-r from-tomato-600 via-orange-500 to-sun-400 bg-clip-text text-transparent tracking-tight dark:from-tomato-400 dark:via-orange-400 dark:to-sun-300">
+            <span className={`font-display text-2xl font-extrabold tracking-tight ${brand.gradientText}`}>
               Devora21
             </span>
           </Link>
@@ -80,7 +74,7 @@ export default function Navbar() {
                 <Link
                   href={link.href}
                   aria-current={pathname === link.href ? "page" : undefined}
-                  className={`px-3 xl:px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150 whitespace-nowrap ${navLinkClass(pathname, link.href, !scrolled)}`}
+                  className={`px-3 xl:px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150 whitespace-nowrap ${navLinkClass(pathname, link.href)}`}
                 >
                   {link.label}
                 </Link>
@@ -89,20 +83,16 @@ export default function Navbar() {
           </ul>
 
           <div className="hidden lg:flex items-center gap-2 xl:gap-3 shrink-0">
-            <ThemeToggle overlay={!scrolled} />
-            <NavbarActions variant="desktop" overlay={!scrolled} />
+            <ThemeToggle />
+            <NavbarActions variant="desktop" />
           </div>
 
           <div className="lg:hidden flex items-center gap-2">
-            <ThemeToggle overlay={!scrolled} />
+            <ThemeToggle />
             <button
               type="button"
               onClick={() => setIsOpen(!isOpen)}
-              className={`p-2 rounded-lg transition-colors ${
-                !scrolled
-                  ? "text-stone-100 hover:text-white hover:bg-white/10 drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]"
-                  : "text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-white/[0.05]"
-              }`}
+              className="p-2 rounded-lg transition-colors text-stone-800 dark:text-stone-100 hover:text-stone-950 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-white/[0.05]"
               aria-label={isOpen ? "Close navigation menu" : "Open navigation menu"}
               aria-expanded={isOpen}
               aria-controls="mobile-nav-menu"
@@ -137,8 +127,8 @@ export default function Navbar() {
                   aria-current={pathname === link.href ? "page" : undefined}
                   className={`block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                     pathname === link.href
-                      ? "text-orange-400 bg-orange-500/10"
-                      : "text-slate-400 hover:text-white hover:bg-white/[0.05]"
+                      ? "text-orange-300 bg-orange-500/10"
+                      : "text-stone-200 hover:text-white hover:bg-white/[0.05]"
                   }`}
                 >
                   {link.label}

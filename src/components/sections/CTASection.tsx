@@ -14,7 +14,7 @@ export default function CTASection() {
             <h2 id="cta-heading" className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-5 tracking-tight">
               Not sure where to start?
             </h2>
-            <p className="text-slate-400 text-lg max-w-xl mx-auto mb-10">
+            <p className="text-stone-200 text-lg max-w-xl mx-auto mb-10">
               Book a free 30-minute call. Tell us what you&apos;re dealing with
               and we&apos;ll give you an honest answer on how we can help —
               no pitch, no pressure.

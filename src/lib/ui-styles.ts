@@ -2,7 +2,7 @@
 
 export const brand = {
   gradientText:
-    "bg-gradient-to-r from-tomato-600 via-orange-500 to-sun-400 bg-clip-text text-transparent dark:from-tomato-400 dark:via-orange-400 dark:to-sun-300",
+    "bg-gradient-to-r from-tomato-700 via-orange-800 to-orange-900 bg-clip-text text-transparent dark:from-tomato-400 dark:via-orange-400 dark:to-sun-300",
   gradientPill:
     "bg-gradient-to-r from-tomato-600 via-orange-500 to-sun-400 shadow-lg shadow-orange-500/25",
   gradientPillHover:
@@ -11,7 +11,7 @@ export const brand = {
     "bg-gradient-to-r from-tomato-600 via-orange-500 to-sun-400 hover:from-tomato-500 hover:via-orange-400 hover:to-sun-300 text-white shadow-lg shadow-orange-500/25 hover:shadow-orange-400/35",
   focusRing:
     "focus:border-orange-500 focus:ring-2 focus:ring-orange-500/25 dark:focus:border-orange-400/70 dark:focus:ring-orange-400/20",
-  link: "text-orange-700 hover:text-tomato-600 dark:text-orange-400 dark:hover:text-orange-300",
+  link: "text-orange-800 hover:text-tomato-700 dark:text-orange-300 dark:hover:text-orange-200",
 } as const;
 
 export const ui = {
@@ -27,16 +27,16 @@ export const ui = {
   tabBar:
     "relative inline-flex w-full max-w-md rounded-xl border border-orange-200/70 bg-white/78 p-1 shadow-gloss backdrop-blur-md dark:border-orange-500/15 dark:bg-warm-900/82 dark:shadow-card-dark sm:w-auto",
 
-  input: `w-full rounded-xl border border-orange-200/80 bg-white/78 px-4 py-3 text-[17px] leading-snug text-stone-900 shadow-sm outline-none transition-all backdrop-blur-sm placeholder:text-stone-400 hover:border-orange-300 ${brand.focusRing} dark:border-orange-500/15 dark:bg-white/[0.04] dark:text-stone-100 dark:placeholder:text-stone-500 dark:hover:border-orange-400/30`,
+  input: `w-full rounded-xl border border-orange-200/80 bg-white/90 px-4 py-3 text-[17px] leading-snug text-stone-900 shadow-sm outline-none transition-all backdrop-blur-sm placeholder:text-stone-500 hover:border-orange-300 ${brand.focusRing} dark:border-orange-500/15 dark:bg-white/[0.06] dark:text-stone-50 dark:placeholder:text-stone-400 dark:hover:border-orange-400/30`,
 
-  label: "mb-1.5 block text-sm font-medium text-stone-700 dark:text-stone-300",
+  label: "mb-1.5 block text-sm font-medium text-stone-800 dark:text-stone-200",
 
   headingLg: "font-display text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-50",
   headingMd: "font-display text-xl font-bold tracking-tight text-stone-900 dark:text-stone-50",
   headingSm: "font-display text-base font-semibold tracking-tight text-stone-900 dark:text-stone-50",
 
-  muted: "text-stone-600 dark:text-stone-400",
-  mutedSm: "text-sm text-stone-500 dark:text-stone-400",
+  muted: "text-stone-700 dark:text-stone-300",
+  mutedSm: "text-sm text-stone-700 dark:text-stone-300",
 
   brandGradient: brand.gradientText,
 } as const;

@@ -77,7 +77,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="font-sans bg-gradient-to-b from-warm-50 via-orange-50/40 to-amber-50/20 text-stone-900 dark:from-warm-950 dark:via-warm-950 dark:to-warm-900 dark:text-stone-100">
+      <body className="font-sans bg-gradient-to-b from-warm-50 via-orange-50/40 to-amber-50/20 text-stone-900 dark:from-warm-950 dark:via-warm-950 dark:to-warm-900 dark:text-stone-50">
         <JsonLd data={[organizationJsonLd(), websiteJsonLd()]} />
         <ThemeProvider>
           <AuthProvider>

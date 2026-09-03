@@ -1021,14 +1021,22 @@ export default function ResumeGenerator({
             <label htmlFor="jobDescription" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
               Job description
             </label>
-            <textarea
-              id="jobDescription"
-              name="jobDescription"
-              value={form.jobDescription}
-              onChange={handleChange}
-              placeholder="Paste the full job posting for better keyword matching…"
-              className={`${inputClass} h-[260px] max-h-[260px] resize-none overflow-y-auto`}
-            />
+            <div className="flex items-start gap-2">
+              <textarea
+                id="jobDescription"
+                name="jobDescription"
+                value={form.jobDescription}
+                onChange={handleChange}
+                placeholder="Paste the full job posting for better keyword matching…"
+                className={`${inputClass} h-[260px] max-h-[260px] min-w-0 flex-1 resize-none overflow-y-auto`}
+              />
+              <CopyIconButton
+                text={form.jobDescription}
+                label="Copy job description"
+                disabled={generating}
+                className="h-12 self-start"
+              />
+            </div>
           </div>
 
           {userPrompt.trim() && (

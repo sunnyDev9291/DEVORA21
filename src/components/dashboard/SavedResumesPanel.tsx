@@ -13,6 +13,7 @@ import {
 import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
 import { TODAYS_RESUME_COUNT_CHANGED_EVENT } from "@/lib/todays-resume-count";
 import { ui } from "@/lib/ui-styles";
+import CopyIconButton from "@/components/ui/CopyIconButton";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
 const Modal = dynamic(() => import("@/components/ui/Modal"), { ssr: false });
@@ -325,9 +326,16 @@ function JobDescriptionModal({
       className="max-w-2xl"
     >
       <div className="overflow-y-auto px-6 py-5 max-h-[min(70dvh,32rem)]">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-          Job description
-        </p>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Job description
+          </p>
+          <CopyIconButton
+            text={item?.jobDescription ?? ""}
+            label="Copy job description"
+            className="h-10 self-auto"
+          />
+        </div>
         <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-200">
           {description}
         </div>

@@ -28,7 +28,7 @@ export default function PageHero({ title, description, children, priority = fals
         <h1 className="text-4xl sm:text-5xl font-bold text-white mb-5 tracking-tight">
           {title}
         </h1>
-        <p className="text-slate-300 text-lg max-w-2xl mx-auto leading-relaxed">
+        <p className="text-stone-100 text-lg max-w-2xl mx-auto leading-relaxed">
           {description}
         </p>
         {children}

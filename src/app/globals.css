@@ -11,8 +11,8 @@
     --border-default: 254 215 170;
     --accent: 234 88 12;
     --accent-soft: 255 237 213;
-    --ui-surface-alpha: 0.88;
-    --ui-surface-alpha-dark: 0.86;
+    --ui-surface-alpha: 0.96;
+    --ui-surface-alpha-dark: 0.94;
   }
 
   .dark {
@@ -207,7 +207,7 @@
   }
 
   .text-gradient {
-    @apply bg-gradient-to-r from-tomato-600 via-orange-500 to-sun-400 bg-clip-text text-transparent;
+    @apply bg-gradient-to-r from-tomato-700 via-orange-800 to-orange-900 bg-clip-text text-transparent;
   }
 
   .dark .text-gradient {
@@ -251,9 +251,80 @@ html.dark .dark\:bg-warm-900 {
 }
 
 html.dark .dark\:bg-warm-950 {
-  background-color: rgb(26 16 12 / 0.88) !important;
+  background-color: rgb(26 16 12 / 0.94) !important;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+}
+
+/*
+  Readable contrast: muted gray/orange must not blend into cream or warm-dark pages.
+  Dark navy islands (dashboard, onboarding, CTA) keep light muted text.
+*/
+html:not(.dark) .text-slate-400,
+html:not(.dark) .text-stone-400,
+html:not(.dark) .text-slate-500,
+html:not(.dark) .text-stone-500 {
+  color: rgb(68 64 60);
+}
+
+html:not(.dark) .text-slate-600,
+html:not(.dark) .text-stone-600 {
+  color: rgb(41 37 36);
+}
+
+html:not(.dark) .text-orange-400,
+html:not(.dark) .text-orange-500 {
+  color: #9a3412;
+}
+
+html:not(.dark) .text-orange-600,
+html:not(.dark) .text-orange-700 {
+  color: #7c2d12;
+}
+
+html:not(.dark) .text-amber-100 {
+  color: #78350f;
+}
+
+.dark .text-slate-400,
+.dark .text-stone-400,
+.dark .text-slate-500,
+.dark .text-stone-500,
+.dark .text-slate-600,
+.dark .text-stone-600 {
+  color: rgb(214 211 209);
+}
+
+.dark .text-orange-400 {
+  color: #fdba74;
+}
+
+html:not(.dark) :is(
+    .bg-navy-900,
+    .bg-navy-900\/60,
+    .bg-navy-950,
+    .bg-warm-950,
+    .bg-warm-950\/98,
+    .bg-warm-950\/95,
+    .bg-warm-900,
+    [class*="to-navy-900"]
+  )
+  :is(.text-slate-400, .text-stone-400, .text-slate-500, .text-stone-500, .text-slate-600) {
+  color: #e7e5e4;
+}
+
+html:not(.dark) :is(
+    .bg-navy-900,
+    .bg-navy-900\/60,
+    .bg-navy-950,
+    .bg-warm-950,
+    .bg-warm-950\/98,
+    .bg-warm-950\/95,
+    .bg-warm-900,
+    [class*="to-navy-900"]
+  )
+  :is(.text-orange-400, .text-orange-500) {
+  color: #fb923c;
 }
 
 /* Smart cursor — fine pointer devices only */

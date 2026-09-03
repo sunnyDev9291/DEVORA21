@@ -55,7 +55,7 @@ function PendingVerificationContent() {
           <button
             type="button"
             onClick={() => void handleSignOut()}
-            className="inline-flex w-full items-center justify-center rounded-xl border border-white/10 px-4 py-2.5 text-sm font-semibold text-slate-200 hover:bg-white/[0.05] transition-colors"
+            className="inline-flex w-full items-center justify-center rounded-xl border border-orange-200 px-4 py-2.5 text-sm font-semibold text-stone-800 hover:bg-orange-50 dark:border-white/10 dark:text-stone-100 dark:hover:bg-white/[0.05] transition-colors"
           >
             Sign out
           </button>

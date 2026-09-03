@@ -12,7 +12,7 @@ export default function ThemeToggle({ overlay = false }: { overlay?: boolean }) 
       className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-200 ${
         overlay
           ? "text-stone-100 hover:text-white bg-white/10 hover:bg-white/15 border border-white/15 drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]"
-          : "text-stone-500 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white bg-stone-100 dark:bg-white/[0.06] hover:bg-stone-200 dark:hover:bg-white/[0.10] border border-stone-200 dark:border-white/[0.08]"
+          : "text-stone-700 dark:text-stone-200 hover:text-stone-900 dark:hover:text-white bg-stone-100 dark:bg-white/[0.06] hover:bg-stone-200 dark:hover:bg-white/[0.10] border border-stone-200 dark:border-white/[0.08]"
       }`}
     >
       {theme === "dark" ? (
