@@ -38,13 +38,18 @@ const PLATFORM_LABEL = JOB_CRAWL_PLATFORM_LABEL;
 const PLATFORM_DEFAULT_URL = DEFAULT_LISTING_URLS;
 const PLATFORM_URL_VALID = JOB_CRAWL_PLATFORM_VALIDATOR;
 
-const PLATFORM_SELECTED_CLASS =
-  "border-orange-500/30 bg-orange-600 text-white shadow-md shadow-orange-500/25";
 const PLATFORM_TABLE_BADGE_CLASS: Record<JobCrawlPlatform, string> = {
   builtin: "bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-1 ring-violet-500/20",
   hiringcafe: "bg-orange-500/15 text-orange-700 dark:text-orange-300 ring-1 ring-orange-500/20",
   workable: "bg-amber-500/15 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500/20",
   workingnomads: "bg-sky-500/15 text-sky-800 dark:text-sky-300 ring-1 ring-sky-500/20",
+};
+
+const PLATFORM_BLURB: Record<JobCrawlPlatform, string> = {
+  builtin: "Remote tech roles from Built In",
+  hiringcafe: "Cafe search listings",
+  workable: "Workable job search",
+  workingnomads: "Remote nomad listings",
 };
 
 function defaultSelectedPlatforms(): JobCrawlPlatform[] {
@@ -53,14 +58,6 @@ function defaultSelectedPlatforms(): JobCrawlPlatform[] {
 
 function jobRowKey(job: DiscoveredJobRow, index: number): string {
   return `${job.platform}-${job.jobId}-${index}`;
-}
-
-function platformButtonClass(selected: boolean): string {
-  const base = "rounded-full px-4 py-1.5 text-sm font-semibold transition-all border";
-  if (!selected) {
-    return `${base} border-transparent bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10`;
-  }
-  return `${base} ${PLATFORM_SELECTED_CLASS}`;
 }
 
 function crawlPlatform(
@@ -709,71 +706,85 @@ export default function BuiltInCrawlPanel() {
       <div className="mb-6">
         <h2 className="text-xl font-bold text-slate-900 dark:text-white">Job discovery</h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 max-w-2xl">
-          Select platforms, crawl, and browse one merged job list. Listing URLs come from your{" "}
-          <Link href={`${AUTH_LINKS.dashboard}#crawl-urls`} className="font-semibold text-orange-700 underline-offset-2 hover:underline dark:text-orange-300">
+          Choose platforms, crawl, and browse one merged job list. Crawl links are saved on your{" "}
+          <Link
+            href={`${AUTH_LINKS.dashboard}#crawl-urls`}
+            className="font-semibold text-orange-700 underline-offset-2 hover:underline dark:text-orange-300"
+          >
             profile dashboard
           </Link>
-          ; edit them there to change your defaults.
+          .
         </p>
         {hydrated && lastCrawledAt ? <LastCrawledBanner iso={lastCrawledAt} /> : null}
       </div>
 
       <div className="space-y-4">
-        <div>
-          <p className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">Platforms</p>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={selectAllPlatforms}
-              disabled={crawling}
-              className={platformButtonClass(allPlatformSelected)}
-            >
-              All
-            </button>
-            {ALL_JOB_CRAWL_PLATFORMS.map((platform) => (
-              <button
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Platforms</p>
+          <button
+            type="button"
+            onClick={selectAllPlatforms}
+            disabled={crawling || allPlatformSelected}
+            className="text-sm font-semibold text-orange-700 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-40 dark:text-orange-300"
+          >
+            Select all
+          </button>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2" role="group" aria-label="Crawl platforms">
+          {ALL_JOB_CRAWL_PLATFORMS.map((platform) => {
+            const checked = selectedPlatforms.includes(platform);
+            const inputId = `crawl-platform-${platform}`;
+            return (
+              <label
                 key={platform}
-                type="button"
-                onClick={() => togglePlatform(platform)}
-                disabled={crawling}
-                className={platformButtonClass(selectedPlatforms.includes(platform))}
+                htmlFor={inputId}
+                className={`group relative flex cursor-pointer items-start gap-3 rounded-2xl border px-4 py-3.5 transition-all ${
+                  checked
+                    ? "border-orange-500/45 bg-orange-500/[0.10] shadow-sm shadow-orange-500/10 dark:border-orange-400/40 dark:bg-orange-500/[0.12]"
+                    : "border-slate-200 bg-white/70 hover:border-orange-300/60 hover:bg-orange-50/50 dark:border-white/[0.08] dark:bg-white/[0.03] dark:hover:border-orange-500/25 dark:hover:bg-white/[0.05]"
+                } ${crawling ? "pointer-events-none opacity-60" : ""}`}
               >
-                {PLATFORM_LABEL[platform]}
-              </button>
-            ))}
-          </div>
+                <input
+                  id={inputId}
+                  type="checkbox"
+                  checked={checked}
+                  disabled={crawling}
+                  onChange={() => togglePlatform(platform)}
+                  className="sr-only"
+                />
+                <span
+                  className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-all ${
+                    checked
+                      ? "border-orange-500 bg-orange-500 text-white"
+                      : "border-slate-300 bg-white dark:border-white/25 dark:bg-transparent"
+                  }`}
+                  aria-hidden
+                >
+                  {checked ? (
+                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : null}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-slate-900 dark:text-white">
+                    {PLATFORM_LABEL[platform]}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
+                    {PLATFORM_BLURB[platform]}
+                  </span>
+                </span>
+              </label>
+            );
+          })}
         </div>
 
         {selectedPlatforms.length === 0 ? (
           <p className="text-sm text-amber-700 dark:text-amber-300">
             Select at least one platform to crawl.
           </p>
-        ) : (
-          <div className="rounded-xl border border-orange-200/70 bg-orange-50/60 px-4 py-3 dark:border-orange-500/15 dark:bg-orange-500/[0.06]">
-            <p className="text-sm font-medium text-slate-800 dark:text-stone-100">
-              Crawl links come from your profile
-            </p>
-            <p className="mt-1 text-xs text-slate-600 dark:text-stone-300">
-              Job discovery uses the listing URLs saved on your dashboard. You cannot edit them here.
-            </p>
-            <ul className="mt-3 space-y-1.5">
-              {selectedPlatforms.map((platform) => (
-                <li key={platform} className="text-xs text-slate-600 dark:text-stone-300">
-                  <span className="font-semibold text-slate-800 dark:text-stone-100">
-                    {PLATFORM_LABEL[platform]}:
-                  </span>{" "}
-                  <span className="break-all">{listingUrls[platform] || "Not set — add it on your dashboard"}</span>
-                </li>
-              ))}
-            </ul>
-            <Link
-              href={`${AUTH_LINKS.dashboard}#crawl-urls`}
-              className="mt-3 inline-flex text-sm font-semibold text-orange-700 underline-offset-2 hover:underline dark:text-orange-300"
-            >
-              Edit crawl URLs on dashboard →
-            </Link>
-          </div>
-        )}
+        ) : null}
 
         <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-start sm:items-center">
           <button
