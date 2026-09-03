@@ -131,8 +131,36 @@ function parseResult(raw: unknown): ResumeFromJobResult | undefined {
   const row = raw as Record<string, unknown>;
   const pdfBase64 = typeof row.pdfBase64 === "string" ? row.pdfBase64.trim() : "";
   if (!pdfBase64) return undefined;
+  return buildResult(row, pdfBase64);
+}
+
+function parseResultMeta(raw: unknown): Omit<ResumeFromJobResult, "pdfBase64"> | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const row = raw as Record<string, unknown>;
+  const id =
+    (typeof row.id === "string" && row.id.trim()) ||
+    (typeof row.archiveId === "string" && row.archiveId.trim()) ||
+    undefined;
+  const jobTitle = typeof row.jobTitle === "string" ? row.jobTitle : "";
+  const companyName = typeof row.companyName === "string" ? row.companyName : "";
+  const resumeName = typeof row.resumeName === "string" ? row.resumeName : "";
+  const pdfFileName =
+    typeof row.pdfFileName === "string" && row.pdfFileName.trim()
+      ? row.pdfFileName.trim()
+      : "resume.pdf";
+  const warning = typeof row.warning === "string" && row.warning.trim() ? row.warning.trim() : undefined;
+
+  if (!id && !jobTitle && !companyName && !resumeName) return undefined;
+  return { id, jobTitle, companyName, resumeName, pdfFileName, warning };
+}
+
+function buildResult(row: Record<string, unknown>, pdfBase64: string): ResumeFromJobResult {
+  const id =
+    (typeof row.id === "string" && row.id.trim()) ||
+    (typeof row.archiveId === "string" && row.archiveId.trim()) ||
+    undefined;
   return {
-    id: typeof row.id === "string" ? row.id : undefined,
+    id,
     jobTitle: typeof row.jobTitle === "string" ? row.jobTitle : "",
     companyName: typeof row.companyName === "string" ? row.companyName : "",
     resumeName: typeof row.resumeName === "string" ? row.resumeName : "",
@@ -145,11 +173,37 @@ function parseResult(raw: unknown): ResumeFromJobResult | undefined {
   };
 }
 
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      resolve(dataUrl.split(",")[1] ?? "");
+    };
+    reader.onerror = () => reject(new Error("Could not read PDF response."));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function parsePartialResult(raw: unknown): ResumeFromJobResult | undefined {
+  const withPdf = parseResult(raw);
+  if (withPdf) return withPdf;
+
+  const meta = parseResultMeta(raw);
+  if (!meta?.id) return undefined;
+
+  return { ...meta, pdfBase64: "" };
+}
+
 function parseJob(data: Record<string, unknown>, fallbackJobId = ""): ResumeFromJobJob {
   const jobId =
     (typeof data.jobId === "string" && data.jobId.trim()) ||
-    (typeof data.id === "string" && data.id.trim()) ||
+    (typeof data.id === "string" && data.id.trim() && !parsePartialResult(data)
+      ? data.id.trim()
+      : "") ||
     fallbackJobId;
+
+  const result = parsePartialResult(data.result) ?? parsePartialResult(data);
 
   return {
     jobId,
@@ -164,7 +218,53 @@ function parseJob(data: Record<string, unknown>, fallbackJobId = ""): ResumeFrom
     companyName: typeof data.companyName === "string" ? data.companyName : undefined,
     warning: typeof data.warning === "string" && data.warning.trim() ? data.warning.trim() : undefined,
     error: typeof data.error === "string" ? data.error : undefined,
-    result: parseResult(data.result),
+    result,
+  };
+}
+
+/** Resolve PDF bytes when job is done — uses inline base64 or archive download fallback. */
+export async function resolveResumeFromJobResult(
+  job: ResumeFromJobJob,
+  signal?: AbortSignal
+): Promise<ResumeFromJobResult> {
+  if (job.result?.pdfBase64) return job.result;
+
+  const meta =
+    parseResultMeta(job.result) ??
+    parseResultMeta({
+      id: job.result?.id,
+      jobTitle: job.result?.jobTitle ?? job.jobTitle,
+      companyName: job.result?.companyName ?? job.companyName,
+      resumeName: job.result?.resumeName,
+      pdfFileName: job.result?.pdfFileName,
+      warning: job.result?.warning ?? job.warning,
+    });
+
+  const archiveId = meta?.id;
+  if (!archiveId) {
+    throw new Error("Job completed but no PDF was returned.");
+  }
+
+  const { fetchSavedResumeFile } = await import("@/lib/saved-resumes-api");
+  const { blob, fileName } = await fetchSavedResumeFile(archiveId, "pdf", meta?.pdfFileName);
+
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+
+  const pdfBase64 = await blobToBase64(blob);
+  if (!pdfBase64) {
+    throw new Error("Job completed but the PDF file was empty.");
+  }
+
+  return {
+    id: archiveId,
+    jobTitle: meta?.jobTitle ?? job.jobTitle ?? "",
+    companyName: meta?.companyName ?? job.companyName ?? "",
+    resumeName: meta?.resumeName ?? "",
+    pdfFileName: fileName,
+    pdfBase64,
+    warning: meta?.warning ?? job.warning,
   };
 }
 

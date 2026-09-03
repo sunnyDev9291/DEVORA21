@@ -11,6 +11,7 @@ import {
   mergeResumeFromJobSteps,
   RESUME_FROM_JOB_POLL_MS,
   RESUME_FROM_JOB_TIMEOUT_MS,
+  resolveResumeFromJobResult,
   startResumeFromJob,
   type ResumeFromJobJob,
   type ResumeFromJobResult,
@@ -47,11 +48,17 @@ export default function ResumeFromJobPanel() {
 
   const abortRef = useRef<AbortController | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const successRef = useRef<HTMLDivElement | null>(null);
+  const downloadUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
       abortRef.current?.abort();
       if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+      if (downloadUrlRef.current) {
+        URL.revokeObjectURL(downloadUrlRef.current);
+        downloadUrlRef.current = null;
+      }
     };
   }, []);
 
@@ -65,6 +72,22 @@ export default function ResumeFromJobPanel() {
     () => (result?.pdfBase64 ? base64ToBlob(result.pdfBase64, "application/pdf") : null),
     [result?.pdfBase64]
   );
+
+  const pdfDownloadUrl = useMemo(() => {
+    if (downloadUrlRef.current) {
+      URL.revokeObjectURL(downloadUrlRef.current);
+      downloadUrlRef.current = null;
+    }
+    if (!pdfBlob) return null;
+    const url = URL.createObjectURL(pdfBlob);
+    downloadUrlRef.current = url;
+    return url;
+  }, [pdfBlob]);
+
+  useEffect(() => {
+    if (!result?.pdfBase64) return;
+    successRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [result?.pdfBase64]);
 
   function clearPollTimer() {
     if (pollTimerRef.current) {
@@ -80,6 +103,24 @@ export default function ResumeFromJobPanel() {
     setRunning(false);
   }
 
+  async function finishWithResult(jobSnapshot: ResumeFromJobJob, signal: AbortSignal) {
+    const resolved = await resolveResumeFromJobResult(jobSnapshot, signal);
+    setResult(resolved);
+    setJob((prev) =>
+      prev
+        ? {
+            ...prev,
+            status: "done",
+            progressPercent: 100,
+            message: "PDF ready — download below.",
+            jobTitle: resolved.jobTitle || prev.jobTitle,
+            companyName: resolved.companyName || prev.companyName,
+            warning: resolved.warning || prev.warning,
+          }
+        : prev
+    );
+  }
+
   async function pollUntilDone(jobId: string, startedAt: number, signal: AbortSignal) {
     while (!signal.aborted) {
       if (Date.now() - startedAt > RESUME_FROM_JOB_TIMEOUT_MS) {
@@ -92,11 +133,7 @@ export default function ResumeFromJobPanel() {
       setJob(latest);
 
       if (latest.status === "done") {
-        if (!latest.result?.pdfBase64) {
-          throw new Error("Job completed but no PDF was returned.");
-        }
-        setResult(latest.result);
-        setPreviewOpen(true);
+        await finishWithResult(latest, signal);
         return;
       }
 
@@ -156,9 +193,8 @@ export default function ResumeFromJobPanel() {
       setJob(started);
 
       if (isResumeFromJobTerminal(started.status)) {
-        if (started.status === "done" && started.result?.pdfBase64) {
-          setResult(started.result);
-          setPreviewOpen(true);
+        if (started.status === "done") {
+          await finishWithResult(started, controller.signal);
           return;
         }
         throw new Error(started.error || started.message || "Resume generation failed.");
@@ -249,32 +285,39 @@ export default function ResumeFromJobPanel() {
           jobTitle={job?.jobTitle || result?.jobTitle}
           companyName={job?.companyName || result?.companyName}
           warning={job?.warning || result?.warning}
+          downloadUrl={pdfDownloadUrl}
+          downloadFileName={result?.pdfFileName || "resume.pdf"}
+          onPreview={result?.pdfBase64 ? () => setPreviewOpen(true) : undefined}
         />
       )}
 
-      {result?.pdfBase64 ? (
-        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.06] px-4 py-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">PDF ready</p>
-            <p className="text-xs text-emerald-700/80 dark:text-emerald-300/80 truncate">
-              {result.pdfFileName || result.resumeName || "resume.pdf"}
-              {result.jobTitle ? ` · ${result.jobTitle}` : ""}
-            </p>
+      {result?.pdfBase64 && pdfDownloadUrl ? (
+        <div
+          ref={successRef}
+          className="rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.08] px-5 py-4 shadow-sm"
+        >
+          <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">
+            Generation complete
+          </p>
+          <p className="mt-1 text-xs text-emerald-700/90 dark:text-emerald-300/90">
+            {[result.jobTitle, result.companyName].filter(Boolean).join(" · ") || "Your resume PDF is ready."}
+          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <a
+              href={pdfDownloadUrl}
+              download={result.pdfFileName || "resume.pdf"}
+              className="inline-flex items-center rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500"
+            >
+              Download PDF — {result.pdfFileName || "resume.pdf"}
+            </a>
+            <button
+              type="button"
+              onClick={() => setPreviewOpen(true)}
+              className="rounded-xl border border-emerald-500/30 bg-white/80 px-4 py-2.5 text-sm font-semibold text-emerald-800 hover:bg-white dark:bg-white/10 dark:text-emerald-200"
+            >
+              Preview
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setPreviewOpen(true)}
-            className="rounded-xl border border-emerald-500/30 bg-white/80 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-white dark:bg-white/10 dark:text-emerald-200"
-          >
-            Preview
-          </button>
-          <button
-            type="button"
-            onClick={handleDownloadPdf}
-            className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
-          >
-            Download PDF
-          </button>
         </div>
       ) : null}
 
