@@ -1,24 +1,28 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { getApiErrorMessage } from "@/lib/auth-api";
 import { crawlBuiltInJobs, crawlHiringCafeJobs, crawlWorkableJobs, crawlWorkingNomadsJobs } from "@/lib/builtin-crawl-api";
 import {
   ALL_JOB_CRAWL_PLATFORMS,
   BUILTIN_CRAWL_TIMEOUT_MS,
   DEFAULT_LISTING_URLS,
+  JOB_CRAWL_PLATFORM_HINT,
+  JOB_CRAWL_PLATFORM_LABEL,
+  JOB_CRAWL_PLATFORM_PLACEHOLDER,
+  JOB_CRAWL_PLATFORM_VALIDATOR,
   mergeListingUrls,
-  isBuiltInListingUrl,
-  isHiringCafeListingUrl,
-  isWorkableListingUrl,
-  isWorkingNomadsListingUrl,
   type DiscoveredJobRow,
   type JobCrawlPlatform,
   type JobCrawlResult,
 } from "@/lib/builtin-crawl-types";
+import { AUTH_LINKS } from "@/lib/constants";
 import { formatEstDateTimeParts } from "@/lib/format-est-datetime";
 import { flattenCrawlResults } from "@/lib/job-crawl-list";
 import { loadStoredJobCrawl, saveStoredJobCrawl } from "@/lib/job-crawl-storage";
+import { loadStoredProfile, resolveListingUrls } from "@/lib/user-profile";
 import { ui } from "@/lib/ui-styles";
 
 const inputClass = ui.input;
@@ -34,36 +38,11 @@ const SORT_MODE_OPTIONS: { value: JobTableSortMode; label: string; description: 
   { value: "platform", label: "Platform order", description: "Original crawl order grouped by platform" },
 ];
 
-const PLATFORM_LABEL: Record<JobCrawlPlatform, string> = {
-  builtin: "Built In",
-  hiringcafe: "HiringCafe",
-  workable: "Workable",
-  workingnomads: "Working Nomads",
-};
-
+const PLATFORM_LABEL = JOB_CRAWL_PLATFORM_LABEL;
 const PLATFORM_DEFAULT_URL = DEFAULT_LISTING_URLS;
-
-const PLATFORM_URL_VALID: Record<JobCrawlPlatform, (url: string) => boolean> = {
-  builtin: isBuiltInListingUrl,
-  hiringcafe: isHiringCafeListingUrl,
-  workable: isWorkableListingUrl,
-  workingnomads: isWorkingNomadsListingUrl,
-};
-
-const PLATFORM_PLACEHOLDER: Record<JobCrawlPlatform, string> = {
-  builtin: "https://builtin.com/jobs/…",
-  hiringcafe: "https://hiringcafe.com/?searchState=…",
-  workable: "https://jobs.workable.com/search?…",
-  workingnomads: "https://www.workingnomads.com/jobs?…",
-};
-
-const PLATFORM_HINT: Record<JobCrawlPlatform, string> = {
-  builtin: "Page 1 listing — backend handles pagination.",
-  hiringcafe: "Page 0 listing with searchState — backend handles pagination.",
-  workable: "Copy the full /search URL from Workable after setting filters (single page, no pagination).",
-  workingnomads:
-    "Copy the full /jobs URL from Working Nomads after setting filters (single page, no pagination).",
-};
+const PLATFORM_URL_VALID = JOB_CRAWL_PLATFORM_VALIDATOR;
+const PLATFORM_PLACEHOLDER = JOB_CRAWL_PLATFORM_PLACEHOLDER;
+const PLATFORM_HINT = JOB_CRAWL_PLATFORM_HINT;
 
 const PLATFORM_SELECTED_CLASS =
   "border-orange-500/30 bg-orange-600 text-white shadow-md shadow-orange-500/25";
@@ -73,10 +52,6 @@ const PLATFORM_TABLE_BADGE_CLASS: Record<JobCrawlPlatform, string> = {
   workable: "bg-amber-500/15 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500/20",
   workingnomads: "bg-sky-500/15 text-sky-800 dark:text-sky-300 ring-1 ring-sky-500/20",
 };
-
-function defaultListingUrls(): Record<JobCrawlPlatform, string> {
-  return mergeListingUrls(null);
-}
 
 function defaultSelectedPlatforms(): JobCrawlPlatform[] {
   return [...ALL_JOB_CRAWL_PLATFORMS];
@@ -580,8 +555,17 @@ function MergedJobTable({
 }
 
 export default function BuiltInCrawlPanel() {
+  const { user } = useAuth();
+  const userId = user?.id;
+  const profileListingUrls = useMemo(
+    () => resolveListingUrls(user, userId ? loadStoredProfile(userId) : null),
+    [user, userId]
+  );
+
   const [selectedPlatforms, setSelectedPlatforms] = useState<JobCrawlPlatform[]>(defaultSelectedPlatforms);
-  const [listingUrls, setListingUrls] = useState<Record<JobCrawlPlatform, string>>(defaultListingUrls);
+  const [listingUrls, setListingUrls] = useState<Record<JobCrawlPlatform, string>>(() =>
+    mergeListingUrls(null)
+  );
   const [jobList, setJobList] = useState<DiscoveredJobRow[]>([]);
   const [checkedJobKeys, setCheckedJobKeys] = useState<Set<string>>(() => new Set());
   const [jobTitleFilter, setJobTitleFilter] = useState(DEFAULT_JOB_TITLE_FILTER);
@@ -592,15 +576,16 @@ export default function BuiltInCrawlPanel() {
   const [lastCrawledAt, setLastCrawledAt] = useState<string | null>(null);
 
   useEffect(() => {
-    const stored = loadStoredJobCrawl();
+    const stored = loadStoredJobCrawl(userId);
+    // Profile listing URLs are the source of truth; session only keeps jobs + platforms.
+    setListingUrls(mergeListingUrls(profileListingUrls ?? stored?.listingUrls));
     if (stored) {
       setSelectedPlatforms(stored.selectedPlatforms);
-      setListingUrls(mergeListingUrls(stored.listingUrls));
       setJobList(stored.jobs);
       if (stored.savedAt) setLastCrawledAt(stored.savedAt);
     }
     setHydrated(true);
-  }, []);
+  }, [userId, profileListingUrls]);
 
   const allPlatformSelected = ALL_JOB_CRAWL_PLATFORMS.every((p) => selectedPlatforms.includes(p));
   const canCrawl =
@@ -637,9 +622,10 @@ export default function BuiltInCrawlPanel() {
         return current.filter((p) => p !== platform);
       }
       if (!listingUrls[platform]?.trim()) {
+        const profileUrl = profileListingUrls?.[platform]?.trim();
         setListingUrls((urls) => ({
           ...urls,
-          [platform]: PLATFORM_DEFAULT_URL[platform],
+          [platform]: profileUrl || PLATFORM_DEFAULT_URL[platform],
         }));
       }
       return [...current, platform];
@@ -713,12 +699,15 @@ export default function BuiltInCrawlPanel() {
       setCheckedJobKeys(new Set());
       setJobTitleFilter("");
       setLastCrawledAt(savedAt);
-      saveStoredJobCrawl({
-        selectedPlatforms,
-        listingUrls,
-        jobs: freshJobs,
-        savedAt,
-      });
+      saveStoredJobCrawl(
+        {
+          selectedPlatforms,
+          listingUrls,
+          jobs: freshJobs,
+          savedAt,
+        },
+        userId
+      );
     }
 
     window.clearTimeout(timer);
@@ -730,7 +719,11 @@ export default function BuiltInCrawlPanel() {
       <div className="mb-6">
         <h2 className="text-xl font-bold text-slate-900 dark:text-white">Job discovery</h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 max-w-2xl">
-          Select platforms, crawl, and browse one merged job list. Saved locally until the next crawl refreshes it.
+          Select platforms, crawl, and browse one merged job list. Listing URLs come from your{" "}
+          <Link href={`${AUTH_LINKS.dashboard}#crawl-urls`} className="font-semibold text-orange-700 underline-offset-2 hover:underline dark:text-orange-300">
+            profile dashboard
+          </Link>
+          ; edit them there to change your defaults.
         </p>
         {hydrated && lastCrawledAt ? <LastCrawledBanner iso={lastCrawledAt} /> : null}
       </div>
@@ -792,7 +785,15 @@ export default function BuiltInCrawlPanel() {
                     title={`Copy ${PLATFORM_LABEL[platform]} listing URL`}
                   />
                 </div>
-                <p className="mt-1.5 text-xs text-slate-400">{PLATFORM_HINT[platform]}</p>
+                <p className="mt-1.5 text-xs text-slate-400">
+                  {PLATFORM_HINT[platform]}{" "}
+                  <Link
+                    href={`${AUTH_LINKS.dashboard}#crawl-urls`}
+                    className="font-medium text-orange-700 underline-offset-2 hover:underline dark:text-orange-300"
+                  >
+                    Edit default on dashboard
+                  </Link>
+                </p>
               </div>
             ))}
           </div>

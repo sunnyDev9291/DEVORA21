@@ -1,8 +1,9 @@
 import { API_BASE_URL } from "@/lib/api-base-url";
 import { apiAuthFetch } from "@/lib/api-auth";
 import { ApiError, normalizeAuthUser } from "@/lib/auth-api";
+import { compactListingUrls } from "@/lib/builtin-crawl-types";
 import { dataUrlToBlob } from "@/lib/profile-file";
-import type { User } from "@/types/auth";
+import type { ProfileListingUrls, User } from "@/types/auth";
 
 export type UserResumeTemplateAsset = {
   fileName: string;
@@ -66,6 +67,7 @@ export type ProfileUpdateFilesPayload = {
   resumeTemplateFile?: File | null;
   promptFile?: File | null;
   customPrompt?: string;
+  listingUrls?: ProfileListingUrls;
 };
 
 function appendAvatar(form: FormData, avatarFile?: File | null, avatarDataUrl?: string) {
@@ -115,6 +117,13 @@ function buildProfileUpdateFormData(payload: ProfileUpdateFilesPayload): FormDat
   }
   if (payload.customPrompt !== undefined) {
     form.append("customPrompt", payload.customPrompt.trim());
+  }
+  if (payload.listingUrls !== undefined) {
+    const compact = compactListingUrls(payload.listingUrls) ?? {};
+    form.append("listingUrls", JSON.stringify(compact));
+    for (const [platform, url] of Object.entries(compact)) {
+      if (url) form.append(`listingUrl_${platform}`, url);
+    }
   }
 
   return form;

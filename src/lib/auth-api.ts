@@ -1,5 +1,6 @@
 import { API_BASE_URL } from "@/lib/api-base-url";
 import { apiAuthFetch, type ApiAuthMode } from "@/lib/api-auth";
+import { parseListingUrlsPartial } from "@/lib/builtin-crawl-types";
 import { readEmailVerified, mergeEmailVerifiedState } from "@/lib/email-verification";
 import type {
   AuthResponse,
@@ -252,6 +253,18 @@ export function normalizeAuthUser(raw: unknown): User {
   const createdAt =
     typeof source.createdAt === "string" ? source.createdAt : undefined;
 
+  const listingUrlsRaw = source.listingUrls ?? source.listing_urls;
+  let listingUrls: User["listingUrls"];
+  if (typeof listingUrlsRaw === "string") {
+    try {
+      listingUrls = parseListingUrlsPartial(JSON.parse(listingUrlsRaw));
+    } catch {
+      listingUrls = undefined;
+    }
+  } else {
+    listingUrls = parseListingUrlsPartial(listingUrlsRaw);
+  }
+
   return {
     id,
     email,
@@ -260,6 +273,7 @@ export function normalizeAuthUser(raw: unknown): User {
     ...(resumeBuilderEnabled !== undefined ? { resumeBuilderEnabled } : {}),
     resumeTemplateFileName: resumeTemplateFileName || undefined,
     promptFileName: promptFileName || undefined,
+    listingUrls,
     createdAt,
     firstName: firstName || undefined,
     lastName: lastName || undefined,

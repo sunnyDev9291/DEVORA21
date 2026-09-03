@@ -4,6 +4,11 @@ import { flattenCrawlResults } from "@/lib/job-crawl-list";
 
 const STORAGE_KEY = "dv21:job-discovery-crawl:v3";
 
+function storageKeyForUser(userId?: string | null): string {
+  const id = userId?.trim();
+  return id ? `${STORAGE_KEY}:${id}` : STORAGE_KEY;
+}
+
 export type StoredJobCrawlSession = {
   selectedPlatforms: JobCrawlPlatform[];
   listingUrls: Record<JobCrawlPlatform, string>;
@@ -170,8 +175,25 @@ function migrateLegacy(rawKey: string): StoredJobCrawlSession | null {
   }
 }
 
-export function loadStoredJobCrawl(): StoredJobCrawlSession | null {
+export function loadStoredJobCrawl(userId?: string | null): StoredJobCrawlSession | null {
   if (typeof window === "undefined") return null;
+
+  const userKey = storageKeyForUser(userId);
+  const userScoped = migrateLegacy(userKey);
+  if (userScoped) return userScoped;
+
+  // One-time migrate from global (pre-profile) key into the user-scoped slot.
+  if (userId?.trim()) {
+    const legacy = migrateLegacy(STORAGE_KEY);
+    if (legacy) {
+      try {
+        localStorage.setItem(userKey, JSON.stringify(legacy));
+      } catch {
+        // ignore quota / private mode
+      }
+      return legacy;
+    }
+  }
 
   return (
     migrateLegacy(STORAGE_KEY) ??
@@ -180,11 +202,11 @@ export function loadStoredJobCrawl(): StoredJobCrawlSession | null {
   );
 }
 
-export function saveStoredJobCrawl(session: StoredJobCrawlSession): void {
+export function saveStoredJobCrawl(session: StoredJobCrawlSession, userId?: string | null): void {
   if (typeof window === "undefined") return;
 
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+    localStorage.setItem(storageKeyForUser(userId), JSON.stringify(session));
     localStorage.removeItem("dv21:job-discovery-crawl:v2");
     localStorage.removeItem("dv21:job-discovery-crawl:v1");
   } catch {
@@ -192,11 +214,14 @@ export function saveStoredJobCrawl(session: StoredJobCrawlSession): void {
   }
 }
 
-export function clearStoredJobCrawl(): void {
+export function clearStoredJobCrawl(userId?: string | null): void {
   if (typeof window === "undefined") return;
 
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(storageKeyForUser(userId));
+    if (!userId?.trim()) {
+      localStorage.removeItem(STORAGE_KEY);
+    }
     localStorage.removeItem("dv21:job-discovery-crawl:v2");
     localStorage.removeItem("dv21:job-discovery-crawl:v1");
   } catch {
