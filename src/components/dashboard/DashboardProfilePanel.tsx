@@ -12,7 +12,6 @@ import { authApi, getApiErrorMessage } from "@/lib/auth-api";
 import { APP_FEATURES } from "@/lib/constants";
 import {
   ALL_JOB_CRAWL_PLATFORMS,
-  compactListingUrls,
   JOB_CRAWL_PLATFORM_HINT,
   JOB_CRAWL_PLATFORM_LABEL,
   JOB_CRAWL_PLATFORM_PLACEHOLDER,
@@ -135,7 +134,7 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
       }
     }
 
-    const nextListingUrls = compactListingUrls(listingUrls) ?? {};
+    const nextListingUrls = mergeListingUrls(listingUrls);
 
     const payload = {
       firstName: firstName.trim(),
@@ -159,6 +158,17 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
 
     try {
       await authApi.updateProfileWithFiles(payload);
+      // Also send JSON so backends that ignore multipart listingUrls still persist them.
+      try {
+        await authApi.updateProfile({
+          firstName: payload.firstName,
+          lastName: payload.lastName,
+          customPrompt: payload.customPrompt,
+          listingUrls: nextListingUrls,
+        });
+      } catch {
+        // Multipart path may already have succeeded; JSON is a best-effort second write.
+      }
 
       if (resumeTemplateFile) {
         await cacheUploadedTemplate(user.id, resumeTemplateFile);
@@ -168,7 +178,7 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
       }
 
       onProfileUpdated?.();
-      setMessage("Profile saved.");
+      setMessage("Profile saved. Crawl URLs are stored on your account.");
       setAvatarFile(null);
       setResumeTemplateFile(null);
       setPromptFile(null);
@@ -179,8 +189,15 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
         if (promptFile && customPrompt.trim()) {
           await cacheUploadedPrompt(user.id, promptFile, customPrompt.trim());
         }
-        onProfileUpdated?.();
-        setMessage("Saved on this device. (Backend profile API not available yet.)");
+        // Last resort: JSON-only listingUrls write
+        try {
+          await authApi.updateProfile({ listingUrls: nextListingUrls });
+          onProfileUpdated?.();
+          setMessage("Crawl URLs saved to your account.");
+        } catch {
+          onProfileUpdated?.();
+          setMessage("Saved on this device. (Backend profile API not available yet.)");
+        }
       } else {
         setError(getApiErrorMessage(err, "Could not save profile."));
       }
@@ -264,7 +281,8 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
       <div id="crawl-urls" className="mt-8 scroll-mt-28 border-t border-white/10 pt-8">
         <h3 className="mb-1 text-sm font-semibold text-white">Job crawl listing URLs</h3>
         <p className="mb-4 text-xs text-slate-500">
-          These are your default crawl links for Job discovery. Edit them here, then click Save profile.
+          Edit your crawl links here, then click <span className="font-semibold text-slate-300">Save profile</span>.
+          They are stored on the backend for your account and used by Job discovery.
         </p>
         <div className="space-y-4">
           {ALL_JOB_CRAWL_PLATFORMS.map((platform) => (

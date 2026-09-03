@@ -1,46 +1,62 @@
-# Job crawl listing URLs on user profile
+# Job crawl listing URLs — backend contract
 
-Each user stores their own crawl listing URLs (Built In, HiringCafe, Workable, Working Nomads).
+## Product rule
+- Users edit crawl listing URLs only on the **profile dashboard**
+- Clicking **Save profile** must persist `listingUrls` on the backend for that user
+- Job discovery reads those URLs; it does **not** offer URL edit inputs
 
-## Frontend behavior
+## Platform keys (exact)
+builtin | hiringcafe | workable | workingnomads
 
-- **Dashboard → Job crawl listing URLs:** edit and save defaults per account
-- **Job discovery (`/resume/discover`):** loads URLs from the signed-in profile (falls back to app defaults)
-- Local fallback: `devora21-user-profile:{userId}.listingUrls` when the API is unavailable
-
-## Backend contract
-
-### `GET /auth/me`
-
-Optional field on the user object:
-
+## Shape
 ```json
 {
   "listingUrls": {
-    "builtin": "https://builtin.com/jobs/…",
-    "hiringcafe": "https://hiringcafe.com/?searchState=…",
-    "workable": "https://jobs.workable.com/search?…",
-    "workingnomads": "https://www.workingnomads.com/jobs?…"
+    "builtin": "https://builtin.com/jobs/...",
+    "hiringcafe": "https://hiringcafe.com/?searchState=...",
+    "workable": "https://jobs.workable.com/search?...",
+    "workingnomads": "https://www.workingnomads.com/jobs?..."
   }
 }
 ```
 
-Alias accepted: `listing_urls`.
+## Required API behavior
 
-### `PATCH /auth/profile` (multipart)
+### GET /auth/me
+Return `listingUrls` on the user object (alias `listing_urls` accepted on parse).
 
-Append either:
+### PATCH /auth/profile
+Support **both**:
 
-1. `listingUrls` — JSON string of the object above, and/or
-2. Flat fields: `listingUrl_builtin`, `listingUrl_hiringcafe`, `listingUrl_workable`, `listingUrl_workingnomads`
+1. **multipart/form-data** (existing profile save):
+   - field `listingUrls` = JSON string of the object above
+   - optional flat fields: `listingUrl_builtin`, `listingUrl_hiringcafe`, `listingUrl_workable`, `listingUrl_workingnomads`
 
-Empty / omitted platforms keep the previous stored value or fall back to app defaults on the client.
+2. **application/json**:
+```json
+{
+  "firstName": "...",
+  "lastName": "...",
+  "customPrompt": "...",
+  "listingUrls": {
+    "builtin": "...",
+    "hiringcafe": "...",
+    "workable": "...",
+    "workingnomads": "..."
+  }
+}
+```
 
-## Platform keys
+### Persist rules
+- Authenticated user only (401 if not)
+- Merge by platform: provided non-empty URL overwrites that platform
+- Omitted platforms keep previous values
+- Persist on the user record; return updated user including `listingUrls`
+- Do not wipe listingUrls when the request has no listingUrls field
+- Do not break existing avatar / resumeTemplate / promptFile / name fields
 
-| Key | Label |
-|-----|--------|
-| `builtin` | Built In |
-| `hiringcafe` | HiringCafe |
-| `workable` | Workable |
-| `workingnomads` | Working Nomads |
+### Acceptance
+1. Dashboard Save profile with listingUrls → stored in DB
+2. GET /auth/me returns those URLs for that user only
+3. Another user cannot see them
+4. Job discovery can crawl using the saved URLs

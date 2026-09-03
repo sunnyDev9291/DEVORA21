@@ -9,9 +9,7 @@ import {
   ALL_JOB_CRAWL_PLATFORMS,
   BUILTIN_CRAWL_TIMEOUT_MS,
   DEFAULT_LISTING_URLS,
-  JOB_CRAWL_PLATFORM_HINT,
   JOB_CRAWL_PLATFORM_LABEL,
-  JOB_CRAWL_PLATFORM_PLACEHOLDER,
   JOB_CRAWL_PLATFORM_VALIDATOR,
   mergeListingUrls,
   type DiscoveredJobRow,
@@ -24,8 +22,6 @@ import { flattenCrawlResults } from "@/lib/job-crawl-list";
 import { loadStoredJobCrawl, saveStoredJobCrawl } from "@/lib/job-crawl-storage";
 import { loadStoredProfile, resolveListingUrls } from "@/lib/user-profile";
 import { ui } from "@/lib/ui-styles";
-
-const inputClass = ui.input;
 
 const filterInputClass = `${ui.input} py-3.5 text-base placeholder:text-slate-400 dark:placeholder:text-slate-500`;
 
@@ -41,8 +37,6 @@ const SORT_MODE_OPTIONS: { value: JobTableSortMode; label: string; description: 
 const PLATFORM_LABEL = JOB_CRAWL_PLATFORM_LABEL;
 const PLATFORM_DEFAULT_URL = DEFAULT_LISTING_URLS;
 const PLATFORM_URL_VALID = JOB_CRAWL_PLATFORM_VALIDATOR;
-const PLATFORM_PLACEHOLDER = JOB_CRAWL_PLATFORM_PLACEHOLDER;
-const PLATFORM_HINT = JOB_CRAWL_PLATFORM_HINT;
 
 const PLATFORM_SELECTED_CLASS =
   "border-orange-500/30 bg-orange-600 text-white shadow-md shadow-orange-500/25";
@@ -632,10 +626,6 @@ export default function BuiltInCrawlPanel() {
     });
   }
 
-  function updateListingUrl(platform: JobCrawlPlatform, url: string) {
-    setListingUrls((current) => ({ ...current, [platform]: url }));
-  }
-
   function toggleJobRow(key: string) {
     setCheckedJobKeys((current) => {
       const next = new Set(current);
@@ -759,43 +749,29 @@ export default function BuiltInCrawlPanel() {
             Select at least one platform to crawl.
           </p>
         ) : (
-          <div className="space-y-4">
-            {selectedPlatforms.map((platform) => (
-              <div key={platform}>
-                <label
-                  htmlFor={`listingUrl-${platform}`}
-                  className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5"
-                >
-                  {PLATFORM_LABEL[platform]} listing URL
-                </label>
-                <div className="flex items-stretch gap-2">
-                  <input
-                    id={`listingUrl-${platform}`}
-                    type="url"
-                    value={listingUrls[platform]}
-                    onChange={(e) => updateListingUrl(platform, e.target.value)}
-                    placeholder={PLATFORM_PLACEHOLDER[platform]}
-                    className={`${inputClass} min-w-0 flex-1`}
-                    disabled={crawling}
-                    spellCheck={false}
-                  />
-                  <CopyUrlButton
-                    url={listingUrls[platform]}
-                    disabled={crawling}
-                    title={`Copy ${PLATFORM_LABEL[platform]} listing URL`}
-                  />
-                </div>
-                <p className="mt-1.5 text-xs text-slate-400">
-                  {PLATFORM_HINT[platform]}{" "}
-                  <Link
-                    href={`${AUTH_LINKS.dashboard}#crawl-urls`}
-                    className="font-medium text-orange-700 underline-offset-2 hover:underline dark:text-orange-300"
-                  >
-                    Edit default on dashboard
-                  </Link>
-                </p>
-              </div>
-            ))}
+          <div className="rounded-xl border border-orange-200/70 bg-orange-50/60 px-4 py-3 dark:border-orange-500/15 dark:bg-orange-500/[0.06]">
+            <p className="text-sm font-medium text-slate-800 dark:text-stone-100">
+              Crawl links come from your profile
+            </p>
+            <p className="mt-1 text-xs text-slate-600 dark:text-stone-300">
+              Job discovery uses the listing URLs saved on your dashboard. You cannot edit them here.
+            </p>
+            <ul className="mt-3 space-y-1.5">
+              {selectedPlatforms.map((platform) => (
+                <li key={platform} className="text-xs text-slate-600 dark:text-stone-300">
+                  <span className="font-semibold text-slate-800 dark:text-stone-100">
+                    {PLATFORM_LABEL[platform]}:
+                  </span>{" "}
+                  <span className="break-all">{listingUrls[platform] || "Not set — add it on your dashboard"}</span>
+                </li>
+              ))}
+            </ul>
+            <Link
+              href={`${AUTH_LINKS.dashboard}#crawl-urls`}
+              className="mt-3 inline-flex text-sm font-semibold text-orange-700 underline-offset-2 hover:underline dark:text-orange-300"
+            >
+              Edit crawl URLs on dashboard →
+            </Link>
           </div>
         )}
 
