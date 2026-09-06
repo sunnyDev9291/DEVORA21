@@ -49,6 +49,8 @@ import {
   extractResumeTitleHeadline,
 } from "@/lib/resume-filename";
 import { loadStoredProfile, resolveUserNames } from "@/lib/user-profile";
+import CompanyPastApplications from "@/components/sections/CompanyPastApplications";
+import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
 
 /**
  * Prefer the template resolved by useUserProfileAssets (remote-synced).
@@ -1011,9 +1013,22 @@ export default function ResumeGenerator({
                   placeholder="e.g. Acme Corp"
                   className={`${inputClass} min-w-0 flex-1`}
                   required
+                  autoComplete="organization"
                 />
                 <CopyIconButton text={form.companyName} label="Copy company name" disabled={generating} />
               </div>
+              <CompanyPastApplications
+                companyName={form.companyName}
+                disabled={generating || applying}
+                onUseJobDescription={(item: SavedResumeArchive) => {
+                  setForm((current) => ({
+                    ...current,
+                    jobTitle: item.jobTitle?.trim() || current.jobTitle,
+                    companyName: item.companyName?.trim() || current.companyName,
+                    jobDescription: item.jobDescription?.trim() || current.jobDescription,
+                  }));
+                }}
+              />
             </div>
           </div>
 
