@@ -684,7 +684,6 @@ export default function BuiltInCrawlPanel() {
 
       setJobList(freshJobs);
       setCheckedJobKeys(new Set());
-      setJobTitleFilter("");
       setLastCrawledAt(savedAt);
       saveStoredJobCrawl(
         {
