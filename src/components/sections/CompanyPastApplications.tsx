@@ -145,7 +145,14 @@ export default function CompanyPastApplications({
                     </p>
                     <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
                       {item.companyName}
-                      {when ? ` · ${when}` : ""}
+                      {when ? (
+                        <>
+                          {" · "}
+                          <span className="font-bold text-orange-800 dark:text-orange-300">
+                            {when}
+                          </span>
+                        </>
+                      ) : null}
                     </p>
                     {item.resumeFileName ? (
                       <p className="mt-0.5 truncate text-xs text-slate-400 dark:text-slate-500">
