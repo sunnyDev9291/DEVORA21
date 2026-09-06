@@ -684,6 +684,8 @@ export default function BuiltInCrawlPanel() {
 
       setJobList(freshJobs);
       setCheckedJobKeys(new Set());
+      // Always re-apply default keywords so results are filtered immediately (not only after refresh).
+      setJobTitleFilter(DEFAULT_JOB_TITLE_FILTER);
       setLastCrawledAt(savedAt);
       saveStoredJobCrawl(
         {
@@ -857,12 +859,13 @@ export default function BuiltInCrawlPanel() {
               </label>
               <input
                 id="jobTitleFilter"
-                type="search"
+                type="text"
                 value={jobTitleFilter}
                 onChange={(e) => setJobTitleFilter(e.target.value)}
                 placeholder={DEFAULT_JOB_TITLE_FILTER}
                 className={filterInputClass}
                 spellCheck={false}
+                autoComplete="off"
               />
               <p className="mt-1.5 text-sm text-slate-400 dark:text-slate-500">
                 Use <span className="font-semibold text-slate-500 dark:text-slate-400">OR</span> to match any term, or{" "}
