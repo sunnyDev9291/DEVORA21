@@ -50,6 +50,7 @@ import {
 } from "@/lib/resume-filename";
 import { loadStoredProfile, resolveUserNames } from "@/lib/user-profile";
 import CompanyPastApplications from "@/components/sections/CompanyPastApplications";
+import EnglishTeamCheck from "@/components/ui/EnglishTeamCheck";
 import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
 
 /**
@@ -1052,6 +1053,11 @@ export default function ResumeGenerator({
                 className="h-12 self-start"
               />
             </div>
+            <EnglishTeamCheck
+              jobTitle={form.jobTitle}
+              jobDescription={form.jobDescription}
+              disabled={generating || applying || importingJob}
+            />
           </div>
 
           {userPrompt.trim() && (
