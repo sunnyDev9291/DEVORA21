@@ -6,6 +6,10 @@ import {
   isResumeBuilderAccessDenied,
   resumeBuilderAccessDeniedMessage,
 } from "@/lib/resume-access";
+import {
+  EnglishTeamRequiredError,
+  parseEnglishTeamRequired,
+} from "@/lib/english-team-gate";
 
 export type ResumeFromJobStatus =
   | "queued"
@@ -47,6 +51,10 @@ export type ResumeFromJobJob = {
   companyName?: string;
   warning?: string;
   error?: string;
+  /** Present when generation was blocked by English-team gate. */
+  code?: string;
+  answer?: string;
+  workWithEnglishTeam?: boolean;
   result?: ResumeFromJobResult;
 };
 
@@ -73,6 +81,9 @@ function errorMessage(data: Record<string, unknown>, fallback: string): string {
 }
 
 function throwAuthAware(res: Response, data: Record<string, unknown>): never {
+  const gated = parseEnglishTeamRequired(data, res.status);
+  if (gated) throw gated;
+
   const message = errorMessage(data, `Request failed (${res.status}).`);
   if (res.status === 401) {
     throw new ApiError("Authentication required. Sign in or connect a dv21_ API key.", 401, {
@@ -218,8 +229,32 @@ function parseJob(data: Record<string, unknown>, fallbackJobId = ""): ResumeFrom
     companyName: typeof data.companyName === "string" ? data.companyName : undefined,
     warning: typeof data.warning === "string" && data.warning.trim() ? data.warning.trim() : undefined,
     error: typeof data.error === "string" ? data.error : undefined,
+    code: typeof data.code === "string" ? data.code : undefined,
+    answer: typeof data.answer === "string" ? data.answer : undefined,
+    workWithEnglishTeam:
+      typeof data.workWithEnglishTeam === "boolean" ? data.workWithEnglishTeam : undefined,
     result,
   };
+}
+
+/** Throw when a from-job job payload is blocked by the English-team gate. */
+export function throwIfEnglishTeamRequiredJob(job: ResumeFromJobJob): void {
+  const gated = parseEnglishTeamRequired(
+    {
+      code: job.code,
+      answer: job.answer,
+      workWithEnglishTeam: job.workWithEnglishTeam,
+      message: job.message || job.error,
+      error: job.error || job.message,
+    },
+    422
+  );
+  if (gated) throw gated;
+
+  // Fallback: some backends only put the code on nested error objects.
+  if (job.status === "error" && job.code === "ENGLISH_TEAM_REQUIRED") {
+    throw new EnglishTeamRequiredError(job.message || job.error);
+  }
 }
 
 /** Resolve PDF bytes when job is done — uses inline base64 or archive download fallback. */

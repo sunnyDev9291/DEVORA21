@@ -1,5 +1,9 @@
 import { API_BASE_URL } from "@/lib/api-base-url";
 import { isUserApiKey } from "@/lib/user-api-key";
+import {
+  EnglishTeamRequiredError,
+  parseEnglishTeamRequired,
+} from "@/lib/english-team-gate";
 
 export type BrowserAiChatMessage = {
   role: "system" | "user" | "assistant";
@@ -21,25 +25,45 @@ export type BrowserAiStreamOptions = {
   authToken: string;
   /** Logged-in user id — required when Authorization is the internal key. */
   userId?: string;
+  /** Required by backend English-team gate (send both when available). */
+  jobTitle?: string;
+  jobDescription?: string;
 };
 
 const MID_STREAM_ERROR = /(?:^|\n)\[error\]\s*(.+)$/i;
 
-async function readHttpError(response: Response): Promise<string> {
+async function readHttpErrorPayload(response: Response): Promise<{
+  message: string;
+  gated: EnglishTeamRequiredError | null;
+}> {
   const detail = await response.text().catch(() => "");
   if (!detail) {
-    return `AI backend error (${response.status}): ${response.statusText}`;
+    return {
+      message: `AI backend error (${response.status}): ${response.statusText}`,
+      gated: null,
+    };
   }
   try {
     const parsed = JSON.parse(detail) as {
       error?: string;
       message?: string;
       errorMessage?: string;
+      code?: string;
     };
-    return parsed.error || parsed.message || parsed.errorMessage || detail;
+    const gated = parseEnglishTeamRequired(parsed, response.status);
+    return {
+      message: parsed.error || parsed.message || parsed.errorMessage || detail,
+      gated,
+    };
   } catch {
-    return detail;
+    return { message: detail, gated: null };
   }
+}
+
+async function throwHttpError(response: Response): Promise<never> {
+  const { message, gated } = await readHttpErrorPayload(response);
+  if (gated) throw gated;
+  throw new Error(message);
 }
 
 function throwIfMidStreamError(accumulated: string): void {
@@ -116,6 +140,10 @@ async function fetchDirectAiStream(
   if (userId) {
     body.userId = userId;
   }
+  const jobTitle = options.jobTitle?.trim() ?? "";
+  const jobDescription = options.jobDescription?.trim() ?? "";
+  if (jobTitle) body.jobTitle = jobTitle;
+  if (jobDescription) body.jobDescription = jobDescription;
 
   // Bearer + body.userId identify the user; omit cookies to avoid credential CORS failures.
   return fetch(`${API_BASE_URL}/ai/chat/completions/stream`, {
@@ -152,6 +180,8 @@ async function fetchBffAiStream(
       maxTokens,
       jsonObject: options.jsonObject ?? false,
       userId: userId || undefined,
+      jobTitle: options.jobTitle?.trim() || undefined,
+      jobDescription: options.jobDescription?.trim() || undefined,
     }),
     signal: options.signal,
   });
@@ -196,7 +226,7 @@ export async function* iterateBrowserAiStream(
   }
 
   if (!response.ok) {
-    throw new Error(await readHttpError(response));
+    await throwHttpError(response);
   }
 
   yield* readPlainTextStream(response);

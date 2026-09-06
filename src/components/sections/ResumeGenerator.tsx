@@ -51,7 +51,9 @@ import {
 import { loadStoredProfile, resolveUserNames } from "@/lib/user-profile";
 import CompanyPastApplications from "@/components/sections/CompanyPastApplications";
 import EnglishTeamCheck from "@/components/ui/EnglishTeamCheck";
+import EnglishTeamRequiredDialog from "@/components/ui/EnglishTeamRequiredDialog";
 import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
+import { isEnglishTeamRequiredError } from "@/lib/english-team-gate";
 
 /**
  * Prefer the template resolved by useUserProfileAssets (remote-synced).
@@ -178,6 +180,8 @@ export default function ResumeGenerator({
   const [jobChecking, setJobChecking] = useState(false);
   const [jobCheckOutput, setJobCheckOutput] = useState("");
   const [jobCheckError, setJobCheckError] = useState("");
+  const [englishTeamGateOpen, setEnglishTeamGateOpen] = useState(false);
+  const [englishTeamGateMessage, setEnglishTeamGateMessage] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const jobCheckAbortRef = useRef<AbortController | null>(null);
   const atsAbortRef = useRef<AbortController | null>(null);
@@ -617,11 +621,17 @@ export default function ResumeGenerator({
       setError("Company name is required.");
       return;
     }
+    if (!form.jobTitle.trim() && !form.jobDescription.trim()) {
+      setError("Job title or job description is required.");
+      return;
+    }
 
     abortRef.current?.abort();
 
     const runId = ++generationRunRef.current;
     setError("");
+    setEnglishTeamGateOpen(false);
+    setEnglishTeamGateMessage("");
     setRegenerateNotice("");
     setRegenerateBaseline(null);
     setRegenerateBaselineScore(null);
@@ -676,6 +686,15 @@ export default function ResumeGenerator({
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       if (generationRunRef.current !== runId) return;
+      if (isEnglishTeamRequiredError(err)) {
+        setStep("form");
+        setContent(null);
+        setStreamOutput("");
+        setStreamPhase("starting");
+        setEnglishTeamGateMessage(err.message);
+        setEnglishTeamGateOpen(true);
+        return;
+      }
       setError((err as Error).message || "Something went wrong.");
     } finally {
       if (generationRunRef.current === runId) {
@@ -780,6 +799,13 @@ export default function ResumeGenerator({
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       if (generationRunRef.current !== runId) return;
+      if (isEnglishTeamRequiredError(err)) {
+        setStreamOutput("");
+        setStreamPhase("starting");
+        setEnglishTeamGateMessage(err.message);
+        setEnglishTeamGateOpen(true);
+        return;
+      }
       setError((err as Error).message || "Could not improve this score item.");
     } finally {
       if (generationRunRef.current === runId) {
@@ -1413,6 +1439,15 @@ export default function ResumeGenerator({
         waitingForPdf={archiving}
         error={archiveError}
         onDownload={handleDownloadPdf}
+      />
+
+      <EnglishTeamRequiredDialog
+        open={englishTeamGateOpen}
+        message={englishTeamGateMessage}
+        onClose={() => {
+          setEnglishTeamGateOpen(false);
+          setEnglishTeamGateMessage("");
+        }}
       />
 
       <JobCheckBoard

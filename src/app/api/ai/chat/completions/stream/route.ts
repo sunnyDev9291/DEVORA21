@@ -9,18 +9,31 @@ type StreamBody = {
   maxTokens?: number;
   jsonObject?: boolean;
   userId?: string;
+  jobTitle?: string;
+  jobDescription?: string;
 };
 
-async function readUpstreamError(response: Response): Promise<string> {
+async function readUpstreamError(response: Response): Promise<{
+  status: number;
+  body: Record<string, unknown>;
+}> {
   const detail = await response.text().catch(() => "");
   if (!detail) {
-    return `AI backend error (${response.status}): ${response.statusText}`;
+    return {
+      status: response.status,
+      body: {
+        error: `AI backend error (${response.status}): ${response.statusText}`,
+      },
+    };
   }
   try {
-    const parsed = JSON.parse(detail) as { error?: string; message?: string };
-    return parsed.error || parsed.message || detail;
+    const parsed = JSON.parse(detail) as Record<string, unknown>;
+    return { status: response.status, body: parsed };
   } catch {
-    return detail;
+    return {
+      status: response.status,
+      body: { error: detail },
+    };
   }
 }
 
@@ -96,6 +109,11 @@ export async function POST(req: Request) {
   if (userId) {
     upstreamBody.userId = userId;
   }
+  const jobTitle = typeof body.jobTitle === "string" ? body.jobTitle.trim() : "";
+  const jobDescription =
+    typeof body.jobDescription === "string" ? body.jobDescription.trim() : "";
+  if (jobTitle) upstreamBody.jobTitle = jobTitle;
+  if (jobDescription) upstreamBody.jobDescription = jobDescription;
 
   let upstream: Response;
   try {
@@ -110,7 +128,20 @@ export async function POST(req: Request) {
   }
 
   if (!upstream.ok) {
-    return Response.json({ error: await readUpstreamError(upstream) }, { status: upstream.status });
+    const { status, body: errorBody } = await readUpstreamError(upstream);
+    const message =
+      (typeof errorBody.error === "string" && errorBody.error) ||
+      (typeof errorBody.message === "string" && errorBody.message) ||
+      `AI backend error (${status}).`;
+    return Response.json(
+      {
+        ...errorBody,
+        error: message,
+        message:
+          typeof errorBody.message === "string" ? errorBody.message : message,
+      },
+      { status }
+    );
   }
 
   if (!upstream.body) {

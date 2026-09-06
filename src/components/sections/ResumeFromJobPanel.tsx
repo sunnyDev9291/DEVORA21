@@ -13,9 +13,12 @@ import {
   RESUME_FROM_JOB_TIMEOUT_MS,
   resolveResumeFromJobResult,
   startResumeFromJob,
+  throwIfEnglishTeamRequiredJob,
   type ResumeFromJobJob,
   type ResumeFromJobResult,
 } from "@/lib/resume-from-job-api";
+import { isEnglishTeamRequiredError } from "@/lib/english-team-gate";
+import EnglishTeamRequiredDialog from "@/components/ui/EnglishTeamRequiredDialog";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
 
@@ -45,6 +48,8 @@ export default function ResumeFromJobPanel() {
   const [job, setJob] = useState<ResumeFromJobJob | null>(null);
   const [result, setResult] = useState<ResumeFromJobResult | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [englishTeamGateOpen, setEnglishTeamGateOpen] = useState(false);
+  const [englishTeamGateMessage, setEnglishTeamGateMessage] = useState("");
 
   const abortRef = useRef<AbortController | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -138,6 +143,7 @@ export default function ResumeFromJobPanel() {
       }
 
       if (latest.status === "error") {
+        throwIfEnglishTeamRequiredJob(latest);
         throw new Error(latest.error || latest.message || "Resume generation failed.");
       }
 
@@ -176,6 +182,8 @@ export default function ResumeFromJobPanel() {
     abortRef.current = controller;
 
     setError("");
+    setEnglishTeamGateOpen(false);
+    setEnglishTeamGateMessage("");
     setResult(null);
     setPreviewOpen(false);
     setRunning(true);
@@ -191,18 +199,48 @@ export default function ResumeFromJobPanel() {
     try {
       const started = await startResumeFromJob(url, controller.signal);
       setJob(started);
+      throwIfEnglishTeamRequiredJob(started);
 
       if (isResumeFromJobTerminal(started.status)) {
         if (started.status === "done") {
           await finishWithResult(started, controller.signal);
           return;
         }
+        throwIfEnglishTeamRequiredJob(started);
         throw new Error(started.error || started.message || "Resume generation failed.");
       }
 
       await pollUntilDone(started.jobId, startedAt, controller.signal);
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
+      if (isEnglishTeamRequiredError(err)) {
+        setResult(null);
+        setPreviewOpen(false);
+        setEnglishTeamGateMessage(err.message);
+        setEnglishTeamGateOpen(true);
+        setJob((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: "error",
+                code: err.code,
+                answer: err.answer,
+                workWithEnglishTeam: err.workWithEnglishTeam,
+                message: err.message,
+                error: err.message,
+              }
+            : {
+                jobId: "",
+                status: "error",
+                code: err.code,
+                answer: err.answer,
+                workWithEnglishTeam: err.workWithEnglishTeam,
+                message: err.message,
+                error: err.message,
+              }
+        );
+        return;
+      }
       setError(getApiErrorMessage(err, (err as Error)?.message || "Resume generation failed."));
       setJob((prev) =>
         prev
@@ -277,7 +315,7 @@ export default function ResumeFromJobPanel() {
         </div>
       ) : null}
 
-      {(running || job) && (
+      {!englishTeamGateOpen && (running || job) ? (
         <ResumeFromJobProgress
           message={job?.message || (running ? "Working…" : "")}
           progressPercent={progressPercent}
@@ -289,7 +327,7 @@ export default function ResumeFromJobPanel() {
           downloadFileName={result?.pdfFileName || "resume.pdf"}
           onPreview={result?.pdfBase64 ? () => setPreviewOpen(true) : undefined}
         />
-      )}
+      ) : null}
 
       {result?.pdfBase64 && pdfDownloadUrl ? (
         <div
@@ -329,6 +367,15 @@ export default function ResumeFromJobPanel() {
         blob={pdfBlob}
         fileName={result?.pdfFileName || "resume.pdf"}
         onDownload={handleDownloadPdf}
+      />
+
+      <EnglishTeamRequiredDialog
+        open={englishTeamGateOpen}
+        message={englishTeamGateMessage}
+        onClose={() => {
+          setEnglishTeamGateOpen(false);
+          setEnglishTeamGateMessage("");
+        }}
       />
     </div>
   );

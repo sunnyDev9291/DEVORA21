@@ -8,6 +8,10 @@ import {
 import { iterateBrowserAiStream } from "@/lib/browser-ai-stream";
 import type { ResumeMergeContext } from "@/lib/resume-generate-prep";
 import { getUserApiKey, isUserApiKey } from "@/lib/user-api-key";
+import {
+  EnglishTeamRequiredError,
+  parseEnglishTeamRequired,
+} from "@/lib/english-team-gate";
 
 export interface ResumeGenerateResult {
   content: GeneratedResumeContent;
@@ -22,6 +26,10 @@ interface PrepareResponse {
   /** Server AI_INTERNAL_API_KEY for browser → api.devora21.com stream auth. */
   streamAuthToken?: string;
   error?: string;
+  message?: string;
+  code?: string;
+  answer?: string;
+  workWithEnglishTeam?: boolean;
 }
 
 function previewRawText(text: string, max = 800): string {
@@ -33,6 +41,7 @@ function previewRawText(text: string, max = 800): string {
 /**
  * Prepare on Next.js, then stream Claude directly from the browser → api.devora21.com.
  * Sends userId so the backend can apply the saved profile prompt (system messages are ignored server-side).
+ * Always forwards jobTitle + jobDescription on the AI stream for English-team gating.
  */
 export async function generateResume(
   body: Record<string, unknown>,
@@ -45,6 +54,9 @@ export async function generateResume(
   handlers.onPhase?.("starting");
 
   const userId = typeof body.userId === "string" ? body.userId.trim() : "";
+  const jobTitle = typeof body.jobTitle === "string" ? body.jobTitle.trim() : "";
+  const jobDescription =
+    typeof body.jobDescription === "string" ? body.jobDescription.trim() : "";
   const userApiKey = getUserApiKey();
   const usingUserApiKey = Boolean(userApiKey && isUserApiKey(userApiKey));
 
@@ -52,6 +64,10 @@ export async function generateResume(
     throw new Error(
       "Authentication required so the profile prompt can be applied. Sign in again, then retry Generate."
     );
+  }
+
+  if (!jobTitle && !jobDescription) {
+    throw new Error("Job title or job description is required.");
   }
 
   const prepRes = await fetch("/api/resume/generate/start", {
@@ -63,7 +79,9 @@ export async function generateResume(
 
   const prep = (await prepRes.json()) as PrepareResponse;
   if (!prepRes.ok) {
-    throw new Error(prep.error || `Prepare failed (${prepRes.status}).`);
+    const gated = parseEnglishTeamRequired(prep, prepRes.status);
+    if (gated) throw gated;
+    throw new Error(prep.error || prep.message || `Prepare failed (${prepRes.status}).`);
   }
   if (!prep.messages?.length || !prep.templateName || !prep.mergeContext) {
     throw new Error(
@@ -81,16 +99,23 @@ export async function generateResume(
   handlers.onPhase?.("analyzing");
 
   let output = "";
-  for await (const delta of iterateBrowserAiStream(prep.messages, RESUME_MAX_TOKENS, {
-    jsonObject: true,
-    signal: handlers.signal,
-    authToken: streamAuthToken,
-    userId: userId || undefined,
-  })) {
-    if (!delta.content) continue;
-    output += delta.content;
-    handlers.onOutput?.(delta.content, output);
-    handlers.onPhase?.(detectResumeGenerationPhase("", output));
+  try {
+    for await (const delta of iterateBrowserAiStream(prep.messages, RESUME_MAX_TOKENS, {
+      jsonObject: true,
+      signal: handlers.signal,
+      authToken: streamAuthToken,
+      userId: userId || undefined,
+      jobTitle,
+      jobDescription,
+    })) {
+      if (!delta.content) continue;
+      output += delta.content;
+      handlers.onOutput?.(delta.content, output);
+      handlers.onPhase?.(detectResumeGenerationPhase("", output));
+    }
+  } catch (err) {
+    if (err instanceof EnglishTeamRequiredError) throw err;
+    throw err;
   }
 
   handlers.onPhase?.("finalizing");
