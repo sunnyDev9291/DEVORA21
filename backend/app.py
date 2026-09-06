@@ -4,8 +4,9 @@ Devora21 resume archive API.
 POST /resume/archive
   - Saves DOCX, appends CSV row, converts to PDF, returns JSON with pdfBase64.
 
-GET /resume/archives?q=
+GET /resume/archives?company=&jobTitle=&jd=&from=&to=
   - Lists saved resumes for the authenticated user (newest bid first).
+  - Optional filters combine with AND (case-insensitive substring for company/jobTitle/jd).
 
 GET /resume/archives/<id>/docx
 GET /resume/archives/<id>/pdf
@@ -309,11 +310,14 @@ def archive_matches_filters(
     row: dict,
     *,
     company: str = "",
+    job_title: str = "",
     jd: str = "",
     date_from: str = "",
     date_to: str = "",
 ) -> bool:
     if company and company.lower() not in str(row.get("company_name", "")).lower():
+        return False
+    if job_title and job_title.lower() not in str(row.get("job_title", "")).lower():
         return False
     if jd and jd.lower() not in str(row.get("job_description", "")).lower():
         return False
@@ -439,6 +443,7 @@ def list_archives():
     user_id = resolve_user_id()
     legacy_query = (request.args.get("q") or "").strip()
     company = (request.args.get("company") or "").strip()
+    job_title = (request.args.get("jobTitle") or request.args.get("title") or "").strip()
     jd = (request.args.get("jd") or "").strip()
     date_from = (request.args.get("from") or "").strip()
     date_to = (request.args.get("to") or "").strip()
@@ -452,6 +457,7 @@ def list_archives():
         if not archive_matches_filters(
             row,
             company=company,
+            job_title=job_title,
             jd=jd,
             date_from=date_from,
             date_to=date_to,

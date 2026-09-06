@@ -220,6 +220,7 @@ function truncate(text: string, max = 100): string {
 function hasActiveFilters(filters: SavedResumeSearchFilters): boolean {
   return Boolean(
     filters.company?.trim() ||
+      filters.jobTitle?.trim() ||
       filters.jd?.trim() ||
       filters.dateFrom?.trim() ||
       filters.dateTo?.trim()
@@ -442,10 +443,12 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [companySearch, setCompanySearch] = useState("");
+  const [jobTitleSearch, setJobTitleSearch] = useState("");
   const [jdSearch, setJdSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [debouncedCompany, setDebouncedCompany] = useState("");
+  const [debouncedJobTitle, setDebouncedJobTitle] = useState("");
   const [debouncedJd, setDebouncedJd] = useState("");
   const [selectedYearKey, setSelectedYearKey] = useState<string | null>(null);
   const [selectedMonthKey, setSelectedMonthKey] = useState<string | null>(null);
@@ -465,11 +468,12 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
   const activeFilters = useMemo<SavedResumeSearchFilters>(
     () => ({
       company: debouncedCompany.trim(),
+      jobTitle: debouncedJobTitle.trim(),
       jd: debouncedJd.trim(),
       dateFrom: dateFrom.trim(),
       dateTo: dateTo.trim(),
     }),
-    [debouncedCompany, debouncedJd, dateFrom, dateTo]
+    [debouncedCompany, debouncedJobTitle, debouncedJd, dateFrom, dateTo]
   );
 
   const filtersActive = hasActiveFilters(activeFilters);
@@ -491,10 +495,11 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setDebouncedCompany(companySearch);
+      setDebouncedJobTitle(jobTitleSearch);
       setDebouncedJd(jdSearch);
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [companySearch, jdSearch]);
+  }, [companySearch, jobTitleSearch, jdSearch]);
 
   useEffect(() => {
     void loadItems(activeFilters);
@@ -550,10 +555,12 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
 
   function clearFilters() {
     setCompanySearch("");
+    setJobTitleSearch("");
     setJdSearch("");
     setDateFrom("");
     setDateTo("");
     setDebouncedCompany("");
+    setDebouncedJobTitle("");
     setDebouncedJd("");
     setExpandedDayKeys(new Set());
   }
@@ -647,7 +654,7 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
       <div>
         <h2 className={styles.title}>Saved resumes</h2>
         <p className={styles.subtitle}>
-          Filter by date range, company, or job description, then pick a year and month to browse
+          Filter by date range, company, job title, or job description, then pick a year and month to browse
           applications.
         </p>
       </div>
@@ -693,6 +700,19 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
             />
           </div>
           <div className={styles.searchField}>
+            <label htmlFor="saved-resume-job-title" className={styles.searchLabel}>
+              Job title
+            </label>
+            <input
+              id="saved-resume-job-title"
+              type="search"
+              value={jobTitleSearch}
+              onChange={(e) => setJobTitleSearch(e.target.value)}
+              placeholder="Search by job title…"
+              className={styles.input}
+            />
+          </div>
+          <div className={`${styles.searchField} sm:col-span-2`}>
             <label htmlFor="saved-resume-jd" className={styles.searchLabel}>
               Job description
             </label>
