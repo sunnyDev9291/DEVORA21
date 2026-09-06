@@ -6,8 +6,6 @@ import {
   type EnglishTeamCheckResult,
 } from "@/lib/english-team-api";
 
-const DEBOUNCE_MS = 700;
-
 type EnglishTeamCheckProps = {
   jobTitle: string;
   jobDescription: string;
@@ -19,67 +17,60 @@ export default function EnglishTeamCheck({
   jobDescription,
   disabled = false,
 }: EnglishTeamCheckProps) {
-  const requestIdRef = useRef(0);
-  const [query, setQuery] = useState<{ jobTitle: string; jobDescription: string } | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<EnglishTeamCheckResult | null>(null);
 
-  useEffect(() => {
-    const nextTitle = jobTitle.trim();
-    const nextDescription = jobDescription.trim();
-    if (!nextTitle && !nextDescription) {
-      setQuery(null);
-      setResult(null);
-      setError("");
-      setLoading(false);
-      return;
-    }
+  const canCheck = Boolean(jobTitle.trim() || jobDescription.trim());
 
-    const timer = window.setTimeout(() => {
-      setQuery({ jobTitle: nextTitle, jobDescription: nextDescription });
-    }, DEBOUNCE_MS);
-    return () => window.clearTimeout(timer);
+  useEffect(() => {
+    // Stale Yes/No must not stick after the job text changes.
+    setResult(null);
+    setError("");
+    abortRef.current?.abort();
+    setLoading(false);
   }, [jobTitle, jobDescription]);
 
   useEffect(() => {
-    if (!query || disabled) {
-      if (!query) {
-        setResult(null);
-        setError("");
-        setLoading(false);
-      }
-      return;
-    }
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
 
-    const requestId = ++requestIdRef.current;
+  async function handleCheck() {
+    if (!canCheck || disabled || loading) return;
+
+    abortRef.current?.abort();
     const controller = new AbortController();
+    abortRef.current = controller;
+
     setLoading(true);
     setError("");
+    setResult(null);
 
-    void checkEnglishTeam(query, controller.signal)
-      .then((data) => {
-        if (requestId !== requestIdRef.current) return;
-        setResult(data);
-      })
-      .catch((err) => {
-        if (requestId !== requestIdRef.current) return;
-        if (controller.signal.aborted || (err instanceof DOMException && err.name === "AbortError")) {
-          return;
-        }
-        setResult(null);
-        setError(err instanceof Error ? err.message : "English-team check failed.");
-      })
-      .finally(() => {
-        if (requestId === requestIdRef.current) setLoading(false);
-      });
+    try {
+      const data = await checkEnglishTeam(
+        {
+          jobTitle: jobTitle.trim(),
+          jobDescription: jobDescription.trim(),
+        },
+        controller.signal
+      );
+      if (controller.signal.aborted) return;
+      setResult(data);
+    } catch (err) {
+      if (controller.signal.aborted || (err instanceof DOMException && err.name === "AbortError")) {
+        return;
+      }
+      setResult(null);
+      setError(err instanceof Error ? err.message : "English-team check failed.");
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
+    }
+  }
 
-    return () => {
-      controller.abort();
-    };
-  }, [query, disabled]);
-
-  if (!jobTitle.trim() && !jobDescription.trim()) return null;
+  if (!canCheck) return null;
 
   const answer = result?.answer;
   const yes = answer === "Yes";
@@ -95,12 +86,21 @@ export default function EnglishTeamCheck({
         Work with English team?
       </span>
 
-      {loading ? (
-        <span className="inline-flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-          <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
-          Checking…
-        </span>
-      ) : null}
+      <button
+        type="button"
+        onClick={() => void handleCheck()}
+        disabled={disabled || loading || !canCheck}
+        className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 py-1.5 text-sm font-semibold text-orange-800 transition-colors hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:text-orange-300 dark:hover:bg-orange-500/15"
+      >
+        {loading ? (
+          <>
+            <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
+            Checking…
+          </>
+        ) : (
+          "Check"
+        )}
+      </button>
 
       {!loading && yes ? (
         <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-sm font-bold text-emerald-800 ring-1 ring-emerald-500/25 dark:text-emerald-300">
