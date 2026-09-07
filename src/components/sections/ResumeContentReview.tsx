@@ -90,7 +90,6 @@ export default function ResumeContentReview({
   changedFieldIds,
   onDismissRegenerateDiff,
 }: ResumeContentReviewProps) {
-  const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [expandedExp, setExpandedExp] = useState<number | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -112,7 +111,6 @@ export default function ResumeContentReview({
   }, []);
 
   useEffect(() => {
-    setReviewConfirmed(false);
     setExpandedExp(null);
     titleHeadlineRef.current = extractResumeTitleHeadline(content.title);
   }, [generationKey, templateName]); // eslint-disable-line react-hooks/exhaustive-deps -- reset on new generation/template only
@@ -193,9 +191,6 @@ export default function ResumeContentReview({
   };
 
   const applyBlockers: string[] = [];
-  if (!reviewConfirmed) {
-    applyBlockers.push("Check the box above to enable apply");
-  }
   if (!resumeFileBaseName.trim()) {
     applyBlockers.push("Add an expected resume file name");
   }
@@ -235,17 +230,6 @@ export default function ResumeContentReview({
 
   const applyBarInner = (
     <>
-      <label className="flex items-start gap-3 cursor-pointer mb-3 sm:mb-4">
-        <input
-          type="checkbox"
-          checked={reviewConfirmed}
-          onChange={(e) => setReviewConfirmed(e.target.checked)}
-          className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
-        />
-        <span className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
-          I&apos;ve reviewed and edited this content. Apply it to my resume file.
-        </span>
-      </label>
       <button
         type="button"
         onClick={onApply}
@@ -305,7 +289,7 @@ export default function ResumeContentReview({
                 {regenerateChanges.length > 0 ? (
                   <span> · {regenerateChanges.length} change{regenerateChanges.length === 1 ? "" : "s"} from last draft</span>
                 ) : (
-                  <span> · Nothing saves until you confirm below</span>
+                  <span> · Nothing saves until you apply below</span>
                 )}
               </p>
             </div>
