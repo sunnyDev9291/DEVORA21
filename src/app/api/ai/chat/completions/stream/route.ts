@@ -11,6 +11,8 @@ type StreamBody = {
   userId?: string;
   jobTitle?: string;
   jobDescription?: string;
+  job_title?: string;
+  job_description?: string;
 };
 
 async function readUpstreamError(response: Response): Promise<{
@@ -101,7 +103,21 @@ export async function POST(req: Request) {
     headers.Cookie = cookie;
   }
 
+  const jobTitle =
+    (typeof body.jobTitle === "string" && body.jobTitle.trim()) ||
+    (typeof body.job_title === "string" && body.job_title.trim()) ||
+    "";
+  const jobDescription =
+    (typeof body.jobDescription === "string" && body.jobDescription.trim()) ||
+    (typeof body.job_description === "string" && body.job_description.trim()) ||
+    "";
+
+  // Job fields first + snake_case aliases for the English-team resume gate.
   const upstreamBody: Record<string, unknown> = {
+    jobTitle,
+    jobDescription,
+    job_title: jobTitle,
+    job_description: jobDescription,
     messages,
     maxTokens: typeof body.maxTokens === "number" ? body.maxTokens : 4096,
     jsonObject: Boolean(body.jsonObject),
@@ -109,19 +125,30 @@ export async function POST(req: Request) {
   if (userId) {
     upstreamBody.userId = userId;
   }
-  const jobTitle = typeof body.jobTitle === "string" ? body.jobTitle.trim() : "";
-  const jobDescription =
-    typeof body.jobDescription === "string" ? body.jobDescription.trim() : "";
-  if (jobTitle) upstreamBody.jobTitle = jobTitle;
-  if (jobDescription) upstreamBody.jobDescription = jobDescription;
+
+  const query = new URLSearchParams();
+  if (jobTitle) {
+    query.set("jobTitle", jobTitle);
+    query.set("job_title", jobTitle);
+  }
+  if (jobDescription) {
+    const clipped =
+      jobDescription.length > 2500 ? jobDescription.slice(0, 2500) : jobDescription;
+    query.set("jobDescription", clipped);
+    query.set("job_description", clipped);
+  }
+  const querySuffix = query.toString() ? `?${query.toString()}` : "";
 
   let upstream: Response;
   try {
-    upstream = await fetch(`${BACKEND_API_URL}/ai/chat/completions/stream`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(upstreamBody),
-    });
+    upstream = await fetch(
+      `${BACKEND_API_URL}/ai/chat/completions/stream${querySuffix}`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify(upstreamBody),
+      }
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to reach AI backend.";
     return Response.json({ error: message }, { status: 502 });

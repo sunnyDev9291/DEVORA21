@@ -12,6 +12,9 @@ export type AiCompletionOptions = {
   userId?: string;
   /** Optional end-user Bearer forwarded as X-User-Authorization. */
   userAuthorization?: string;
+  /** Required by backend English-team gate on resume (jsonObject) generations. */
+  jobTitle?: string;
+  jobDescription?: string;
 };
 
 export type AiStreamDelta = {
@@ -51,7 +54,14 @@ function buildAiBody(
   maxTokens: number,
   options?: AiCompletionOptions
 ): Record<string, unknown> {
+  const jobTitle = options?.jobTitle?.trim() ?? "";
+  const jobDescription = options?.jobDescription?.trim() ?? "";
+  // Job fields first + snake_case aliases for the English-team resume gate.
   const body: Record<string, unknown> = {
+    jobTitle,
+    jobDescription,
+    job_title: jobTitle,
+    job_description: jobDescription,
     messages,
     maxTokens: options?.maxTokens ?? maxTokens,
     jsonObject: options?.jsonObject ?? false,

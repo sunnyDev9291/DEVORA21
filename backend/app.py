@@ -237,6 +237,25 @@ def deepseek_headers() -> dict[str, str]:
     }
 
 
+def extract_job_context(body: dict) -> tuple[str, str]:
+    """Read jobTitle/jobDescription from JSON body or query (camel + snake)."""
+    title = str(
+        body.get("jobTitle")
+        or body.get("job_title")
+        or request.args.get("jobTitle")
+        or request.args.get("job_title")
+        or ""
+    ).strip()
+    description = str(
+        body.get("jobDescription")
+        or body.get("job_description")
+        or request.args.get("jobDescription")
+        or request.args.get("job_description")
+        or ""
+    ).strip()
+    return title, description
+
+
 def parse_ai_request() -> tuple[list[dict] | None, int, bool, tuple[Response, int] | None]:
     if not require_ai_internal_auth():
         return None, 0, False, (jsonify(error="Unauthorized."), 401)
@@ -260,6 +279,16 @@ def parse_ai_request() -> tuple[list[dict] | None, int, bool, tuple[Response, in
 
     max_tokens = int(body.get("maxTokens") or 4096)
     json_object = bool(body.get("jsonObject"))
+
+    # Resume generation (jsonObject) requires job context for English-team gating.
+    if json_object:
+        job_title, job_description = extract_job_context(body)
+        if not job_title and not job_description:
+            return None, 0, False, (
+                jsonify(error="jobTitle or jobDescription is required for resume generation"),
+                400,
+            )
+
     return normalized, max_tokens, json_object, None
 
 

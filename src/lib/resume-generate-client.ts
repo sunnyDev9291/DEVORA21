@@ -67,7 +67,7 @@ export async function generateResume(
   }
 
   if (!jobTitle && !jobDescription) {
-    throw new Error("Job title or job description is required.");
+    throw new Error("Job title or job description is required for resume generation.");
   }
 
   const prepRes = await fetch("/api/resume/generate/start", {
