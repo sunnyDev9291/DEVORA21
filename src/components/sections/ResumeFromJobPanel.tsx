@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Button from "@/components/ui/Button";
+import JobCheckBoard from "@/components/ui/JobCheckBoard";
 import ResumeFromJobProgress from "@/components/ui/ResumeFromJobProgress";
 import { ApiError, getApiErrorMessage } from "@/lib/auth-api";
 import {
@@ -17,6 +18,7 @@ import {
   type ResumeFromJobJob,
   type ResumeFromJobResult,
 } from "@/lib/resume-from-job-api";
+import { iterateJobCheckStream } from "@/lib/job-check-stream";
 import { isEnglishTeamRequiredError } from "@/lib/english-team-gate";
 import EnglishTeamRequiredDialog from "@/components/ui/EnglishTeamRequiredDialog";
 
@@ -50,6 +52,12 @@ export default function ResumeFromJobPanel() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [englishTeamGateOpen, setEnglishTeamGateOpen] = useState(false);
   const [englishTeamGateMessage, setEnglishTeamGateMessage] = useState("");
+  const [englishTeamContinuing, setEnglishTeamContinuing] = useState(false);
+  const [jobCheckOpen, setJobCheckOpen] = useState(false);
+  const [jobChecking, setJobChecking] = useState(false);
+  const [jobCheckOutput, setJobCheckOutput] = useState("");
+  const [jobCheckError, setJobCheckError] = useState("");
+  const jobCheckAbortRef = useRef<AbortController | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -59,6 +67,7 @@ export default function ResumeFromJobPanel() {
   useEffect(() => {
     return () => {
       abortRef.current?.abort();
+      jobCheckAbortRef.current?.abort();
       if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
       if (downloadUrlRef.current) {
         URL.revokeObjectURL(downloadUrlRef.current);
@@ -166,8 +175,56 @@ export default function ResumeFromJobPanel() {
     }
   }
 
-  async function handleGenerate(e: React.FormEvent) {
-    e.preventDefault();
+  async function runJobCheck() {
+    const companyName = (job?.companyName || result?.companyName || "").trim();
+    if (!companyName || jobChecking) {
+      setJobCheckOpen(true);
+      setJobCheckError(
+        companyName
+          ? "Job Check is already running."
+          : "Company name is not available yet for Job Check."
+      );
+      return;
+    }
+
+    jobCheckAbortRef.current?.abort();
+    const controller = new AbortController();
+    jobCheckAbortRef.current = controller;
+
+    setJobCheckOpen(true);
+    setJobChecking(true);
+    setJobCheckOutput("");
+    setJobCheckError("");
+
+    let streamed = "";
+    try {
+      for await (const chunk of iterateJobCheckStream(
+        {
+          jobTitle: job?.jobTitle || result?.jobTitle || "",
+          companyName,
+          jobDescription: job?.url || jobUrl,
+        },
+        controller.signal
+      )) {
+        streamed += chunk;
+        setJobCheckOutput(streamed);
+      }
+    } catch (err) {
+      if ((err as Error).name === "AbortError") return;
+      setJobCheckError((err as Error).message || "Job Check failed.");
+    } finally {
+      if (jobCheckAbortRef.current === controller) {
+        setJobChecking(false);
+        jobCheckAbortRef.current = null;
+      }
+    }
+  }
+
+  async function handleGenerate(
+    e?: React.FormEvent,
+    options?: { skipEnglishTeamGate?: boolean }
+  ) {
+    e?.preventDefault();
     if (running) return;
 
     const url = jobUrl.trim();
@@ -175,6 +232,8 @@ export default function ResumeFromJobPanel() {
       setError("Paste a job link first.");
       return;
     }
+
+    const skipEnglishTeamGate = Boolean(options?.skipEnglishTeamGate);
 
     abortRef.current?.abort();
     clearPollTimer();
@@ -184,6 +243,7 @@ export default function ResumeFromJobPanel() {
     setError("");
     setEnglishTeamGateOpen(false);
     setEnglishTeamGateMessage("");
+    setEnglishTeamContinuing(false);
     setResult(null);
     setPreviewOpen(false);
     setRunning(true);
@@ -197,23 +257,29 @@ export default function ResumeFromJobPanel() {
     const startedAt = Date.now();
 
     try {
-      const started = await startResumeFromJob(url, controller.signal);
+      const started = await startResumeFromJob(url, controller.signal, {
+        skipEnglishTeamGate,
+      });
       setJob(started);
-      throwIfEnglishTeamRequiredJob(started);
+      if (!skipEnglishTeamGate) {
+        throwIfEnglishTeamRequiredJob(started);
+      }
 
       if (isResumeFromJobTerminal(started.status)) {
         if (started.status === "done") {
           await finishWithResult(started, controller.signal);
           return;
         }
-        throwIfEnglishTeamRequiredJob(started);
+        if (!skipEnglishTeamGate) {
+          throwIfEnglishTeamRequiredJob(started);
+        }
         throw new Error(started.error || started.message || "Resume generation failed.");
       }
 
       await pollUntilDone(started.jobId, startedAt, controller.signal);
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
-      if (isEnglishTeamRequiredError(err)) {
+      if (isEnglishTeamRequiredError(err) && !skipEnglishTeamGate) {
         setResult(null);
         setPreviewOpen(false);
         setEnglishTeamGateMessage(err.message);
@@ -256,6 +322,7 @@ export default function ResumeFromJobPanel() {
         setRunning(false);
         abortRef.current = null;
       }
+      setEnglishTeamContinuing(false);
       clearPollTimer();
     }
   }
@@ -372,10 +439,40 @@ export default function ResumeFromJobPanel() {
       <EnglishTeamRequiredDialog
         open={englishTeamGateOpen}
         message={englishTeamGateMessage}
+        jobTitle={job?.jobTitle || result?.jobTitle || ""}
+        companyName={job?.companyName || result?.companyName || ""}
+        jobDescription={job?.url || jobUrl}
+        continuing={englishTeamContinuing || running}
+        onJobCheck={() => {
+          setEnglishTeamGateOpen(false);
+          setEnglishTeamGateMessage("");
+          void runJobCheck();
+        }}
+        onContinueCreating={() => {
+          setEnglishTeamContinuing(true);
+          void handleGenerate(undefined, { skipEnglishTeamGate: true });
+        }}
         onClose={() => {
           setEnglishTeamGateOpen(false);
           setEnglishTeamGateMessage("");
+          setEnglishTeamContinuing(false);
         }}
+      />
+
+      <JobCheckBoard
+        open={jobCheckOpen}
+        loading={jobChecking}
+        error={jobCheckError}
+        output={jobCheckOutput}
+        jobTitle={job?.jobTitle || result?.jobTitle || ""}
+        companyName={job?.companyName || result?.companyName || ""}
+        onClose={() => {
+          jobCheckAbortRef.current?.abort();
+          jobCheckAbortRef.current = null;
+          setJobCheckOpen(false);
+          setJobChecking(false);
+        }}
+        onRetry={() => void runJobCheck()}
       />
     </div>
   );

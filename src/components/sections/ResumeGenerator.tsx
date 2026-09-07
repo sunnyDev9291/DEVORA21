@@ -182,6 +182,7 @@ export default function ResumeGenerator({
   const [jobCheckError, setJobCheckError] = useState("");
   const [englishTeamGateOpen, setEnglishTeamGateOpen] = useState(false);
   const [englishTeamGateMessage, setEnglishTeamGateMessage] = useState("");
+  const [englishTeamContinuing, setEnglishTeamContinuing] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const jobCheckAbortRef = useRef<AbortController | null>(null);
   const atsAbortRef = useRef<AbortController | null>(null);
@@ -600,7 +601,10 @@ export default function ResumeGenerator({
     }
   }
 
-  async function handleGenerate(e?: React.FormEvent) {
+  async function handleGenerate(
+    e?: React.FormEvent,
+    options?: { skipEnglishTeamGate?: boolean }
+  ) {
     e?.preventDefault();
     if (applying) return;
     if (!user?.id) {
@@ -626,12 +630,15 @@ export default function ResumeGenerator({
       return;
     }
 
+    const skipEnglishTeamGate = Boolean(options?.skipEnglishTeamGate);
+
     abortRef.current?.abort();
 
     const runId = ++generationRunRef.current;
     setError("");
     setEnglishTeamGateOpen(false);
     setEnglishTeamGateMessage("");
+    setEnglishTeamContinuing(false);
     setRegenerateNotice("");
     setRegenerateBaseline(null);
     setRegenerateBaselineScore(null);
@@ -672,6 +679,7 @@ export default function ResumeGenerator({
             if (generationRunRef.current === runId) setStreamOutput(full);
           },
           signal: controller.signal,
+          skipEnglishTeamGate,
         }
       );
 
@@ -686,7 +694,7 @@ export default function ResumeGenerator({
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       if (generationRunRef.current !== runId) return;
-      if (isEnglishTeamRequiredError(err)) {
+      if (isEnglishTeamRequiredError(err) && !skipEnglishTeamGate) {
         setStep("form");
         setContent(null);
         setStreamOutput("");
@@ -700,6 +708,7 @@ export default function ResumeGenerator({
       if (generationRunRef.current === runId) {
         setGenerating(false);
         abortRef.current = null;
+        setEnglishTeamContinuing(false);
       }
     }
   }
@@ -1444,9 +1453,23 @@ export default function ResumeGenerator({
       <EnglishTeamRequiredDialog
         open={englishTeamGateOpen}
         message={englishTeamGateMessage}
+        jobTitle={form.jobTitle}
+        companyName={form.companyName}
+        jobDescription={form.jobDescription}
+        continuing={englishTeamContinuing || generating}
+        onJobCheck={() => {
+          setEnglishTeamGateOpen(false);
+          setEnglishTeamGateMessage("");
+          void runJobCheck();
+        }}
+        onContinueCreating={() => {
+          setEnglishTeamContinuing(true);
+          void handleGenerate(undefined, { skipEnglishTeamGate: true });
+        }}
         onClose={() => {
           setEnglishTeamGateOpen(false);
           setEnglishTeamGateMessage("");
+          setEnglishTeamContinuing(false);
         }}
       />
 

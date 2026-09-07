@@ -49,6 +49,8 @@ export async function generateResume(
     onPhase?: (phase: ResumeGenerationPhase) => void;
     onOutput?: (text: string, full: string) => void;
     signal?: AbortSignal;
+    /** Bypass backend English-team gate after the user confirms Continue creating. */
+    skipEnglishTeamGate?: boolean;
   }
 ): Promise<ResumeGenerateResult> {
   handlers.onPhase?.("starting");
@@ -107,6 +109,7 @@ export async function generateResume(
       userId: userId || undefined,
       jobTitle,
       jobDescription,
+      skipEnglishTeamGate: Boolean(handlers.skipEnglishTeamGate),
     })) {
       if (!delta.content) continue;
       output += delta.content;

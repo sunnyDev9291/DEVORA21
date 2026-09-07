@@ -15,6 +15,8 @@ export type AiCompletionOptions = {
   /** Required by backend English-team gate on resume (jsonObject) generations. */
   jobTitle?: string;
   jobDescription?: string;
+  /** Bypass English-team gate when the user confirms Continue creating. */
+  skipEnglishTeamGate?: boolean;
 };
 
 export type AiStreamDelta = {
@@ -69,6 +71,10 @@ function buildAiBody(
   const userId = options?.userId?.trim();
   if (userId) {
     body.userId = userId;
+  }
+  if (options?.skipEnglishTeamGate) {
+    body.skipEnglishTeamGate = true;
+    body.skip_english_team_gate = true;
   }
   return body;
 }

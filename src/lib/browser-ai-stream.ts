@@ -28,6 +28,8 @@ export type BrowserAiStreamOptions = {
   /** Required by backend English-team gate (always send; at least one non-empty). */
   jobTitle?: string;
   jobDescription?: string;
+  /** When true, ask the backend to skip the English-team block and generate anyway. */
+  skipEnglishTeamGate?: boolean;
 };
 
 const MID_STREAM_ERROR = /(?:^|\n)\[error\]\s*(.+)$/i;
@@ -128,6 +130,10 @@ function buildAiStreamBody(
   };
   if (userId) {
     body.userId = userId;
+  }
+  if (options.skipEnglishTeamGate) {
+    body.skipEnglishTeamGate = true;
+    body.skip_english_team_gate = true;
   }
   return body;
 }

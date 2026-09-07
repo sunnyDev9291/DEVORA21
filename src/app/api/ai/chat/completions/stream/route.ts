@@ -13,6 +13,8 @@ type StreamBody = {
   jobDescription?: string;
   job_title?: string;
   job_description?: string;
+  skipEnglishTeamGate?: boolean;
+  skip_english_team_gate?: boolean;
 };
 
 async function readUpstreamError(response: Response): Promise<{
@@ -112,6 +114,10 @@ export async function POST(req: Request) {
     (typeof body.job_description === "string" && body.job_description.trim()) ||
     "";
 
+  const skipEnglishTeamGate = Boolean(
+    body.skipEnglishTeamGate || body.skip_english_team_gate
+  );
+
   // Job fields first + snake_case aliases for the English-team resume gate.
   const upstreamBody: Record<string, unknown> = {
     jobTitle,
@@ -124,6 +130,10 @@ export async function POST(req: Request) {
   };
   if (userId) {
     upstreamBody.userId = userId;
+  }
+  if (skipEnglishTeamGate) {
+    upstreamBody.skipEnglishTeamGate = true;
+    upstreamBody.skip_english_team_gate = true;
   }
 
   const query = new URLSearchParams();

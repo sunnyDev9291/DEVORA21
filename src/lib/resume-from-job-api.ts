@@ -306,11 +306,18 @@ export async function resolveResumeFromJobResult(
 /** POST /resume/from-job — expect 202 + jobId. */
 export async function startResumeFromJob(
   url: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options?: { skipEnglishTeamGate?: boolean }
 ): Promise<ResumeFromJobJob> {
   const trimmed = url.trim();
   if (!trimmed) {
     throw new ApiError("Paste a job link first.", 400);
+  }
+
+  const payload: Record<string, unknown> = { url: trimmed };
+  if (options?.skipEnglishTeamGate) {
+    payload.skipEnglishTeamGate = true;
+    payload.skip_english_team_gate = true;
   }
 
   let res: Response;
@@ -323,7 +330,7 @@ export async function startResumeFromJob(
           "Content-Type": "application/json",
           Accept: "application/json",
         },
-        body: JSON.stringify({ url: trimmed }),
+        body: JSON.stringify(payload),
         signal,
       },
       "auto"
