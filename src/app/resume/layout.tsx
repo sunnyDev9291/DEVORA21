@@ -12,7 +12,7 @@ export default function ResumeLayout({ children }: { children: ReactNode }) {
         description="Build a new tailored resume for each application, or browse and download resumes you already saved."
       />
       <RequireResumeBuilder>
-        <div className="-mt-4 mb-8 sm:-mt-6">
+        <div className="relative z-10 mb-8 mt-6 sm:mt-8">
           <ResumePanelTabs />
         </div>
         {children}
