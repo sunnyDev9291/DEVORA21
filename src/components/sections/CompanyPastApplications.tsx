@@ -103,26 +103,28 @@ export default function CompanyPastApplications({
 
   return (
     <div
-      className="mt-3 rounded-xl border border-orange-200/70 bg-orange-50/50 px-3.5 py-3 dark:border-orange-500/20 dark:bg-orange-500/[0.07]"
+      className="mt-4 w-full min-w-0 rounded-xl border border-orange-200/70 bg-orange-50/50 px-3.5 py-3 dark:border-orange-500/20 dark:bg-orange-500/[0.07]"
       aria-live="polite"
       aria-busy={loading}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-slate-800 dark:text-stone-100">{heading}</p>
+      <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2">
+        <p className="text-sm font-semibold text-slate-800 dark:text-stone-100 break-words">
+          {heading}
+        </p>
         <Link
           href="/resume/saved"
-          className="text-xs font-semibold text-orange-700 underline-offset-2 hover:underline dark:text-orange-300"
+          className="shrink-0 text-xs font-semibold text-orange-700 underline-offset-2 hover:underline dark:text-orange-300"
         >
           Open saved resumes →
         </Link>
       </div>
 
       {error ? (
-        <p className="mt-2 text-xs text-red-600 dark:text-red-300">{error}</p>
+        <p className="mt-2 text-xs text-red-600 dark:text-red-300 break-words">{error}</p>
       ) : null}
 
       {!loading && !error && visibleCount === 0 ? (
-        <p className="mt-2 text-xs text-slate-600 dark:text-stone-300">
+        <p className="mt-2 text-xs text-slate-600 dark:text-stone-300 break-words">
           No saved resumes matched “{query}” yet.
         </p>
       ) : null}
@@ -138,12 +140,12 @@ export default function CompanyPastApplications({
                 key={item.id}
                 className="rounded-lg border border-slate-200/80 bg-white/80 px-3 py-2.5 dark:border-white/[0.08] dark:bg-warm-950/40"
               >
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex min-w-0 flex-col gap-2">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-slate-900 dark:text-white">
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white break-words whitespace-normal">
                       {item.jobTitle || "Untitled role"}
                     </p>
-                    <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 break-words whitespace-normal">
                       {item.companyName}
                       {when ? (
                         <>
@@ -155,12 +157,12 @@ export default function CompanyPastApplications({
                       ) : null}
                     </p>
                     {item.resumeFileName ? (
-                      <p className="mt-0.5 truncate text-xs text-slate-400 dark:text-slate-500">
+                      <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500 break-all whitespace-normal">
                         {item.resumeFileName}
                       </p>
                     ) : null}
                   </div>
-                  <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     {onUseJobDescription && item.jobDescription?.trim() ? (
                       <button
                         type="button"

@@ -1053,20 +1053,21 @@ export default function ResumeGenerator({
                 />
                 <CopyIconButton text={form.companyName} label="Copy company name" disabled={generating} />
               </div>
-              <CompanyPastApplications
-                companyName={form.companyName}
-                disabled={generating || applying}
-                onUseJobDescription={(item: SavedResumeArchive) => {
-                  setForm((current) => ({
-                    ...current,
-                    jobTitle: item.jobTitle?.trim() || current.jobTitle,
-                    companyName: item.companyName?.trim() || current.companyName,
-                    jobDescription: item.jobDescription?.trim() || current.jobDescription,
-                  }));
-                }}
-              />
             </div>
           </div>
+
+          <CompanyPastApplications
+            companyName={form.companyName}
+            disabled={generating || applying}
+            onUseJobDescription={(item: SavedResumeArchive) => {
+              setForm((current) => ({
+                ...current,
+                jobTitle: item.jobTitle?.trim() || current.jobTitle,
+                companyName: item.companyName?.trim() || current.companyName,
+                jobDescription: item.jobDescription?.trim() || current.jobDescription,
+              }));
+            }}
+          />
 
           <div>
             <label htmlFor="jobDescription" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
