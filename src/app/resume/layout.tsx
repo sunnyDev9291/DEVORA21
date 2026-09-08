@@ -1,12 +1,8 @@
-import dynamic from "next/dynamic";
 import PageHero from "@/components/layout/PageHero";
 import RequireResumeBuilder from "@/components/auth/RequireResumeBuilder";
 import ResumePanelTabs from "@/components/sections/ResumePanelTabs";
+import DeferredSmartWatchPanel from "@/components/layout/DeferredSmartWatchPanel";
 import type { ReactNode } from "react";
-
-const SmartWatchPanel = dynamic(() => import("@/components/ui/SmartWatchPanel"), {
-  ssr: false,
-});
 
 export default function ResumeLayout({ children }: { children: ReactNode }) {
   return (
@@ -20,7 +16,7 @@ export default function ResumeLayout({ children }: { children: ReactNode }) {
           <ResumePanelTabs />
         </div>
         {children}
-        <SmartWatchPanel />
+        <DeferredSmartWatchPanel />
       </RequireResumeBuilder>
     </>
   );
