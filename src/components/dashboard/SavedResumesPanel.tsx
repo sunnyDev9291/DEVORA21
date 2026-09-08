@@ -12,7 +12,7 @@ import {
 } from "@/lib/saved-resumes-api";
 import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
 import { TODAYS_RESUME_COUNT_CHANGED_EVENT } from "@/lib/todays-resume-count";
-import { ui } from "@/lib/ui-styles";
+import { brand, ui } from "@/lib/ui-styles";
 import CopyIconButton from "@/components/ui/CopyIconButton";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
@@ -113,59 +113,60 @@ const STYLES = {
     error: "mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300",
   },
   resume: {
-    section: ui.card,
-    title: "text-lg font-semibold text-slate-900 dark:text-white",
-    subtitle: "mt-1 text-sm text-slate-500 dark:text-slate-400",
-    input:
-      "w-full rounded-xl border border-slate-200 dark:border-white/[0.10] bg-slate-50 dark:bg-white/[0.03] px-4 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/40",
+    section:
+      "overflow-hidden rounded-[1.75rem] border border-orange-200/55 bg-gloss-warm p-6 shadow-elevated backdrop-blur-md dark:border-orange-500/15 dark:bg-gloss-warm-dark dark:shadow-card-dark sm:p-8",
+    title: `font-display text-2xl font-bold tracking-tight ${brand.gradientText}`,
+    subtitle: "mt-2 max-w-2xl text-sm leading-relaxed text-stone-600 dark:text-stone-300",
+    input: ui.input.replace("text-[17px] leading-snug", "text-sm leading-snug").replace("py-3", "py-2.5"),
     searchPanel:
-      "mt-5 rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4 dark:border-white/[0.08] dark:bg-white/[0.02] sm:p-5",
+      "mt-6 rounded-2xl border border-orange-200/50 bg-gradient-to-br from-white/70 via-orange-50/40 to-amber-50/30 p-4 shadow-sm backdrop-blur-sm dark:border-orange-500/15 dark:from-warm-950/50 dark:via-warm-900/40 dark:to-orange-950/20 sm:p-5",
     searchGrid: "grid gap-4 sm:grid-cols-2",
     searchField: "space-y-1.5",
-    searchLabel: "text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400",
+    searchLabel: "text-[11px] font-semibold uppercase tracking-[0.14em] text-orange-800/70 dark:text-orange-300/80",
     searchActions: "mt-4 flex flex-wrap items-center gap-3",
-    searchHint: "text-xs text-slate-500 dark:text-slate-400",
-    pickerSection: "mt-5 space-y-4",
-    pickerLabel: "text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400",
-    chipGrid: "mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6",
-    monthGrid: "mt-2 grid grid-cols-4 gap-2 sm:grid-cols-6",
+    searchHint: "text-xs text-stone-500 dark:text-stone-400",
+    pickerSection: "mt-6 space-y-5",
+    pickerLabel: "text-[11px] font-semibold uppercase tracking-[0.14em] text-orange-800/70 dark:text-orange-300/80",
+    chipGrid: "mt-2.5 grid grid-cols-4 gap-2 sm:grid-cols-6",
+    monthGrid: "mt-2.5 grid grid-cols-4 gap-2 sm:grid-cols-6",
     chip:
-      "rounded-lg border border-slate-200/80 bg-slate-50/80 px-2 py-2 text-sm font-medium text-slate-700 transition-all hover:border-orange-500/35 hover:bg-blue-50/80 dark:border-white/[0.08] dark:bg-white/[0.02] dark:text-slate-200 dark:hover:border-orange-500/30 dark:hover:bg-blue-500/[0.06] disabled:cursor-not-allowed disabled:opacity-35",
+      "group rounded-xl border border-orange-200/60 bg-white/70 px-2 py-2.5 text-sm font-semibold text-stone-700 shadow-sm transition-all hover:border-orange-400/50 hover:bg-orange-50 hover:-translate-y-px dark:border-orange-500/15 dark:bg-warm-950/45 dark:text-stone-200 dark:hover:border-orange-400/35 dark:hover:bg-orange-500/10 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0",
     chipSelected:
-      "border-orange-500/50 bg-orange-500/15 text-orange-700 shadow-sm shadow-blue-500/15 dark:bg-blue-500/20 dark:text-white",
-    chipCount: "mt-0.5 block text-[12px] font-normal text-slate-500 dark:text-slate-400",
-    daysSection: "mt-6 space-y-2",
-    daysHeading: "text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400",
+      "border-transparent bg-gradient-to-r from-tomato-600 via-orange-500 to-sun-400 text-white shadow-md shadow-orange-500/25 hover:bg-none hover:from-tomato-600 hover:via-orange-500 hover:to-sun-400 dark:text-white",
+    chipCount:
+      "mt-0.5 block text-[11px] font-medium text-stone-500 group-aria-selected:text-white/85 dark:text-stone-400",
+    daysSection: "mt-6 space-y-2.5",
+    daysHeading: "text-[11px] font-semibold uppercase tracking-[0.14em] text-orange-800/70 dark:text-orange-300/80",
     dayButton:
-      "flex w-full items-center gap-3 rounded-xl border border-slate-200/80 bg-slate-50/80 px-4 py-3 text-left transition-all hover:border-orange-500/35 hover:bg-blue-50/80 dark:border-white/[0.08] dark:bg-white/[0.02] dark:hover:border-orange-500/30 dark:hover:bg-blue-500/[0.06]",
+      "flex w-full items-center gap-3 rounded-xl border border-orange-200/55 bg-white/65 px-4 py-3.5 text-left shadow-sm transition-all hover:border-orange-400/45 hover:bg-orange-50/80 dark:border-orange-500/15 dark:bg-warm-950/40 dark:hover:border-orange-400/30 dark:hover:bg-orange-500/[0.08]",
     dayButtonOpen:
-      "border-orange-500/40 bg-blue-50/90 dark:border-orange-500/35 dark:bg-blue-500/[0.08]",
-    dayLabel: "text-sm font-semibold text-slate-900 dark:text-white",
-    dayMeta: "ml-auto text-xs text-slate-500 dark:text-slate-400",
-    chevron: "h-4 w-4 shrink-0 text-slate-500 transition-transform dark:text-slate-400",
+      "border-orange-400/50 bg-orange-50/90 shadow-md shadow-orange-500/10 dark:border-orange-400/35 dark:bg-orange-500/[0.12]",
+    dayLabel: "text-sm font-semibold text-stone-900 dark:text-white",
+    dayMeta: "ml-auto text-xs font-medium text-orange-700/80 dark:text-orange-300/80",
+    chevron: "h-4 w-4 shrink-0 text-orange-500/70 transition-transform dark:text-orange-300/70",
     groupPanel:
-      "overflow-hidden rounded-xl border border-slate-200/80 dark:border-white/[0.08] animate-fade-up",
+      "overflow-hidden rounded-2xl border border-orange-200/55 bg-white/55 shadow-sm backdrop-blur-sm dark:border-orange-500/15 dark:bg-warm-950/45 animate-fade-up",
     tableWrap: "overflow-x-auto",
     thead:
-      "border-b border-slate-200/80 bg-slate-50/80 text-xs uppercase tracking-wider text-slate-500 dark:border-white/[0.06] dark:bg-white/[0.02] dark:text-slate-400",
-    rowHover: "align-top hover:bg-slate-50/80 dark:hover:bg-white/[0.02]",
-    bidTime: "whitespace-nowrap px-4 py-3 text-slate-600 tabular-nums dark:text-slate-300",
-    company: "px-4 py-3 font-medium text-slate-900 dark:text-white",
-    jobTitle: "px-4 py-3 text-slate-700 dark:text-slate-200",
-    description: "max-w-xs px-4 py-3 text-slate-500 md:max-w-md dark:text-slate-400",
+      "border-b border-orange-200/50 bg-orange-50/70 text-[11px] uppercase tracking-[0.12em] text-orange-800/70 dark:border-orange-500/12 dark:bg-orange-500/[0.08] dark:text-orange-200/70",
+    rowHover: "align-top hover:bg-orange-50/50 dark:hover:bg-orange-500/[0.06]",
+    bidTime: "whitespace-nowrap px-4 py-3 text-stone-600 tabular-nums dark:text-stone-300",
+    company: "px-4 py-3 font-semibold text-stone-900 dark:text-white",
+    jobTitle: "px-4 py-3 text-stone-700 dark:text-stone-200",
+    description: "max-w-xs px-4 py-3 text-stone-500 md:max-w-md dark:text-stone-400",
     descLink:
-      "text-left text-xs text-orange-600 underline-offset-2 hover:text-orange-500 hover:underline line-clamp-2 dark:text-orange-400 dark:hover:text-orange-300",
+      "text-left text-xs text-orange-700 underline-offset-2 hover:text-tomato-600 hover:underline line-clamp-2 dark:text-orange-300 dark:hover:text-orange-200",
     fileName:
-      "block text-left font-mono text-xs leading-relaxed whitespace-normal break-all text-orange-600 underline-offset-2 hover:text-orange-500 hover:underline dark:text-orange-400 dark:hover:text-orange-300",
+      "block text-left font-mono text-xs leading-relaxed whitespace-normal break-all text-orange-700 underline-offset-2 hover:text-tomato-600 hover:underline dark:text-orange-300 dark:hover:text-orange-200",
     fileNameCell: "min-w-[14rem] px-4 py-3 align-top whitespace-normal",
     actionsCell:
-      "sticky right-0 z-[1] whitespace-nowrap bg-white/95 px-4 py-3 shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.08)] group-hover:bg-slate-50/95 dark:bg-warm-900/95 dark:shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.45)] dark:group-hover:bg-white/[0.04]",
+      "sticky right-0 z-[1] whitespace-nowrap bg-white/90 px-4 py-3 shadow-[-8px_0_12px_-8px_rgba(194,65,12,0.12)] backdrop-blur-sm group-hover:bg-orange-50/95 dark:bg-warm-950/95 dark:shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.45)] dark:group-hover:bg-orange-500/[0.08]",
     actionsHead:
-      "sticky right-0 z-[1] bg-slate-50/95 px-4 py-3 text-right font-medium shadow-[-8px_0_12px_-8px_rgba(15,23,42,0.08)] dark:bg-white/[0.02] dark:shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.45)]",
+      "sticky right-0 z-[1] bg-orange-50/95 px-4 py-3 text-right font-medium shadow-[-8px_0_12px_-8px_rgba(194,65,12,0.12)] dark:bg-orange-500/[0.08] dark:shadow-[-8px_0_12px_-8px_rgba(0,0,0,0.45)]",
     actionGroup: "inline-flex flex-row flex-nowrap items-center gap-2",
-    tbody: "divide-y divide-slate-200/80 dark:divide-white/5",
+    tbody: "divide-y divide-orange-100/80 dark:divide-orange-500/10",
     empty:
-      "rounded-xl border border-slate-200/80 px-4 py-10 text-center text-slate-500 dark:border-white/[0.08] dark:text-slate-400",
+      "rounded-2xl border border-dashed border-orange-200/70 bg-orange-50/40 px-4 py-12 text-center text-stone-600 dark:border-orange-500/20 dark:bg-orange-500/[0.06] dark:text-stone-300",
     error:
       "mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600 dark:text-red-300",
   },
@@ -651,9 +652,16 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
 
   return (
     <section className={styles.section}>
-      <div>
-        <h2 className={styles.title}>Saved resumes</h2>
-        <p className={styles.subtitle}>
+      <div className="relative">
+        <div
+          className="pointer-events-none absolute -left-2 -top-2 h-16 w-16 rounded-full bg-orange-400/20 blur-2xl dark:bg-orange-500/15"
+          aria-hidden="true"
+        />
+        <p className="relative text-[11px] font-semibold uppercase tracking-[0.16em] text-orange-700/80 dark:text-orange-300/80">
+          Application archive
+        </p>
+        <h2 className={`relative mt-1.5 ${styles.title}`}>Saved resumes</h2>
+        <p className={`relative ${styles.subtitle}`}>
           Filter by date range, company, job title, or job description, then pick a year and month to browse
           applications.
         </p>
