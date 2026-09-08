@@ -24,11 +24,13 @@ export default function ClockFace({
       }`}
     >
       <Image
-        src="/images/watch-nature-dial.png"
+        src="/images/watch-nature-dial.webp"
         alt=""
         fill
-        sizes="280px"
+        sizes="180px"
+        quality={70}
         priority={false}
+        loading="lazy"
         className="object-cover object-center"
         aria-hidden="true"
       />
@@ -49,7 +51,7 @@ export default function ClockFace({
         generateDigital={generateDigital}
         variant={variant}
       />
-      <ClockHands time={time} variant={variant} />
+      <ClockHands variant={variant} />
       <GlassReflection variant={variant} />
     </div>
   );
