@@ -15,9 +15,9 @@ export const brand = {
 } as const;
 
 export const ui = {
-  page: "min-h-[calc(100vh-5rem)] bg-gradient-to-b from-warm-50 via-orange-50/50 to-amber-50/30 dark:from-warm-950 dark:via-warm-950 dark:to-warm-900",
+  page: "min-h-[calc(100vh-5rem)] bg-warm-50/25 dark:bg-warm-950/30",
   pageSection:
-    "relative overflow-hidden bg-gradient-to-b from-warm-50 via-orange-50/50 to-amber-50/30 py-12 dark:from-warm-950 dark:via-warm-950 dark:to-warm-900 sm:py-16",
+    "relative overflow-hidden bg-warm-50/20 py-12 dark:bg-warm-950/25 sm:py-16",
 
   card:
     "overflow-hidden rounded-3xl border border-orange-200/60 bg-gloss-warm p-6 shadow-gloss backdrop-blur-md dark:border-orange-500/12 dark:bg-gloss-warm-dark dark:shadow-card-dark sm:p-8",
@@ -25,7 +25,7 @@ export const ui = {
     "rounded-2xl border border-orange-200/60 bg-gloss-warm p-6 shadow-card backdrop-blur-md dark:border-orange-500/12 dark:bg-gloss-warm-dark dark:shadow-card-dark",
 
   tabBar:
-    "relative inline-flex w-full max-w-md rounded-xl border border-orange-200/70 bg-white/78 p-1 shadow-gloss backdrop-blur-md dark:border-orange-500/15 dark:bg-warm-900/82 dark:shadow-card-dark sm:w-auto",
+    "relative inline-flex w-full max-w-md overflow-hidden rounded-xl border border-orange-200/70 bg-white/78 p-1 shadow-gloss backdrop-blur-md dark:border-orange-500/15 dark:bg-warm-900/82 dark:shadow-card-dark sm:w-auto",
 
   input: `w-full rounded-xl border border-orange-200/80 bg-white/90 px-4 py-3 text-[17px] leading-snug text-stone-900 shadow-sm outline-none transition-all backdrop-blur-sm placeholder:text-stone-500 hover:border-orange-300 ${brand.focusRing} dark:border-orange-500/15 dark:bg-white/[0.06] dark:text-stone-50 dark:placeholder:text-stone-400 dark:hover:border-orange-400/30`,
 

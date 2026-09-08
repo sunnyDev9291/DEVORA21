@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import ResumeRawAiTextarea from "@/components/ui/ResumeRawAiTextarea";
 import CopyIconButton from "@/components/ui/CopyIconButton";
@@ -1503,20 +1504,23 @@ export default function ResumeGenerator({
         generationKey={generationKey}
       />
 
-      {showReview ? (
-        <button
-          type="button"
-          onClick={handleClear}
-          disabled={generating || applying || !hasClearableContent}
-          className="fixed bottom-[9.5rem] right-6 z-[101] inline-flex h-11 items-center justify-center gap-2 rounded-full border border-orange-200/70 bg-white/95 px-4 text-sm font-semibold text-stone-800 shadow-xl shadow-orange-500/20 backdrop-blur-md transition-all hover:-translate-y-1 hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 dark:border-orange-500/20 dark:bg-warm-950/95 dark:text-stone-100 dark:hover:bg-warm-900"
-          aria-label="Clear resume draft and job fields"
-        >
-          <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-          Clear
-        </button>
-      ) : null}
+      {showReview && typeof document !== "undefined"
+        ? createPortal(
+            <button
+              type="button"
+              onClick={handleClear}
+              disabled={generating || applying || !hasClearableContent}
+              className="fixed bottom-[9.5rem] right-6 z-[101] flex h-11 items-center gap-2 rounded-full bg-orange-600 pl-3.5 pr-4 text-sm font-semibold text-white shadow-xl shadow-orange-500/30 transition-all duration-200 hover:-translate-y-1 hover:scale-105 hover:bg-orange-500 hover:shadow-orange-400/40 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:scale-100"
+              aria-label="Clear resume draft and job fields"
+            >
+              <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Clear
+            </button>,
+            document.body
+          )
+        : null}
     </>
   );
 }

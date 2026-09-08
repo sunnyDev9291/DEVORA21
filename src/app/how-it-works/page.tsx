@@ -70,7 +70,7 @@ export default function HowItWorksPage() {
       <HowItWorksSection />
 
       {/* Deep-dive detail */}
-      <section className="bg-gradient-to-b from-warm-50 via-orange-50/50 to-amber-50/30 dark:from-warm-950 dark:via-warm-950 dark:to-warm-900 py-24 sm:py-32">
+      <section className="bg-transparent py-24 sm:py-32">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="space-y-16">
             {details.map((item, index) => (

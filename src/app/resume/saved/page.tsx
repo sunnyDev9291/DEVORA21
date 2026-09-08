@@ -6,7 +6,7 @@ const SavedResumesPanel = dynamic(
   () => import("@/components/dashboard/SavedResumesPanel"),
   {
     loading: () => (
-      <div className="bg-gradient-to-b from-warm-50 via-orange-50/50 to-amber-50/30 dark:from-warm-950 dark:via-warm-950 dark:to-warm-900 py-12 sm:py-16" aria-busy="true" aria-label="Loading saved resumes">
+      <div className="bg-transparent py-12 sm:py-16" aria-busy="true" aria-label="Loading saved resumes">
         <div className="mx-auto w-full max-w-[70vw] px-4 sm:px-6 lg:px-8 animate-pulse">
           <div className="rounded-3xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-warm-900 p-8">
             <div className="h-8 rounded-lg bg-slate-200 dark:bg-white/10 w-1/3 mb-6" />

@@ -4,6 +4,7 @@ import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import SkipLink from "@/components/layout/SkipLink";
+import SiteBackground from "@/components/layout/SiteBackground";
 import DeferredChatWidgets from "@/components/layout/DeferredChatWidgets";
 import DeferredSmartCursor from "@/components/layout/DeferredSmartCursor";
 import ThemeProvider from "@/providers/ThemeProvider";
@@ -77,13 +78,16 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="font-sans bg-gradient-to-b from-warm-50 via-orange-50/40 to-amber-50/20 text-stone-900 dark:from-warm-950 dark:via-warm-950 dark:to-warm-900 dark:text-stone-50">
+      <body className="relative min-h-screen font-sans bg-transparent text-stone-900 dark:text-stone-50">
+        <SiteBackground />
         <JsonLd data={[organizationJsonLd(), websiteJsonLd()]} />
         <ThemeProvider>
           <AuthProvider>
             <SkipLink />
             <Navbar />
-            <main id="main-content">{children}</main>
+            <main id="main-content" className="relative z-0">
+              {children}
+            </main>
             <Footer />
             <DeferredChatWidgets />
             <DeferredSmartCursor />

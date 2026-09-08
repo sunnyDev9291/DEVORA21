@@ -1,6 +1,6 @@
 export default function ResumeLoading() {
   return (
-    <div className="bg-gradient-to-b from-warm-50 via-orange-50/50 to-amber-50/30 dark:from-warm-950 dark:via-warm-950 dark:to-warm-900 py-12 sm:py-16" aria-busy="true" aria-label="Loading resume builder">
+    <div className="bg-transparent py-12 sm:py-16" aria-busy="true" aria-label="Loading resume builder">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 animate-pulse">
         <div className="flex justify-center gap-4 mb-10">
           {[1, 2, 3].map((step) => (

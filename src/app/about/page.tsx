@@ -100,7 +100,7 @@ export default function AboutPage() {
       </section>
 
       {/* Values */}
-      <section className="bg-gradient-to-b from-warm-50 via-orange-50/50 to-amber-50/30 dark:from-warm-950 dark:via-warm-950 dark:to-warm-900 py-24">
+      <section className="bg-transparent py-24">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-14">
 
@@ -157,7 +157,7 @@ export default function AboutPage() {
       </section>
 
       {/* CTA */}
-      <section className="bg-gradient-to-b from-warm-50 via-orange-50/50 to-amber-50/30 dark:from-warm-950 dark:via-warm-950 dark:to-warm-900 py-16">
+      <section className="bg-transparent py-16">
         <div className="max-w-xl mx-auto px-4 text-center">
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-3">Have a question about us?</h2>
           <p className="text-slate-500 dark:text-slate-400 mb-6">We&apos;re happy to chat — no commitment required.</p>

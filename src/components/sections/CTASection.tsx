@@ -2,7 +2,7 @@ import { CONTACT_INFO } from "@/lib/constants";
 
 export default function CTASection() {
   return (
-    <section className="bg-gradient-to-b from-warm-50 via-orange-50/50 to-amber-50/30 dark:from-warm-950 dark:via-warm-950 dark:to-warm-900 py-24 sm:py-32" aria-labelledby="cta-heading">
+    <section className="bg-transparent py-24 sm:py-32" aria-labelledby="cta-heading">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         <div className="relative rounded-3xl bg-gradient-to-br from-blue-600/20 via-indigo-600/10 to-navy-900 border border-orange-500/20 p-10 sm:p-16 overflow-hidden">
           {/* Glow */}

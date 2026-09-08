@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { brand, ui } from "@/lib/ui-styles";
+import { ui } from "@/lib/ui-styles";
 
 const TABS = [
   { href: "/resume", label: "New resume", isActive: (path: string) => path === "/resume" },
@@ -41,12 +41,13 @@ export default function ResumePanelTabs() {
     const navEl = navRef.current;
     if (!tabEl || !navEl) return;
 
-    const navRect = navEl.getBoundingClientRect();
-    const tabRect = tabEl.getBoundingClientRect();
+    // offset* stays inside the padded content box (avoids border-box bleed).
+    const maxLeft = Math.max(0, navEl.clientWidth - tabEl.offsetWidth);
+    const left = Math.min(Math.max(0, tabEl.offsetLeft), maxLeft);
 
     setSlider({
-      left: tabRect.left - navRect.left,
-      width: tabRect.width,
+      left,
+      width: tabEl.offsetWidth,
     });
     setSliderReady(true);
   }, [activeIndex]);
@@ -76,7 +77,7 @@ export default function ResumePanelTabs() {
         {slider ? (
           <span
             aria-hidden
-            className={`pointer-events-none absolute top-1 bottom-1 rounded-lg ${brand.gradientPill} transition-[left,width,opacity] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+            className={`pointer-events-none absolute top-1 bottom-1 rounded-lg bg-gradient-to-r from-tomato-600 via-orange-500 to-sun-400 transition-[left,width,opacity] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] ${
               sliderReady ? "opacity-100" : "opacity-0"
             }`}
             style={{ left: slider.left, width: slider.width }}
