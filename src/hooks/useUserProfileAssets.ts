@@ -127,7 +127,7 @@ export function useUserProfileAssets(userId: string | undefined) {
 
       try {
         const remotePrompt = await profileApi.fetchPrompt().catch(() => null);
-        if (remotePrompt) {
+        if (remotePrompt?.content.trim()) {
           if (!samePrompt(promptRef.current, remotePrompt)) {
             setPrompt(remotePrompt);
           }

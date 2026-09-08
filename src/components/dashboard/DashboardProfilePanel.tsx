@@ -19,6 +19,7 @@ import {
   mergeListingUrls,
   type JobCrawlPlatform,
 } from "@/lib/builtin-crawl-types";
+import { profileApi } from "@/lib/profile-api";
 import { readPromptFile, validateDocxFile } from "@/lib/profile-file";
 import {
   cacheUploadedPrompt,
@@ -54,8 +55,12 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
     stored.resumeTemplateFileName || user.resumeTemplateFileName || "",
   );
   const [promptFile, setPromptFile] = useState<File | null>(null);
+  const [pendingPromptName, setPendingPromptName] = useState("");
   const [customPrompt, setCustomPrompt] = useState(stored.customPrompt);
   const [promptFileName, setPromptFileName] = useState(stored.promptFileName || user.promptFileName || "");
+  const [promptVerified, setPromptVerified] = useState(
+    () => Boolean((stored.customPrompt || "").trim())
+  );
   const [listingUrls, setListingUrls] = useState<Record<JobCrawlPlatform, string>>(() =>
     mergeListingUrls(resolveListingUrls(user, stored))
   );
@@ -73,8 +78,38 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
     setResumeTemplateFileName(nextStored.resumeTemplateFileName || user.resumeTemplateFileName || "");
     setCustomPrompt(nextStored.customPrompt);
     setPromptFileName(nextStored.promptFileName || user.promptFileName || "");
+    setPromptVerified(Boolean((nextStored.customPrompt || "").trim()));
+    setPromptFile(null);
+    setPendingPromptName("");
     setListingUrls(mergeListingUrls(resolveListingUrls(user, nextStored)));
   }, [user]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const remote = await profileApi.fetchPrompt();
+        if (cancelled) return;
+        if (remote.content.trim()) {
+          setCustomPrompt(remote.content);
+          setPromptFileName(remote.fileName || promptFileName);
+          setPromptVerified(true);
+          saveStoredProfile(user.id, {
+            customPrompt: remote.content,
+            promptFileName: remote.fileName,
+          });
+        } else {
+          setPromptVerified(false);
+        }
+      } catch {
+        // Keep local mirror; server may be unavailable.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- verify once per user id
+  }, [user.id]);
 
   async function handleAvatarFile(file: File) {
     setError("");
@@ -106,13 +141,16 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
 
   async function handlePromptFile(file: File) {
     setError("");
+    setMessage("");
     setUploading(true);
     try {
-      const content = await readPromptFile(file);
+      await readPromptFile(file);
+      // Keep as a real File for PATCH; do not treat selection as a successful upload.
       setPromptFile(file);
-      setPromptFileName(file.name);
-      setCustomPrompt(content);
+      setPendingPromptName(file.name);
     } catch (err) {
+      setPromptFile(null);
+      setPendingPromptName("");
       setError((err as Error).message || "Could not read prompt file.");
     } finally {
       setUploading(false);
@@ -135,61 +173,83 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
     }
 
     const nextListingUrls = mergeListingUrls(listingUrls);
+    const previousPromptFileName = promptFileName;
+    const previousCustomPrompt = customPrompt;
+    const previousVerified = promptVerified;
 
-    const payload = {
+    // Persist non-prompt fields locally immediately; prompt only after server verify.
+    saveStoredProfile(user.id, {
       firstName: firstName.trim(),
       lastName: lastName.trim(),
-      avatarFile,
-      avatarDataUrl: avatarPreviewUrl,
-      resumeTemplateFile,
-      promptFile,
-      customPrompt,
-      listingUrls: nextListingUrls,
-    };
-
-    saveStoredProfile(user.id, {
-      firstName: payload.firstName,
-      lastName: payload.lastName,
       avatarUrl: avatarPreviewUrl,
-      customPrompt,
-      promptFileName: promptFile?.name || promptFileName,
       listingUrls: nextListingUrls,
     });
 
     try {
-      await authApi.updateProfileWithFiles(payload);
-      // Also send JSON so backends that ignore multipart listingUrls still persist them.
+      await authApi.updateProfileWithFiles({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        avatarFile,
+        avatarDataUrl: avatarPreviewUrl,
+        resumeTemplateFile,
+        // Prompt is uploaded + verified separately so we never mark success by filename alone.
+        promptFile: null,
+        listingUrls: nextListingUrls,
+      });
+
+      // JSON follow-up for listingUrls / names — never send empty customPrompt.
       try {
         await authApi.updateProfile({
-          firstName: payload.firstName,
-          lastName: payload.lastName,
-          customPrompt: payload.customPrompt,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
           listingUrls: nextListingUrls,
         });
       } catch {
-        // Multipart path may already have succeeded; JSON is a best-effort second write.
+        // Multipart path may already have succeeded.
       }
 
       if (resumeTemplateFile) {
         await cacheUploadedTemplate(user.id, resumeTemplateFile);
       }
-      if (promptFile && customPrompt.trim()) {
-        await cacheUploadedPrompt(user.id, promptFile, customPrompt.trim());
+
+      const notes: string[] = ["Profile saved."];
+
+      if (promptFile instanceof File) {
+        try {
+          const verified = await profileApi.uploadPromptFile(promptFile);
+          setCustomPrompt(verified.content);
+          setPromptFileName(verified.fileName || promptFile.name);
+          setPromptVerified(true);
+          setPromptFile(null);
+          setPendingPromptName("");
+          await cacheUploadedPrompt(user.id, promptFile, verified.content.trim());
+          notes.push("Prompt uploaded.");
+        } catch (promptErr) {
+          setPromptFile(null);
+          setPendingPromptName("");
+          setPromptFileName(previousPromptFileName);
+          setCustomPrompt(previousCustomPrompt);
+          setPromptVerified(previousVerified);
+          setError(
+            getApiErrorMessage(
+              promptErr,
+              "Prompt upload failed verification. The saved filename was not updated."
+            )
+          );
+          setMessage(notes.join(" "));
+          onProfileUpdated?.();
+          return;
+        }
       }
 
       onProfileUpdated?.();
-      setMessage("Profile saved. Crawl URLs are stored on your account.");
+      setMessage(notes.join(" "));
       setAvatarFile(null);
       setResumeTemplateFile(null);
-      setPromptFile(null);
     } catch (err) {
       const status = err instanceof Error && "status" in err ? (err as { status: number }).status : 0;
       if (status === 404 || status === 405 || status === 501) {
         if (resumeTemplateFile) await cacheUploadedTemplate(user.id, resumeTemplateFile);
-        if (promptFile && customPrompt.trim()) {
-          await cacheUploadedPrompt(user.id, promptFile, customPrompt.trim());
-        }
-        // Last resort: JSON-only listingUrls write
         try {
           await authApi.updateProfile({ listingUrls: nextListingUrls });
           onProfileUpdated?.();
@@ -197,6 +257,13 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
         } catch {
           onProfileUpdated?.();
           setMessage("Saved on this device. (Backend profile API not available yet.)");
+        }
+        if (promptFile instanceof File) {
+          setError(
+            "Prompt was not uploaded to the server. Backend profile API is not available — resume generation from a job link will fail until a server prompt is stored."
+          );
+          setPromptFile(null);
+          setPendingPromptName("");
         }
       } else {
         setError(getApiErrorMessage(err, "Could not save profile."));
@@ -368,13 +435,20 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
           id="dashboard-prompt-file"
           accept=".txt,.md,.json,text/plain,text/markdown,application/json"
           label="Replace prompt file"
-          hint=".txt, .md, or .json with a content field"
+          hint=".txt, .md, or .json with a content field · save profile to upload"
+          fileName={pendingPromptName || undefined}
           uploading={uploading}
           disabled={saving}
           onFile={handlePromptFile}
         />
         <p className="mt-3 text-xs text-slate-500">
-          {customPrompt || promptFileName ? "Private prompt configured." : "No prompt uploaded yet."}
+          {pendingPromptName
+            ? `Selected: ${pendingPromptName} (not uploaded until you save)`
+            : promptVerified && promptFileName
+              ? `Prompt uploaded · ${promptFileName}`
+              : promptVerified
+                ? "Prompt uploaded."
+                : "No prompt uploaded yet."}
         </p>
       </div>
 

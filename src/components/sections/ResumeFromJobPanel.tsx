@@ -21,6 +21,7 @@ import {
 import { iterateJobCheckStream } from "@/lib/job-check-stream";
 import { isEnglishTeamRequiredError } from "@/lib/english-team-gate";
 import EnglishTeamRequiredDialog from "@/components/ui/EnglishTeamRequiredDialog";
+import { profileApi } from "@/lib/profile-api";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
 
@@ -234,6 +235,18 @@ export default function ResumeFromJobPanel() {
     }
 
     const skipEnglishTeamGate = Boolean(options?.skipEnglishTeamGate);
+
+    try {
+      await profileApi.requireStoredPrompt();
+    } catch (err) {
+      setError(
+        getApiErrorMessage(
+          err,
+          "Profile prompt not found. Upload a prompt in your Devora21 profile before generating a resume."
+        )
+      );
+      return;
+    }
 
     abortRef.current?.abort();
     clearPollTimer();
