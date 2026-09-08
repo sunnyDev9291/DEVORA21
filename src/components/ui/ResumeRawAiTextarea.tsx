@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import ClaudeIcon from "@/components/ui/ClaudeIcon";
 import ResumeAiKeyValueView from "@/components/ui/ResumeAiKeyValueView";
+import { useFollowOutputScroll } from "@/hooks/useFollowOutputScroll";
 
 interface ResumeRawAiTextareaProps {
   value: string;
@@ -17,13 +17,10 @@ export default function ResumeRawAiTextarea({
   streaming = false,
   label = "Claude",
 }: ResumeRawAiTextareaProps) {
-  const listRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = listRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [value, streaming]);
+  const { containerRef, onScroll } = useFollowOutputScroll({
+    deps: [value],
+    resetFollowWhen: streaming,
+  });
 
   const showTypingDots = streaming && !value.trim();
   const showCursor = streaming && Boolean(value.trim());
@@ -67,7 +64,8 @@ export default function ResumeRawAiTextarea({
       </div>
 
       <div
-        ref={listRef}
+        ref={containerRef}
+        onScroll={onScroll}
         className="flex-1 overflow-y-auto px-4 py-4 space-y-3 min-h-0 bg-slate-50/80 dark:bg-white/[0.02]"
         aria-live="polite"
         aria-busy={streaming}
