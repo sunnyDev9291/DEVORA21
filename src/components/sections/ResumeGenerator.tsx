@@ -692,6 +692,7 @@ export default function ResumeGenerator({
       publishResumeGenerateTimer({ active: true, elapsedMs: durationMs });
       setContent(data.content);
       setGenerationKey((k) => k + 1);
+      setResumeChatOpen(true);
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       if (generationRunRef.current !== runId) return;

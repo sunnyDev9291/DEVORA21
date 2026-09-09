@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Modal from "@/components/ui/Modal";
 import ChatClearButton from "@/components/ui/ChatClearButton";
+import CopyIconButton from "@/components/ui/CopyIconButton";
 import { useChatScroll } from "@/hooks/useChatScroll";
 import type { ResumeChatProfileContext } from "@/lib/resume-chat-prompt";
 import type { GeneratedResumeContent } from "@/lib/resume-types";
@@ -190,29 +191,43 @@ export default function ResumeChatDialog({
             </div>
           ) : (
             <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                >
+              {messages.map((msg) => {
+                const isStreamingAssistant =
+                  loading && msg.role === "assistant" && !msg.content.trim();
+
+                return (
                   <div
-                    className={`max-w-[min(100%,42rem)] rounded-2xl px-4 py-3 text-[15px] leading-relaxed whitespace-pre-wrap ${
-                      msg.role === "user"
-                        ? "rounded-br-md bg-orange-600 text-white"
-                        : "rounded-bl-md border border-orange-200/50 bg-white text-stone-800 dark:border-orange-500/15 dark:bg-warm-900/80 dark:text-stone-100"
-                    }`}
+                    key={msg.id}
+                    className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                   >
-                    {msg.content ||
-                      (loading && msg.role === "assistant" ? (
-                        <span className="inline-flex gap-1.5 text-stone-400">
-                          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
-                          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current [animation-delay:150ms]" />
-                          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current [animation-delay:300ms]" />
-                        </span>
-                      ) : null)}
+                    {msg.role === "user" ? (
+                      <div className="max-w-[min(100%,42rem)] rounded-2xl rounded-br-md bg-orange-600 px-4 py-3 text-[15px] leading-relaxed whitespace-pre-wrap text-white">
+                        {msg.content}
+                      </div>
+                    ) : (
+                      <div className="flex max-w-[min(100%,42rem)] flex-col gap-1.5">
+                        <div className="rounded-2xl rounded-bl-md border border-orange-200/50 bg-white px-4 py-3 text-[15px] leading-relaxed whitespace-pre-wrap text-stone-800 dark:border-orange-500/15 dark:bg-warm-900/80 dark:text-stone-100">
+                          {msg.content ||
+                            (isStreamingAssistant ? (
+                              <span className="inline-flex gap-1.5 text-stone-400">
+                                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+                                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current [animation-delay:150ms]" />
+                                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current [animation-delay:300ms]" />
+                              </span>
+                            ) : null)}
+                        </div>
+                        {msg.content.trim() ? (
+                          <CopyIconButton
+                            text={msg.content}
+                            label="Copy answer"
+                            className="h-8 w-fit self-start px-2.5"
+                          />
+                        ) : null}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {error ? (
                 <p className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300">
                   {error}
