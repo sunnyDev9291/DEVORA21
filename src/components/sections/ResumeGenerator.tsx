@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import ResumeRawAiTextarea from "@/components/ui/ResumeRawAiTextarea";
 import CopyIconButton from "@/components/ui/CopyIconButton";
 import ResumeContentReview from "@/components/sections/ResumeContentReview";
 import { resolveResumeWizardStep } from "@/components/sections/ResumeStepper";
+import type { ResumeWorkspaceFabActions } from "@/components/ui/ResumeWorkspaceFabs";
 import { useAuth } from "@/context/AuthContext";
 import type { UserResumeTemplateAsset } from "@/lib/profile-api";
 import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
@@ -86,6 +86,7 @@ interface ResumeGeneratorProps {
   userTemplate: UserResumeTemplateAsset | null;
   userPrompt: string;
   onWizardStepChange?: (step: number) => void;
+  onFabActionsChange?: (actions: ResumeWorkspaceFabActions | null) => void;
 }
 
 type Step = "form" | "review" | "done";
@@ -120,6 +121,7 @@ export default function ResumeGenerator({
   userTemplate,
   userPrompt,
   onWizardStepChange,
+  onFabActionsChange,
 }: ResumeGeneratorProps) {
   const { user } = useAuth();
   const chatProfile = useMemo(() => {
@@ -392,6 +394,35 @@ export default function ResumeGenerator({
 
   const canGenerate = !!activeTemplate && !!form.jobTitle.trim() && !!form.companyName.trim();
   const canJobCheck = !!form.companyName.trim();
+
+  useEffect(() => {
+    if (!onFabActionsChange) return;
+
+    const hasDraft = Boolean(content);
+    if (!hasDraft) {
+      onFabActionsChange(null);
+      return;
+    }
+
+    onFabActionsChange({
+      showClear: true,
+      clearDisabled: generating || applying || !hasClearableContent,
+      onClear: handleClear,
+      showChat: true,
+      chatDisabled: generating || applying,
+      onOpenChat: () => setResumeChatOpen(true),
+    });
+  }, [
+    onFabActionsChange,
+    content,
+    hasClearableContent,
+    generating,
+    applying,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps -- handleClear reads latest state
+
+  useEffect(() => {
+    return () => onFabActionsChange?.(null);
+  }, [onFabActionsChange]);
 
   async function runJobCheck() {
     if (!canJobCheck || jobChecking) return;
@@ -1504,24 +1535,6 @@ export default function ResumeGenerator({
         jobDescription={form.jobDescription}
         generationKey={generationKey}
       />
-
-      {showReview && typeof document !== "undefined"
-        ? createPortal(
-            <button
-              type="button"
-              onClick={handleClear}
-              disabled={generating || applying || !hasClearableContent}
-              className="fixed bottom-6 right-6 z-[101] flex h-11 items-center gap-2 rounded-full border border-orange-200/50 bg-orange-500/80 pl-3.5 pr-4 text-sm font-semibold text-white shadow-md shadow-orange-500/15 backdrop-blur-sm transition-all duration-200 hover:bg-orange-500/90 hover:shadow-orange-400/25 disabled:cursor-not-allowed disabled:opacity-50"
-              aria-label="Clear resume draft and job fields"
-            >
-              <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-              Clear
-            </button>,
-            document.body
-          )
-        : null}
     </>
   );
 }

@@ -1,20 +1,45 @@
 "use client";
 
 import Link from "next/link";
+import { useCallback, useMemo, useState } from "react";
 import ResumeFromJobPanel from "@/components/sections/ResumeFromJobPanel";
 import ResumeGenerator from "@/components/sections/ResumeGenerator";
 import ResumeStepper from "@/components/sections/ResumeStepper";
 import ResumeTemplatePreviewButton from "@/components/ui/ResumeTemplatePreviewButton";
+import ResumeWorkspaceFabs, {
+  type ResumeWorkspaceFabActions,
+} from "@/components/ui/ResumeWorkspaceFabs";
 import { useAuth } from "@/context/AuthContext";
 import { useUserProfileAssets } from "@/hooks/useUserProfileAssets";
 import { AUTH_LINKS } from "@/lib/constants";
 import { ui } from "@/lib/ui-styles";
-import { useState } from "react";
+
+type FabSource = "from-job" | "generator";
 
 export default function ResumeBuilder() {
   const { user } = useAuth();
   const { template, prompt, loading, error } = useUserProfileAssets(user?.id);
   const [wizardStep, setWizardStep] = useState(1);
+  const [fabBySource, setFabBySource] = useState<
+    Partial<Record<FabSource, ResumeWorkspaceFabActions | null>>
+  >({});
+
+  const reportFabActions = useCallback((source: FabSource, actions: ResumeWorkspaceFabActions | null) => {
+    setFabBySource((prev) => {
+      if (prev[source] === actions) return prev;
+      return { ...prev, [source]: actions };
+    });
+  }, []);
+
+  const activeFabs = useMemo(() => {
+    const fromJob = fabBySource["from-job"];
+    const generator = fabBySource.generator;
+    if (fromJob?.showChat) return fromJob;
+    if (generator?.showChat) return generator;
+    if (fromJob?.showClear) return fromJob;
+    if (generator?.showClear) return generator;
+    return null;
+  }, [fabBySource]);
 
   return (
     <section className={`relative overflow-x-hidden ${ui.pageSection}`}>
@@ -67,7 +92,7 @@ export default function ResumeBuilder() {
           </div>
 
           <div className="px-6 py-8 sm:px-8 sm:py-10 space-y-10">
-            <ResumeFromJobPanel />
+            <ResumeFromJobPanel onFabActionsChange={(actions) => reportFabActions("from-job", actions)} />
 
             <div className="relative">
               <div className="absolute inset-0 flex items-center" aria-hidden>
@@ -87,11 +112,14 @@ export default function ResumeBuilder() {
                 userTemplate={template}
                 userPrompt={prompt?.content ?? ""}
                 onWizardStepChange={setWizardStep}
+                onFabActionsChange={(actions) => reportFabActions("generator", actions)}
               />
             )}
           </div>
         </div>
       </div>
+
+      <ResumeWorkspaceFabs actions={activeFabs} />
     </section>
   );
 }

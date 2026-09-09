@@ -27,6 +27,7 @@ import { loadStoredProfile, resolveUserNames } from "@/lib/user-profile";
 import { scrapeJobFromUrl } from "@/lib/job-scrape-api";
 import { resolveResumeChatContent } from "@/lib/resume-chat-prompt";
 import type { GeneratedResumeContent } from "@/lib/resume-types";
+import type { ResumeWorkspaceFabActions } from "@/components/ui/ResumeWorkspaceFabs";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
 const ResumeChatDialog = dynamic(() => import("@/components/ui/ResumeChatDialog"));
@@ -50,7 +51,11 @@ function downloadBlob(blob: Blob, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function ResumeFromJobPanel() {
+interface ResumeFromJobPanelProps {
+  onFabActionsChange?: (actions: ResumeWorkspaceFabActions | null) => void;
+}
+
+export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJobPanelProps) {
   const { user } = useAuth();
   const chatProfile = useMemo(() => {
     if (!user?.id) return undefined;
@@ -149,6 +154,60 @@ export default function ResumeFromJobPanel() {
     clearPollTimer();
     setRunning(false);
   }
+
+  function handleClear() {
+    stopRun();
+    jobCheckAbortRef.current?.abort();
+    jobCheckAbortRef.current = null;
+    setJobUrl("");
+    setError("");
+    setJob(null);
+    setResult(null);
+    setChatContent(null);
+    setJobDescription("");
+    setResumeChatOpen(false);
+    setPreviewOpen(false);
+    setEnglishTeamGateOpen(false);
+    setEnglishTeamGateMessage("");
+    setEnglishTeamContinuing(false);
+    setJobCheckOpen(false);
+    setJobChecking(false);
+    setJobCheckOutput("");
+    setJobCheckError("");
+    setGenerationKey((k) => k + 1);
+  }
+
+  const hasClearableContent =
+    !!jobUrl.trim() || !!job || !!result || !!chatContent || !!error;
+
+  useEffect(() => {
+    if (!onFabActionsChange) return;
+
+    const hasResult = Boolean(result?.pdfBase64);
+    if (!hasResult && !canOpenResumeChat) {
+      onFabActionsChange(null);
+      return;
+    }
+
+    onFabActionsChange({
+      showClear: hasResult || canOpenResumeChat || hasClearableContent,
+      clearDisabled: running,
+      onClear: handleClear,
+      showChat: canOpenResumeChat,
+      chatDisabled: running || !canOpenResumeChat,
+      onOpenChat: () => setResumeChatOpen(true),
+    });
+  }, [
+    onFabActionsChange,
+    result?.pdfBase64,
+    canOpenResumeChat,
+    hasClearableContent,
+    running,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps -- handleClear reads latest state
+
+  useEffect(() => {
+    return () => onFabActionsChange?.(null);
+  }, [onFabActionsChange]);
 
   async function hydrateChatContext(jobSnapshot: ResumeFromJobJob, resolved: ResumeFromJobResult) {
     const title = resolved.jobTitle || jobSnapshot.jobTitle || "";
