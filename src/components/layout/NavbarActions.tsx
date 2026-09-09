@@ -100,7 +100,7 @@ export default function NavbarActions({ variant, overlay = false, onNavigate }: 
     <>
       <Link
         href={protectedHref(AUTH_LINKS.dashboard)}
-        className={`hidden lg:inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs xl:text-sm font-semibold transition-all duration-200 whitespace-nowrap ${
+        className={`hidden xl:inline-flex items-center gap-1.5 px-2 py-2 rounded-xl text-xs 2xl:text-sm font-semibold transition-all duration-200 whitespace-nowrap ${
           pathname === AUTH_LINKS.dashboard
             ? overlay
               ? "text-orange-300 bg-white/15"
@@ -116,20 +116,19 @@ export default function NavbarActions({ variant, overlay = false, onNavigate }: 
         }`}>
           {userInitial}
         </span>
-        <span className="hidden xl:inline max-w-[8rem] truncate">{user?.name?.split(" ")[0] ?? "Dashboard"}</span>
-        <span className="xl:hidden">Dashboard</span>
+        <span className="hidden 2xl:inline max-w-[7rem] truncate">{user?.name?.split(" ")[0] ?? "Dashboard"}</span>
       </Link>
       <button
         type="button"
         onClick={handleLogout}
         disabled={isLoggingOut}
-        className={`inline-flex items-center px-3.5 py-2 rounded-xl text-xs xl:text-sm font-semibold transition-all disabled:opacity-50 ${
+        className={`inline-flex items-center px-2 2xl:px-3 py-2 rounded-xl text-xs 2xl:text-sm font-semibold transition-all disabled:opacity-50 whitespace-nowrap ${
           overlay
             ? "text-stone-100 hover:text-white hover:bg-white/10 drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]"
             : "text-stone-700 dark:text-stone-200 hover:text-stone-900 dark:hover:text-white hover:bg-stone-200/60 dark:hover:bg-white/[0.06]"
         }`}
       >
-        {isLoggingOut ? "Signing out…" : "Sign out"}
+        {isLoggingOut ? "…" : "Sign out"}
       </button>
     </>
   ) : (
@@ -155,7 +154,7 @@ export default function NavbarActions({ variant, overlay = false, onNavigate }: 
 
   if (variant === "desktop") {
     return (
-      <div className="flex items-center gap-2 xl:gap-3">
+      <div className="flex items-center gap-1.5 2xl:gap-2.5">
         <div
           className={`inline-flex items-center gap-0.5 p-1 rounded-xl backdrop-blur-sm ${
             overlay
@@ -176,12 +175,12 @@ export default function NavbarActions({ variant, overlay = false, onNavigate }: 
                 href={protectedHref(feature.href)}
                 aria-current={isActive ? "page" : undefined}
                 title={sessionReady ? feature.label : "Verify email to use this tool"}
-                className={`inline-flex items-center gap-1.5 px-2.5 xl:px-3.5 py-2 rounded-lg text-xs xl:text-sm font-semibold transition-all duration-200 ${
+                className={`inline-flex items-center gap-1 px-2 2xl:px-3 py-2 rounded-lg text-xs 2xl:text-sm font-semibold transition-all duration-200 ${
                   isActive ? toolActiveClasses[accent] : overlay ? toolIdleOverlayClasses : toolIdleClasses
                 }`}
               >
-                <Icon className="w-3.5 h-3.5 xl:w-4 xl:h-4 flex-shrink-0" />
-                <span className="hidden xl:inline">{feature.shortLabel}</span>
+                <Icon className="w-3.5 h-3.5 2xl:w-4 2xl:h-4 flex-shrink-0" />
+                <span className="hidden 2xl:inline">{feature.shortLabel}</span>
               </Link>
             );
           })}
@@ -193,11 +192,12 @@ export default function NavbarActions({ variant, overlay = false, onNavigate }: 
           href={CONTACT_INFO.calendly}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 bg-gradient-to-r from-tomato-600 to-sun-400 hover:from-tomato-500 hover:to-sun-300 text-white text-xs xl:text-sm font-semibold px-3.5 xl:px-5 py-2.5 rounded-xl transition-all duration-200 shadow-lg shadow-orange-500/25 hover:shadow-orange-400/35 hover:-translate-y-px whitespace-nowrap"
+          title="Book Free Consultation"
+          className="inline-flex items-center gap-1.5 bg-gradient-to-r from-tomato-600/90 to-sun-400/85 hover:from-tomato-500 hover:to-sun-300 text-white text-xs 2xl:text-sm font-semibold px-2.5 2xl:px-4 py-2 rounded-xl transition-all duration-200 shadow-md shadow-orange-500/20 whitespace-nowrap"
         >
-          <span className="hidden 2xl:inline">Book Free Consultation</span>
-          <span className="2xl:hidden">Book Call</span>
-          <svg className="w-3.5 h-3.5 opacity-90" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <span className="hidden 2xl:inline">Book Call</span>
+          <span className="2xl:hidden">Book</span>
+          <svg className="w-3.5 h-3.5 opacity-90 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7l5 5m0 0l-5 5m5-5H6" />
           </svg>
         </a>

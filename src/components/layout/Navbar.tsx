@@ -43,7 +43,7 @@ export default function Navbar() {
 
   return (
     <header
-      className={`fixed top-0 left-0 right-0 z-50 transition-[background-color,box-shadow,border-color] duration-300 [transform:translateZ(0)] bg-white/95 dark:bg-warm-950/95 backdrop-blur-md border-b ${
+      className={`fixed top-0 left-0 right-0 z-50 overflow-x-hidden transition-[background-color,box-shadow,border-color] duration-300 [transform:translateZ(0)] bg-white/95 dark:bg-warm-950/95 backdrop-blur-md border-b ${
         scrolled
           ? "border-orange-200/80 dark:border-orange-500/20 shadow-gloss dark:shadow-card-dark"
           : "border-orange-200/70 dark:border-orange-500/15"
@@ -53,28 +53,28 @@ export default function Navbar() {
         aria-label="Main navigation"
         className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"
       >
-        <div className="flex items-center justify-between h-16 lg:h-20">
-          <Link href="/" className="flex items-center gap-2.5 pt-6 pb-3 px-2 shrink-0" aria-label="Devora21 home">
+        <div className="flex min-w-0 items-center justify-between gap-3 h-16 lg:h-20">
+          <Link href="/" className="flex items-center gap-2 pt-6 pb-3 px-1 sm:px-2 shrink-0" aria-label="Devora21 home">
             <Image
               src="/logo.png"
               alt="Devora21 logo"
               width={72}
               height={72}
-              className="w-[72px] h-auto object-contain"
+              className="w-12 h-auto object-contain xl:w-[72px]"
               priority
             />
-            <span className={`font-display text-2xl font-extrabold tracking-tight ${brand.gradientText}`}>
+            <span className={`font-display text-xl xl:text-2xl font-extrabold tracking-tight ${brand.gradientText}`}>
               Devora21
             </span>
           </Link>
 
-          <ul className="hidden lg:flex items-center gap-0.5 xl:gap-1 list-none m-0 p-0 mx-4" role="list">
+          <ul className="hidden xl:flex min-w-0 flex-1 items-center justify-center gap-0.5 list-none m-0 p-0 mx-2" role="list">
             {NAV_LINKS.map((link) => (
-              <li key={link.href}>
+              <li key={link.href} className="min-w-0">
                 <Link
                   href={link.href}
                   aria-current={pathname === link.href ? "page" : undefined}
-                  className={`px-3 xl:px-4 py-2 rounded-xl text-sm font-medium transition-all duration-150 whitespace-nowrap ${navLinkClass(pathname, link.href)}`}
+                  className={`block px-2.5 2xl:px-3.5 py-2 rounded-xl text-sm font-medium transition-all duration-150 whitespace-nowrap ${navLinkClass(pathname, link.href)}`}
                 >
                   {link.label}
                 </Link>
@@ -82,12 +82,12 @@ export default function Navbar() {
             ))}
           </ul>
 
-          <div className="hidden lg:flex items-center gap-2 xl:gap-3 shrink-0">
+          <div className="hidden xl:flex items-center gap-1.5 2xl:gap-2.5 shrink-0">
             <ThemeToggle />
             <NavbarActions variant="desktop" />
           </div>
 
-          <div className="lg:hidden flex items-center gap-2">
+          <div className="xl:hidden flex items-center gap-2 shrink-0">
             <ThemeToggle />
             <button
               type="button"
@@ -113,7 +113,7 @@ export default function Navbar() {
 
       <div
         id="mobile-nav-menu"
-        className={`lg:hidden overflow-hidden transition-all duration-300 ${
+        className={`xl:hidden overflow-hidden transition-all duration-300 ${
           isOpen ? "max-h-[90vh] opacity-100 overflow-y-auto" : "max-h-0 opacity-0"
         }`}
         aria-hidden={!isOpen}
