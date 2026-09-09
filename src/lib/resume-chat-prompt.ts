@@ -42,6 +42,41 @@ export function formatProfileForChat(profile?: ResumeChatProfileContext): string
   return lines.length > 0 ? lines.join("\n") : "Not provided.";
 }
 
+export function isUsableResumeChatContent(
+  content?: GeneratedResumeContent | null
+): content is GeneratedResumeContent {
+  return Boolean(
+    content?.title?.trim() &&
+      content.summary?.trim() &&
+      content.skills?.trim() &&
+      Array.isArray(content.experiences)
+  );
+}
+
+/** Build chat context when one-shot from-job returns PDF but no structured draft. */
+export function resolveResumeChatContent({
+  content,
+  jobTitle,
+  companyName,
+}: {
+  content?: GeneratedResumeContent | null;
+  jobTitle?: string;
+  companyName?: string;
+}): GeneratedResumeContent | null {
+  if (isUsableResumeChatContent(content)) return content;
+
+  const title = jobTitle?.trim() || companyName?.trim();
+  if (!title) return null;
+
+  return {
+    title,
+    summary:
+      "Structured resume draft was not returned for this generation. Use only the personal profile and target job context. Do not invent work history, skills, employers, or dates.",
+    skills: "Not provided in a structured draft.",
+    experiences: [],
+  };
+}
+
 export function buildResumeChatSystemPrompt({
   content,
   profile,
@@ -64,6 +99,11 @@ export function buildResumeChatSystemPrompt({
     ? `\nJOB DESCRIPTION (target role):\n${jobDescription.trim()}\n`
     : "\nJOB DESCRIPTION (target role):\nNot provided — rely on the resume draft, profile, and target role/company names.\n";
 
+  const draftNote =
+    content.experiences.length === 0
+      ? "\nNote: No structured experience bullets were provided. Prefer the personal profile and job description. If a fact is not on file, say so plainly.\n"
+      : "";
+
   return `You help the user answer job application and interview questions using only their profile, resume draft, and target job context.
 
 Answer style (required):
@@ -74,7 +114,7 @@ Help with application form fields and interview questions. When the user pastes 
 
 Accuracy rules:
 Use only the personal profile, resume draft, and target job context. Do not invent employers, dates, degrees, locations, phone numbers, links, salaries, visa status, or metrics. If something needed is missing, say so in one plain sentence. For sensitive topics (salary, work authorization, criminal history), give careful wording without inventing facts. If the job description is missing, still help from the resume and profile.
-
+${draftNote}
 Target role: ${target}
 ${jdBlock}
 --- PERSONAL PROFILE ---

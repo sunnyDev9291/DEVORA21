@@ -1,5 +1,6 @@
 import {
   buildResumeChatSystemPrompt,
+  resolveResumeChatContent,
   type ResumeChatProfileContext,
 } from "@/lib/resume-chat-prompt";
 import { streamDeepSeek, type ChatMessage } from "@/lib/deepseek-stream";
@@ -24,9 +25,16 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const content = body.content;
-  if (!content?.title || !content.summary || !content.skills || !Array.isArray(content.experiences)) {
-    return Response.json({ error: "Resume content is required for chat." }, { status: 400 });
+  const content = resolveResumeChatContent({
+    content: body.content,
+    jobTitle: body.jobTitle,
+    companyName: body.companyName,
+  });
+  if (!content) {
+    return Response.json(
+      { error: "Resume content or a target job title is required for chat." },
+      { status: 400 }
+    );
   }
 
   const history: ChatMessage[] = (body.messages ?? [])

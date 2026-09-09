@@ -22,8 +22,14 @@ import { iterateJobCheckStream } from "@/lib/job-check-stream";
 import { isEnglishTeamRequiredError } from "@/lib/english-team-gate";
 import EnglishTeamRequiredDialog from "@/components/ui/EnglishTeamRequiredDialog";
 import { profileApi } from "@/lib/profile-api";
+import { useAuth } from "@/context/AuthContext";
+import { loadStoredProfile, resolveUserNames } from "@/lib/user-profile";
+import { scrapeJobFromUrl } from "@/lib/job-scrape-api";
+import { resolveResumeChatContent } from "@/lib/resume-chat-prompt";
+import type { GeneratedResumeContent } from "@/lib/resume-types";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
+const ResumeChatDialog = dynamic(() => import("@/components/ui/ResumeChatDialog"));
 
 const inputClass =
   "w-full bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.10] hover:border-slate-300 dark:hover:border-white/[0.16] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 rounded-xl px-4 py-3 text-slate-900 dark:text-white text-sm outline-none transition-all";
@@ -45,11 +51,27 @@ function downloadBlob(blob: Blob, fileName: string) {
 }
 
 export default function ResumeFromJobPanel() {
+  const { user } = useAuth();
+  const chatProfile = useMemo(() => {
+    if (!user?.id) return undefined;
+    const names = resolveUserNames(user, loadStoredProfile(user.id));
+    return {
+      fullName: names.fullName,
+      firstName: names.firstName,
+      lastName: names.lastName,
+      email: user.email,
+    };
+  }, [user]);
+
   const [jobUrl, setJobUrl] = useState("");
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
   const [job, setJob] = useState<ResumeFromJobJob | null>(null);
   const [result, setResult] = useState<ResumeFromJobResult | null>(null);
+  const [chatContent, setChatContent] = useState<GeneratedResumeContent | null>(null);
+  const [jobDescription, setJobDescription] = useState("");
+  const [resumeChatOpen, setResumeChatOpen] = useState(false);
+  const [generationKey, setGenerationKey] = useState(0);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [englishTeamGateOpen, setEnglishTeamGateOpen] = useState(false);
   const [englishTeamGateMessage, setEnglishTeamGateMessage] = useState("");
@@ -99,6 +121,16 @@ export default function ResumeFromJobPanel() {
     return url;
   }, [pdfBlob]);
 
+  const jobTitle = result?.jobTitle || job?.jobTitle || "";
+  const companyName = result?.companyName || job?.companyName || "";
+  const canOpenResumeChat = Boolean(
+    resolveResumeChatContent({
+      content: chatContent,
+      jobTitle,
+      companyName,
+    })
+  );
+
   useEffect(() => {
     if (!result?.pdfBase64) return;
     successRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -118,6 +150,38 @@ export default function ResumeFromJobPanel() {
     setRunning(false);
   }
 
+  async function hydrateChatContext(jobSnapshot: ResumeFromJobJob, resolved: ResumeFromJobResult) {
+    const title = resolved.jobTitle || jobSnapshot.jobTitle || "";
+    const company = resolved.companyName || jobSnapshot.companyName || "";
+    let description =
+      resolved.jobDescription || jobSnapshot.jobDescription || jobSnapshot.result?.jobDescription || "";
+    let content =
+      resolved.content || jobSnapshot.content || jobSnapshot.result?.content || null;
+
+    const url = (jobSnapshot.url || jobUrl).trim();
+    if ((!description.trim() || !content) && url) {
+      try {
+        const scraped = await scrapeJobFromUrl(url);
+        if (!description.trim() && scraped.jobDescription.trim()) {
+          description = scraped.jobDescription.trim();
+        }
+      } catch {
+        // Q&A can still open with title/company/profile if scrape fails.
+      }
+    }
+
+    const nextContent = resolveResumeChatContent({
+      content,
+      jobTitle: title,
+      companyName: company,
+    });
+
+    setChatContent(nextContent);
+    setJobDescription(description);
+    setGenerationKey((k) => k + 1);
+    if (nextContent) setResumeChatOpen(true);
+  }
+
   async function finishWithResult(jobSnapshot: ResumeFromJobJob, signal: AbortSignal) {
     const resolved = await resolveResumeFromJobResult(jobSnapshot, signal);
     setResult(resolved);
@@ -130,10 +194,13 @@ export default function ResumeFromJobPanel() {
             message: "PDF ready — download below.",
             jobTitle: resolved.jobTitle || prev.jobTitle,
             companyName: resolved.companyName || prev.companyName,
+            jobDescription: resolved.jobDescription || prev.jobDescription,
+            content: resolved.content || prev.content,
             warning: resolved.warning || prev.warning,
           }
         : prev
     );
+    await hydrateChatContext(jobSnapshot, resolved);
   }
 
   async function pollUntilDone(jobId: string, startedAt: number, signal: AbortSignal) {
@@ -177,11 +244,11 @@ export default function ResumeFromJobPanel() {
   }
 
   async function runJobCheck() {
-    const companyName = (job?.companyName || result?.companyName || "").trim();
-    if (!companyName || jobChecking) {
+    const company = (job?.companyName || result?.companyName || "").trim();
+    if (!company || jobChecking) {
       setJobCheckOpen(true);
       setJobCheckError(
-        companyName
+        company
           ? "Job Check is already running."
           : "Company name is not available yet for Job Check."
       );
@@ -202,8 +269,8 @@ export default function ResumeFromJobPanel() {
       for await (const chunk of iterateJobCheckStream(
         {
           jobTitle: job?.jobTitle || result?.jobTitle || "",
-          companyName,
-          jobDescription: job?.url || jobUrl,
+          companyName: company,
+          jobDescription: jobDescription || job?.url || jobUrl,
         },
         controller.signal
       )) {
@@ -258,6 +325,9 @@ export default function ResumeFromJobPanel() {
     setEnglishTeamGateMessage("");
     setEnglishTeamContinuing(false);
     setResult(null);
+    setChatContent(null);
+    setJobDescription("");
+    setResumeChatOpen(false);
     setPreviewOpen(false);
     setRunning(true);
     setJob({
@@ -294,6 +364,7 @@ export default function ResumeFromJobPanel() {
       if (err instanceof DOMException && err.name === "AbortError") return;
       if (isEnglishTeamRequiredError(err) && !skipEnglishTeamGate) {
         setResult(null);
+        setChatContent(null);
         setPreviewOpen(false);
         setEnglishTeamGateMessage(err.message);
         setEnglishTeamGateOpen(true);
@@ -435,6 +506,18 @@ export default function ResumeFromJobPanel() {
             >
               Preview
             </button>
+            {canOpenResumeChat ? (
+              <button
+                type="button"
+                onClick={() => setResumeChatOpen(true)}
+                className="inline-flex items-center gap-2 rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-2.5 text-sm font-semibold text-orange-700 transition-all hover:bg-orange-500/15 dark:text-orange-300"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                Application Q&A
+              </button>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -449,12 +532,23 @@ export default function ResumeFromJobPanel() {
         onDownload={handleDownloadPdf}
       />
 
+      <ResumeChatDialog
+        open={resumeChatOpen}
+        onClose={() => setResumeChatOpen(false)}
+        content={chatContent}
+        profile={chatProfile}
+        jobTitle={jobTitle}
+        companyName={companyName}
+        jobDescription={jobDescription}
+        generationKey={generationKey}
+      />
+
       <EnglishTeamRequiredDialog
         open={englishTeamGateOpen}
         message={englishTeamGateMessage}
         jobTitle={job?.jobTitle || result?.jobTitle || ""}
         companyName={job?.companyName || result?.companyName || ""}
-        jobDescription={job?.url || jobUrl}
+        jobDescription={jobDescription || job?.url || jobUrl}
         continuing={englishTeamContinuing || running}
         onJobCheck={() => {
           setEnglishTeamGateOpen(false);

@@ -10,6 +10,7 @@ import {
   EnglishTeamRequiredError,
   parseEnglishTeamRequired,
 } from "@/lib/english-team-gate";
+import type { GeneratedResumeContent, ResumeExperience } from "@/lib/resume-types";
 
 export type ResumeFromJobStatus =
   | "queued"
@@ -36,6 +37,8 @@ export type ResumeFromJobResult = {
   pdfFileName: string;
   pdfBase64: string;
   warning?: string;
+  jobDescription?: string;
+  content?: GeneratedResumeContent;
 };
 
 export type ResumeFromJobJob = {
@@ -49,12 +52,14 @@ export type ResumeFromJobJob = {
   url?: string;
   jobTitle?: string;
   companyName?: string;
+  jobDescription?: string;
   warning?: string;
   error?: string;
   /** Present when generation was blocked by English-team gate. */
   code?: string;
   answer?: string;
   workWithEnglishTeam?: boolean;
+  content?: GeneratedResumeContent;
   result?: ResumeFromJobResult;
 };
 
@@ -137,6 +142,61 @@ function parseSteps(raw: unknown): ResumeFromJobStep[] | undefined {
   return steps.length ? steps : undefined;
 }
 
+function parseExperiences(raw: unknown): ResumeExperience[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const experiences: ResumeExperience[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const company = typeof row.company === "string" ? row.company : "";
+    const role = typeof row.role === "string" ? row.role : "";
+    const dates = typeof row.dates === "string" ? row.dates : "";
+    const bullets = Array.isArray(row.bullets)
+      ? row.bullets.filter((b): b is string => typeof b === "string")
+      : [];
+    if (!company.trim() && !role.trim() && bullets.length === 0) continue;
+    experiences.push({ company, role, dates, bullets });
+  }
+  return experiences;
+}
+
+/** Accept structured draft JSON from from-job payloads when the backend includes it. */
+export function parseGeneratedResumeContent(raw: unknown): GeneratedResumeContent | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const row = raw as Record<string, unknown>;
+  const title = typeof row.title === "string" ? row.title.trim() : "";
+  const summary = typeof row.summary === "string" ? row.summary.trim() : "";
+  const skills = typeof row.skills === "string" ? row.skills.trim() : "";
+  const experiences = parseExperiences(row.experiences);
+  if (!title || !summary || !skills || !experiences) return undefined;
+  return {
+    title,
+    summary,
+    skills,
+    experiences,
+    ...(typeof row.fileName === "string" && row.fileName.trim()
+      ? { fileName: row.fileName.trim() }
+      : {}),
+  };
+}
+
+function pickContent(row: Record<string, unknown>): GeneratedResumeContent | undefined {
+  return (
+    parseGeneratedResumeContent(row.content) ||
+    parseGeneratedResumeContent(row.resumeContent) ||
+    parseGeneratedResumeContent(row.generatedContent) ||
+    parseGeneratedResumeContent(row.draft)
+  );
+}
+
+function pickJobDescription(row: Record<string, unknown>): string | undefined {
+  for (const key of ["jobDescription", "description", "jd"] as const) {
+    const value = row[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
 function parseResult(raw: unknown): ResumeFromJobResult | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const row = raw as Record<string, unknown>;
@@ -160,9 +220,11 @@ function parseResultMeta(raw: unknown): Omit<ResumeFromJobResult, "pdfBase64"> |
       ? row.pdfFileName.trim()
       : "resume.pdf";
   const warning = typeof row.warning === "string" && row.warning.trim() ? row.warning.trim() : undefined;
+  const jobDescription = pickJobDescription(row);
+  const content = pickContent(row);
 
-  if (!id && !jobTitle && !companyName && !resumeName) return undefined;
-  return { id, jobTitle, companyName, resumeName, pdfFileName, warning };
+  if (!id && !jobTitle && !companyName && !resumeName && !content && !jobDescription) return undefined;
+  return { id, jobTitle, companyName, resumeName, pdfFileName, warning, jobDescription, content };
 }
 
 function buildResult(row: Record<string, unknown>, pdfBase64: string): ResumeFromJobResult {
@@ -181,6 +243,8 @@ function buildResult(row: Record<string, unknown>, pdfBase64: string): ResumeFro
         : "resume.pdf",
     pdfBase64,
     warning: typeof row.warning === "string" && row.warning.trim() ? row.warning.trim() : undefined,
+    jobDescription: pickJobDescription(row),
+    content: pickContent(row),
   };
 }
 
@@ -215,6 +279,18 @@ function parseJob(data: Record<string, unknown>, fallbackJobId = ""): ResumeFrom
     fallbackJobId;
 
   const result = parsePartialResult(data.result) ?? parsePartialResult(data);
+  const content =
+    pickContent(data) ||
+    (data.result && typeof data.result === "object"
+      ? pickContent(data.result as Record<string, unknown>)
+      : undefined) ||
+    result?.content;
+  const jobDescription =
+    pickJobDescription(data) ||
+    (data.result && typeof data.result === "object"
+      ? pickJobDescription(data.result as Record<string, unknown>)
+      : undefined) ||
+    result?.jobDescription;
 
   return {
     jobId,
@@ -227,13 +303,21 @@ function parseJob(data: Record<string, unknown>, fallbackJobId = ""): ResumeFrom
     url: typeof data.url === "string" ? data.url : undefined,
     jobTitle: typeof data.jobTitle === "string" ? data.jobTitle : undefined,
     companyName: typeof data.companyName === "string" ? data.companyName : undefined,
+    jobDescription,
     warning: typeof data.warning === "string" && data.warning.trim() ? data.warning.trim() : undefined,
     error: typeof data.error === "string" ? data.error : undefined,
     code: typeof data.code === "string" ? data.code : undefined,
     answer: typeof data.answer === "string" ? data.answer : undefined,
     workWithEnglishTeam:
       typeof data.workWithEnglishTeam === "boolean" ? data.workWithEnglishTeam : undefined,
-    result,
+    content,
+    result: result
+      ? {
+          ...result,
+          content: result.content ?? content,
+          jobDescription: result.jobDescription ?? jobDescription,
+        }
+      : undefined,
   };
 }
 
@@ -300,6 +384,8 @@ export async function resolveResumeFromJobResult(
     pdfFileName: fileName,
     pdfBase64,
     warning: meta?.warning ?? job.warning,
+    jobDescription: meta?.jobDescription ?? job.jobDescription,
+    content: meta?.content ?? job.content ?? job.result?.content,
   };
 }
 
