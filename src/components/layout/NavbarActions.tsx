@@ -51,11 +51,18 @@ const allFeatures = [
 
 interface NavbarActionsProps {
   variant: "desktop" | "mobile";
+  /** desktop only: tools stay in center; account stays on the right */
+  zone?: "tools" | "account" | "all";
   overlay?: boolean;
   onNavigate?: () => void;
 }
 
-export default function NavbarActions({ variant, overlay = false, onNavigate }: NavbarActionsProps) {
+export default function NavbarActions({
+  variant,
+  zone = "all",
+  overlay = false,
+  onNavigate,
+}: NavbarActionsProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isAuthenticated, isLoading, isEmailVerified, isResumeBuilderEnabled, authMethod, logout } =
@@ -100,32 +107,34 @@ export default function NavbarActions({ variant, overlay = false, onNavigate }: 
     <>
       <Link
         href={protectedHref(AUTH_LINKS.dashboard)}
-        className={`hidden xl:inline-flex items-center gap-1.5 px-2 py-2 rounded-xl text-xs 2xl:text-sm font-semibold transition-all duration-200 whitespace-nowrap ${
+        className={`inline-flex items-center gap-1.5 rounded-xl px-2 py-2 text-xs font-semibold whitespace-nowrap transition-all duration-200 2xl:text-sm ${
           pathname === AUTH_LINKS.dashboard
             ? overlay
-              ? "text-orange-300 bg-white/15"
-              : "text-orange-600 dark:text-orange-300 bg-orange-500/10"
+              ? "bg-white/15 text-orange-300"
+              : "bg-orange-500/10 text-orange-600 dark:text-orange-300"
             : overlay
-              ? "text-stone-100 hover:text-white hover:bg-white/10 drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]"
-              : "text-stone-700 dark:text-stone-200 hover:text-stone-900 dark:hover:text-white hover:bg-stone-200/60 dark:hover:bg-white/[0.06]"
+              ? "text-stone-100 hover:bg-white/10 hover:text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]"
+              : "text-stone-700 hover:bg-stone-200/60 hover:text-stone-900 dark:text-stone-200 dark:hover:bg-white/[0.06] dark:hover:text-white"
         }`}
         title={sessionReady ? "Account dashboard" : "Verify email to open dashboard"}
       >
-        <span className={`flex h-6 w-6 items-center justify-center rounded-lg text-[12px] font-bold ${
-          overlay ? "bg-white/15 text-orange-300" : "bg-orange-500/15 text-orange-600 dark:text-orange-300"
-        }`}>
+        <span
+          className={`flex h-6 w-6 items-center justify-center rounded-lg text-[12px] font-bold ${
+            overlay ? "bg-white/15 text-orange-300" : "bg-orange-500/15 text-orange-600 dark:text-orange-300"
+          }`}
+        >
           {userInitial}
         </span>
-        <span className="hidden 2xl:inline max-w-[7rem] truncate">{user?.name?.split(" ")[0] ?? "Dashboard"}</span>
+        <span className="max-w-[7rem] truncate">{user?.name?.split(" ")[0] ?? "Dashboard"}</span>
       </Link>
       <button
         type="button"
         onClick={handleLogout}
         disabled={isLoggingOut}
-        className={`inline-flex items-center px-2 2xl:px-3 py-2 rounded-xl text-xs 2xl:text-sm font-semibold transition-all disabled:opacity-50 whitespace-nowrap ${
+        className={`inline-flex items-center rounded-xl px-2.5 py-2 text-xs font-semibold whitespace-nowrap transition-all disabled:opacity-50 2xl:px-3 2xl:text-sm ${
           overlay
-            ? "text-stone-100 hover:text-white hover:bg-white/10 drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]"
-            : "text-stone-700 dark:text-stone-200 hover:text-stone-900 dark:hover:text-white hover:bg-stone-200/60 dark:hover:bg-white/[0.06]"
+            ? "text-stone-100 hover:bg-white/10 hover:text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]"
+            : "text-stone-700 hover:bg-stone-200/60 hover:text-stone-900 dark:text-stone-200 dark:hover:bg-white/[0.06] dark:hover:text-white"
         }`}
       >
         {isLoggingOut ? "…" : "Sign out"}
@@ -153,54 +162,64 @@ export default function NavbarActions({ variant, overlay = false, onNavigate }: 
   );
 
   if (variant === "desktop") {
-    return (
-      <div className="flex items-center gap-1.5 2xl:gap-2.5">
-        <div
-          className={`inline-flex items-center gap-0.5 p-1 rounded-xl backdrop-blur-sm ${
-            overlay
-              ? "bg-white/10 border border-white/15"
-              : "bg-stone-100/90 dark:bg-white/[0.04] border border-stone-200/80 dark:border-white/[0.08]"
-          }`}
-          role="group"
-          aria-label="Devora21 tools"
-        >
-          {features.map((feature) => {
-            const Icon = featureIcons[feature.key];
-            const isActive = pathname === feature.href;
-            const accent = feature.accent as keyof typeof toolActiveClasses;
+    const tools = (
+      <div
+        className={`inline-flex shrink-0 items-center gap-0.5 rounded-xl p-1 backdrop-blur-sm ${
+          overlay
+            ? "border border-white/15 bg-white/10"
+            : "border border-stone-200/80 bg-stone-100/90 dark:border-white/[0.08] dark:bg-white/[0.04]"
+        }`}
+        role="group"
+        aria-label="Devora21 tools"
+      >
+        {features.map((feature) => {
+          const Icon = featureIcons[feature.key];
+          const isActive = pathname === feature.href;
+          const accent = feature.accent as keyof typeof toolActiveClasses;
 
-            return (
-              <Link
-                key={feature.key}
-                href={protectedHref(feature.href)}
-                aria-current={isActive ? "page" : undefined}
-                title={sessionReady ? feature.label : "Verify email to use this tool"}
-                className={`inline-flex items-center gap-1 px-2 2xl:px-3 py-2 rounded-lg text-xs 2xl:text-sm font-semibold transition-all duration-200 ${
-                  isActive ? toolActiveClasses[accent] : overlay ? toolIdleOverlayClasses : toolIdleClasses
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5 2xl:w-4 2xl:h-4 flex-shrink-0" />
-                <span className="hidden 2xl:inline">{feature.shortLabel}</span>
-              </Link>
-            );
-          })}
-        </div>
+          return (
+            <Link
+              key={feature.key}
+              href={protectedHref(feature.href)}
+              aria-current={isActive ? "page" : undefined}
+              title={sessionReady ? feature.label : "Verify email to use this tool"}
+              className={`inline-flex items-center gap-1 rounded-lg px-2 py-2 text-xs font-semibold transition-all duration-200 2xl:gap-1.5 2xl:px-3 2xl:text-sm ${
+                isActive ? toolActiveClasses[accent] : overlay ? toolIdleOverlayClasses : toolIdleClasses
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5 shrink-0 2xl:h-4 2xl:w-4" />
+              <span>{feature.shortLabel}</span>
+            </Link>
+          );
+        })}
+      </div>
+    );
 
+    const account = (
+      <div className="flex shrink-0 items-center gap-1.5 2xl:gap-2">
         {authButtonsDesktop}
-
         <a
           href={CONTACT_INFO.calendly}
           target="_blank"
           rel="noopener noreferrer"
           title="Book Free Consultation"
-          className="inline-flex items-center gap-1.5 bg-gradient-to-r from-tomato-600/90 to-sun-400/85 hover:from-tomato-500 hover:to-sun-300 text-white text-xs 2xl:text-sm font-semibold px-2.5 2xl:px-4 py-2 rounded-xl transition-all duration-200 shadow-md shadow-orange-500/20 whitespace-nowrap"
+          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl bg-gradient-to-r from-tomato-600/90 to-sun-400/85 px-3 py-2 text-xs font-semibold text-white shadow-md shadow-orange-500/20 transition-all duration-200 hover:from-tomato-500 hover:to-sun-300 2xl:px-4 2xl:text-sm"
         >
-          <span className="hidden 2xl:inline">Book Call</span>
-          <span className="2xl:hidden">Book</span>
-          <svg className="w-3.5 h-3.5 opacity-90 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          Book Call
+          <svg className="h-3.5 w-3.5 shrink-0 opacity-90" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7l5 5m0 0l-5 5m5-5H6" />
           </svg>
         </a>
+      </div>
+    );
+
+    if (zone === "tools") return tools;
+    if (zone === "account") return account;
+
+    return (
+      <div className="flex items-center gap-2 2xl:gap-3">
+        {tools}
+        {account}
       </div>
     );
   }
