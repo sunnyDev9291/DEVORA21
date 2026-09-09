@@ -155,7 +155,7 @@ export default function ResumeFromJobPanel() {
     const company = resolved.companyName || jobSnapshot.companyName || "";
     let description =
       resolved.jobDescription || jobSnapshot.jobDescription || jobSnapshot.result?.jobDescription || "";
-    let content =
+    const content =
       resolved.content || jobSnapshot.content || jobSnapshot.result?.content || null;
 
     const url = (jobSnapshot.url || jobUrl).trim();
