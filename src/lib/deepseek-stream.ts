@@ -40,7 +40,8 @@ export async function* iterateDeepSeekStream(
 
 export async function streamDeepSeek(
   messages: ChatMessage[],
-  maxTokens = 4096
+  maxTokens = 4096,
+  options?: Omit<DeepSeekCallOptions, "maxTokens"> & { maxTokens?: number }
 ): Promise<Response> {
   if (!process.env.BACKEND_API_URL && !process.env.NEXT_PUBLIC_API_BASE_URL) {
     return Response.json(
@@ -54,7 +55,12 @@ export async function streamDeepSeek(
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        for await (const delta of iterateDeepSeekStream(messages, maxTokens)) {
+        for await (const delta of iterateDeepSeekStream(messages, maxTokens, {
+          ...options,
+          maxTokens: options?.maxTokens ?? maxTokens,
+          // Application Q&A is free-form chat, never resume JSON generation.
+          jsonObject: false,
+        })) {
           if (delta.content) controller.enqueue(encoder.encode(delta.content));
         }
         controller.close();

@@ -278,9 +278,11 @@ def parse_ai_request() -> tuple[list[dict] | None, int, bool, tuple[Response, in
         normalized.append({"role": role, "content": content})
 
     max_tokens = int(body.get("maxTokens") or 4096)
-    json_object = bool(body.get("jsonObject"))
+    # Strict True only — avoid treating truthy strings as resume JSON mode.
+    json_object = body.get("jsonObject") is True
 
     # Resume generation (jsonObject) requires job context for English-team gating.
+    # Plain chat / Application Q&A must not hit this gate.
     if json_object:
         job_title, job_description = extract_job_context(body)
         if not job_title and not job_description:

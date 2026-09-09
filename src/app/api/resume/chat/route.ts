@@ -53,5 +53,11 @@ export async function POST(req: Request) {
     }),
   };
 
-  return streamDeepSeek([system, ...history], 2048);
+  // Forward job context to the AI backend. Production English-team gating can
+  // reject streams that omit these even for non-JSON application Q&A.
+  return streamDeepSeek([system, ...history], 2048, {
+    jsonObject: false,
+    jobTitle: body.jobTitle?.trim() || undefined,
+    jobDescription: body.jobDescription?.trim() || body.jobTitle?.trim() || undefined,
+  });
 }

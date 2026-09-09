@@ -165,7 +165,22 @@ export async function* iterateAiChatStream(
     throw new Error(missingBackendConfigMessage());
   }
 
-  const response = await fetch(`${BACKEND_API_URL}/ai/chat/completions/stream`, {
+  const jobTitle = options?.jobTitle?.trim() ?? "";
+  const jobDescription = options?.jobDescription?.trim() ?? "";
+  const query = new URLSearchParams();
+  if (jobTitle) {
+    query.set("jobTitle", jobTitle);
+    query.set("job_title", jobTitle);
+  }
+  if (jobDescription) {
+    const clipped =
+      jobDescription.length > 2500 ? jobDescription.slice(0, 2500) : jobDescription;
+    query.set("jobDescription", clipped);
+    query.set("job_description", clipped);
+  }
+  const querySuffix = query.toString() ? `?${query.toString()}` : "";
+
+  const response = await fetch(`${BACKEND_API_URL}/ai/chat/completions/stream${querySuffix}`, {
     method: "POST",
     headers: buildAiAuthHeaders("text/plain", options),
     body: JSON.stringify(buildAiBody(messages, maxTokens, options)),
