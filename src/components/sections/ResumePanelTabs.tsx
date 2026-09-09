@@ -77,7 +77,7 @@ export default function ResumePanelTabs() {
         {slider ? (
           <span
             aria-hidden
-            className={`pointer-events-none absolute top-1 bottom-1 rounded-lg bg-gradient-to-r from-tomato-600 via-orange-500 to-sun-400 transition-[left,width,opacity] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+            className={`pointer-events-none absolute top-1 bottom-1 rounded-lg bg-gradient-to-r from-orange-500/85 via-orange-400/80 to-amber-300/75 transition-[left,width,opacity] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] ${
               sliderReady ? "opacity-100" : "opacity-0"
             }`}
             style={{ left: slider.left, width: slider.width }}
