@@ -1510,7 +1510,7 @@ export default function ResumeGenerator({
               type="button"
               onClick={handleClear}
               disabled={generating || applying || !hasClearableContent}
-              className="fixed bottom-[9.5rem] right-6 z-[101] flex h-11 items-center gap-2 rounded-full bg-orange-600 pl-3.5 pr-4 text-sm font-semibold text-white shadow-xl shadow-orange-500/30 transition-all duration-200 hover:-translate-y-1 hover:scale-105 hover:bg-orange-500 hover:shadow-orange-400/40 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:scale-100"
+              className="fixed bottom-6 right-6 z-[101] flex h-11 items-center gap-2 rounded-full border border-orange-200/50 bg-orange-500/80 pl-3.5 pr-4 text-sm font-semibold text-white shadow-md shadow-orange-500/15 backdrop-blur-sm transition-all duration-200 hover:bg-orange-500/90 hover:shadow-orange-400/25 disabled:cursor-not-allowed disabled:opacity-50"
               aria-label="Clear resume draft and job fields"
             >
               <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
