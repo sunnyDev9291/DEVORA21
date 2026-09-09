@@ -49,7 +49,7 @@ export default function Navbar() {
           : "border-orange-200/70 dark:border-orange-500/15"
       }`}
     >
-      <nav aria-label="Main navigation" className="mx-auto w-full max-w-[90rem] px-3 sm:px-5 lg:px-6">
+      <nav aria-label="Main navigation" className="w-full px-3 sm:px-4 lg:px-5">
         {/* Mobile / tablet */}
         <div className="flex h-16 items-center justify-between gap-3 xl:hidden">
           <Link href="/" className="flex shrink-0 items-center gap-2" aria-label="Devora21 home">
@@ -88,9 +88,14 @@ export default function Navbar() {
           </div>
         </div>
 
-        {/* Desktop: logo | center (links + tools) | right (profile / sign / book) */}
-        <div className="hidden h-20 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 xl:grid">
-          <Link href="/" className="z-10 flex shrink-0 items-center gap-2.5 pr-2" aria-label="Devora21 home">
+        {/*
+          Desktop zones:
+          - Left: logo
+          - Center: nav links + theme + Resume / Live Interview
+          - Far right edge: profile, Sign out, Book Call
+        */}
+        <div className="relative hidden h-20 items-center xl:flex">
+          <Link href="/" className="relative z-20 flex shrink-0 items-center gap-2.5" aria-label="Devora21 home">
             <Image
               src="/logo.png"
               alt="Devora21 logo"
@@ -104,25 +109,27 @@ export default function Navbar() {
             </span>
           </Link>
 
-          <div className="flex min-w-0 items-center justify-center gap-2 2xl:gap-3">
-            <ul className="m-0 flex list-none flex-nowrap items-center gap-0.5 p-0 2xl:gap-1" role="list">
-              {NAV_LINKS.map((link) => (
-                <li key={link.href} className="shrink-0">
-                  <Link
-                    href={link.href}
-                    aria-current={pathname === link.href ? "page" : undefined}
-                    className={`rounded-xl px-2.5 py-2 text-sm font-medium whitespace-nowrap transition-all duration-150 2xl:px-3.5 ${navLinkClass(pathname, link.href)}`}
-                  >
-                    {link.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-            <ThemeToggle />
-            <NavbarActions variant="desktop" zone="tools" />
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-48 2xl:px-56">
+            <div className="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-2 2xl:gap-3">
+              <ul className="m-0 flex list-none flex-nowrap items-center gap-0.5 p-0 2xl:gap-1" role="list">
+                {NAV_LINKS.map((link) => (
+                  <li key={link.href} className="shrink-0">
+                    <Link
+                      href={link.href}
+                      aria-current={pathname === link.href ? "page" : undefined}
+                      className={`rounded-xl px-2.5 py-2 text-sm font-medium whitespace-nowrap transition-all duration-150 2xl:px-3.5 ${navLinkClass(pathname, link.href)}`}
+                    >
+                      {link.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              <ThemeToggle />
+              <NavbarActions variant="desktop" zone="tools" />
+            </div>
           </div>
 
-          <div className="z-10 flex shrink-0 items-center justify-end">
+          <div className="relative z-20 ml-auto flex shrink-0 items-center justify-end pl-4">
             <NavbarActions variant="desktop" zone="account" />
           </div>
         </div>

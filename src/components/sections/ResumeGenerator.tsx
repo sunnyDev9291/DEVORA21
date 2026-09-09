@@ -1019,24 +1019,6 @@ export default function ResumeGenerator({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label htmlFor="jobTitle" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                Job title <span className="text-red-400">*</span>
-              </label>
-              <div className="flex items-stretch gap-2">
-                <input
-                  id="jobTitle"
-                  name="jobTitle"
-                  type="text"
-                  value={form.jobTitle}
-                  onChange={handleChange}
-                  placeholder="e.g. Senior Backend Engineer"
-                  className={`${inputClass} min-w-0 flex-1`}
-                  required
-                />
-                <CopyIconButton text={form.jobTitle} label="Copy job title" disabled={generating} />
-              </div>
-            </div>
-            <div>
               <label htmlFor="companyName" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                 Company name <span className="text-red-400">*</span>
               </label>
@@ -1053,6 +1035,24 @@ export default function ResumeGenerator({
                   autoComplete="organization"
                 />
                 <CopyIconButton text={form.companyName} label="Copy company name" disabled={generating} />
+              </div>
+            </div>
+            <div>
+              <label htmlFor="jobTitle" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                Job title <span className="text-red-400">*</span>
+              </label>
+              <div className="flex items-stretch gap-2">
+                <input
+                  id="jobTitle"
+                  name="jobTitle"
+                  type="text"
+                  value={form.jobTitle}
+                  onChange={handleChange}
+                  placeholder="e.g. Senior Backend Engineer"
+                  className={`${inputClass} min-w-0 flex-1`}
+                  required
+                />
+                <CopyIconButton text={form.jobTitle} label="Copy job title" disabled={generating} />
               </div>
             </div>
           </div>
