@@ -4,10 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Modal from "@/components/ui/Modal";
 import ChatClearButton from "@/components/ui/ChatClearButton";
 import { useChatScroll } from "@/hooks/useChatScroll";
-import {
-  RESUME_CHAT_QUICK_PROMPTS,
-  type ResumeChatProfileContext,
-} from "@/lib/resume-chat-prompt";
+import type { ResumeChatProfileContext } from "@/lib/resume-chat-prompt";
 import type { GeneratedResumeContent } from "@/lib/resume-types";
 
 export type ResumeChatMessage = {
@@ -15,15 +12,6 @@ export type ResumeChatMessage = {
   role: "user" | "assistant";
   content: string;
 };
-
-function buildWelcome(): ResumeChatMessage {
-  return {
-    id: "welcome",
-    role: "assistant",
-    content:
-      "I use your profile and current resume draft to help fill job application fields and prep interview answers in real time. Paste a form question or field label, or pick a quick prompt below.",
-  };
-}
 
 interface ResumeChatDialogProps {
   open: boolean;
@@ -47,7 +35,7 @@ export default function ResumeChatDialog({
   jobDescription = "",
   generationKey = 0,
 }: ResumeChatDialogProps) {
-  const [messages, setMessages] = useState<ResumeChatMessage[]>([buildWelcome()]);
+  const [messages, setMessages] = useState<ResumeChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -56,14 +44,16 @@ export default function ResumeChatDialog({
   const { listRef, handleScroll, pinToBottom } = useChatScroll([messages, loading]);
 
   useEffect(() => {
-    setMessages([buildWelcome()]);
+    setMessages([]);
     setError("");
     setInput("");
     pinToBottom();
   }, [generationKey, pinToBottom]);
 
   useEffect(() => {
-    if (open) inputRef.current?.focus();
+    if (open) {
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
   }, [open]);
 
   function handleClear() {
@@ -72,11 +62,11 @@ export default function ResumeChatDialog({
     setLoading(false);
     setError("");
     setInput("");
-    setMessages([buildWelcome()]);
+    setMessages([]);
     pinToBottom();
   }
 
-  const hasConversation = messages.some((m) => m.id !== "welcome");
+  const hasConversation = messages.length > 0;
 
   async function sendMessage(text: string) {
     const trimmed = text.trim();
@@ -92,7 +82,7 @@ export default function ResumeChatDialog({
       content: trimmed,
     };
     const assistantId = crypto.randomUUID();
-    const history = [...messages.filter((m) => m.id !== "welcome"), userMsg];
+    const history = [...messages, userMsg];
 
     setMessages((prev) => [...prev, userMsg, { id: assistantId, role: "assistant", content: "" }]);
     setLoading(true);
@@ -140,6 +130,7 @@ export default function ResumeChatDialog({
     } finally {
       setLoading(false);
       abortRef.current = null;
+      requestAnimationFrame(() => inputRef.current?.focus());
     }
   }
 
@@ -165,85 +156,77 @@ export default function ResumeChatDialog({
       ? `${jobTitle.trim()} · ${companyName.trim()}`
       : jobTitle.trim() || "Your resume draft";
 
-  const profileLabel = profile?.fullName?.trim() || profile?.email?.trim() || "";
+  const canSend = Boolean(content) && !loading && Boolean(input.trim());
 
   return (
     <Modal
       open={open}
       onClose={handleClose}
-      title="Resume Q&A · Application assist"
-      align="top"
+      title="Resume Q&A"
+      align="center"
       priority
-      className="max-w-2xl h-[min(72vh,680px)]"
+      className="!max-h-[min(94dvh,920px)] max-w-4xl h-[min(92dvh,880px)]"
     >
-      <div className="flex flex-col flex-1 min-h-0">
-        <div className="flex items-start justify-between gap-3 px-4 py-2 border-b border-slate-200 dark:border-white/[0.06] bg-blue-500/[0.06] shrink-0">
-          <div className="min-w-0 flex flex-col gap-1">
-            <span className="text-xs font-medium text-orange-700 dark:text-orange-300 truncate">{targetLabel}</span>
-            {profileLabel && (
-              <span className="text-[13px] text-orange-600/80 dark:text-orange-300/80 truncate">
-                Profile: {profileLabel}
-              </span>
-            )}
-          </div>
+      <div className="flex min-h-0 flex-1 flex-col bg-stone-50/40 dark:bg-warm-950/30">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-orange-200/40 px-5 py-2.5 dark:border-orange-500/15">
+          <p className="min-w-0 truncate text-sm text-stone-600 dark:text-stone-300">{targetLabel}</p>
           <ChatClearButton onClick={handleClear} disabled={loading || !hasConversation} />
         </div>
 
         <div
           ref={listRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto px-4 py-4 space-y-3 min-h-0"
+          className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8"
         >
-          {messages.map((msg) => (
-            <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div
-                className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
-                  msg.role === "user"
-                    ? "bg-blue-600 text-white rounded-br-md"
-                    : "bg-slate-100 dark:bg-white/[0.06] text-slate-800 dark:text-slate-200 rounded-bl-md border border-slate-200/80 dark:border-white/[0.06]"
-                }`}
-              >
-                {msg.content ||
-                  (loading && msg.role === "assistant" ? (
-                    <span className="inline-flex gap-1 text-slate-400">
-                      <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-                      <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse [animation-delay:150ms]" />
-                      <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse [animation-delay:300ms]" />
-                    </span>
-                  ) : null)}
-              </div>
+          {!hasConversation && !loading ? (
+            <div className="flex h-full min-h-[280px] flex-col items-center justify-center px-4 text-center">
+              <h3 className="font-display text-2xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
+                How can I help with this application?
+              </h3>
+              <p className="mt-3 max-w-md text-sm leading-relaxed text-stone-500 dark:text-stone-400">
+                Ask anything using your resume draft, profile, and job details — field answers,
+                interview points, or a pasted form question.
+              </p>
             </div>
-          ))}
-          {error && (
-            <p className="text-xs text-red-500 dark:text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-              {error}
-            </p>
+          ) : (
+            <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
+              {messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-[min(100%,42rem)] rounded-2xl px-4 py-3 text-[15px] leading-relaxed whitespace-pre-wrap ${
+                      msg.role === "user"
+                        ? "rounded-br-md bg-orange-600 text-white"
+                        : "rounded-bl-md border border-orange-200/50 bg-white text-stone-800 dark:border-orange-500/15 dark:bg-warm-900/80 dark:text-stone-100"
+                    }`}
+                  >
+                    {msg.content ||
+                      (loading && msg.role === "assistant" ? (
+                        <span className="inline-flex gap-1.5 text-stone-400">
+                          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+                          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current [animation-delay:150ms]" />
+                          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current [animation-delay:300ms]" />
+                        </span>
+                      ) : null)}
+                  </div>
+                </div>
+              ))}
+              {error ? (
+                <p className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-300">
+                  {error}
+                </p>
+              ) : null}
+            </div>
           )}
         </div>
 
-        {content && (
-          <div className="shrink-0 border-t border-slate-200 dark:border-white/[0.06] px-3 pt-3 pb-1">
-            <p className="mb-2 text-[12px] font-semibold uppercase tracking-wider text-slate-400">
-              Quick prompts
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {RESUME_CHAT_QUICK_PROMPTS.map((prompt) => (
-                <button
-                  key={prompt}
-                  type="button"
-                  disabled={loading}
-                  onClick={() => void sendMessage(prompt)}
-                  className="rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.03] px-2.5 py-1.5 text-left text-[13px] font-medium text-slate-600 dark:text-slate-300 transition-colors hover:border-orange-500/30 hover:bg-blue-500/[0.06] hover:text-orange-700 dark:hover:text-orange-300 disabled:opacity-50"
-                >
-                  {prompt}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <form onSubmit={handleSend} className="shrink-0 border-t border-slate-200 dark:border-white/[0.08] p-3">
-          <div className="flex gap-2 items-end">
+        <form
+          onSubmit={handleSend}
+          className="shrink-0 border-t border-orange-200/40 bg-white/80 px-4 py-4 backdrop-blur-sm dark:border-orange-500/15 dark:bg-warm-950/50 sm:px-6"
+        >
+          <div className="mx-auto flex w-full max-w-3xl items-end gap-2 rounded-2xl border border-orange-200/70 bg-white p-2 shadow-sm dark:border-orange-500/20 dark:bg-warm-900/90">
             <textarea
               ref={inputRef}
               value={input}
@@ -251,24 +234,27 @@ export default function ResumeChatDialog({
               onKeyDown={handleKeyDown}
               placeholder={
                 content
-                  ? "Paste a job site field or question, e.g. “Describe your relevant experience”…"
+                  ? "Message Resume Q&A…"
                   : "Generate a resume first…"
               }
-              rows={2}
+              rows={1}
               disabled={loading || !content}
-              className="flex-1 resize-none rounded-xl border border-slate-200 dark:border-white/[0.10] bg-slate-50 dark:bg-white/[0.03] px-3 py-2.5 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/40 disabled:opacity-60"
+              className="max-h-40 min-h-[48px] flex-1 resize-none bg-transparent px-3 py-3 text-[15px] leading-snug text-stone-900 outline-none placeholder:text-stone-400 disabled:opacity-60 dark:text-stone-50"
             />
             <button
               type="submit"
-              disabled={loading || !input.trim() || !content}
-              className="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl bg-orange-600 hover:bg-orange-500 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors"
+              disabled={!canSend}
+              className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-600 text-white transition-colors hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label="Send message"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
               </svg>
             </button>
           </div>
+          <p className="mx-auto mt-2 max-w-3xl text-center text-[11px] text-stone-400 dark:text-stone-500">
+            Enter to send · Shift+Enter for a new line
+          </p>
         </form>
       </div>
     </Modal>

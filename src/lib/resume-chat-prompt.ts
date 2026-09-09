@@ -95,12 +95,3 @@ ${formatProfileForChat(profile)}
 --- RESUME DRAFT ---
 ${formatResumeContentForChat(content)}`;
 }
-
-/** Suggested prompts for job-site form filling and interview prep. */
-export const RESUME_CHAT_QUICK_PROMPTS = [
-  "Summarize my work history for a job application form",
-  "List skills I can paste into an application",
-  "Draft a short professional summary for this role",
-  "Why am I a fit for this company and role?",
-  "Give interview talking points for my top experience",
-] as const;
