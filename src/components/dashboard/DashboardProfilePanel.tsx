@@ -144,10 +144,11 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
     setMessage("");
     setUploading(true);
     try {
-      await readPromptFile(file);
-      // Keep as a real File for PATCH; do not treat selection as a successful upload.
+      const content = await readPromptFile(file);
+      // Keep as a real File for PATCH; preview content until save verifies upload.
       setPromptFile(file);
       setPendingPromptName(file.name);
+      setCustomPrompt(content);
     } catch (err) {
       setPromptFile(null);
       setPendingPromptName("");
@@ -429,7 +430,7 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
       <div className="mt-8 border-t border-white/10 pt-8">
         <h3 className="mb-1 text-sm font-semibold text-white">Writing prompt</h3>
         <p className="mb-4 text-xs text-slate-500">
-          Upload a private prompt file. Its contents are never shown in the app — only used when generating resumes.
+          Upload a prompt file. You can review the content below — it is used when generating resumes.
         </p>
         <ProfileFileUpload
           id="dashboard-prompt-file"
@@ -450,6 +451,20 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
                 ? "Prompt uploaded."
                 : "No prompt uploaded yet."}
         </p>
+        {customPrompt.trim() ? (
+          <div className="mt-4">
+            <label htmlFor="dashboard-prompt-content" className="mb-1.5 block text-xs font-medium text-slate-400">
+              Prompt content
+            </label>
+            <textarea
+              id="dashboard-prompt-content"
+              readOnly
+              value={customPrompt}
+              rows={12}
+              className="w-full resize-y rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 font-mono text-xs leading-relaxed text-slate-200 outline-none focus:border-orange-500/40 focus:ring-2 focus:ring-orange-500/20"
+            />
+          </div>
+        ) : null}
       </div>
 
       {error && (
