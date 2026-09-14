@@ -89,6 +89,7 @@ export function buildResumeUserPrompt({
   previousContent,
   templateSkillsSample,
   task,
+  writingInstructions,
 }: {
   jobTitle: string;
   companyName?: string;
@@ -100,6 +101,8 @@ export function buildResumeUserPrompt({
   templateSkillsSample?: string;
   /** Extra task for this click only (e.g. improve one score item). Not the profile prompt. */
   task?: string;
+  /** Verified profile writing prompt — must drive content/style for this generation. */
+  writingInstructions?: string;
 }): string {
   const layout = previousContent?.layout ?? templateLayout;
   const experiences = previousContent?.experiences ?? existingExperiences;
@@ -126,8 +129,15 @@ export function buildResumeUserPrompt({
 
   const templateSkillsBlock = buildTemplateSkillsPromptBlock(templateSkillsSample ?? "", layout);
   const taskBlock = task?.trim() ? `Task:\n${task.trim()}` : "";
+  const writingBlock = writingInstructions?.trim()
+    ? [
+        "Writing instructions (source of truth for tone, content rules, and formatting — follow these exactly):",
+        writingInstructions.trim(),
+      ].join("\n")
+    : "";
 
   return [
+    writingBlock,
     jobTitle && `Job title:\n${jobTitle}`,
     companyName?.trim() && `Company:\n${companyName.trim()}`,
     jobDescription && `Job description:\n${jobDescription}`,

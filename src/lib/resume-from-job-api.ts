@@ -393,7 +393,7 @@ export async function resolveResumeFromJobResult(
 export async function startResumeFromJob(
   url: string,
   signal?: AbortSignal,
-  options?: { skipEnglishTeamGate?: boolean }
+  options?: { skipEnglishTeamGate?: boolean; customPrompt?: string }
 ): Promise<ResumeFromJobJob> {
   const trimmed = url.trim();
   if (!trimmed) {
@@ -404,6 +404,12 @@ export async function startResumeFromJob(
   if (options?.skipEnglishTeamGate) {
     payload.skipEnglishTeamGate = true;
     payload.skip_english_team_gate = true;
+  }
+  const customPrompt = options?.customPrompt?.trim();
+  if (customPrompt) {
+    payload.customPrompt = customPrompt;
+    payload.profilePrompt = customPrompt;
+    payload.promptContent = customPrompt;
   }
 
   let res: Response;

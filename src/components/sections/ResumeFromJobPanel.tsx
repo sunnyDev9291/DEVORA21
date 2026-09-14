@@ -362,8 +362,22 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
 
     const skipEnglishTeamGate = Boolean(options?.skipEnglishTeamGate);
 
+    let freshPrompt = "";
     try {
-      await profileApi.requireStoredPrompt();
+      const verified = await profileApi.requireStoredPrompt();
+      freshPrompt = verified.content.trim();
+      if (freshPrompt && user?.id) {
+        const { saveStoredProfile } = await import("@/lib/user-profile");
+        const { PROFILE_PROMPT_UPDATED_EVENT } = await import("@/lib/template-fingerprint");
+        saveStoredProfile(user.id, {
+          customPrompt: freshPrompt,
+          promptFileName: verified.fileName,
+          promptUpdatedAt: Date.now(),
+        });
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent(PROFILE_PROMPT_UPDATED_EVENT));
+        }
+      }
     } catch (err) {
       setError(
         getApiErrorMessage(
@@ -401,6 +415,7 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
     try {
       const started = await startResumeFromJob(url, controller.signal, {
         skipEnglishTeamGate,
+        customPrompt: freshPrompt || undefined,
       });
       setJob(started);
       if (!skipEnglishTeamGate) {

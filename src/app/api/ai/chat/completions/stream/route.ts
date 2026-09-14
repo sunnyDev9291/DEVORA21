@@ -9,6 +9,9 @@ type StreamBody = {
   maxTokens?: number;
   jsonObject?: boolean;
   userId?: string;
+  customPrompt?: string;
+  profilePrompt?: string;
+  promptContent?: string;
   jobTitle?: string;
   jobDescription?: string;
   job_title?: string;
@@ -117,6 +120,11 @@ export async function POST(req: Request) {
   const skipEnglishTeamGate = Boolean(
     body.skipEnglishTeamGate || body.skip_english_team_gate
   );
+  const customPrompt =
+    (typeof body.customPrompt === "string" && body.customPrompt.trim()) ||
+    (typeof body.profilePrompt === "string" && body.profilePrompt.trim()) ||
+    (typeof body.promptContent === "string" && body.promptContent.trim()) ||
+    "";
 
   // Job fields first + snake_case aliases for the English-team resume gate.
   const upstreamBody: Record<string, unknown> = {
@@ -130,6 +138,11 @@ export async function POST(req: Request) {
   };
   if (userId) {
     upstreamBody.userId = userId;
+  }
+  if (customPrompt) {
+    upstreamBody.customPrompt = customPrompt;
+    upstreamBody.profilePrompt = customPrompt;
+    upstreamBody.promptContent = customPrompt;
   }
   if (skipEnglishTeamGate) {
     upstreamBody.skipEnglishTeamGate = true;

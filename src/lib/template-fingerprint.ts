@@ -13,3 +13,4 @@ export function fingerprintTemplateBase64(base64?: string): string {
 }
 
 export const PROFILE_TEMPLATE_UPDATED_EVENT = "devora21-profile-template-updated";
+export const PROFILE_PROMPT_UPDATED_EVENT = "devora21-profile-prompt-updated";

@@ -131,6 +131,7 @@ export async function prepareResumeGeneration(
     previousContent: isRegenerate ? body.previousContent : undefined,
     templateSkillsSample: skillsSample,
     task: body.task?.trim() || undefined,
+    writingInstructions: customPrompt,
   });
 
   return {

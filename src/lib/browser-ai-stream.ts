@@ -25,6 +25,11 @@ export type BrowserAiStreamOptions = {
   authToken: string;
   /** Logged-in user id — required when Authorization is the internal key. */
   userId?: string;
+  /**
+   * Fresh profile writing prompt. Forwarded so backends that accept body prompt
+   * use it instead of a stale userId lookup cache.
+   */
+  customPrompt?: string;
   /** Required by backend English-team gate (always send; at least one non-empty). */
   jobTitle?: string;
   jobDescription?: string;
@@ -118,6 +123,7 @@ function buildAiStreamBody(
 ): Record<string, unknown> {
   const userId = options.userId?.trim() || "";
   const { jobTitle, jobDescription } = resolveJobContext(options);
+  const customPrompt = options.customPrompt?.trim() || "";
 
   const body: Record<string, unknown> = {
     jobTitle,
@@ -130,6 +136,11 @@ function buildAiStreamBody(
   };
   if (userId) {
     body.userId = userId;
+  }
+  if (customPrompt) {
+    body.customPrompt = customPrompt;
+    body.profilePrompt = customPrompt;
+    body.promptContent = customPrompt;
   }
   if (options.skipEnglishTeamGate) {
     body.skipEnglishTeamGate = true;

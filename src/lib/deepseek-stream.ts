@@ -21,7 +21,11 @@ export async function completeDeepSeek(
     maxTokens: options?.maxTokens ?? maxTokens,
     jsonObject: options?.jsonObject,
     userId: options?.userId,
+    customPrompt: options?.customPrompt,
     userAuthorization: options?.userAuthorization,
+    jobTitle: options?.jobTitle,
+    jobDescription: options?.jobDescription,
+    skipEnglishTeamGate: options?.skipEnglishTeamGate,
   });
 }
 
@@ -34,7 +38,11 @@ export async function* iterateDeepSeekStream(
     maxTokens: options?.maxTokens ?? maxTokens,
     jsonObject: options?.jsonObject,
     userId: options?.userId,
+    customPrompt: options?.customPrompt,
     userAuthorization: options?.userAuthorization,
+    jobTitle: options?.jobTitle,
+    jobDescription: options?.jobDescription,
+    skipEnglishTeamGate: options?.skipEnglishTeamGate,
   });
 }
 

@@ -14,6 +14,8 @@ export type StoredUserProfile = {
   resumeTemplateUpdatedAt?: number;
   customPrompt: string;
   promptFileName?: string;
+  /** Set when the user uploads/verifies a new prompt — prefer local over stale remote. */
+  promptUpdatedAt?: number;
   /** Per-user job crawl listing URLs. */
   listingUrls?: Partial<Record<JobCrawlPlatform, string>>;
 };
@@ -218,15 +220,17 @@ export async function cacheUploadedTemplate(userId: string, file: File): Promise
 
 
 export async function cacheUploadedPrompt(userId: string, file: File, content: string): Promise<void> {
+  const { PROFILE_PROMPT_UPDATED_EVENT } = await import("@/lib/template-fingerprint");
 
   saveStoredProfile(userId, {
-
     customPrompt: content,
-
     promptFileName: file.name,
-
+    promptUpdatedAt: Date.now(),
   });
 
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(PROFILE_PROMPT_UPDATED_EVENT));
+  }
 }
 
 
