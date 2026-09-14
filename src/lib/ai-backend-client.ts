@@ -12,6 +12,11 @@ export type AiCompletionOptions = {
   userId?: string;
   /** Optional end-user Bearer forwarded as X-User-Authorization. */
   userAuthorization?: string;
+  /** Required by backend English-team gate on resume (jsonObject) generations. */
+  jobTitle?: string;
+  jobDescription?: string;
+  /** Bypass English-team gate when the user confirms Continue creating. */
+  skipEnglishTeamGate?: boolean;
 };
 
 export type AiStreamDelta = {
@@ -51,7 +56,14 @@ function buildAiBody(
   maxTokens: number,
   options?: AiCompletionOptions
 ): Record<string, unknown> {
+  const jobTitle = options?.jobTitle?.trim() ?? "";
+  const jobDescription = options?.jobDescription?.trim() ?? "";
+  // Job fields first + snake_case aliases for the English-team resume gate.
   const body: Record<string, unknown> = {
+    jobTitle,
+    jobDescription,
+    job_title: jobTitle,
+    job_description: jobDescription,
     messages,
     maxTokens: options?.maxTokens ?? maxTokens,
     jsonObject: options?.jsonObject ?? false,
@@ -59,6 +71,10 @@ function buildAiBody(
   const userId = options?.userId?.trim();
   if (userId) {
     body.userId = userId;
+  }
+  if (options?.skipEnglishTeamGate) {
+    body.skipEnglishTeamGate = true;
+    body.skip_english_team_gate = true;
   }
   return body;
 }
@@ -149,7 +165,22 @@ export async function* iterateAiChatStream(
     throw new Error(missingBackendConfigMessage());
   }
 
-  const response = await fetch(`${BACKEND_API_URL}/ai/chat/completions/stream`, {
+  const jobTitle = options?.jobTitle?.trim() ?? "";
+  const jobDescription = options?.jobDescription?.trim() ?? "";
+  const query = new URLSearchParams();
+  if (jobTitle) {
+    query.set("jobTitle", jobTitle);
+    query.set("job_title", jobTitle);
+  }
+  if (jobDescription) {
+    const clipped =
+      jobDescription.length > 2500 ? jobDescription.slice(0, 2500) : jobDescription;
+    query.set("jobDescription", clipped);
+    query.set("job_description", clipped);
+  }
+  const querySuffix = query.toString() ? `?${query.toString()}` : "";
+
+  const response = await fetch(`${BACKEND_API_URL}/ai/chat/completions/stream${querySuffix}`, {
     method: "POST",
     headers: buildAiAuthHeaders("text/plain", options),
     body: JSON.stringify(buildAiBody(messages, maxTokens, options)),

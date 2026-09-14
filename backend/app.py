@@ -4,8 +4,9 @@ Devora21 resume archive API.
 POST /resume/archive
   - Saves DOCX, appends CSV row, converts to PDF, returns JSON with pdfBase64.
 
-GET /resume/archives?q=
+GET /resume/archives?company=&jobTitle=&jd=&from=&to=
   - Lists saved resumes for the authenticated user (newest bid first).
+  - Optional filters combine with AND (case-insensitive substring for company/jobTitle/jd).
 
 GET /resume/archives/<id>/docx
 GET /resume/archives/<id>/pdf
@@ -236,6 +237,25 @@ def deepseek_headers() -> dict[str, str]:
     }
 
 
+def extract_job_context(body: dict) -> tuple[str, str]:
+    """Read jobTitle/jobDescription from JSON body or query (camel + snake)."""
+    title = str(
+        body.get("jobTitle")
+        or body.get("job_title")
+        or request.args.get("jobTitle")
+        or request.args.get("job_title")
+        or ""
+    ).strip()
+    description = str(
+        body.get("jobDescription")
+        or body.get("job_description")
+        or request.args.get("jobDescription")
+        or request.args.get("job_description")
+        or ""
+    ).strip()
+    return title, description
+
+
 def parse_ai_request() -> tuple[list[dict] | None, int, bool, tuple[Response, int] | None]:
     if not require_ai_internal_auth():
         return None, 0, False, (jsonify(error="Unauthorized."), 401)
@@ -258,7 +278,19 @@ def parse_ai_request() -> tuple[list[dict] | None, int, bool, tuple[Response, in
         normalized.append({"role": role, "content": content})
 
     max_tokens = int(body.get("maxTokens") or 4096)
-    json_object = bool(body.get("jsonObject"))
+    # Strict True only — avoid treating truthy strings as resume JSON mode.
+    json_object = body.get("jsonObject") is True
+
+    # Resume generation (jsonObject) requires job context for English-team gating.
+    # Plain chat / Application Q&A must not hit this gate.
+    if json_object:
+        job_title, job_description = extract_job_context(body)
+        if not job_title and not job_description:
+            return None, 0, False, (
+                jsonify(error="jobTitle or jobDescription is required for resume generation"),
+                400,
+            )
+
     return normalized, max_tokens, json_object, None
 
 
@@ -309,11 +341,14 @@ def archive_matches_filters(
     row: dict,
     *,
     company: str = "",
+    job_title: str = "",
     jd: str = "",
     date_from: str = "",
     date_to: str = "",
 ) -> bool:
     if company and company.lower() not in str(row.get("company_name", "")).lower():
+        return False
+    if job_title and job_title.lower() not in str(row.get("job_title", "")).lower():
         return False
     if jd and jd.lower() not in str(row.get("job_description", "")).lower():
         return False
@@ -439,6 +474,7 @@ def list_archives():
     user_id = resolve_user_id()
     legacy_query = (request.args.get("q") or "").strip()
     company = (request.args.get("company") or "").strip()
+    job_title = (request.args.get("jobTitle") or request.args.get("title") or "").strip()
     jd = (request.args.get("jd") or "").strip()
     date_from = (request.args.get("from") or "").strip()
     date_to = (request.args.get("to") or "").strip()
@@ -452,6 +488,7 @@ def list_archives():
         if not archive_matches_filters(
             row,
             company=company,
+            job_title=job_title,
             jd=jd,
             date_from=date_from,
             date_to=date_to,

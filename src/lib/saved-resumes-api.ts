@@ -6,6 +6,7 @@ import type { SavedResumeArchive, SavedResumeListResponse } from "@/lib/saved-re
 
 export type SavedResumeSearchFilters = {
   company?: string;
+  jobTitle?: string;
   jd?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -63,10 +64,12 @@ function archivesAuthError(status: number, fallback: string): Error {
 export async function listSavedResumes(filters: SavedResumeSearchFilters = {}): Promise<SavedResumeArchive[]> {
   const params = new URLSearchParams();
   const company = filters.company?.trim();
+  const jobTitle = filters.jobTitle?.trim();
   const jd = filters.jd?.trim();
   const dateFrom = filters.dateFrom?.trim();
   const dateTo = filters.dateTo?.trim();
   if (company) params.set("company", company);
+  if (jobTitle) params.set("jobTitle", jobTitle);
   if (jd) params.set("jd", jd);
   if (dateFrom) params.set("from", dateFrom);
   if (dateTo) params.set("to", dateTo);

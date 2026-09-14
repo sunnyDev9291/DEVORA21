@@ -112,13 +112,13 @@ function parseJob(raw: unknown, index: number): JobCrawlJob {
 
   return {
 
-    jobId: asString(obj.jobId) || String(index),
+    jobId: asString(obj.jobId) || asString(obj.id) || String(index),
 
-    companyName: asString(obj.companyName),
+    companyName: asString(obj.companyName) || asString(obj.company) || asString(obj.company_name),
 
-    jobTitle: asString(obj.jobTitle),
+    jobTitle: asString(obj.jobTitle) || asString(obj.title) || asString(obj.job_title),
 
-    jobUrl: asString(obj.jobUrl),
+    jobUrl: asString(obj.jobUrl) || asString(obj.url) || asString(obj.job_url),
 
   };
 

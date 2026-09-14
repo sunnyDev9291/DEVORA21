@@ -42,6 +42,41 @@ export function formatProfileForChat(profile?: ResumeChatProfileContext): string
   return lines.length > 0 ? lines.join("\n") : "Not provided.";
 }
 
+export function isUsableResumeChatContent(
+  content?: GeneratedResumeContent | null
+): content is GeneratedResumeContent {
+  return Boolean(
+    content?.title?.trim() &&
+      content.summary?.trim() &&
+      content.skills?.trim() &&
+      Array.isArray(content.experiences)
+  );
+}
+
+/** Build chat context when one-shot from-job returns PDF but no structured draft. */
+export function resolveResumeChatContent({
+  content,
+  jobTitle,
+  companyName,
+}: {
+  content?: GeneratedResumeContent | null;
+  jobTitle?: string;
+  companyName?: string;
+}): GeneratedResumeContent | null {
+  if (isUsableResumeChatContent(content)) return content;
+
+  const title = jobTitle?.trim() || companyName?.trim();
+  if (!title) return null;
+
+  return {
+    title,
+    summary:
+      "Structured resume draft was not returned for this generation. Use only the personal profile and target job context. Do not invent work history, skills, employers, or dates.",
+    skills: "Not provided in a structured draft.",
+    experiences: [],
+  };
+}
+
 export function buildResumeChatSystemPrompt({
   content,
   profile,
@@ -62,29 +97,24 @@ export function buildResumeChatSystemPrompt({
 
   const jdBlock = jobDescription?.trim()
     ? `\nJOB DESCRIPTION (target role):\n${jobDescription.trim()}\n`
-    : "";
+    : "\nJOB DESCRIPTION (target role):\nNot provided — rely on the resume draft, profile, and target role/company names.\n";
 
-  return `You are a real-time job application and interview assistant. The user is applying for jobs and may need help filling fields on job sites (Greenhouse, Lever, LinkedIn, company career pages) while keeping answers accurate and consistent with their background.
+  const draftNote =
+    content.experiences.length === 0
+      ? "\nNote: No structured experience bullets were provided. Prefer the personal profile and job description. If a fact is not on file, say so plainly.\n"
+      : "";
 
-You may use ONLY these sources:
-1. PERSONAL PROFILE (account information)
-2. CURRENT RESUME DRAFT (tailored content for this application)
-3. TARGET JOB CONTEXT (role, company, job description)
+  return `You help the user answer job application and interview questions using only their profile, resume draft, and target job context.
 
-Primary tasks:
-- Fill or draft answers for job application fields: work history summaries, responsibilities, skills tags, short bios, "Why this company/role?", years of experience, headline/title lines, and similar prompts.
-- Provide interview-ready talking points grounded in their resume and target role.
-- Support real-time use: when the user pastes a form label or question, give a concise copy-paste answer first, then a slightly longer option if helpful.
-- Map resume experience bullets to application form fields (employer, title, dates, description).
+Answer style (required):
+Write short answers that sound like a real person typed them. Use clear plain text only. Keep replies unstructured: no bullet lists, numbered lists, headings, markdown, bold, italics, emoji, or decorative symbols. Prefer one short paragraph, or a few plain sentences. Do not add labels like Option 1 or Suggested answer. Just give the answer ready to paste.
 
-Rules:
-- Do NOT invent employers, dates, degrees, locations, phone numbers, links, salaries, visa status, or metrics not supported by the profile or resume draft.
-- If a form field needs data that is missing (phone, address, LinkedIn URL, graduation year, etc.), say it is not on file and tell the user what to enter from their own records.
-- Never fabricate contact details beyond the personal profile block.
-- For sensitive topics (salary, authorization to work, criminal history), give careful phrasing guidance without inventing facts.
-- Label suggested wording clearly when it is not verbatim from the resume.
-- Be concise, practical, and easy to paste into forms.
+What to do:
+Help with application form fields and interview questions. When the user pastes a question or field label, reply with one short paste-ready answer. Keep greetings brief.
 
+Accuracy rules:
+Use only the personal profile, resume draft, and target job context. Do not invent employers, dates, degrees, locations, phone numbers, links, salaries, visa status, or metrics. If something needed is missing, say so in one plain sentence. For sensitive topics (salary, work authorization, criminal history), give careful wording without inventing facts. If the job description is missing, still help from the resume and profile.
+${draftNote}
 Target role: ${target}
 ${jdBlock}
 --- PERSONAL PROFILE ---
@@ -93,12 +123,3 @@ ${formatProfileForChat(profile)}
 --- RESUME DRAFT ---
 ${formatResumeContentForChat(content)}`;
 }
-
-/** Suggested prompts for job-site form filling and interview prep. */
-export const RESUME_CHAT_QUICK_PROMPTS = [
-  "Summarize my work history for a job application form",
-  "List skills I can paste into an application",
-  "Draft a short professional summary for this role",
-  "Why am I a fit for this company and role?",
-  "Give interview talking points for my top experience",
-] as const;

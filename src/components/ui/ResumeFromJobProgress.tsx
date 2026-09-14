@@ -35,6 +35,9 @@ interface ResumeFromJobProgressProps {
   jobTitle?: string;
   companyName?: string;
   warning?: string;
+  downloadUrl?: string | null;
+  downloadFileName?: string;
+  onPreview?: () => void;
 }
 
 export default function ResumeFromJobProgress({
@@ -44,6 +47,9 @@ export default function ResumeFromJobProgress({
   jobTitle,
   companyName,
   warning,
+  downloadUrl,
+  downloadFileName = "resume.pdf",
+  onPreview,
 }: ResumeFromJobProgressProps) {
   const clamped = Math.max(0, Math.min(100, Math.round(progressPercent)));
 
@@ -97,6 +103,28 @@ export default function ResumeFromJobProgress({
         <p className="mt-4 rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
           {warning}
         </p>
+      ) : null}
+
+      {downloadUrl ? (
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.08] px-4 py-3">
+          <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">PDF ready</p>
+          <a
+            href={downloadUrl}
+            download={downloadFileName}
+            className="inline-flex items-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
+          >
+            Download PDF
+          </a>
+          {onPreview ? (
+            <button
+              type="button"
+              onClick={onPreview}
+              className="rounded-lg border border-emerald-500/30 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-white/60 dark:text-emerald-200 dark:hover:bg-white/10"
+            >
+              Preview
+            </button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

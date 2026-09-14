@@ -1,8 +1,9 @@
 import { API_BASE_URL } from "@/lib/api-base-url";
 import { apiAuthFetch } from "@/lib/api-auth";
 import { ApiError, normalizeAuthUser } from "@/lib/auth-api";
+import { compactListingUrls } from "@/lib/builtin-crawl-types";
 import { dataUrlToBlob } from "@/lib/profile-file";
-import type { User } from "@/types/auth";
+import type { ProfileListingUrls, User } from "@/types/auth";
 
 export type UserResumeTemplateAsset = {
   fileName: string;
@@ -66,6 +67,7 @@ export type ProfileUpdateFilesPayload = {
   resumeTemplateFile?: File | null;
   promptFile?: File | null;
   customPrompt?: string;
+  listingUrls?: ProfileListingUrls;
 };
 
 function appendAvatar(form: FormData, avatarFile?: File | null, avatarDataUrl?: string) {
@@ -90,10 +92,11 @@ function buildOnboardingFormData(payload: OnboardingFilesPayload): FormData {
   if (payload.resumeTemplateFile) {
     form.append("resumeTemplate", payload.resumeTemplateFile, payload.resumeTemplateFile.name);
   }
-  if (payload.promptFile) {
+  // Real File only — never a filename string. Backend reads content from this part.
+  if (payload.promptFile instanceof File) {
     form.append("promptFile", payload.promptFile, payload.promptFile.name);
-  }
-  if (payload.customPrompt?.trim()) {
+  } else if (payload.customPrompt?.trim()) {
+    // Text-only fallback when no file was selected (do not send empty customPrompt).
     form.append("customPrompt", payload.customPrompt.trim());
   }
 
@@ -110,11 +113,19 @@ function buildProfileUpdateFormData(payload: ProfileUpdateFilesPayload): FormDat
   if (payload.resumeTemplateFile) {
     form.append("resumeTemplate", payload.resumeTemplateFile, payload.resumeTemplateFile.name);
   }
-  if (payload.promptFile) {
+  // Real File only — field name must be exactly promptFile. Do not set Content-Type.
+  if (payload.promptFile instanceof File) {
     form.append("promptFile", payload.promptFile, payload.promptFile.name);
-  }
-  if (payload.customPrompt !== undefined) {
+  } else if (payload.customPrompt?.trim()) {
+    // Only append non-empty customPrompt when no promptFile is being uploaded.
     form.append("customPrompt", payload.customPrompt.trim());
+  }
+  if (payload.listingUrls !== undefined) {
+    const compact = compactListingUrls(payload.listingUrls) ?? {};
+    form.append("listingUrls", JSON.stringify(compact));
+    for (const [platform, url] of Object.entries(compact)) {
+      if (url) form.append(`listingUrl_${platform}`, url);
+    }
   }
 
   return form;
@@ -168,6 +179,20 @@ export const profileApi = {
     return patchMultipart("/auth/profile", form);
   },
 
+  /**
+   * PATCH /auth/profile with promptFile only, then verify GET /auth/profile/prompt
+   * returns non-empty content. Do not treat filename alone as success.
+   */
+  async uploadPromptFile(file: File): Promise<UserPromptAsset> {
+    if (!(file instanceof File)) {
+      throw new ApiError("Select a real prompt file to upload.", 400);
+    }
+    const form = new FormData();
+    form.append("promptFile", file, file.name);
+    await patchMultipart("/auth/profile", form);
+    return this.requireStoredPrompt();
+  },
+
   async fetchPrompt(): Promise<UserPromptAsset> {
     const data = await profileJson<{ content?: string; fileName?: string; promptFileName?: string }>(
       "/auth/profile/prompt",
@@ -175,6 +200,22 @@ export const profileApi = {
     return {
       content: String(data.content ?? ""),
       fileName: data.fileName || data.promptFileName,
+    };
+  },
+
+  /** GET /auth/profile/prompt — throws unless content is non-empty. */
+  async requireStoredPrompt(): Promise<UserPromptAsset> {
+    const prompt = await this.fetchPrompt();
+    if (!prompt.content.trim()) {
+      throw new ApiError(
+        "Prompt upload could not be verified. The server has no prompt content for this profile.",
+        404,
+        { message: "Prompt content missing after upload." }
+      );
+    }
+    return {
+      content: prompt.content,
+      fileName: prompt.fileName,
     };
   },
 

@@ -1,130 +1,85 @@
 import type { User } from "@/types/auth";
-
-
+import {
+  parseListingUrlsPartial,
+  type JobCrawlPlatform,
+} from "@/lib/builtin-crawl-types";
 
 export type StoredUserProfile = {
-
   firstName?: string;
-
   lastName?: string;
-
   avatarUrl?: string;
-
   resumeTemplateFileName?: string;
-
   resumeTemplateBase64?: string;
-
   /** Set when the user uploads a new template — used to prefer local over stale remote copies. */
   resumeTemplateUpdatedAt?: number;
-
   customPrompt: string;
-
   promptFileName?: string;
-
+  /** Per-user job crawl listing URLs. */
+  listingUrls?: Partial<Record<JobCrawlPlatform, string>>;
 };
-
-
 
 export const LEGACY_TEMPLATE_STORAGE_KEY = "devora21-selected-resume-template";
 
-
-
 const PROFILE_PREFIX = "devora21-user-profile:";
 
-
-
 function profileKey(userId: string): string {
-
   return `${PROFILE_PREFIX}${userId}`;
-
 }
-
-
 
 const EMPTY_PROFILE: StoredUserProfile = {
-
   customPrompt: "",
-
 };
 
-
-
 export function loadStoredProfile(userId: string | undefined): StoredUserProfile {
-
   if (!userId || typeof window === "undefined") return { ...EMPTY_PROFILE };
 
-
-
   try {
-
     const raw = localStorage.getItem(profileKey(userId));
-
     if (!raw) return { ...EMPTY_PROFILE };
-
     const parsed = JSON.parse(raw) as Partial<StoredUserProfile> & {
-
       resumeTemplate?: { name?: string; file?: string };
-
       selectedPromptId?: string;
-
     };
-
-
 
     const legacyTemplateName = parsed.resumeTemplate?.name;
-
-    const legacyTemplateFile = parsed.resumeTemplate?.file;
-
-
+    const listingUrls = parseListingUrlsPartial(parsed.listingUrls);
 
     return {
-
       ...EMPTY_PROFILE,
-
       ...parsed,
-
       resumeTemplateFileName: parsed.resumeTemplateFileName ?? legacyTemplateName,
-
       customPrompt: parsed.customPrompt ?? "",
-
+      listingUrls,
     };
-
   } catch {
-
     return { ...EMPTY_PROFILE };
-
   }
-
 }
 
-
-
 export function saveStoredProfile(userId: string, patch: Partial<StoredUserProfile>): StoredUserProfile {
-
   const current = loadStoredProfile(userId);
-
   const next: StoredUserProfile = {
-
     ...current,
-
     ...patch,
-
     customPrompt: patch.customPrompt !== undefined ? patch.customPrompt : current.customPrompt,
-
+    listingUrls:
+      patch.listingUrls !== undefined
+        ? parseListingUrlsPartial(patch.listingUrls) ?? patch.listingUrls
+        : current.listingUrls,
   };
 
-
-
   if (typeof window !== "undefined") {
-
     localStorage.setItem(profileKey(userId), JSON.stringify(next));
-
   }
 
-
-
   return next;
+}
 
+export function resolveListingUrls(
+  user: User | null | undefined,
+  stored?: StoredUserProfile | null
+): Partial<Record<JobCrawlPlatform, string>> | undefined {
+  return parseListingUrlsPartial(stored?.listingUrls) ?? parseListingUrlsPartial(user?.listingUrls);
 }
 
 

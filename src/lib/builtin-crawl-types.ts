@@ -60,6 +60,35 @@ export const DEFAULT_LISTING_URLS: Record<JobCrawlPlatform, string> = {
   workingnomads: DEFAULT_WORKINGNOMADS_LISTING_URL,
 };
 
+export const JOB_CRAWL_PLATFORM_LABEL: Record<JobCrawlPlatform, string> = {
+  builtin: "Built In",
+  hiringcafe: "HiringCafe",
+  workable: "Workable",
+  workingnomads: "Working Nomads",
+};
+
+export const JOB_CRAWL_PLATFORM_PLACEHOLDER: Record<JobCrawlPlatform, string> = {
+  builtin: "https://builtin.com/jobs/…",
+  hiringcafe: "https://hiringcafe.com/?searchState=…",
+  workable: "https://jobs.workable.com/search?…",
+  workingnomads: "https://www.workingnomads.com/jobs?…",
+};
+
+export const JOB_CRAWL_PLATFORM_HINT: Record<JobCrawlPlatform, string> = {
+  builtin: "Page 1 listing — backend handles pagination.",
+  hiringcafe: "Page 0 listing with searchState — backend handles pagination.",
+  workable: "Copy the full /search URL from Workable after setting filters (single page, no pagination).",
+  workingnomads:
+    "Copy the full /jobs URL from Working Nomads after setting filters (single page, no pagination).",
+};
+
+export const JOB_CRAWL_PLATFORM_VALIDATOR: Record<JobCrawlPlatform, (url: string) => boolean> = {
+  builtin: isBuiltInListingUrl,
+  hiringcafe: isHiringCafeListingUrl,
+  workable: isWorkableListingUrl,
+  workingnomads: isWorkingNomadsListingUrl,
+};
+
 /** Fill missing platform URLs from defaults (e.g. after adding Workable to saved sessions). */
 export function mergeListingUrls(
   stored: Partial<Record<JobCrawlPlatform, string>> | null | undefined
@@ -70,6 +99,35 @@ export function mergeListingUrls(
     workable: stored?.workable?.trim() || DEFAULT_WORKABLE_LISTING_URL,
     workingnomads: stored?.workingnomads?.trim() || DEFAULT_WORKINGNOMADS_LISTING_URL,
   };
+}
+
+/** Parse a partial listingUrls object from API / localStorage JSON. */
+export function parseListingUrlsPartial(
+  raw: unknown
+): Partial<Record<JobCrawlPlatform, string>> | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const obj = raw as Record<string, unknown>;
+  const next: Partial<Record<JobCrawlPlatform, string>> = {};
+  for (const platform of ALL_JOB_CRAWL_PLATFORMS) {
+    const value = obj[platform];
+    if (typeof value === "string" && value.trim()) {
+      next[platform] = value.trim();
+    }
+  }
+  return Object.keys(next).length ? next : undefined;
+}
+
+/** Keep only non-empty trimmed platform URLs (profile source of truth). */
+export function compactListingUrls(
+  urls: Partial<Record<JobCrawlPlatform, string>> | null | undefined
+): Partial<Record<JobCrawlPlatform, string>> | undefined {
+  if (!urls) return undefined;
+  const next: Partial<Record<JobCrawlPlatform, string>> = {};
+  for (const platform of ALL_JOB_CRAWL_PLATFORMS) {
+    const value = urls[platform]?.trim();
+    if (value) next[platform] = value;
+  }
+  return Object.keys(next).length ? next : undefined;
 }
 
 /** Client timeout — crawl can take 30–90s+ across multiple Zyte calls. */

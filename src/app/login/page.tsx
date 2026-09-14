@@ -79,7 +79,7 @@ function LoginForm() {
       <AuthDivider />
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
         {serverError && (
-          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300" role="alert">
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-800 dark:text-red-300" role="alert">
             {serverError}
             {isGoogleAccount && (
               <p className="mt-2 text-xs text-red-200">
@@ -115,14 +115,14 @@ function LoginForm() {
 
       <form onSubmit={onConnectApiKey} className="space-y-4" noValidate>
         <div>
-          <p className="text-sm font-medium text-slate-200">Continue with API key</p>
+          <p className="text-sm font-medium text-stone-800 dark:text-stone-100">Continue with API key</p>
           <p className="mt-1 text-xs text-slate-500">
             Use a <span className="font-mono text-slate-400">dv21_</span> key from your dashboard for job scrape and resume
             generation without email login. Requires resume builder access.
           </p>
         </div>
         {apiKeyError && (
-          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300" role="alert">
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-800 dark:text-red-300" role="alert">
             {apiKeyError}
           </div>
         )}

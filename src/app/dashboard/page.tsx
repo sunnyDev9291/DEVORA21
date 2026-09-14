@@ -105,6 +105,24 @@ function DashboardContent() {
           </div>
         )}
 
+        {isResumeBuilderEnabled ? (
+          <div className={`mt-8 ${ui.cardCompact}`}>
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Job crawl URLs
+            </h2>
+            <p className={`mt-2 text-sm ${ui.muted}`}>
+              Set your Built In, HiringCafe, Workable, and Working Nomads listing links in your profile
+              (section: <span className="font-semibold">Job crawl listing URLs</span>), then save.
+            </p>
+            <Link
+              href="/dashboard#crawl-urls"
+              className="mt-3 inline-flex text-sm font-semibold text-orange-700 underline-offset-2 hover:underline dark:text-orange-300"
+            >
+              Jump to crawl URL settings →
+            </Link>
+          </div>
+        ) : null}
+
         <div className={`mt-8 ${ui.cardCompact}`}>
           <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Your tools</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">

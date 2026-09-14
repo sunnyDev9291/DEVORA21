@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { CONTACT_INFO } from "@/lib/constants";
+import { brand } from "@/lib/ui-styles";
 
 const serviceLinks = [
   { label: "Resume Support", href: "/services#resume" },
@@ -33,7 +34,7 @@ export default function Footer() {
                 height={72}
                 className="h-12 w-auto object-contain"
               />
-              <span className="font-display text-2xl font-extrabold bg-gradient-to-r from-tomato-600 via-orange-500 to-sun-400 bg-clip-text text-transparent tracking-tight dark:from-tomato-400 dark:via-orange-400 dark:to-sun-300">
+              <span className={`font-display text-2xl font-extrabold tracking-tight ${brand.gradientText}`}>
                 Devora21
               </span>
             </Link>

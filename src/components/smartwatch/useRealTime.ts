@@ -14,23 +14,44 @@ export type RealTimeState = {
 
 const DAY_NAMES = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"] as const;
 
+/**
+ * Second-resolution clock for complications (day label, date window).
+ * Smooth hand motion lives in ClockHands via direct DOM updates.
+ */
 export function useRealTime(): RealTimeState {
   const [time, setTime] = useState<RealTimeState>(() => readTime());
 
   useEffect(() => {
-    let frame = 0;
-    const tick = () => {
+    let timer = 0;
+    let alive = true;
+
+    const sync = () => {
+      if (!alive) return;
       setTime(readTime());
-      frame = window.requestAnimationFrame(tick);
+      const delay = Math.max(250, 1000 - (Date.now() % 1000));
+      timer = window.setTimeout(sync, delay);
     };
-    frame = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(frame);
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        window.clearTimeout(timer);
+        sync();
+      }
+    };
+
+    sync();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, []);
 
   return time;
 }
 
-function readTime(): RealTimeState {
+export function readTime(): RealTimeState {
   const now = new Date();
   return {
     hours: now.getHours(),

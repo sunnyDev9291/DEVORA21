@@ -6,6 +6,7 @@ import ResumeRawAiTextarea from "@/components/ui/ResumeRawAiTextarea";
 import CopyIconButton from "@/components/ui/CopyIconButton";
 import ResumeContentReview from "@/components/sections/ResumeContentReview";
 import { resolveResumeWizardStep } from "@/components/sections/ResumeStepper";
+import type { ResumeWorkspaceFabActions } from "@/components/ui/ResumeWorkspaceFabs";
 import { useAuth } from "@/context/AuthContext";
 import type { UserResumeTemplateAsset } from "@/lib/profile-api";
 import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
@@ -49,6 +50,11 @@ import {
   extractResumeTitleHeadline,
 } from "@/lib/resume-filename";
 import { loadStoredProfile, resolveUserNames } from "@/lib/user-profile";
+import CompanyPastApplications from "@/components/sections/CompanyPastApplications";
+import EnglishTeamCheck from "@/components/ui/EnglishTeamCheck";
+import EnglishTeamRequiredDialog from "@/components/ui/EnglishTeamRequiredDialog";
+import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
+import { isEnglishTeamRequiredError } from "@/lib/english-team-gate";
 
 /**
  * Prefer the template resolved by useUserProfileAssets (remote-synced).
@@ -80,6 +86,7 @@ interface ResumeGeneratorProps {
   userTemplate: UserResumeTemplateAsset | null;
   userPrompt: string;
   onWizardStepChange?: (step: number) => void;
+  onFabActionsChange?: (actions: ResumeWorkspaceFabActions | null) => void;
 }
 
 type Step = "form" | "review" | "done";
@@ -114,6 +121,7 @@ export default function ResumeGenerator({
   userTemplate,
   userPrompt,
   onWizardStepChange,
+  onFabActionsChange,
 }: ResumeGeneratorProps) {
   const { user } = useAuth();
   const chatProfile = useMemo(() => {
@@ -175,6 +183,9 @@ export default function ResumeGenerator({
   const [jobChecking, setJobChecking] = useState(false);
   const [jobCheckOutput, setJobCheckOutput] = useState("");
   const [jobCheckError, setJobCheckError] = useState("");
+  const [englishTeamGateOpen, setEnglishTeamGateOpen] = useState(false);
+  const [englishTeamGateMessage, setEnglishTeamGateMessage] = useState("");
+  const [englishTeamContinuing, setEnglishTeamContinuing] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const jobCheckAbortRef = useRef<AbortController | null>(null);
   const atsAbortRef = useRef<AbortController | null>(null);
@@ -383,6 +394,35 @@ export default function ResumeGenerator({
 
   const canGenerate = !!activeTemplate && !!form.jobTitle.trim() && !!form.companyName.trim();
   const canJobCheck = !!form.companyName.trim();
+
+  useEffect(() => {
+    if (!onFabActionsChange) return;
+
+    const hasDraft = Boolean(content);
+    if (!hasDraft) {
+      onFabActionsChange(null);
+      return;
+    }
+
+    onFabActionsChange({
+      showClear: true,
+      clearDisabled: generating || applying || !hasClearableContent,
+      onClear: handleClear,
+      showChat: true,
+      chatDisabled: generating || applying,
+      onOpenChat: () => setResumeChatOpen(true),
+    });
+  }, [
+    onFabActionsChange,
+    content,
+    hasClearableContent,
+    generating,
+    applying,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps -- handleClear reads latest state
+
+  useEffect(() => {
+    return () => onFabActionsChange?.(null);
+  }, [onFabActionsChange]);
 
   async function runJobCheck() {
     if (!canJobCheck || jobChecking) return;
@@ -593,7 +633,10 @@ export default function ResumeGenerator({
     }
   }
 
-  async function handleGenerate(e?: React.FormEvent) {
+  async function handleGenerate(
+    e?: React.FormEvent,
+    options?: { skipEnglishTeamGate?: boolean }
+  ) {
     e?.preventDefault();
     if (applying) return;
     if (!user?.id) {
@@ -614,11 +657,20 @@ export default function ResumeGenerator({
       setError("Company name is required.");
       return;
     }
+    if (!form.jobTitle.trim() && !form.jobDescription.trim()) {
+      setError("Job title or job description is required.");
+      return;
+    }
+
+    const skipEnglishTeamGate = Boolean(options?.skipEnglishTeamGate);
 
     abortRef.current?.abort();
 
     const runId = ++generationRunRef.current;
     setError("");
+    setEnglishTeamGateOpen(false);
+    setEnglishTeamGateMessage("");
+    setEnglishTeamContinuing(false);
     setRegenerateNotice("");
     setRegenerateBaseline(null);
     setRegenerateBaselineScore(null);
@@ -659,6 +711,7 @@ export default function ResumeGenerator({
             if (generationRunRef.current === runId) setStreamOutput(full);
           },
           signal: controller.signal,
+          skipEnglishTeamGate,
         }
       );
 
@@ -670,14 +723,25 @@ export default function ResumeGenerator({
       publishResumeGenerateTimer({ active: true, elapsedMs: durationMs });
       setContent(data.content);
       setGenerationKey((k) => k + 1);
+      setResumeChatOpen(true);
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       if (generationRunRef.current !== runId) return;
+      if (isEnglishTeamRequiredError(err) && !skipEnglishTeamGate) {
+        setStep("form");
+        setContent(null);
+        setStreamOutput("");
+        setStreamPhase("starting");
+        setEnglishTeamGateMessage(err.message);
+        setEnglishTeamGateOpen(true);
+        return;
+      }
       setError((err as Error).message || "Something went wrong.");
     } finally {
       if (generationRunRef.current === runId) {
         setGenerating(false);
         abortRef.current = null;
+        setEnglishTeamContinuing(false);
       }
     }
   }
@@ -777,6 +841,13 @@ export default function ResumeGenerator({
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       if (generationRunRef.current !== runId) return;
+      if (isEnglishTeamRequiredError(err)) {
+        setStreamOutput("");
+        setStreamPhase("starting");
+        setEnglishTeamGateMessage(err.message);
+        setEnglishTeamGateOpen(true);
+        return;
+      }
       setError((err as Error).message || "Could not improve this score item.");
     } finally {
       if (generationRunRef.current === runId) {
@@ -980,6 +1051,25 @@ export default function ResumeGenerator({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
+              <label htmlFor="companyName" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+                Company name <span className="text-red-400">*</span>
+              </label>
+              <div className="flex items-stretch gap-2">
+                <input
+                  id="companyName"
+                  name="companyName"
+                  type="text"
+                  value={form.companyName}
+                  onChange={handleChange}
+                  placeholder="e.g. Acme Corp"
+                  className={`${inputClass} min-w-0 flex-1`}
+                  required
+                  autoComplete="organization"
+                />
+                <CopyIconButton text={form.companyName} label="Copy company name" disabled={generating} />
+              </div>
+            </div>
+            <div>
               <label htmlFor="jobTitle" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
                 Job title <span className="text-red-400">*</span>
               </label>
@@ -997,37 +1087,45 @@ export default function ResumeGenerator({
                 <CopyIconButton text={form.jobTitle} label="Copy job title" disabled={generating} />
               </div>
             </div>
-            <div>
-              <label htmlFor="companyName" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-                Company name <span className="text-red-400">*</span>
-              </label>
-              <div className="flex items-stretch gap-2">
-                <input
-                  id="companyName"
-                  name="companyName"
-                  type="text"
-                  value={form.companyName}
-                  onChange={handleChange}
-                  placeholder="e.g. Acme Corp"
-                  className={`${inputClass} min-w-0 flex-1`}
-                  required
-                />
-                <CopyIconButton text={form.companyName} label="Copy company name" disabled={generating} />
-              </div>
-            </div>
           </div>
+
+          <CompanyPastApplications
+            companyName={form.companyName}
+            disabled={generating || applying}
+            onUseJobDescription={(item: SavedResumeArchive) => {
+              setForm((current) => ({
+                ...current,
+                jobTitle: item.jobTitle?.trim() || current.jobTitle,
+                companyName: item.companyName?.trim() || current.companyName,
+                jobDescription: item.jobDescription?.trim() || current.jobDescription,
+              }));
+            }}
+          />
 
           <div>
             <label htmlFor="jobDescription" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
               Job description
             </label>
-            <textarea
-              id="jobDescription"
-              name="jobDescription"
-              value={form.jobDescription}
-              onChange={handleChange}
-              placeholder="Paste the full job posting for better keyword matching…"
-              className={`${inputClass} h-[260px] max-h-[260px] resize-none overflow-y-auto`}
+            <div className="flex items-start gap-2">
+              <textarea
+                id="jobDescription"
+                name="jobDescription"
+                value={form.jobDescription}
+                onChange={handleChange}
+                placeholder="Paste the full job posting for better keyword matching…"
+                className={`${inputClass} h-[260px] max-h-[260px] min-w-0 flex-1 resize-none overflow-y-auto`}
+              />
+              <CopyIconButton
+                text={form.jobDescription}
+                label="Copy job description"
+                disabled={generating}
+                className="h-12 self-start"
+              />
+            </div>
+            <EnglishTeamCheck
+              jobTitle={form.jobTitle}
+              jobDescription={form.jobDescription}
+              disabled={generating || applying || importingJob}
             />
           </div>
 
@@ -1099,17 +1197,19 @@ export default function ResumeGenerator({
                 </>
               )}
             </button>
-            <button
-              type="button"
-              onClick={handleClear}
-              disabled={generating || applying || !hasClearableContent}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 border border-slate-200 dark:border-white/[0.12] bg-white dark:bg-white/[0.03] hover:bg-slate-50 dark:hover:bg-white/[0.06] disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 dark:text-slate-200 font-semibold px-6 py-3.5 rounded-xl transition-all"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-              Clear
-            </button>
+            {!showReview ? (
+              <button
+                type="button"
+                onClick={handleClear}
+                disabled={generating || applying || !hasClearableContent}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 border border-slate-200 dark:border-white/[0.12] bg-white dark:bg-white/[0.03] hover:bg-slate-50 dark:hover:bg-white/[0.06] disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 dark:text-slate-200 font-semibold px-6 py-3.5 rounded-xl transition-all"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Clear
+              </button>
+            ) : null}
           </div>
         </form>
       </div>
@@ -1384,6 +1484,29 @@ export default function ResumeGenerator({
         waitingForPdf={archiving}
         error={archiveError}
         onDownload={handleDownloadPdf}
+      />
+
+      <EnglishTeamRequiredDialog
+        open={englishTeamGateOpen}
+        message={englishTeamGateMessage}
+        jobTitle={form.jobTitle}
+        companyName={form.companyName}
+        jobDescription={form.jobDescription}
+        continuing={englishTeamContinuing || generating}
+        onJobCheck={() => {
+          setEnglishTeamGateOpen(false);
+          setEnglishTeamGateMessage("");
+          void runJobCheck();
+        }}
+        onContinueCreating={() => {
+          setEnglishTeamContinuing(true);
+          void handleGenerate(undefined, { skipEnglishTeamGate: true });
+        }}
+        onClose={() => {
+          setEnglishTeamGateOpen(false);
+          setEnglishTeamGateMessage("");
+          setEnglishTeamContinuing(false);
+        }}
       />
 
       <JobCheckBoard

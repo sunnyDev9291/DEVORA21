@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import Modal from "@/components/ui/Modal";
+import { useFollowOutputScroll } from "@/hooks/useFollowOutputScroll";
 
 type JobCheckBoardProps = {
   open: boolean;
@@ -24,13 +24,10 @@ export default function JobCheckBoard({
   onClose,
   onRetry,
 }: JobCheckBoardProps) {
-  const outputRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = outputRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [output, loading]);
+  const { containerRef, onScroll } = useFollowOutputScroll({
+    deps: [output],
+    resetFollowWhen: loading,
+  });
 
   const subtitle = [jobTitle.trim(), companyName.trim()].filter(Boolean).join(" · ");
 
@@ -60,7 +57,8 @@ export default function JobCheckBoard({
         </div>
 
         <div
-          ref={outputRef}
+          ref={containerRef}
+          onScroll={onScroll}
           className="flex-1 overflow-y-auto px-6 py-5 min-h-[240px] max-h-[min(60dvh,480px)]"
           aria-live="polite"
           aria-busy={loading}
@@ -106,7 +104,7 @@ export default function JobCheckBoard({
               <button
                 type="button"
                 onClick={onRetry}
-                className="inline-flex items-center rounded-xl border border-slate-200 dark:border-white/[0.12] px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.04]"
+                className="rounded-xl border border-slate-200 dark:border-white/[0.12] px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.04]"
               >
                 Re-run check
               </button>

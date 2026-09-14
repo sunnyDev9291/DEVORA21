@@ -1,29 +1,31 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { getApiErrorMessage } from "@/lib/auth-api";
 import { crawlBuiltInJobs, crawlHiringCafeJobs, crawlWorkableJobs, crawlWorkingNomadsJobs } from "@/lib/builtin-crawl-api";
 import {
   ALL_JOB_CRAWL_PLATFORMS,
   BUILTIN_CRAWL_TIMEOUT_MS,
   DEFAULT_LISTING_URLS,
+  JOB_CRAWL_PLATFORM_LABEL,
+  JOB_CRAWL_PLATFORM_VALIDATOR,
   mergeListingUrls,
-  isBuiltInListingUrl,
-  isHiringCafeListingUrl,
-  isWorkableListingUrl,
-  isWorkingNomadsListingUrl,
   type DiscoveredJobRow,
   type JobCrawlPlatform,
   type JobCrawlResult,
 } from "@/lib/builtin-crawl-types";
+import { AUTH_LINKS } from "@/lib/constants";
 import { formatEstDateTimeParts } from "@/lib/format-est-datetime";
 import { flattenCrawlResults } from "@/lib/job-crawl-list";
 import { loadStoredJobCrawl, saveStoredJobCrawl } from "@/lib/job-crawl-storage";
+import { loadStoredProfile, resolveListingUrls } from "@/lib/user-profile";
 import { ui } from "@/lib/ui-styles";
 
-const inputClass = ui.input;
-
 const filterInputClass = `${ui.input} py-3.5 text-base placeholder:text-slate-400 dark:placeholder:text-slate-500`;
+
+const DEFAULT_JOB_TITLE_FILTER = "Engine OR Dev OR Scientist OR Specialist OR Architect";
 
 type JobTableSortMode = "company" | "platform";
 
@@ -32,39 +34,10 @@ const SORT_MODE_OPTIONS: { value: JobTableSortMode; label: string; description: 
   { value: "platform", label: "Platform order", description: "Original crawl order grouped by platform" },
 ];
 
-const PLATFORM_LABEL: Record<JobCrawlPlatform, string> = {
-  builtin: "Built In",
-  hiringcafe: "HiringCafe",
-  workable: "Workable",
-  workingnomads: "Working Nomads",
-};
-
+const PLATFORM_LABEL = JOB_CRAWL_PLATFORM_LABEL;
 const PLATFORM_DEFAULT_URL = DEFAULT_LISTING_URLS;
+const PLATFORM_URL_VALID = JOB_CRAWL_PLATFORM_VALIDATOR;
 
-const PLATFORM_URL_VALID: Record<JobCrawlPlatform, (url: string) => boolean> = {
-  builtin: isBuiltInListingUrl,
-  hiringcafe: isHiringCafeListingUrl,
-  workable: isWorkableListingUrl,
-  workingnomads: isWorkingNomadsListingUrl,
-};
-
-const PLATFORM_PLACEHOLDER: Record<JobCrawlPlatform, string> = {
-  builtin: "https://builtin.com/jobs/…",
-  hiringcafe: "https://hiringcafe.com/?searchState=…",
-  workable: "https://jobs.workable.com/search?…",
-  workingnomads: "https://www.workingnomads.com/jobs?…",
-};
-
-const PLATFORM_HINT: Record<JobCrawlPlatform, string> = {
-  builtin: "Page 1 listing — backend handles pagination.",
-  hiringcafe: "Page 0 listing with searchState — backend handles pagination.",
-  workable: "Copy the full /search URL from Workable after setting filters (single page, no pagination).",
-  workingnomads:
-    "Copy the full /jobs URL from Working Nomads after setting filters (single page, no pagination).",
-};
-
-const PLATFORM_SELECTED_CLASS =
-  "border-orange-500/30 bg-orange-600 text-white shadow-md shadow-orange-500/25";
 const PLATFORM_TABLE_BADGE_CLASS: Record<JobCrawlPlatform, string> = {
   builtin: "bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-1 ring-violet-500/20",
   hiringcafe: "bg-orange-500/15 text-orange-700 dark:text-orange-300 ring-1 ring-orange-500/20",
@@ -72,9 +45,12 @@ const PLATFORM_TABLE_BADGE_CLASS: Record<JobCrawlPlatform, string> = {
   workingnomads: "bg-sky-500/15 text-sky-800 dark:text-sky-300 ring-1 ring-sky-500/20",
 };
 
-function defaultListingUrls(): Record<JobCrawlPlatform, string> {
-  return mergeListingUrls(null);
-}
+const PLATFORM_BLURB: Record<JobCrawlPlatform, string> = {
+  builtin: "Remote tech roles from Built In",
+  hiringcafe: "Cafe search listings",
+  workable: "Workable job search",
+  workingnomads: "Remote nomad listings",
+};
 
 function defaultSelectedPlatforms(): JobCrawlPlatform[] {
   return [...ALL_JOB_CRAWL_PLATFORMS];
@@ -82,14 +58,6 @@ function defaultSelectedPlatforms(): JobCrawlPlatform[] {
 
 function jobRowKey(job: DiscoveredJobRow, index: number): string {
   return `${job.platform}-${job.jobId}-${index}`;
-}
-
-function platformButtonClass(selected: boolean): string {
-  const base = "rounded-full px-4 py-1.5 text-sm font-semibold transition-all border";
-  if (!selected) {
-    return `${base} border-transparent bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10`;
-  }
-  return `${base} ${PLATFORM_SELECTED_CLASS}`;
 }
 
 function crawlPlatform(
@@ -578,11 +546,20 @@ function MergedJobTable({
 }
 
 export default function BuiltInCrawlPanel() {
+  const { user } = useAuth();
+  const userId = user?.id;
+  const profileListingUrls = useMemo(
+    () => resolveListingUrls(user, userId ? loadStoredProfile(userId) : null),
+    [user, userId]
+  );
+
   const [selectedPlatforms, setSelectedPlatforms] = useState<JobCrawlPlatform[]>(defaultSelectedPlatforms);
-  const [listingUrls, setListingUrls] = useState<Record<JobCrawlPlatform, string>>(defaultListingUrls);
+  const [listingUrls, setListingUrls] = useState<Record<JobCrawlPlatform, string>>(() =>
+    mergeListingUrls(null)
+  );
   const [jobList, setJobList] = useState<DiscoveredJobRow[]>([]);
   const [checkedJobKeys, setCheckedJobKeys] = useState<Set<string>>(() => new Set());
-  const [jobTitleFilter, setJobTitleFilter] = useState("");
+  const [jobTitleFilter, setJobTitleFilter] = useState(DEFAULT_JOB_TITLE_FILTER);
   const [jobTableSortMode, setJobTableSortMode] = useState<JobTableSortMode>("company");
   const [platformErrors, setPlatformErrors] = useState<Partial<Record<JobCrawlPlatform, string>>>({});
   const [crawling, setCrawling] = useState(false);
@@ -590,15 +567,16 @@ export default function BuiltInCrawlPanel() {
   const [lastCrawledAt, setLastCrawledAt] = useState<string | null>(null);
 
   useEffect(() => {
-    const stored = loadStoredJobCrawl();
+    const stored = loadStoredJobCrawl(userId);
+    // Profile listing URLs are the source of truth; session only keeps jobs + platforms.
+    setListingUrls(mergeListingUrls(profileListingUrls ?? stored?.listingUrls));
     if (stored) {
       setSelectedPlatforms(stored.selectedPlatforms);
-      setListingUrls(mergeListingUrls(stored.listingUrls));
       setJobList(stored.jobs);
       if (stored.savedAt) setLastCrawledAt(stored.savedAt);
     }
     setHydrated(true);
-  }, []);
+  }, [userId, profileListingUrls]);
 
   const allPlatformSelected = ALL_JOB_CRAWL_PLATFORMS.every((p) => selectedPlatforms.includes(p));
   const canCrawl =
@@ -635,17 +613,14 @@ export default function BuiltInCrawlPanel() {
         return current.filter((p) => p !== platform);
       }
       if (!listingUrls[platform]?.trim()) {
+        const profileUrl = profileListingUrls?.[platform]?.trim();
         setListingUrls((urls) => ({
           ...urls,
-          [platform]: PLATFORM_DEFAULT_URL[platform],
+          [platform]: profileUrl || PLATFORM_DEFAULT_URL[platform],
         }));
       }
       return [...current, platform];
     });
-  }
-
-  function updateListingUrl(platform: JobCrawlPlatform, url: string) {
-    setListingUrls((current) => ({ ...current, [platform]: url }));
   }
 
   function toggleJobRow(key: string) {
@@ -709,14 +684,18 @@ export default function BuiltInCrawlPanel() {
 
       setJobList(freshJobs);
       setCheckedJobKeys(new Set());
-      setJobTitleFilter("");
+      // Always re-apply default keywords so results are filtered immediately (not only after refresh).
+      setJobTitleFilter(DEFAULT_JOB_TITLE_FILTER);
       setLastCrawledAt(savedAt);
-      saveStoredJobCrawl({
-        selectedPlatforms,
-        listingUrls,
-        jobs: freshJobs,
-        savedAt,
-      });
+      saveStoredJobCrawl(
+        {
+          selectedPlatforms,
+          listingUrls,
+          jobs: freshJobs,
+          savedAt,
+        },
+        userId
+      );
     }
 
     window.clearTimeout(timer);
@@ -728,73 +707,85 @@ export default function BuiltInCrawlPanel() {
       <div className="mb-6">
         <h2 className="text-xl font-bold text-slate-900 dark:text-white">Job discovery</h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 max-w-2xl">
-          Select platforms, crawl, and browse one merged job list. Saved locally until the next crawl refreshes it.
+          Choose platforms, crawl, and browse one merged job list. Crawl links are saved on your{" "}
+          <Link
+            href={`${AUTH_LINKS.dashboard}#crawl-urls`}
+            className="font-semibold text-orange-700 underline-offset-2 hover:underline dark:text-orange-300"
+          >
+            profile dashboard
+          </Link>
+          .
         </p>
         {hydrated && lastCrawledAt ? <LastCrawledBanner iso={lastCrawledAt} /> : null}
       </div>
 
       <div className="space-y-4">
-        <div>
-          <p className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">Platforms</p>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={selectAllPlatforms}
-              disabled={crawling}
-              className={platformButtonClass(allPlatformSelected)}
-            >
-              All
-            </button>
-            {ALL_JOB_CRAWL_PLATFORMS.map((platform) => (
-              <button
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Platforms</p>
+          <button
+            type="button"
+            onClick={selectAllPlatforms}
+            disabled={crawling || allPlatformSelected}
+            className="text-sm font-semibold text-orange-700 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-40 dark:text-orange-300"
+          >
+            Select all
+          </button>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2" role="group" aria-label="Crawl platforms">
+          {ALL_JOB_CRAWL_PLATFORMS.map((platform) => {
+            const checked = selectedPlatforms.includes(platform);
+            const inputId = `crawl-platform-${platform}`;
+            return (
+              <label
                 key={platform}
-                type="button"
-                onClick={() => togglePlatform(platform)}
-                disabled={crawling}
-                className={platformButtonClass(selectedPlatforms.includes(platform))}
+                htmlFor={inputId}
+                className={`group relative flex cursor-pointer items-start gap-3 rounded-2xl border px-4 py-3.5 transition-all ${
+                  checked
+                    ? "border-orange-500/45 bg-orange-500/[0.10] shadow-sm shadow-orange-500/10 dark:border-orange-400/40 dark:bg-orange-500/[0.12]"
+                    : "border-slate-200 bg-white/70 hover:border-orange-300/60 hover:bg-orange-50/50 dark:border-white/[0.08] dark:bg-white/[0.03] dark:hover:border-orange-500/25 dark:hover:bg-white/[0.05]"
+                } ${crawling ? "pointer-events-none opacity-60" : ""}`}
               >
-                {PLATFORM_LABEL[platform]}
-              </button>
-            ))}
-          </div>
+                <input
+                  id={inputId}
+                  type="checkbox"
+                  checked={checked}
+                  disabled={crawling}
+                  onChange={() => togglePlatform(platform)}
+                  className="sr-only"
+                />
+                <span
+                  className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-all ${
+                    checked
+                      ? "border-orange-500 bg-orange-500 text-white"
+                      : "border-slate-300 bg-white dark:border-white/25 dark:bg-transparent"
+                  }`}
+                  aria-hidden
+                >
+                  {checked ? (
+                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : null}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-slate-900 dark:text-white">
+                    {PLATFORM_LABEL[platform]}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
+                    {PLATFORM_BLURB[platform]}
+                  </span>
+                </span>
+              </label>
+            );
+          })}
         </div>
 
         {selectedPlatforms.length === 0 ? (
           <p className="text-sm text-amber-700 dark:text-amber-300">
             Select at least one platform to crawl.
           </p>
-        ) : (
-          <div className="space-y-4">
-            {selectedPlatforms.map((platform) => (
-              <div key={platform}>
-                <label
-                  htmlFor={`listingUrl-${platform}`}
-                  className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5"
-                >
-                  {PLATFORM_LABEL[platform]} listing URL
-                </label>
-                <div className="flex items-stretch gap-2">
-                  <input
-                    id={`listingUrl-${platform}`}
-                    type="url"
-                    value={listingUrls[platform]}
-                    onChange={(e) => updateListingUrl(platform, e.target.value)}
-                    placeholder={PLATFORM_PLACEHOLDER[platform]}
-                    className={`${inputClass} min-w-0 flex-1`}
-                    disabled={crawling}
-                    spellCheck={false}
-                  />
-                  <CopyUrlButton
-                    url={listingUrls[platform]}
-                    disabled={crawling}
-                    title={`Copy ${PLATFORM_LABEL[platform]} listing URL`}
-                  />
-                </div>
-                <p className="mt-1.5 text-xs text-slate-400">{PLATFORM_HINT[platform]}</p>
-              </div>
-            ))}
-          </div>
-        )}
+        ) : null}
 
         <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-start sm:items-center">
           <button
@@ -868,12 +859,13 @@ export default function BuiltInCrawlPanel() {
               </label>
               <input
                 id="jobTitleFilter"
-                type="search"
+                type="text"
                 value={jobTitleFilter}
                 onChange={(e) => setJobTitleFilter(e.target.value)}
-                placeholder={'Engineer OR Developer OR Scientist'}
+                placeholder={DEFAULT_JOB_TITLE_FILTER}
                 className={filterInputClass}
                 spellCheck={false}
+                autoComplete="off"
               />
               <p className="mt-1.5 text-sm text-slate-400 dark:text-slate-500">
                 Use <span className="font-semibold text-slate-500 dark:text-slate-400">OR</span> to match any term, or{" "}

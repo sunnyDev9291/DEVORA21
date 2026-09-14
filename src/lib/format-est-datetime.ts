@@ -1,21 +1,14 @@
-const EST_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/New_York",
-  weekday: "short",
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-});
+const EST_TZ = "America/New_York";
 
-const EST_TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/New_York",
+const EST_PARTS_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: EST_TZ,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  weekday: "short",
   hour: "numeric",
   minute: "2-digit",
-  second: "2-digit",
   hour12: true,
-});
-
-const EST_ZONE_FORMATTER = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/New_York",
   timeZoneName: "short",
 });
 
@@ -35,26 +28,40 @@ function parseIso(iso: string): Date | null {
   }
 }
 
+function pick(parts: Intl.DateTimeFormatPart[], type: Intl.DateTimeFormatPartTypes): string {
+  return parts.find((part) => part.type === type)?.value ?? "";
+}
+
 /** Format an ISO timestamp for display in US Eastern Time (EST/EDT). */
 export function formatEstDateTime(iso: string): string | null {
   const parts = formatEstDateTimeParts(iso);
   return parts?.combined ?? null;
 }
 
+/**
+ * Example: `2026/09/08 Tue 2:04 PM EDT`
+ */
 export function formatEstDateTimeParts(iso: string): EstDateTimeParts | null {
   const date = parseIso(iso);
   if (!date) return null;
 
-  const zone =
-    EST_ZONE_FORMATTER.formatToParts(date).find((part) => part.type === "timeZoneName")?.value ?? "ET";
+  const parts = EST_PARTS_FORMATTER.formatToParts(date);
+  const year = pick(parts, "year");
+  const month = pick(parts, "month");
+  const day = pick(parts, "day");
+  const weekday = pick(parts, "weekday");
+  const hour = pick(parts, "hour");
+  const minute = pick(parts, "minute");
+  const dayPeriod = pick(parts, "dayPeriod");
+  const zone = pick(parts, "timeZoneName") || "ET";
 
-  const dateLabel = EST_DATE_FORMATTER.format(date);
-  const timeLabel = EST_TIME_FORMATTER.format(date);
+  const dateLabel = `${year}/${month}/${day} ${weekday}`.trim();
+  const timeLabel = `${hour}:${minute} ${dayPeriod}`.trim();
 
   return {
     date: dateLabel,
     time: timeLabel,
     zone,
-    combined: `${dateLabel} · ${timeLabel} ${zone}`,
+    combined: `${dateLabel} ${timeLabel} ${zone}`.replace(/\s+/g, " ").trim(),
   };
 }

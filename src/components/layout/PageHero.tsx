@@ -13,13 +13,13 @@ export default function PageHero({ title, description, children, priority = fals
     <header className="relative pt-32 pb-20 overflow-hidden min-h-[480px] flex items-center">
       <div className="absolute inset-0" aria-hidden="true">
         <Image
-          src="/bg.jpeg"
+          src="/bg-hero.webp"
           alt={HERO_IMAGE_ALT}
           fill
           sizes="100vw"
           className="object-cover object-center"
           priority={priority}
-          quality={75}
+          quality={70}
         />
         <div className="absolute inset-0 bg-slate-900/60 dark:bg-warm-950/80" />
       </div>
@@ -28,7 +28,7 @@ export default function PageHero({ title, description, children, priority = fals
         <h1 className="text-4xl sm:text-5xl font-bold text-white mb-5 tracking-tight">
           {title}
         </h1>
-        <p className="text-slate-300 text-lg max-w-2xl mx-auto leading-relaxed">
+        <p className="text-stone-100 text-lg max-w-2xl mx-auto leading-relaxed">
           {description}
         </p>
         {children}

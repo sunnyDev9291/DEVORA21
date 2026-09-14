@@ -163,7 +163,7 @@ function Particles() {
 export default function HeroSection() {
   return (
     <section
-      className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-b from-warm-50 via-orange-50/50 to-amber-50/30 dark:from-warm-950 dark:via-warm-950 dark:to-warm-900"
+      className="relative min-h-screen flex items-center justify-center overflow-hidden bg-transparent"
       aria-labelledby="hero-heading"
     >
       <div

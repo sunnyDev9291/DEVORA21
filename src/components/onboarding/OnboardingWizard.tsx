@@ -40,6 +40,8 @@ import {
 
 import { readPromptFile, validateDocxFile } from "@/lib/profile-file";
 
+import { profileApi } from "@/lib/profile-api";
+
 import {
 
   cacheUploadedPrompt,
@@ -186,13 +188,15 @@ export default function OnboardingWizard({ user }: OnboardingWizardProps) {
 
     try {
 
-      const content = await readPromptFile(file);
+      await readPromptFile(file);
 
       setPromptFile(file);
 
-      setCustomPrompt(content);
+      setCustomPrompt(""); // content stays private; File is uploaded on complete
 
     } catch (err) {
+
+      setPromptFile(null);
 
       setError((err as Error).message || "Could not read prompt file.");
 
@@ -306,9 +310,11 @@ export default function OnboardingWizard({ user }: OnboardingWizardProps) {
 
       resumeTemplateFile,
 
-      promptFile,
+      promptFile: promptFile instanceof File ? promptFile : null,
 
-      customPrompt: customPrompt.trim(),
+      // Do not send empty customPrompt; file upload carries the prompt.
+
+      customPrompt: undefined as string | undefined,
 
     };
 
@@ -336,6 +342,48 @@ export default function OnboardingWizard({ user }: OnboardingWizardProps) {
 
 
 
+    let verifiedPromptContent = "";
+
+    let verifiedPromptName: string | undefined;
+
+
+
+    if (promptFile instanceof File) {
+
+      try {
+
+        // Ensure server stored the file even if onboarding multipart ignored it.
+
+        const verified = await profileApi.uploadPromptFile(promptFile);
+
+        verifiedPromptContent = verified.content.trim();
+
+        verifiedPromptName = verified.fileName || promptFile.name;
+
+      } catch (promptErr) {
+
+        setError(
+
+          getApiErrorMessage(
+
+            promptErr,
+
+            "Prompt upload failed verification. Resume generation will not work until a prompt is stored on the server."
+
+          )
+
+        );
+
+        setSaving(false);
+
+        return;
+
+      }
+
+    }
+
+
+
     saveStoredProfile(user.id, {
 
       firstName: payload.firstName,
@@ -344,9 +392,9 @@ export default function OnboardingWizard({ user }: OnboardingWizardProps) {
 
       avatarUrl: avatarPreviewUrl,
 
-      customPrompt: customPrompt.trim(),
+      customPrompt: verifiedPromptContent,
 
-      promptFileName: promptFile?.name,
+      promptFileName: verifiedPromptName,
 
     });
 
@@ -358,9 +406,9 @@ export default function OnboardingWizard({ user }: OnboardingWizardProps) {
 
     }
 
-    if (promptFile && customPrompt.trim()) {
+    if (promptFile instanceof File && verifiedPromptContent) {
 
-      await cacheUploadedPrompt(user.id, promptFile, customPrompt.trim());
+      await cacheUploadedPrompt(user.id, promptFile, verifiedPromptContent);
 
     }
 
@@ -611,13 +659,16 @@ export default function OnboardingWizard({ user }: OnboardingWizardProps) {
                 accept=".txt,.md,.json,text/plain,text/markdown,application/json"
                 label="Upload your writing prompt"
                 hint=".txt, .md, or .json with a content field. Contents stay private and are never shown in the app."
+                fileName={promptFile?.name}
                 uploading={uploading}
                 disabled={saving}
                 onFile={handlePromptFile}
               />
-              {customPrompt && (
-                <p className="text-center text-xs text-emerald-300">Private prompt ready — content hidden.</p>
-              )}
+              {promptFile ? (
+                <p className="text-center text-xs text-slate-400">
+                  Selected: {promptFile.name} — uploaded and verified when you finish.
+                </p>
+              ) : null}
             </div>
           )}
 

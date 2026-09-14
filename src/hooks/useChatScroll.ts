@@ -1,12 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, type RefObject } from "react";
-
-const NEAR_BOTTOM_THRESHOLD_PX = 48;
-
-function isNearBottom(element: HTMLDivElement): boolean {
-  return element.scrollHeight - element.scrollTop - element.clientHeight <= NEAR_BOTTOM_THRESHOLD_PX;
-}
+import { useFollowOutputScroll } from "@/hooks/useFollowOutputScroll";
+import type { RefObject, UIEventHandler } from "react";
 
 /**
  * Auto-scrolls chat to the latest message when the user is already near the bottom.
@@ -14,33 +9,16 @@ function isNearBottom(element: HTMLDivElement): boolean {
  */
 export function useChatScroll(scrollDeps: unknown[]): {
   listRef: RefObject<HTMLDivElement | null>;
-  handleScroll: () => void;
+  handleScroll: UIEventHandler<HTMLDivElement>;
   pinToBottom: () => void;
 } {
-  const listRef = useRef<HTMLDivElement | null>(null);
-  const stickToBottomRef = useRef(true);
+  const { containerRef, onScroll, pinToBottom } = useFollowOutputScroll({
+    deps: scrollDeps,
+  });
 
-  const scrollToBottom = useCallback(() => {
-    const el = listRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, []);
-
-  const handleScroll = useCallback(() => {
-    const el = listRef.current;
-    if (!el) return;
-    stickToBottomRef.current = isNearBottom(el);
-  }, []);
-
-  const pinToBottom = useCallback(() => {
-    stickToBottomRef.current = true;
-    requestAnimationFrame(scrollToBottom);
-  }, [scrollToBottom]);
-
-  useEffect(() => {
-    if (!stickToBottomRef.current) return;
-    scrollToBottom();
-  }, scrollDeps);
-
-  return { listRef, handleScroll, pinToBottom };
+  return {
+    listRef: containerRef,
+    handleScroll: onScroll,
+    pinToBottom,
+  };
 }

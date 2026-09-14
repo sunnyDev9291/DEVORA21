@@ -95,7 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    const result = await fetchSessionUser();
+    const result = await fetchSessionUser({ proactiveRefresh: true });
     if (result.status === "authenticated") {
       applyUser(result.user);
       setAuthMethod("session");

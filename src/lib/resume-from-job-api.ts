@@ -6,6 +6,11 @@ import {
   isResumeBuilderAccessDenied,
   resumeBuilderAccessDeniedMessage,
 } from "@/lib/resume-access";
+import {
+  EnglishTeamRequiredError,
+  parseEnglishTeamRequired,
+} from "@/lib/english-team-gate";
+import type { GeneratedResumeContent, ResumeExperience } from "@/lib/resume-types";
 
 export type ResumeFromJobStatus =
   | "queued"
@@ -32,6 +37,8 @@ export type ResumeFromJobResult = {
   pdfFileName: string;
   pdfBase64: string;
   warning?: string;
+  jobDescription?: string;
+  content?: GeneratedResumeContent;
 };
 
 export type ResumeFromJobJob = {
@@ -45,8 +52,14 @@ export type ResumeFromJobJob = {
   url?: string;
   jobTitle?: string;
   companyName?: string;
+  jobDescription?: string;
   warning?: string;
   error?: string;
+  /** Present when generation was blocked by English-team gate. */
+  code?: string;
+  answer?: string;
+  workWithEnglishTeam?: boolean;
+  content?: GeneratedResumeContent;
   result?: ResumeFromJobResult;
 };
 
@@ -73,6 +86,9 @@ function errorMessage(data: Record<string, unknown>, fallback: string): string {
 }
 
 function throwAuthAware(res: Response, data: Record<string, unknown>): never {
+  const gated = parseEnglishTeamRequired(data, res.status);
+  if (gated) throw gated;
+
   const message = errorMessage(data, `Request failed (${res.status}).`);
   if (res.status === 401) {
     throw new ApiError("Authentication required. Sign in or connect a dv21_ API key.", 401, {
@@ -126,13 +142,98 @@ function parseSteps(raw: unknown): ResumeFromJobStep[] | undefined {
   return steps.length ? steps : undefined;
 }
 
+function parseExperiences(raw: unknown): ResumeExperience[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const experiences: ResumeExperience[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const company = typeof row.company === "string" ? row.company : "";
+    const role = typeof row.role === "string" ? row.role : "";
+    const dates = typeof row.dates === "string" ? row.dates : "";
+    const bullets = Array.isArray(row.bullets)
+      ? row.bullets.filter((b): b is string => typeof b === "string")
+      : [];
+    if (!company.trim() && !role.trim() && bullets.length === 0) continue;
+    experiences.push({ company, role, dates, bullets });
+  }
+  return experiences;
+}
+
+/** Accept structured draft JSON from from-job payloads when the backend includes it. */
+export function parseGeneratedResumeContent(raw: unknown): GeneratedResumeContent | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const row = raw as Record<string, unknown>;
+  const title = typeof row.title === "string" ? row.title.trim() : "";
+  const summary = typeof row.summary === "string" ? row.summary.trim() : "";
+  const skills = typeof row.skills === "string" ? row.skills.trim() : "";
+  const experiences = parseExperiences(row.experiences);
+  if (!title || !summary || !skills || !experiences) return undefined;
+  return {
+    title,
+    summary,
+    skills,
+    experiences,
+    ...(typeof row.fileName === "string" && row.fileName.trim()
+      ? { fileName: row.fileName.trim() }
+      : {}),
+  };
+}
+
+function pickContent(row: Record<string, unknown>): GeneratedResumeContent | undefined {
+  return (
+    parseGeneratedResumeContent(row.content) ||
+    parseGeneratedResumeContent(row.resumeContent) ||
+    parseGeneratedResumeContent(row.generatedContent) ||
+    parseGeneratedResumeContent(row.draft)
+  );
+}
+
+function pickJobDescription(row: Record<string, unknown>): string | undefined {
+  for (const key of ["jobDescription", "description", "jd"] as const) {
+    const value = row[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
 function parseResult(raw: unknown): ResumeFromJobResult | undefined {
   if (!raw || typeof raw !== "object") return undefined;
   const row = raw as Record<string, unknown>;
   const pdfBase64 = typeof row.pdfBase64 === "string" ? row.pdfBase64.trim() : "";
   if (!pdfBase64) return undefined;
+  return buildResult(row, pdfBase64);
+}
+
+function parseResultMeta(raw: unknown): Omit<ResumeFromJobResult, "pdfBase64"> | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const row = raw as Record<string, unknown>;
+  const id =
+    (typeof row.id === "string" && row.id.trim()) ||
+    (typeof row.archiveId === "string" && row.archiveId.trim()) ||
+    undefined;
+  const jobTitle = typeof row.jobTitle === "string" ? row.jobTitle : "";
+  const companyName = typeof row.companyName === "string" ? row.companyName : "";
+  const resumeName = typeof row.resumeName === "string" ? row.resumeName : "";
+  const pdfFileName =
+    typeof row.pdfFileName === "string" && row.pdfFileName.trim()
+      ? row.pdfFileName.trim()
+      : "resume.pdf";
+  const warning = typeof row.warning === "string" && row.warning.trim() ? row.warning.trim() : undefined;
+  const jobDescription = pickJobDescription(row);
+  const content = pickContent(row);
+
+  if (!id && !jobTitle && !companyName && !resumeName && !content && !jobDescription) return undefined;
+  return { id, jobTitle, companyName, resumeName, pdfFileName, warning, jobDescription, content };
+}
+
+function buildResult(row: Record<string, unknown>, pdfBase64: string): ResumeFromJobResult {
+  const id =
+    (typeof row.id === "string" && row.id.trim()) ||
+    (typeof row.archiveId === "string" && row.archiveId.trim()) ||
+    undefined;
   return {
-    id: typeof row.id === "string" ? row.id : undefined,
+    id,
     jobTitle: typeof row.jobTitle === "string" ? row.jobTitle : "",
     companyName: typeof row.companyName === "string" ? row.companyName : "",
     resumeName: typeof row.resumeName === "string" ? row.resumeName : "",
@@ -142,14 +243,54 @@ function parseResult(raw: unknown): ResumeFromJobResult | undefined {
         : "resume.pdf",
     pdfBase64,
     warning: typeof row.warning === "string" && row.warning.trim() ? row.warning.trim() : undefined,
+    jobDescription: pickJobDescription(row),
+    content: pickContent(row),
   };
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      resolve(dataUrl.split(",")[1] ?? "");
+    };
+    reader.onerror = () => reject(new Error("Could not read PDF response."));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function parsePartialResult(raw: unknown): ResumeFromJobResult | undefined {
+  const withPdf = parseResult(raw);
+  if (withPdf) return withPdf;
+
+  const meta = parseResultMeta(raw);
+  if (!meta?.id) return undefined;
+
+  return { ...meta, pdfBase64: "" };
 }
 
 function parseJob(data: Record<string, unknown>, fallbackJobId = ""): ResumeFromJobJob {
   const jobId =
     (typeof data.jobId === "string" && data.jobId.trim()) ||
-    (typeof data.id === "string" && data.id.trim()) ||
+    (typeof data.id === "string" && data.id.trim() && !parsePartialResult(data)
+      ? data.id.trim()
+      : "") ||
     fallbackJobId;
+
+  const result = parsePartialResult(data.result) ?? parsePartialResult(data);
+  const content =
+    pickContent(data) ||
+    (data.result && typeof data.result === "object"
+      ? pickContent(data.result as Record<string, unknown>)
+      : undefined) ||
+    result?.content;
+  const jobDescription =
+    pickJobDescription(data) ||
+    (data.result && typeof data.result === "object"
+      ? pickJobDescription(data.result as Record<string, unknown>)
+      : undefined) ||
+    result?.jobDescription;
 
   return {
     jobId,
@@ -162,20 +303,107 @@ function parseJob(data: Record<string, unknown>, fallbackJobId = ""): ResumeFrom
     url: typeof data.url === "string" ? data.url : undefined,
     jobTitle: typeof data.jobTitle === "string" ? data.jobTitle : undefined,
     companyName: typeof data.companyName === "string" ? data.companyName : undefined,
+    jobDescription,
     warning: typeof data.warning === "string" && data.warning.trim() ? data.warning.trim() : undefined,
     error: typeof data.error === "string" ? data.error : undefined,
-    result: parseResult(data.result),
+    code: typeof data.code === "string" ? data.code : undefined,
+    answer: typeof data.answer === "string" ? data.answer : undefined,
+    workWithEnglishTeam:
+      typeof data.workWithEnglishTeam === "boolean" ? data.workWithEnglishTeam : undefined,
+    content,
+    result: result
+      ? {
+          ...result,
+          content: result.content ?? content,
+          jobDescription: result.jobDescription ?? jobDescription,
+        }
+      : undefined,
+  };
+}
+
+/** Throw when a from-job job payload is blocked by the English-team gate. */
+export function throwIfEnglishTeamRequiredJob(job: ResumeFromJobJob): void {
+  const gated = parseEnglishTeamRequired(
+    {
+      code: job.code,
+      answer: job.answer,
+      workWithEnglishTeam: job.workWithEnglishTeam,
+      message: job.message || job.error,
+      error: job.error || job.message,
+    },
+    422
+  );
+  if (gated) throw gated;
+
+  // Fallback: some backends only put the code on nested error objects.
+  if (job.status === "error" && job.code === "ENGLISH_TEAM_REQUIRED") {
+    throw new EnglishTeamRequiredError(job.message || job.error);
+  }
+}
+
+/** Resolve PDF bytes when job is done — uses inline base64 or archive download fallback. */
+export async function resolveResumeFromJobResult(
+  job: ResumeFromJobJob,
+  signal?: AbortSignal
+): Promise<ResumeFromJobResult> {
+  if (job.result?.pdfBase64) return job.result;
+
+  const meta =
+    parseResultMeta(job.result) ??
+    parseResultMeta({
+      id: job.result?.id,
+      jobTitle: job.result?.jobTitle ?? job.jobTitle,
+      companyName: job.result?.companyName ?? job.companyName,
+      resumeName: job.result?.resumeName,
+      pdfFileName: job.result?.pdfFileName,
+      warning: job.result?.warning ?? job.warning,
+    });
+
+  const archiveId = meta?.id;
+  if (!archiveId) {
+    throw new Error("Job completed but no PDF was returned.");
+  }
+
+  const { fetchSavedResumeFile } = await import("@/lib/saved-resumes-api");
+  const { blob, fileName } = await fetchSavedResumeFile(archiveId, "pdf", meta?.pdfFileName);
+
+  if (signal?.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+
+  const pdfBase64 = await blobToBase64(blob);
+  if (!pdfBase64) {
+    throw new Error("Job completed but the PDF file was empty.");
+  }
+
+  return {
+    id: archiveId,
+    jobTitle: meta?.jobTitle ?? job.jobTitle ?? "",
+    companyName: meta?.companyName ?? job.companyName ?? "",
+    resumeName: meta?.resumeName ?? "",
+    pdfFileName: fileName,
+    pdfBase64,
+    warning: meta?.warning ?? job.warning,
+    jobDescription: meta?.jobDescription ?? job.jobDescription,
+    content: meta?.content ?? job.content ?? job.result?.content,
   };
 }
 
 /** POST /resume/from-job — expect 202 + jobId. */
 export async function startResumeFromJob(
   url: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options?: { skipEnglishTeamGate?: boolean }
 ): Promise<ResumeFromJobJob> {
   const trimmed = url.trim();
   if (!trimmed) {
     throw new ApiError("Paste a job link first.", 400);
+  }
+
+  const payload: Record<string, unknown> = { url: trimmed };
+  if (options?.skipEnglishTeamGate) {
+    payload.skipEnglishTeamGate = true;
+    payload.skip_english_team_gate = true;
   }
 
   let res: Response;
@@ -188,7 +416,7 @@ export async function startResumeFromJob(
           "Content-Type": "application/json",
           Accept: "application/json",
         },
-        body: JSON.stringify({ url: trimmed }),
+        body: JSON.stringify(payload),
         signal,
       },
       "auto"

@@ -9,18 +9,35 @@ type StreamBody = {
   maxTokens?: number;
   jsonObject?: boolean;
   userId?: string;
+  jobTitle?: string;
+  jobDescription?: string;
+  job_title?: string;
+  job_description?: string;
+  skipEnglishTeamGate?: boolean;
+  skip_english_team_gate?: boolean;
 };
 
-async function readUpstreamError(response: Response): Promise<string> {
+async function readUpstreamError(response: Response): Promise<{
+  status: number;
+  body: Record<string, unknown>;
+}> {
   const detail = await response.text().catch(() => "");
   if (!detail) {
-    return `AI backend error (${response.status}): ${response.statusText}`;
+    return {
+      status: response.status,
+      body: {
+        error: `AI backend error (${response.status}): ${response.statusText}`,
+      },
+    };
   }
   try {
-    const parsed = JSON.parse(detail) as { error?: string; message?: string };
-    return parsed.error || parsed.message || detail;
+    const parsed = JSON.parse(detail) as Record<string, unknown>;
+    return { status: response.status, body: parsed };
   } catch {
-    return detail;
+    return {
+      status: response.status,
+      body: { error: detail },
+    };
   }
 }
 
@@ -88,7 +105,25 @@ export async function POST(req: Request) {
     headers.Cookie = cookie;
   }
 
+  const jobTitle =
+    (typeof body.jobTitle === "string" && body.jobTitle.trim()) ||
+    (typeof body.job_title === "string" && body.job_title.trim()) ||
+    "";
+  const jobDescription =
+    (typeof body.jobDescription === "string" && body.jobDescription.trim()) ||
+    (typeof body.job_description === "string" && body.job_description.trim()) ||
+    "";
+
+  const skipEnglishTeamGate = Boolean(
+    body.skipEnglishTeamGate || body.skip_english_team_gate
+  );
+
+  // Job fields first + snake_case aliases for the English-team resume gate.
   const upstreamBody: Record<string, unknown> = {
+    jobTitle,
+    jobDescription,
+    job_title: jobTitle,
+    job_description: jobDescription,
     messages,
     maxTokens: typeof body.maxTokens === "number" ? body.maxTokens : 4096,
     jsonObject: Boolean(body.jsonObject),
@@ -96,21 +131,54 @@ export async function POST(req: Request) {
   if (userId) {
     upstreamBody.userId = userId;
   }
+  if (skipEnglishTeamGate) {
+    upstreamBody.skipEnglishTeamGate = true;
+    upstreamBody.skip_english_team_gate = true;
+  }
+
+  const query = new URLSearchParams();
+  if (jobTitle) {
+    query.set("jobTitle", jobTitle);
+    query.set("job_title", jobTitle);
+  }
+  if (jobDescription) {
+    const clipped =
+      jobDescription.length > 2500 ? jobDescription.slice(0, 2500) : jobDescription;
+    query.set("jobDescription", clipped);
+    query.set("job_description", clipped);
+  }
+  const querySuffix = query.toString() ? `?${query.toString()}` : "";
 
   let upstream: Response;
   try {
-    upstream = await fetch(`${BACKEND_API_URL}/ai/chat/completions/stream`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(upstreamBody),
-    });
+    upstream = await fetch(
+      `${BACKEND_API_URL}/ai/chat/completions/stream${querySuffix}`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify(upstreamBody),
+      }
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to reach AI backend.";
     return Response.json({ error: message }, { status: 502 });
   }
 
   if (!upstream.ok) {
-    return Response.json({ error: await readUpstreamError(upstream) }, { status: upstream.status });
+    const { status, body: errorBody } = await readUpstreamError(upstream);
+    const message =
+      (typeof errorBody.error === "string" && errorBody.error) ||
+      (typeof errorBody.message === "string" && errorBody.message) ||
+      `AI backend error (${status}).`;
+    return Response.json(
+      {
+        ...errorBody,
+        error: message,
+        message:
+          typeof errorBody.message === "string" ? errorBody.message : message,
+      },
+      { status }
+    );
   }
 
   if (!upstream.body) {

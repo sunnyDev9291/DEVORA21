@@ -41,10 +41,10 @@ export default function OAuthNotice({ page }: OAuthNoticeProps) {
     <div
       className={`rounded-xl border px-4 py-3 text-sm ${
         isSuccess
-          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200"
           : isAlreadyRegistered
-            ? "border-amber-500/30 bg-amber-500/10 text-amber-100"
-            : "border-red-500/30 bg-red-500/10 text-red-300"
+            ? "border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-100"
+            : "border-red-500/30 bg-red-500/10 text-red-800 dark:text-red-300"
       }`}
       role="status"
     >
@@ -53,7 +53,7 @@ export default function OAuthNotice({ page }: OAuthNoticeProps) {
         <p className="mt-2">
           <Link
             href={AUTH_LINKS.login}
-            className="font-semibold text-amber-200 underline underline-offset-2 hover:text-white"
+            className="font-semibold text-amber-900 underline underline-offset-2 hover:text-amber-700 dark:text-amber-200 dark:hover:text-white"
           >
             Sign in with Google
           </Link>
