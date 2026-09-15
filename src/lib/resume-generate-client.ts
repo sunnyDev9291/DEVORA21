@@ -49,7 +49,7 @@ export async function generateResume(
     onPhase?: (phase: ResumeGenerationPhase) => void;
     onOutput?: (text: string, full: string) => void;
     signal?: AbortSignal;
-    /** Bypass backend English-team gate after the user confirms Continue creating. */
+    /** Always true for create/improve — English-team gate is disabled in the UI. */
     skipEnglishTeamGate?: boolean;
   }
 ): Promise<ResumeGenerateResult> {
@@ -112,7 +112,7 @@ export async function generateResume(
       customPrompt: customPrompt || undefined,
       jobTitle,
       jobDescription,
-      skipEnglishTeamGate: Boolean(handlers.skipEnglishTeamGate),
+      skipEnglishTeamGate: handlers.skipEnglishTeamGate !== false,
     })) {
       if (!delta.content) continue;
       output += delta.content;

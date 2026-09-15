@@ -52,10 +52,7 @@ import {
 import { loadStoredProfile, resolveUserNames } from "@/lib/user-profile";
 import { resolveWritingPrompt } from "@/lib/writing-prompt";
 import CompanyPastApplications from "@/components/sections/CompanyPastApplications";
-import EnglishTeamCheck from "@/components/ui/EnglishTeamCheck";
-import EnglishTeamRequiredDialog from "@/components/ui/EnglishTeamRequiredDialog";
 import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
-import { isEnglishTeamRequiredError } from "@/lib/english-team-gate";
 
 /**
  * Prefer the template resolved by useUserProfileAssets (remote-synced).
@@ -184,9 +181,6 @@ export default function ResumeGenerator({
   const [jobChecking, setJobChecking] = useState(false);
   const [jobCheckOutput, setJobCheckOutput] = useState("");
   const [jobCheckError, setJobCheckError] = useState("");
-  const [englishTeamGateOpen, setEnglishTeamGateOpen] = useState(false);
-  const [englishTeamGateMessage, setEnglishTeamGateMessage] = useState("");
-  const [englishTeamContinuing, setEnglishTeamContinuing] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const jobCheckAbortRef = useRef<AbortController | null>(null);
   const atsAbortRef = useRef<AbortController | null>(null);
@@ -634,10 +628,7 @@ export default function ResumeGenerator({
     }
   }
 
-  async function handleGenerate(
-    e?: React.FormEvent,
-    options?: { skipEnglishTeamGate?: boolean }
-  ) {
+  async function handleGenerate(e?: React.FormEvent) {
     e?.preventDefault();
     if (applying) return;
     if (!user?.id) {
@@ -663,15 +654,10 @@ export default function ResumeGenerator({
       return;
     }
 
-    const skipEnglishTeamGate = Boolean(options?.skipEnglishTeamGate);
-
     abortRef.current?.abort();
 
     const runId = ++generationRunRef.current;
     setError("");
-    setEnglishTeamGateOpen(false);
-    setEnglishTeamGateMessage("");
-    setEnglishTeamContinuing(false);
     setRegenerateNotice("");
     setRegenerateBaseline(null);
     setRegenerateBaselineScore(null);
@@ -720,7 +706,7 @@ export default function ResumeGenerator({
             if (generationRunRef.current === runId) setStreamOutput(full);
           },
           signal: controller.signal,
-          skipEnglishTeamGate,
+          skipEnglishTeamGate: true,
         }
       );
 
@@ -735,21 +721,11 @@ export default function ResumeGenerator({
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       if (generationRunRef.current !== runId) return;
-      if (isEnglishTeamRequiredError(err) && !skipEnglishTeamGate) {
-        setStep("form");
-        setContent(null);
-        setStreamOutput("");
-        setStreamPhase("starting");
-        setEnglishTeamGateMessage(err.message);
-        setEnglishTeamGateOpen(true);
-        return;
-      }
       setError((err as Error).message || "Something went wrong.");
     } finally {
       if (generationRunRef.current === runId) {
         setGenerating(false);
         abortRef.current = null;
-        setEnglishTeamContinuing(false);
       }
     }
   }
@@ -819,6 +795,7 @@ export default function ResumeGenerator({
             if (generationRunRef.current === runId) setStreamOutput(full);
           },
           signal: controller.signal,
+          skipEnglishTeamGate: true,
         }
       );
 
@@ -855,13 +832,6 @@ export default function ResumeGenerator({
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       if (generationRunRef.current !== runId) return;
-      if (isEnglishTeamRequiredError(err)) {
-        setStreamOutput("");
-        setStreamPhase("starting");
-        setEnglishTeamGateMessage(err.message);
-        setEnglishTeamGateOpen(true);
-        return;
-      }
       setError((err as Error).message || "Could not improve this score item.");
     } finally {
       if (generationRunRef.current === runId) {
@@ -1136,11 +1106,6 @@ export default function ResumeGenerator({
                 className="h-12 self-start"
               />
             </div>
-            <EnglishTeamCheck
-              jobTitle={form.jobTitle}
-              jobDescription={form.jobDescription}
-              disabled={generating || applying || importingJob}
-            />
           </div>
 
           {form.customPrompt.trim() ? (
@@ -1516,29 +1481,6 @@ export default function ResumeGenerator({
         waitingForPdf={archiving}
         error={archiveError}
         onDownload={handleDownloadPdf}
-      />
-
-      <EnglishTeamRequiredDialog
-        open={englishTeamGateOpen}
-        message={englishTeamGateMessage}
-        jobTitle={form.jobTitle}
-        companyName={form.companyName}
-        jobDescription={form.jobDescription}
-        continuing={englishTeamContinuing || generating}
-        onJobCheck={() => {
-          setEnglishTeamGateOpen(false);
-          setEnglishTeamGateMessage("");
-          void runJobCheck();
-        }}
-        onContinueCreating={() => {
-          setEnglishTeamContinuing(true);
-          void handleGenerate(undefined, { skipEnglishTeamGate: true });
-        }}
-        onClose={() => {
-          setEnglishTeamGateOpen(false);
-          setEnglishTeamGateMessage("");
-          setEnglishTeamContinuing(false);
-        }}
       />
 
       <JobCheckBoard

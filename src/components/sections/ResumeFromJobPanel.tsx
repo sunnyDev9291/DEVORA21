@@ -14,13 +14,10 @@ import {
   RESUME_FROM_JOB_TIMEOUT_MS,
   resolveResumeFromJobResult,
   startResumeFromJob,
-  throwIfEnglishTeamRequiredJob,
   type ResumeFromJobJob,
   type ResumeFromJobResult,
 } from "@/lib/resume-from-job-api";
 import { iterateJobCheckStream } from "@/lib/job-check-stream";
-import { isEnglishTeamRequiredError } from "@/lib/english-team-gate";
-import EnglishTeamRequiredDialog from "@/components/ui/EnglishTeamRequiredDialog";
 import { useAuth } from "@/context/AuthContext";
 import { loadStoredProfile, resolveUserNames } from "@/lib/user-profile";
 import { scrapeJobFromUrl } from "@/lib/job-scrape-api";
@@ -78,9 +75,6 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
   const [resumeChatOpen, setResumeChatOpen] = useState(false);
   const [generationKey, setGenerationKey] = useState(0);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [englishTeamGateOpen, setEnglishTeamGateOpen] = useState(false);
-  const [englishTeamGateMessage, setEnglishTeamGateMessage] = useState("");
-  const [englishTeamContinuing, setEnglishTeamContinuing] = useState(false);
   const [jobCheckOpen, setJobCheckOpen] = useState(false);
   const [jobChecking, setJobChecking] = useState(false);
   const [jobCheckOutput, setJobCheckOutput] = useState("");
@@ -167,9 +161,6 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
     setJobDescription("");
     setResumeChatOpen(false);
     setPreviewOpen(false);
-    setEnglishTeamGateOpen(false);
-    setEnglishTeamGateMessage("");
-    setEnglishTeamContinuing(false);
     setJobCheckOpen(false);
     setJobChecking(false);
     setJobCheckOutput("");
@@ -278,7 +269,6 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
       }
 
       if (latest.status === "error") {
-        throwIfEnglishTeamRequiredJob(latest);
         throw new Error(latest.error || latest.message || "Resume generation failed.");
       }
 
@@ -346,10 +336,7 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
     }
   }
 
-  async function handleGenerate(
-    e?: React.FormEvent,
-    options?: { skipEnglishTeamGate?: boolean }
-  ) {
+  async function handleGenerate(e?: React.FormEvent) {
     e?.preventDefault();
     if (running) return;
 
@@ -358,8 +345,6 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
       setError("Paste a job link first.");
       return;
     }
-
-    const skipEnglishTeamGate = Boolean(options?.skipEnglishTeamGate);
 
     let freshPrompt = "";
     try {
@@ -386,9 +371,6 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
     abortRef.current = controller;
 
     setError("");
-    setEnglishTeamGateOpen(false);
-    setEnglishTeamGateMessage("");
-    setEnglishTeamContinuing(false);
     setResult(null);
     setChatContent(null);
     setJobDescription("");
@@ -406,21 +388,15 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
 
     try {
       const started = await startResumeFromJob(url, controller.signal, {
-        skipEnglishTeamGate,
+        skipEnglishTeamGate: true,
         customPrompt: freshPrompt || undefined,
       });
       setJob(started);
-      if (!skipEnglishTeamGate) {
-        throwIfEnglishTeamRequiredJob(started);
-      }
 
       if (isResumeFromJobTerminal(started.status)) {
         if (started.status === "done") {
           await finishWithResult(started, controller.signal);
           return;
-        }
-        if (!skipEnglishTeamGate) {
-          throwIfEnglishTeamRequiredJob(started);
         }
         throw new Error(started.error || started.message || "Resume generation failed.");
       }
@@ -428,35 +404,6 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
       await pollUntilDone(started.jobId, startedAt, controller.signal);
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
-      if (isEnglishTeamRequiredError(err) && !skipEnglishTeamGate) {
-        setResult(null);
-        setChatContent(null);
-        setPreviewOpen(false);
-        setEnglishTeamGateMessage(err.message);
-        setEnglishTeamGateOpen(true);
-        setJob((prev) =>
-          prev
-            ? {
-                ...prev,
-                status: "error",
-                code: err.code,
-                answer: err.answer,
-                workWithEnglishTeam: err.workWithEnglishTeam,
-                message: err.message,
-                error: err.message,
-              }
-            : {
-                jobId: "",
-                status: "error",
-                code: err.code,
-                answer: err.answer,
-                workWithEnglishTeam: err.workWithEnglishTeam,
-                message: err.message,
-                error: err.message,
-              }
-        );
-        return;
-      }
       setError(getApiErrorMessage(err, (err as Error)?.message || "Resume generation failed."));
       setJob((prev) =>
         prev
@@ -472,7 +419,6 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
         setRunning(false);
         abortRef.current = null;
       }
-      setEnglishTeamContinuing(false);
       clearPollTimer();
     }
   }
@@ -532,7 +478,7 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
         </div>
       ) : null}
 
-      {!englishTeamGateOpen && (running || job) ? (
+      {running || job ? (
         <ResumeFromJobProgress
           message={job?.message || (running ? "Working…" : "")}
           progressPercent={progressPercent}
@@ -607,29 +553,6 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
         companyName={companyName}
         jobDescription={jobDescription}
         generationKey={generationKey}
-      />
-
-      <EnglishTeamRequiredDialog
-        open={englishTeamGateOpen}
-        message={englishTeamGateMessage}
-        jobTitle={job?.jobTitle || result?.jobTitle || ""}
-        companyName={job?.companyName || result?.companyName || ""}
-        jobDescription={jobDescription || job?.url || jobUrl}
-        continuing={englishTeamContinuing || running}
-        onJobCheck={() => {
-          setEnglishTeamGateOpen(false);
-          setEnglishTeamGateMessage("");
-          void runJobCheck();
-        }}
-        onContinueCreating={() => {
-          setEnglishTeamContinuing(true);
-          void handleGenerate(undefined, { skipEnglishTeamGate: true });
-        }}
-        onClose={() => {
-          setEnglishTeamGateOpen(false);
-          setEnglishTeamGateMessage("");
-          setEnglishTeamContinuing(false);
-        }}
       />
 
       <JobCheckBoard
