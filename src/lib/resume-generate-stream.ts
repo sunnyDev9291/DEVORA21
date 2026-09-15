@@ -34,6 +34,7 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
         for await (const delta of iterateDeepSeekStream(messages, RESUME_MAX_TOKENS, {
           jsonObject: true,
           userId: prep.userId,
+          customPrompt: customPrompt || undefined,
         })) {
           if (delta.reasoning) {
             thinking += delta.reasoning;
@@ -81,7 +82,11 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
           );
         } catch {
           enqueue({ type: "phase", phase: "finalizing" });
-          modelText = await completeDeepSeek(messages, RESUME_MAX_TOKENS, { jsonObject: true });
+          modelText = await completeDeepSeek(messages, RESUME_MAX_TOKENS, {
+            jsonObject: true,
+            userId: prep.userId,
+            customPrompt: customPrompt || undefined,
+          });
           content = ensureResumeContentFileName(
             applyTemplateSkillsStyle(
               finalizeResumeContent(

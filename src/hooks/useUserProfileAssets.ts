@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { profileApi, type UserPromptAsset, type UserResumeTemplateAsset } from "@/lib/profile-api";
 import { resumeBuilderAccessDeniedMessage } from "@/lib/resume-access";
-import { PROFILE_TEMPLATE_UPDATED_EVENT } from "@/lib/template-fingerprint";
+import { PROFILE_PROMPT_UPDATED_EVENT, PROFILE_TEMPLATE_UPDATED_EVENT } from "@/lib/template-fingerprint";
 import { loadStoredProfile, saveStoredProfile } from "@/lib/user-profile";
 
 function sameTemplate(
@@ -128,14 +128,35 @@ export function useUserProfileAssets(userId: string | undefined) {
       try {
         const remotePrompt = await profileApi.fetchPrompt().catch(() => null);
         if (remotePrompt?.content.trim()) {
-          if (!samePrompt(promptRef.current, remotePrompt)) {
-            setPrompt(remotePrompt);
+          const storedAfterLocal = loadStoredProfile(userId);
+          const localIsNewer =
+            Boolean(storedAfterLocal.customPrompt.trim()) &&
+            typeof storedAfterLocal.promptUpdatedAt === "number" &&
+            storedAfterLocal.promptUpdatedAt > 0 &&
+            // Prefer a just-uploaded local prompt over a possibly cached remote copy.
+            storedAfterLocal.customPrompt.trim() !== remotePrompt.content.trim() &&
+            Date.now() - storedAfterLocal.promptUpdatedAt < 10 * 60 * 1000;
+
+          if (localIsNewer) {
+            const localPrompt = {
+              content: storedAfterLocal.customPrompt,
+              fileName: storedAfterLocal.promptFileName,
+            };
+            if (!samePrompt(promptRef.current, localPrompt)) {
+              setPrompt(localPrompt);
+            }
+            promptLoaded = true;
+          } else {
+            if (!samePrompt(promptRef.current, remotePrompt)) {
+              setPrompt(remotePrompt);
+            }
+            saveStoredProfile(userId, {
+              customPrompt: remotePrompt.content,
+              promptFileName: remotePrompt.fileName,
+              promptUpdatedAt: undefined,
+            });
+            promptLoaded = true;
           }
-          saveStoredProfile(userId, {
-            customPrompt: remotePrompt.content,
-            promptFileName: remotePrompt.fileName,
-          });
-          promptLoaded = true;
         }
       } catch (err) {
         setError((err as Error).message || "Could not load writing prompt.");
@@ -189,11 +210,27 @@ export function useUserProfileAssets(userId: string | undefined) {
       hydrateFromLocal();
     };
 
+    const syncPromptFromStorage = () => {
+      const stored = loadStoredProfile(userId);
+      if (!stored.customPrompt.trim()) return;
+      const localPrompt = {
+        content: stored.customPrompt,
+        fileName: stored.promptFileName,
+      };
+      if (!samePrompt(promptRef.current, localPrompt)) {
+        setPrompt(localPrompt);
+      }
+    };
+
     window.addEventListener(PROFILE_TEMPLATE_UPDATED_EVENT, syncTemplateFromStorage);
+    window.addEventListener(PROFILE_PROMPT_UPDATED_EVENT, syncPromptFromStorage);
     window.addEventListener("storage", syncTemplateFromStorage);
+    window.addEventListener("storage", syncPromptFromStorage);
     return () => {
       window.removeEventListener(PROFILE_TEMPLATE_UPDATED_EVENT, syncTemplateFromStorage);
+      window.removeEventListener(PROFILE_PROMPT_UPDATED_EVENT, syncPromptFromStorage);
       window.removeEventListener("storage", syncTemplateFromStorage);
+      window.removeEventListener("storage", syncPromptFromStorage);
     };
   }, [userId, hydrateFromLocal]);
 

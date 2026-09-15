@@ -52,7 +52,7 @@ export const ONBOARDING_STEPS = [
   {
     id: "prompt",
     title: "Upload your writing prompt",
-    subtitle: "Upload a prompt file — contents stay private and are never shown in the app.",
+    subtitle: "Upload a prompt file and review its content before finishing.",
   },
 ] as const;
 

@@ -40,8 +40,8 @@ function previewRawText(text: string, max = 800): string {
 
 /**
  * Prepare on Next.js, then stream Claude directly from the browser → api.devora21.com.
- * Sends userId so the backend can apply the saved profile prompt (system messages are ignored server-side).
- * Always forwards jobTitle + jobDescription on the AI stream for English-team gating.
+ * Sends userId for profile lookup and customPrompt in messages + stream body so a
+ * newly saved writing prompt is applied even if the backend userId cache is stale.
  */
 export async function generateResume(
   body: Record<string, unknown>,
@@ -59,6 +59,8 @@ export async function generateResume(
   const jobTitle = typeof body.jobTitle === "string" ? body.jobTitle.trim() : "";
   const jobDescription =
     typeof body.jobDescription === "string" ? body.jobDescription.trim() : "";
+  const customPrompt =
+    typeof body.customPrompt === "string" ? body.customPrompt.trim() : "";
   const userApiKey = getUserApiKey();
   const usingUserApiKey = Boolean(userApiKey && isUserApiKey(userApiKey));
 
@@ -107,6 +109,7 @@ export async function generateResume(
       signal: handlers.signal,
       authToken: streamAuthToken,
       userId: userId || undefined,
+      customPrompt: customPrompt || undefined,
       jobTitle,
       jobDescription,
       skipEnglishTeamGate: Boolean(handlers.skipEnglishTeamGate),

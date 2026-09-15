@@ -181,31 +181,19 @@ export default function OnboardingWizard({ user }: OnboardingWizardProps) {
 
 
   async function handlePromptFile(file: File) {
-
     setError("");
-
     setUploading(true);
-
     try {
-
-      await readPromptFile(file);
-
+      const content = await readPromptFile(file);
       setPromptFile(file);
-
-      setCustomPrompt(""); // content stays private; File is uploaded on complete
-
+      setCustomPrompt(content);
     } catch (err) {
-
       setPromptFile(null);
-
+      setCustomPrompt("");
       setError((err as Error).message || "Could not read prompt file.");
-
     } finally {
-
       setUploading(false);
-
     }
-
   }
 
 
@@ -658,7 +646,7 @@ export default function OnboardingWizard({ user }: OnboardingWizardProps) {
                 id="onb-prompt-file"
                 accept=".txt,.md,.json,text/plain,text/markdown,application/json"
                 label="Upload your writing prompt"
-                hint=".txt, .md, or .json with a content field. Contents stay private and are never shown in the app."
+                hint=".txt, .md, or .json with a content field. Review the text below after selecting a file."
                 fileName={promptFile?.name}
                 uploading={uploading}
                 disabled={saving}
@@ -668,6 +656,20 @@ export default function OnboardingWizard({ user }: OnboardingWizardProps) {
                 <p className="text-center text-xs text-slate-400">
                   Selected: {promptFile.name} — uploaded and verified when you finish.
                 </p>
+              ) : null}
+              {customPrompt.trim() ? (
+                <div>
+                  <label htmlFor="onb-prompt-content" className="mb-1.5 block text-xs font-medium text-slate-400">
+                    Prompt content
+                  </label>
+                  <textarea
+                    id="onb-prompt-content"
+                    readOnly
+                    value={customPrompt}
+                    rows={10}
+                    className="w-full resize-y rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 font-mono text-xs leading-relaxed text-slate-200 outline-none focus:border-orange-500/40 focus:ring-2 focus:ring-orange-500/20"
+                  />
+                </div>
               ) : null}
             </div>
           )}

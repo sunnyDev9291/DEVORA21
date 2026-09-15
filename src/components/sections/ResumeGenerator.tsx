@@ -9,6 +9,7 @@ import { resolveResumeWizardStep } from "@/components/sections/ResumeStepper";
 import type { ResumeWorkspaceFabActions } from "@/components/ui/ResumeWorkspaceFabs";
 import { useAuth } from "@/context/AuthContext";
 import type { UserResumeTemplateAsset } from "@/lib/profile-api";
+import { profileApi } from "@/lib/profile-api";
 import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
 import { generateResume } from "@/lib/resume-generate-client";
 import { scrapeJobFromUrl } from "@/lib/job-scrape-api";
@@ -49,7 +50,7 @@ import {
   buildExpectedResumeBaseName,
   extractResumeTitleHeadline,
 } from "@/lib/resume-filename";
-import { loadStoredProfile, resolveUserNames } from "@/lib/user-profile";
+import { loadStoredProfile, resolveUserNames, saveStoredProfile } from "@/lib/user-profile";
 import CompanyPastApplications from "@/components/sections/CompanyPastApplications";
 import EnglishTeamCheck from "@/components/ui/EnglishTeamCheck";
 import EnglishTeamRequiredDialog from "@/components/ui/EnglishTeamRequiredDialog";
@@ -695,9 +696,28 @@ export default function ResumeGenerator({
       setFileName("");
       setStep("review");
 
+      // Always load the latest verified profile prompt so generation does not use a stale form cache.
+      let freshPrompt = form.customPrompt;
+      try {
+        const verified = await profileApi.requireStoredPrompt();
+        freshPrompt = verified.content.trim();
+        if (freshPrompt) {
+          setForm((prev) => ({ ...prev, customPrompt: freshPrompt }));
+          saveStoredProfile(user.id, {
+            customPrompt: freshPrompt,
+            promptFileName: verified.fileName,
+            promptUpdatedAt: Date.now(),
+          });
+        }
+      } catch {
+        const local = loadStoredProfile(user.id).customPrompt.trim();
+        if (local) freshPrompt = local;
+      }
+
       const data = await generateResume(
         {
           ...form,
+          customPrompt: freshPrompt,
           templateName: templateForRequest.fileName,
           templateBase64: templateForRequest.templateBase64,
           profileName: chatProfile?.fullName,
@@ -784,10 +804,31 @@ export default function ResumeGenerator({
     const targetedInstruction = buildImproveTargetInstruction(target);
 
     try {
+      let freshPrompt = form.customPrompt;
+      try {
+        const verified = await profileApi.requireStoredPrompt();
+        freshPrompt = verified.content.trim() || freshPrompt;
+        if (freshPrompt) {
+          setForm((prev) => ({ ...prev, customPrompt: freshPrompt }));
+          if (user?.id) {
+            saveStoredProfile(user.id, {
+              customPrompt: freshPrompt,
+              promptFileName: verified.fileName,
+              promptUpdatedAt: Date.now(),
+            });
+          }
+        }
+      } catch {
+        if (user?.id) {
+          const local = loadStoredProfile(user.id).customPrompt.trim();
+          if (local) freshPrompt = local;
+        }
+      }
+
       const draft = await generateResume(
         {
           ...form,
-          customPrompt: form.customPrompt,
+          customPrompt: freshPrompt,
           task: targetedInstruction,
           templateName: templateForRequest.fileName,
           templateBase64: templateForRequest.templateBase64,
@@ -1129,9 +1170,27 @@ export default function ResumeGenerator({
             />
           </div>
 
-          {userPrompt.trim() && (
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Private writing instructions from your profile are applied automatically. Prompt content is never displayed.
+          {form.customPrompt.trim() ? (
+            <details className="rounded-xl border border-slate-200 bg-slate-50/80 open:pb-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
+              <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-slate-700 dark:text-slate-200 [&::-webkit-details-marker]:hidden">
+                <span className="inline-flex items-center gap-2">
+                  Writing prompt from your profile
+                  <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                    (click to show or hide)
+                  </span>
+                </span>
+              </summary>
+              <textarea
+                readOnly
+                value={form.customPrompt}
+                rows={8}
+                className="mx-4 mb-1 w-[calc(100%-2rem)] resize-y rounded-lg border border-slate-200 bg-white px-3 py-2.5 font-mono text-xs leading-relaxed text-slate-800 outline-none dark:border-white/[0.08] dark:bg-warm-950/50 dark:text-slate-200"
+                aria-label="Profile writing prompt content"
+              />
+            </details>
+          ) : (
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              No writing prompt loaded. Upload one on your dashboard profile before generating.
             </p>
           )}
 

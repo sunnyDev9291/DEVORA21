@@ -10,6 +10,8 @@ export type AiCompletionOptions = {
   jsonObject?: boolean;
   /** Logged-in user id for profile-prompt application. */
   userId?: string;
+  /** Fresh writing prompt — prefer over a stale userId prompt cache when supported. */
+  customPrompt?: string;
   /** Optional end-user Bearer forwarded as X-User-Authorization. */
   userAuthorization?: string;
   /** Required by backend English-team gate on resume (jsonObject) generations. */
@@ -71,6 +73,12 @@ function buildAiBody(
   const userId = options?.userId?.trim();
   if (userId) {
     body.userId = userId;
+  }
+  const customPrompt = options?.customPrompt?.trim();
+  if (customPrompt) {
+    body.customPrompt = customPrompt;
+    body.profilePrompt = customPrompt;
+    body.promptContent = customPrompt;
   }
   if (options?.skipEnglishTeamGate) {
     body.skipEnglishTeamGate = true;
