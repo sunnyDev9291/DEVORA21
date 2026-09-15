@@ -184,16 +184,17 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
     if (!onFabActionsChange) return;
 
     const hasResult = Boolean(result?.pdfBase64);
-    if (!hasResult && !canOpenResumeChat) {
+    const ready = hasResult || canOpenResumeChat;
+    if (!ready) {
       onFabActionsChange(null);
       return;
     }
 
     onFabActionsChange({
-      showClear: hasResult || canOpenResumeChat || hasClearableContent,
+      showClear: true,
       clearDisabled: running,
       onClear: handleClear,
-      showChat: canOpenResumeChat,
+      showChat: true,
       chatDisabled: running || !canOpenResumeChat,
       onOpenChat: () => setResumeChatOpen(true),
     });
@@ -201,7 +202,6 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
     onFabActionsChange,
     result?.pdfBase64,
     canOpenResumeChat,
-    hasClearableContent,
     running,
   ]); // eslint-disable-line react-hooks/exhaustive-deps -- handleClear reads latest state
 
@@ -238,7 +238,6 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
     setChatContent(nextContent);
     setJobDescription(description);
     setGenerationKey((k) => k + 1);
-    if (nextContent) setResumeChatOpen(true);
   }
 
   async function finishWithResult(jobSnapshot: ResumeFromJobJob, signal: AbortSignal) {
