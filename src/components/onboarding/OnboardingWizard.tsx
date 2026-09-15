@@ -342,10 +342,8 @@ export default function OnboardingWizard({ user }: OnboardingWizardProps) {
 
         // Ensure server stored the file even if onboarding multipart ignored it.
 
-        const verified = await profileApi.uploadPromptFile(promptFile);
-
-        verifiedPromptContent = verified.content.trim();
-
+        const verified = await profileApi.uploadPromptFile(promptFile, customPrompt);
+        verifiedPromptContent = verified.uploadedContent.trim() || customPrompt.trim() || verified.content.trim();
         verifiedPromptName = verified.fileName || promptFile.name;
 
       } catch (promptErr) {

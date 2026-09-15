@@ -21,13 +21,13 @@ import {
 import { iterateJobCheckStream } from "@/lib/job-check-stream";
 import { isEnglishTeamRequiredError } from "@/lib/english-team-gate";
 import EnglishTeamRequiredDialog from "@/components/ui/EnglishTeamRequiredDialog";
-import { profileApi } from "@/lib/profile-api";
 import { useAuth } from "@/context/AuthContext";
 import { loadStoredProfile, resolveUserNames } from "@/lib/user-profile";
 import { scrapeJobFromUrl } from "@/lib/job-scrape-api";
 import { resolveResumeChatContent } from "@/lib/resume-chat-prompt";
 import type { GeneratedResumeContent } from "@/lib/resume-types";
 import type { ResumeWorkspaceFabActions } from "@/components/ui/ResumeWorkspaceFabs";
+import { resolveWritingPrompt } from "@/lib/writing-prompt";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
 const ResumeChatDialog = dynamic(() => import("@/components/ui/ResumeChatDialog"));
@@ -364,19 +364,12 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
 
     let freshPrompt = "";
     try {
-      const verified = await profileApi.requireStoredPrompt();
-      freshPrompt = verified.content.trim();
-      if (freshPrompt && user?.id) {
-        const { saveStoredProfile } = await import("@/lib/user-profile");
-        const { PROFILE_PROMPT_UPDATED_EVENT } = await import("@/lib/template-fingerprint");
-        saveStoredProfile(user.id, {
-          customPrompt: freshPrompt,
-          promptFileName: verified.fileName,
-          promptUpdatedAt: Date.now(),
-        });
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent(PROFILE_PROMPT_UPDATED_EVENT));
-        }
+      const resolved = await resolveWritingPrompt(user?.id);
+      freshPrompt = resolved.content.trim();
+      if (!freshPrompt) {
+        throw new Error(
+          "Profile prompt not found. Upload a prompt in your Devora21 profile before generating a resume."
+        );
       }
     } catch (err) {
       setError(

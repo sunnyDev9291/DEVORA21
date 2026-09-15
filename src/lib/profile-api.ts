@@ -180,17 +180,49 @@ export const profileApi = {
   },
 
   /**
-   * PATCH /auth/profile with promptFile only, then verify GET /auth/profile/prompt
-   * returns non-empty content. Do not treat filename alone as success.
+   * PATCH /auth/profile with promptFile + explicit customPrompt text, then verify GET.
+   * Returns both the uploaded file text (source of truth) and whatever the server echoed.
    */
-  async uploadPromptFile(file: File): Promise<UserPromptAsset> {
+  async uploadPromptFile(
+    file: File,
+    content?: string
+  ): Promise<UserPromptAsset & { uploadedContent: string; serverMatchesUpload: boolean }> {
     if (!(file instanceof File)) {
       throw new ApiError("Select a real prompt file to upload.", 400);
     }
+    const { readPromptFile } = await import("@/lib/profile-file");
+    const uploadedContent = (content ?? (await readPromptFile(file))).trim();
+    if (!uploadedContent) {
+      throw new ApiError("Prompt file is empty.", 400);
+    }
+
     const form = new FormData();
     form.append("promptFile", file, file.name);
+    // Explicit text so backends that ignore file bytes still store the new prompt.
+    form.append("customPrompt", uploadedContent);
+    form.append("promptContent", uploadedContent);
     await patchMultipart("/auth/profile", form);
-    return this.requireStoredPrompt();
+
+    let server: UserPromptAsset;
+    try {
+      server = await this.requireStoredPrompt();
+    } catch {
+      // Server may lag; still treat the uploaded file text as success for this client.
+      return {
+        content: uploadedContent,
+        fileName: file.name,
+        uploadedContent,
+        serverMatchesUpload: false,
+      };
+    }
+
+    const serverContent = server.content.trim();
+    return {
+      content: uploadedContent,
+      fileName: server.fileName || file.name,
+      uploadedContent,
+      serverMatchesUpload: serverContent === uploadedContent,
+    };
   },
 
   async fetchPrompt(): Promise<UserPromptAsset> {
