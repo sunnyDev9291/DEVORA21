@@ -1,5 +1,5 @@
 import { authApi, ApiError, isValidAuthUser } from "@/lib/auth-api";
-import { refreshAuthSession } from "@/lib/auth-refresh";
+import { isRefreshDenied, refreshAuthSession } from "@/lib/auth-refresh";
 import type { User } from "@/types/auth";
 
 /**
@@ -14,6 +14,7 @@ export type SessionFetchResult =
   | { status: "offline" };
 
 async function tryProactiveRefresh(): Promise<void> {
+  if (isRefreshDenied()) return;
   try {
     await refreshAuthSession();
   } catch {
@@ -35,7 +36,7 @@ export async function fetchSessionUser(options?: {
    */
   softRetry?: boolean;
 }): Promise<SessionFetchResult> {
-  if (options?.proactiveRefresh) {
+  if (options?.proactiveRefresh && !isRefreshDenied()) {
     await tryProactiveRefresh();
   }
 
@@ -48,6 +49,10 @@ export async function fetchSessionUser(options?: {
       return { status: "unauthenticated" };
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
+        if (isRefreshDenied()) {
+          return { status: "unauthenticated" };
+        }
+
         // apiAuthFetch may already have refreshed+retried; try one more shared refresh.
         const refreshed = await refreshAuthSession();
         if (refreshed) {
@@ -64,12 +69,13 @@ export async function fetchSessionUser(options?: {
               return { status: "offline" };
             }
           }
-        } else {
-          // Refresh failed without hard expiry (5xx etc.) → keep UI session.
-          // Hard expiry is signaled via AUTH_SESSION_EXPIRED_EVENT.
-          return { status: "offline" };
+          return { status: "unauthenticated" };
         }
-        return { status: "unauthenticated" };
+
+        // Refresh 401 → denied flag set + expired event. Soft failures → offline.
+        return isRefreshDenied()
+          ? { status: "unauthenticated" }
+          : { status: "offline" };
       }
 
       if (error instanceof ApiError && error.status >= 500) {
@@ -89,11 +95,11 @@ export async function fetchSessionUser(options?: {
     return first;
   }
 
-  if (options?.softRetry) {
+  if (options?.softRetry && !isRefreshDenied()) {
     await new Promise((r) => setTimeout(r, 400));
-    await tryProactiveRefresh();
     const second = await attempt();
     if (second.status !== "unauthenticated") return second;
+    if (isRefreshDenied()) return second;
     await new Promise((r) => setTimeout(r, 800));
     return attempt();
   }

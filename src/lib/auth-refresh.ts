@@ -11,6 +11,8 @@ const CHANNEL_NAME = "devora21-auth-refresh";
 const STORAGE_LOCK_KEY = "devora21-auth-refresh-lock";
 const STORAGE_RESULT_KEY = "devora21-auth-refresh-result";
 const LOCK_TTL_MS = 15_000;
+/** After refresh returns 401, skip further refresh attempts briefly (stops me/refresh storms). */
+const REFRESH_DENIAL_MS = 60_000;
 
 type RefreshResultMessage = {
   type: "refresh-result";
@@ -29,6 +31,7 @@ type RefreshChannelMessage = RefreshResultMessage | RefreshStartMessage;
 let inFlight: Promise<boolean> | null = null;
 let channel: BroadcastChannel | null = null;
 let tabId = "";
+let refreshDeniedUntil = 0;
 
 function getTabId(): string {
   if (tabId) return tabId;
@@ -39,6 +42,19 @@ function getTabId(): string {
 function notifySessionExpired(): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(AUTH_SESSION_EXPIRED_EVENT));
+}
+
+function markRefreshDenied(): void {
+  refreshDeniedUntil = Date.now() + REFRESH_DENIAL_MS;
+}
+
+/** Call after a successful login/register so refresh is allowed again. */
+export function clearRefreshDenial(): void {
+  refreshDeniedUntil = 0;
+}
+
+export function isRefreshDenied(): boolean {
+  return Date.now() < refreshDeniedUntil;
 }
 
 function getChannel(): BroadcastChannel | null {
@@ -117,6 +133,7 @@ function waitForPeerResult(timeoutMs = LOCK_TTL_MS): Promise<boolean | null> {
       ch?.removeEventListener("message", onMessage);
       window.removeEventListener("storage", onStorage);
       if (value === false && expired) {
+        markRefreshDenied();
         notifySessionExpired();
       }
       resolve(value);
@@ -160,10 +177,11 @@ async function postRefresh(): Promise<{ ok: boolean; expired: boolean }> {
   });
 
   if (res.ok) {
+    clearRefreshDenial();
     return { ok: true, expired: false };
   }
 
-  // Only treat refresh's own 401 as hard session expiry.
+  // Only treat refresh's own 401 as hard session expiry / no refresh cookie.
   if (res.status === 401) {
     return { ok: false, expired: true };
   }
@@ -179,6 +197,7 @@ async function runRefreshLeader(): Promise<boolean> {
     const result = await postRefresh();
     publishResult(result.ok, result.expired);
     if (result.expired) {
+      markRefreshDenied();
       notifySessionExpired();
     }
     return result.ok;
@@ -193,14 +212,21 @@ async function runRefreshLeader(): Promise<boolean> {
  * fired) treat as logged out — never calls /auth/logout.
  */
 export async function refreshAuthSession(): Promise<boolean> {
+  if (isRefreshDenied()) {
+    return false;
+  }
+
   if (typeof window === "undefined") {
     const result = await postRefresh();
+    if (result.expired) markRefreshDenied();
     return result.ok;
   }
 
   if (inFlight) return inFlight;
 
   inFlight = (async () => {
+    if (isRefreshDenied()) return false;
+
     // Another tab may already be refreshing.
     if (!tryAcquireLock()) {
       const peer = await waitForPeerResult();
@@ -210,6 +236,11 @@ export async function refreshAuthSession(): Promise<boolean> {
         const peerAgain = await waitForPeerResult(5_000);
         if (peerAgain !== null) return peerAgain;
       }
+    }
+
+    if (isRefreshDenied()) {
+      releaseLock();
+      return false;
     }
 
     return runRefreshLeader();
@@ -224,6 +255,7 @@ export async function refreshAuthSession(): Promise<boolean> {
 
 /** Whether this URL should skip the automatic 401 → refresh → retry path. */
 export function shouldSkipAuthRetry(url: string): boolean {
+  if (isRefreshDenied()) return true;
   return isAuthRefreshPath(url) || /\/auth\/(login|register|logout)\/?(\?|$)/.test(
     url.startsWith("http")
       ? (() => {

@@ -14,7 +14,7 @@ export function getAuthHeaders(mode: ApiAuthMode = "auto"): Record<string, strin
 }
 
 /**
- * Auth for the Devora21 API (same-origin /backend proxy in the browser):
+ * Auth for api.devora21.com:
  * - cookie: session cookies only (credentials include)
  * - bearer: Authorization: Bearer dv21_… (still sends credentials)
  * - auto: cookies + optional dv21_ Bearer when stored

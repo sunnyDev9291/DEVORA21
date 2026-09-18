@@ -12,7 +12,7 @@ import {
 } from "react";
 import { authApi, getApiErrorMessage, isValidAuthUser, mergeAuthUserState, ApiError } from "@/lib/auth-api";
 import { fetchSessionUser, SESSION_KEEPALIVE_MS } from "@/lib/auth-session";
-import { AUTH_SESSION_EXPIRED_EVENT } from "@/lib/auth-refresh";
+import { AUTH_SESSION_EXPIRED_EVENT, clearRefreshDenial } from "@/lib/auth-refresh";
 import { clearAuthClientStorage } from "@/lib/auth-storage";
 import { isUserEmailVerified } from "@/lib/email-verification";
 import { isResumeBuilderEnabled, RESUME_BUILDER_ACCESS_MESSAGE } from "@/lib/resume-access";
@@ -97,7 +97,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const result = await fetchSessionUser({
-      proactiveRefresh: true,
+      // Only slide cookies when we already believe we have a session.
+      proactiveRefresh: Boolean(userRef.current),
       softRetry: options?.softRetry,
     });
     if (result.status === "authenticated") {
@@ -127,7 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     async function init() {
       try {
-        const result = await fetchSessionUser({ softRetry: true });
+        const result = await fetchSessionUser();
         if (cancelled) return;
 
         if (result.status === "authenticated") {
@@ -209,10 +210,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(
     async (email: string, password: string, _rememberMe = true) => {
       clearUserApiKey();
+      clearRefreshDenial();
       const { data } = await authApi.login(email, password, true);
       if (!isValidAuthUser(data.user)) {
         throw new Error("Login succeeded but the server returned an invalid user profile.");
       }
+      clearRefreshDenial();
       applyUser(data.user);
       setAuthMethod("session");
       return data.user;
@@ -223,10 +226,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = useCallback(
     async (name: string, email: string, password: string) => {
       clearUserApiKey();
+      clearRefreshDenial();
       const { data } = await authApi.register(name, email, password);
       if (!isValidAuthUser(data.user)) {
         throw new Error("Registration succeeded but the server returned an invalid user profile.");
       }
+      clearRefreshDenial();
       applyUser(data.user);
       setAuthMethod("session");
       return data.user;

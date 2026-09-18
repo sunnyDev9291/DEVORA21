@@ -1,17 +1,17 @@
 /**
  * Devora21 backend API URL resolution.
  *
- * Browser calls use a same-origin proxy (`/backend`) so session cookies are
- * first-party (avoids Chrome third-party cookie blocking on api.devora21.com).
- * Server-side code talks to the absolute API URL directly.
+ * Browser auth uses https://api.devora21.com directly with credentials: "include"
+ * (HttpOnly cookies, SameSite=None). A same-origin `/backend` proxy is optional via
+ * NEXT_PUBLIC_API_BASE_URL=/backend, but the default must be the absolute API —
+ * Netlify proxying drops/mismatches Set-Cookie Domain and breaks login.
  *
- * Note: Next.js already owns `/api/*` (resume, chat, templates). Do not proxy
- * that path to the external API — use `/backend` instead.
+ * Next.js already owns `/api/*` (resume, chat, templates).
  */
 
 export const DEFAULT_API_URL = "https://api.devora21.com";
 
-/** Same-origin reverse-proxy prefix (Netlify redirect + next.config rewrite). */
+/** Optional same-origin reverse-proxy prefix (Netlify redirect + next.config rewrite). */
 export const SAME_ORIGIN_API_PREFIX = "/backend";
 
 function trimTrailingSlash(url: string): string {
@@ -29,19 +29,15 @@ function isLocalAbsoluteApi(url: string): boolean {
 
 /**
  * Browser-facing API base.
- * - Relative env (`/backend`) → use as-is
- * - localhost absolute → use as-is (local API without proxy)
- * - otherwise → same-origin `/backend` (ignore absolute production API URLs)
+ * Absolute API URL by default. Relative `/backend` is ignored — Netlify's proxy
+ * does not preserve api.devora21.com Set-Cookie Domain, which broke login.
  */
 function resolveBrowserApiBase(envValue: string | undefined): string {
   const trimmed = envValue?.trim();
-  if (trimmed?.startsWith("/")) {
+  if (trimmed && !trimmed.startsWith("/")) {
     return trimTrailingSlash(trimmed);
   }
-  if (trimmed && isLocalAbsoluteApi(trimmed)) {
-    return trimTrailingSlash(trimmed);
-  }
-  return SAME_ORIGIN_API_PREFIX;
+  return DEFAULT_API_URL;
 }
 
 /** Absolute upstream for server/Netlify functions (never a relative path). */
@@ -50,10 +46,13 @@ function resolveUpstreamApiBase(envValue: string | undefined): string {
   if (trimmed && !trimmed.startsWith("/")) {
     return trimTrailingSlash(trimmed);
   }
+  if (trimmed && isLocalAbsoluteApi(trimmed)) {
+    return trimTrailingSlash(trimmed);
+  }
   return DEFAULT_API_URL;
 }
 
-/** Browser auth / cookie calls (fetch with credentials → same-origin proxy). */
+/** Browser auth / cookie calls (fetch with credentials). */
 export const API_BASE_URL = resolveBrowserApiBase(process.env.NEXT_PUBLIC_API_BASE_URL);
 
 /** Server-side calls (Netlify functions, Next.js API routes → real API). */
