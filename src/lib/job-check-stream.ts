@@ -78,8 +78,7 @@ async function fetchDirectJobCheckStream(
 ): Promise<Response> {
   return fetch(`${API_BASE_URL}/jobs/check/stream`, {
     method: "POST",
-    // Same as resume AI stream — avoid credential CORS hangs.
-    credentials: "omit",
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       Accept: "text/plain",

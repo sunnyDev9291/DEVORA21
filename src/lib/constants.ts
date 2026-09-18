@@ -299,7 +299,7 @@ export const AUTH_LINKS = {
   onboarding: "/onboarding",
 } as const;
 
-export { API_BASE_URL, BACKEND_API_URL, DEFAULT_API_URL } from "@/lib/api-base-url";
+export { API_BASE_URL, BACKEND_API_URL, DEFAULT_API_URL, SAME_ORIGIN_API_PREFIX } from "@/lib/api-base-url";
 
 export const NAV_LINKS = [
   { label: "Services", href: "/services" },

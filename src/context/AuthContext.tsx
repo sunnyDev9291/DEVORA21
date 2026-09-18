@@ -12,6 +12,7 @@ import {
 } from "react";
 import { authApi, getApiErrorMessage, isValidAuthUser, mergeAuthUserState, ApiError } from "@/lib/auth-api";
 import { fetchSessionUser, SESSION_KEEPALIVE_MS } from "@/lib/auth-session";
+import { AUTH_SESSION_EXPIRED_EVENT } from "@/lib/auth-refresh";
 import { clearAuthClientStorage } from "@/lib/auth-storage";
 import { isUserEmailVerified } from "@/lib/email-verification";
 import { isResumeBuilderEnabled, RESUME_BUILDER_ACCESS_MESSAGE } from "@/lib/resume-access";
@@ -38,7 +39,7 @@ interface AuthContextValue {
   /** Authenticate with a user API key (`dv21_…`) — no email login required. */
   connectWithApiKey: (rawKey: string) => Promise<User>;
   logout: () => Promise<void>;
-  refreshUser: () => Promise<void>;
+  refreshUser: (options?: { softRetry?: boolean }) => Promise<void>;
   markEmailVerified: () => void;
 }
 
@@ -81,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const syncSession = useCallback(async () => {
+  const syncSession = useCallback(async (options?: { softRetry?: boolean }) => {
     if (authMethodRef.current === "apiKey" || (!authMethodRef.current && getUserApiKey())) {
       const apiUser = await fetchUserViaApiKey();
       if (apiUser) {
@@ -95,7 +96,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    const result = await fetchSessionUser({ proactiveRefresh: true });
+    const result = await fetchSessionUser({
+      proactiveRefresh: true,
+      softRetry: options?.softRetry,
+    });
     if (result.status === "authenticated") {
       applyUser(result.user);
       setAuthMethod("session");
@@ -107,12 +111,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAuthMethod(null);
       }
     }
-    // offline: keep existing user
+    // offline: keep existing user (do not clear on transient failures)
   }, [applyUser]);
 
-  const refreshUser = useCallback(async () => {
+  const refreshUser = useCallback(async (options?: { softRetry?: boolean }) => {
     try {
-      await syncSession();
+      await syncSession({ softRetry: options?.softRetry });
     } catch (error) {
       console.error("Failed to refresh session:", getApiErrorMessage(error));
     }
@@ -123,7 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     async function init() {
       try {
-        const result = await fetchSessionUser();
+        const result = await fetchSessionUser({ softRetry: true });
         if (cancelled) return;
 
         if (result.status === "authenticated") {
@@ -143,6 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setAuthMethod(null);
           }
         }
+        // offline on first paint: leave user null until a later sync
       } finally {
         if (!cancelled) setAuthChecked(true);
       }
@@ -163,10 +168,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    window.addEventListener("focus", onVisible);
+    // visibilitychange alone — avoid double sync with window focus
     document.addEventListener("visibilitychange", onVisible);
     return () => {
-      window.removeEventListener("focus", onVisible);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [authChecked, syncSession]);
@@ -190,10 +194,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(USER_API_KEY_CHANGED_EVENT, onKeyChanged);
   }, [syncSession]);
 
+  useEffect(() => {
+    function onSessionExpired() {
+      if (authMethodRef.current === "apiKey") return;
+      // Refresh itself returned 401 — clear UI state. Do not call /auth/logout.
+      clearAuthClientStorage(userRef.current?.id);
+      setUser(null);
+      setAuthMethod(null);
+    }
+    window.addEventListener(AUTH_SESSION_EXPIRED_EVENT, onSessionExpired);
+    return () => window.removeEventListener(AUTH_SESSION_EXPIRED_EVENT, onSessionExpired);
+  }, []);
+
   const login = useCallback(
-    async (email: string, password: string, rememberMe = true) => {
+    async (email: string, password: string, _rememberMe = true) => {
       clearUserApiKey();
-      const { data } = await authApi.login(email, password, rememberMe);
+      const { data } = await authApi.login(email, password, true);
       if (!isValidAuthUser(data.user)) {
         throw new Error("Login succeeded but the server returned an invalid user profile.");
       }

@@ -3,7 +3,9 @@ import { clearUserApiKey } from "@/lib/user-api-key";
 
 const PROFILE_PREFIX = "devora21-user-profile:";
 
-/** Remove client-side auth and cached user data (not API cookies — use authApi.logout for those). */
+/** Remove client-side cached profile / API key only.
+ * Never deletes access_token / refresh_token cookies — only POST /auth/logout does that.
+ */
 export function clearAuthClientStorage(userId?: string): void {
   if (typeof window === "undefined") return;
 

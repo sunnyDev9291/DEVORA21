@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "@/lib/api-base-url";
+import { apiAuthFetch } from "@/lib/api-auth";
 import { ApiError, getApiErrorMessage } from "@/lib/auth-api";
 
 export type UserApiKey = {
@@ -29,9 +30,8 @@ async function parseJson<T>(res: Response): Promise<T | null> {
 }
 
 async function apiKeysRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const res = await apiAuthFetch(`${API_BASE_URL}${path}`, {
     ...options,
-    credentials: "include",
     headers: {
       Accept: "application/json",
       ...(options.body ? { "Content-Type": "application/json" } : {}),
@@ -39,7 +39,9 @@ async function apiKeysRequest<T>(path: string, options: RequestInit = {}): Promi
     },
   });
 
-  const data = await parseJson<T & { message?: string; error?: string; errors?: Record<string, string[]> }>(res);
+  const data = await parseJson<
+    T & { message?: string; error?: string; errors?: Record<string, string[]> }
+  >(res);
 
   if (!res.ok) {
     const message = getApiErrorMessage(data ?? { message: undefined }, "Request failed");
@@ -62,7 +64,10 @@ export const apiKeysApi = {
     }),
 
   revoke: (id: string) =>
-    apiKeysRequest<{ ok?: boolean; message?: string }>(`/auth/api-keys/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-    }),
+    apiKeysRequest<{ ok?: boolean; message?: string }>(
+      `/auth/api-keys/${encodeURIComponent(id)}`,
+      {
+        method: "DELETE",
+      }
+    ),
 };

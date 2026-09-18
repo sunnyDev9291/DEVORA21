@@ -1,5 +1,6 @@
 import { API_BASE_URL } from "@/lib/api-base-url";
 import { apiAuthFetch, type ApiAuthMode } from "@/lib/api-auth";
+import { refreshAuthSession } from "@/lib/auth-refresh";
 import { parseListingUrlsPartial } from "@/lib/builtin-crawl-types";
 import { readEmailVerified, mergeEmailVerifiedState } from "@/lib/email-verification";
 import type {
@@ -293,12 +294,13 @@ export const authApi = {
       data: normalizeAuthUser(data),
     })),
 
-  login: (email: string, password: string, rememberMe = true) =>
+  login: (email: string, password: string, _rememberMe = true) =>
     apiRequest<AuthResponse & Record<string, unknown>>(
       "/auth/login",
       {
         method: "POST",
-        body: JSON.stringify({ email, password, rememberMe }),
+        // Always request long-lived refresh (30d). UI checkbox may still be shown.
+        body: JSON.stringify({ email, password, rememberMe: true }),
       },
       "cookie"
     ).then((data) => {
@@ -306,11 +308,14 @@ export const authApi = {
       return { data: { ...data, user } };
     }),
 
-  /** Extend an existing session cookie (sliding / long-lived sessions). */
-  refreshSession: () =>
-    apiRequest<MessageResponse>("/auth/refresh", { method: "POST" }, "cookie").then((data) => ({
-      data,
-    })),
+  /** Extend access cookie via shared single-flight refresh (multi-tab safe). */
+  refreshSession: async () => {
+    const ok = await refreshAuthSession();
+    if (!ok) {
+      throw new ApiError("Refresh token required", 401);
+    }
+    return { data: { message: "ok" } satisfies MessageResponse };
+  },
 
   register: (name: string, email: string, password: string) => {
     const { firstName, lastName } = splitFullName(name);
