@@ -13,6 +13,11 @@ export type ResumeExperience = {
   company: string;
   role: string;
   dates: string;
+  /**
+   * Optional workplace line under the job header (Joao-style templates),
+   * e.g. "Boston, Massachusetts, USA | Remote".
+   */
+  location?: string;
   /** Used when layout is bullets (or as ATS fallback text). */
   bullets: string[];
   /** Used when layout is projects — one block per project under the company. */

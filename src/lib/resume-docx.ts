@@ -166,8 +166,31 @@ function replaceSingleRunParagraphText(pXml: string, text: string): string | nul
 type ExperienceStyleBlock = {
   headerTemplate: string;
   roleTemplate?: string;
+  /** Joao-style workplace line under the combined job header. */
+  locationTemplate?: string;
   bulletTemplate: string;
 };
+
+/**
+ * Workplace / location line under a job header, e.g.
+ * "Boston, Massachusetts, USA | Remote" or "Miami, Florida, USA | On-Site".
+ */
+export function isExperienceLocationLine(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  if (isSectionHeader(t) || isPlainBulletLine(t) || parseDatesFromLine(t)) return false;
+  if (looksLikeBulletSentence(t)) return false;
+  if (t.length > 100) return false;
+
+  if (/\|\s*(Remote|On-?Site|Hybrid|Onsite)\b/i.test(t)) return true;
+
+  // Short place-like line with commas, no sentence punctuation.
+  if (t.includes(",") && !/[.!?]/.test(t) && /^[\p{L}\d ,./'’|&()-]+$/u.test(t)) {
+    return t.split(",").length >= 2;
+  }
+
+  return false;
+}
 
 function extractExperienceStyleBlocks(
   originalParas: string[],
@@ -207,17 +230,31 @@ function extractExperienceStyleBlocks(
         block.roleTemplate = lines[i].xml;
         i += 1;
       }
-    } else if (headerMatch.skipNext) {
+    } else if (headerMatch.skipNext && i < lines.length) {
+      // Combined header + workplace location line.
+      block.locationTemplate = lines[i].xml;
+      i += 1;
+    } else if (i < lines.length && !lines[i].isListItem && isExperienceLocationLine(lines[i].text)) {
+      block.locationTemplate = lines[i].xml;
       i += 1;
     }
 
     if (i < lines.length && lines[i].isListItem) {
       block.bulletTemplate = lines[i].xml;
+    } else {
+      // Fall back to the first list paragraph in the experience region.
+      const listSample = lines.find((candidate) => candidate.isListItem);
+      if (listSample) block.bulletTemplate = listSample.xml;
     }
 
     blocks.push(block);
 
     while (i < lines.length && lines[i].isListItem) {
+      i += 1;
+    }
+
+    // Skip blank spacers between jobs.
+    while (i < lines.length && !lines[i].text) {
       i += 1;
     }
   }
@@ -603,11 +640,20 @@ function looksLikeBulletSentence(text: string): boolean {
 function tryParseJobHeader(
   line: DocxParagraph,
   next: DocxParagraph | null
-): { header: Pick<GeneratedResumeContent["experiences"][number], "company" | "role" | "dates">; skipNext: boolean } | null {
+): {
+  header: Pick<GeneratedResumeContent["experiences"][number], "company" | "role" | "dates" | "location">;
+  skipNext: boolean;
+} | null {
   if (line.isListItem || !line.text) return null;
 
   const combined = parseCombinedExperienceLine(line.text);
   if (combined && !looksLikeBulletSentence(line.text)) {
+    if (next && !next.isListItem && isExperienceLocationLine(next.text)) {
+      return {
+        header: { ...combined, location: next.text.trim() },
+        skipNext: true,
+      };
+    }
     return { header: combined, skipNext: false };
   }
 
@@ -1142,6 +1188,14 @@ export function applyContentToDocx(
           boldExpText
         );
         experienceParagraphs.push(setParagraphText(style.headerTemplate, headerText));
+        if (style.locationTemplate) {
+          const locationText =
+            exp.location?.trim() ||
+            getParagraphText(style.locationTemplate).trim();
+          if (locationText) {
+            experienceParagraphs.push(setParagraphText(style.locationTemplate, locationText));
+          }
+        }
       } else {
         experienceParagraphs.push(setParagraphText(style.headerTemplate, exp.company));
         const roleDates = exp.dates
@@ -1199,13 +1253,21 @@ export function parseExperiencesFromDocxBuffer(buffer: Buffer) {
 
   let currentHeader: Pick<
     GeneratedResumeContent["experiences"][number],
-    "company" | "role" | "dates"
+    "company" | "role" | "dates" | "location"
   > | null = null;
   let bullets: string[] = [];
 
   const flush = () => {
     if (!currentHeader) return;
-    experiences.push({ ...currentHeader, bullets: [...bullets] });
+    experiences.push({
+      company: currentHeader.company,
+      role: currentHeader.role,
+      dates: currentHeader.dates,
+      ...(currentHeader.location?.trim()
+        ? { location: currentHeader.location.trim() }
+        : {}),
+      bullets: [...bullets],
+    });
     currentHeader = null;
     bullets = [];
   };
@@ -1225,6 +1287,19 @@ export function parseExperiencesFromDocxBuffer(buffer: Buffer) {
       flush();
       currentHeader = headerMatch.header;
       if (headerMatch.skipNext) i += 1;
+      continue;
+    }
+
+    // Workplace location already captured via tryParseJobHeader; never treat as a bullet.
+    if (isExperienceLocationLine(line.text)) {
+      if (currentHeader && !currentHeader.location) {
+        currentHeader = {
+          company: currentHeader.company,
+          role: currentHeader.role,
+          dates: currentHeader.dates,
+          location: line.text.trim(),
+        };
+      }
       continue;
     }
 

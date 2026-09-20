@@ -14,7 +14,7 @@ const BULLETS_JSON_SHAPE = `{
   "skills": "string",
   "fileName": "string",
   "experiences": [
-    { "company": "string", "role": "string", "dates": "string", "bullets": ["string"] }
+    { "company": "string", "role": "string", "dates": "string", "location": "string", "bullets": ["string"] }
   ]
 }`;
 
@@ -57,9 +57,10 @@ export function buildResumeSystemPrompt(regenerate = false, layout: ResumeTempla
     "",
     "Technical output rules (not content style):",
     "- Use **double asterisks** around skill category labels (e.g. **Languages:**) and tech terms so Word can render bold.",
-    "- Match the template job count, companies, dates, and fixed project names from the user message.",
+    "- Match the template job count, companies, dates, locations, and fixed project names from the user message.",
     "- Skillsets JSON must match the template skillsets layout in the user message (labels, line count, formatting).",
     "- Bullet count per job is not taken from the template.",
+    "- Keep each job's location/workplace line when the template provides one (e.g. \"City, Region | Remote\").",
     "- Do not invent employers or projects.",
     "- No markdown fences or commentary.",
     ...regenerateRules,
@@ -71,13 +72,15 @@ function formatTemplateStructureLine(
   index: number,
   layout: ResumeTemplateLayout
 ): string {
-  const prefix = `${index + 1}. company="${e.company}" | dates="${e.dates}"`;
+  const prefix = `${index + 1}. company="${e.company}" | dates="${e.dates}"${
+    e.location?.trim() ? ` | location="${e.location.trim()}"` : ""
+  }`;
   if (isProjectLayout(layout) || e.projects?.length) {
     const projects = e.projects ?? [];
     const names = projects.map((p) => `"${p.name}"`).join(", ");
     return `${prefix} | ${projects.length} project(s), fixed names: ${names}`;
   }
-  return `${prefix} | keep this job; bullet count is not taken from the template (template currently has ${e.bullets.length} slots)`;
+  return `${prefix} | keep company/dates/location fixed; bullet count is not taken from the template (template currently has ${e.bullets.length} slots)`;
 }
 
 export function buildResumeUserPrompt({
@@ -285,6 +288,7 @@ function coerceExperienceEntry(raw: unknown): {
   company: string;
   role: string;
   dates: string;
+  location?: string;
   bullets: string[];
   projects?: Array<Partial<ResumeProject>>;
 } | null {
@@ -293,6 +297,7 @@ function coerceExperienceEntry(raw: unknown): {
   const company = String(exp.company ?? "").trim();
   const role = String(exp.role ?? exp.title ?? "").trim();
   const dates = String(exp.dates ?? exp.date ?? "").trim();
+  const location = String(exp.location ?? exp.workplace ?? exp.workLocation ?? "").trim();
   const bullets = Array.isArray(exp.bullets)
     ? exp.bullets.map((b) => String(b).trim()).filter(Boolean)
     : [];
@@ -306,7 +311,14 @@ function coerceExperienceEntry(raw: unknown): {
   }
 
   if (!company && !role && bullets.length === 0 && !(projects?.length)) return null;
-  return { company, role, dates, bullets, ...(projects ? { projects } : {}) };
+  return {
+    company,
+    role,
+    dates,
+    ...(location ? { location } : {}),
+    bullets,
+    ...(projects ? { projects } : {}),
+  };
 }
 
 function coerceResumePayload(parsed: unknown): GeneratedResumeContent | null {
@@ -337,6 +349,7 @@ function coerceResumePayload(parsed: unknown): GeneratedResumeContent | null {
       company: e.company,
       role: e.role,
       dates: e.dates,
+      ...(e.location ? { location: e.location } : {}),
       bullets: e.bullets,
       ...(e.projects ? { projects: e.projects.map((p) => normalizeResumeProject(p)) } : {}),
     })),
@@ -516,6 +529,7 @@ export function mergeResumeWithTemplate(
           company: existing.company,
           role: pickRegenerateText(generated?.role ?? "", baselineExp?.role, existing.role),
           dates: existing.dates,
+          ...(existing.location?.trim() ? { location: existing.location.trim() } : {}),
           bullets: [],
           projects,
         };
@@ -539,6 +553,11 @@ export function mergeResumeWithTemplate(
         company: existing.company,
         role: pickRegenerateText(generated?.role ?? "", baselineExp?.role, existing.role),
         dates: existing.dates,
+        ...(existing.location?.trim()
+          ? { location: existing.location.trim() }
+          : generated?.location?.trim()
+            ? { location: generated.location.trim() }
+            : {}),
         bullets,
       };
     }),

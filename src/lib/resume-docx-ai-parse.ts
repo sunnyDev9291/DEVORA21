@@ -15,7 +15,7 @@ const AI_PARSE_BULLETS_SYSTEM = `You extract work experience from resume text.
 Return ONLY valid json:
 {
   "experiences": [
-    { "company": "string", "role": "string", "dates": "string", "bullets": ["string"] }
+    { "company": "string", "role": "string", "dates": "string", "location": "string", "bullets": ["string"] }
   ]
 }
 
@@ -23,7 +23,8 @@ Rules:
 - company = employer name only (short, never a bullet sentence)
 - role = job title
 - dates = employment range exactly as written (e.g. "08/2023 – 02/2025")
-- bullets = achievement lines only, no company/role/date lines
+- location = optional workplace line under the header (e.g. "Boston, Massachusetts, USA | Remote"); omit if absent
+- bullets = achievement lines only, no company/role/date/location lines
 - preserve order from top to bottom
 - do not invent employers`;
 
@@ -119,6 +120,9 @@ async function parseExperiencesWithAI(
     company: String(e.company ?? "").trim(),
     role: String(e.role ?? "").trim(),
     dates: String(e.dates ?? "").trim(),
+    ...(String(e.location ?? "").trim()
+      ? { location: String(e.location ?? "").trim() }
+      : {}),
     bullets: (e.bullets ?? []).map((b) => String(b).trim()).filter(Boolean),
   }));
 }
