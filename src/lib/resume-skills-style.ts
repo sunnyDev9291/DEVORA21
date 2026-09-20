@@ -192,7 +192,8 @@ function formatProjectSkills(aiSkills: string, templateSkills: string): string {
 
 /**
  * Shape skillsets to the detected resume layout.
- * Bullet templates use a plain skill list; project/BAR templates keep template categories/order.
+ * Category-labeled templates (Joao-style Frontend:/Backend:) keep labels even on bullets layouts.
+ * Plain bullet templates use a flat skill list.
  */
 export function formatSkillsWithTemplateStyle(
   aiSkills: string,
@@ -203,9 +204,14 @@ export function formatSkillsWithTemplateStyle(
   if (!trimmed) return trimmed;
   if (!templateSkills.trim()) return trimmed;
 
-  return layout === "projects"
-    ? formatProjectSkills(trimmed, templateSkills)
-    : formatBulletSkills(trimmed, templateSkills);
+  const templateLines = parseTemplateSkillLines(templateSkills);
+  const hasCategoryLabels = templateLines.some((line) => Boolean(line.label));
+
+  if (layout === "projects" || hasCategoryLabels) {
+    return formatProjectSkills(trimmed, templateSkills);
+  }
+
+  return formatBulletSkills(trimmed, templateSkills);
 }
 
 /** @deprecated Use formatSkillsWithTemplateStyle. */
@@ -220,13 +226,16 @@ export function buildTemplateSkillsPromptBlock(
   const lines = parseTemplateSkillLines(templateSkills);
   if (lines.length === 0 || !templateSkills.trim()) return "";
 
-  if (layout === "projects") {
+  const hasCategoryLabels = lines.some((line) => Boolean(line.label));
+
+  if (layout === "projects" || hasCategoryLabels) {
     const labels = lines.map((line) => line.label).filter(Boolean);
     return [
       "Template skillsets format (required — follow exactly):",
       `Use exactly these category labels in this order: ${labels.join(", ")}.`,
       `Return exactly ${lines.length} newline-separated skill line(s) in the "skills" JSON field.`,
       "Mirror the template formatting (category labels, colons, line breaks). Only replace the technologies.",
+      "Keep a TAB-style gap after each category colon when the template uses one (label, colon, then skills).",
       "Template example:",
       templateSkills.trim(),
     ].join("\n");

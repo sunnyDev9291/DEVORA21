@@ -493,7 +493,35 @@ function replaceRunText(runXml: string, text: string): string {
   );
 }
 
-/** Rebuild category skill lines with two runs — multi-run templates break LibreOffice PDF conversion. */
+function skillTemplateUsesTab(pXml: string): boolean {
+  return /<w:tab\b/.test(pXml);
+}
+
+/** Clone a template tab run (rPr + w:tab) so skill values align on the same tab stop. */
+function extractSkillTabRun(pXml: string, fallbackRPr: string): string {
+  const match = pXml.match(/<w:r\b[^>]*>[\s\S]*?<w:tab\b[^/]*\/>[\s\S]*?<\/w:r>/);
+  if (match) {
+    const rPr = extractRunProperties(match[0]) || fallbackRPr;
+    return `<w:r>${rPr}<w:tab/></w:r>`;
+  }
+  return `<w:r>${fallbackRPr}<w:tab/></w:r>`;
+}
+
+/**
+ * Infer the colon run text after the label from the template
+ * (Joao uses ": " before the tab; some lines use only ":").
+ */
+function inferSkillColonSuffix(pXml: string): string {
+  const runs = matchTextRuns(pXml);
+  for (const run of runs) {
+    if (!/<w:t[\s\S]*?<\/w:t>/.test(run)) continue;
+    const text = getRunPlainText(run);
+    if (/^:\s*$/.test(text)) return text;
+  }
+  return ": ";
+}
+
+/** Rebuild category skill lines — preserve Word TAB between label and values when the template uses one. */
 function setSkillLineParagraphText(pXml: string, line: string): string {
   const trimmed = line.trim();
   const parsed = parseSkillCategoryLine(trimmed);
@@ -522,6 +550,21 @@ function setSkillLineParagraphText(pXml: string, line: string): string {
   if (!plainRPr) plainRPr = stripBoldRunProperties(baseRPr) || baseRPr;
 
   const { label, value } = parsed;
+  const useTab = skillTemplateUsesTab(pXml);
+  const colonSuffix = useTab ? inferSkillColonSuffix(pXml) : ":";
+
+  // Joao-style: bold label | plain ": " | <w:tab/> | plain values (no leading space).
+  // Space-style templates: bold "Label:" | plain " values".
+  if (useTab) {
+    const labelRun = `<w:r>${boldLabelRPr}<w:t xml:space="preserve">${escapeXml(label)}</w:t></w:r>`;
+    const colonRun = `<w:r>${plainRPr}<w:t xml:space="preserve">${escapeXml(colonSuffix)}</w:t></w:r>`;
+    const tabRun = extractSkillTabRun(pXml, plainRPr);
+    const valueRun = value
+      ? `<w:r>${plainRPr}<w:t xml:space="preserve">${escapeXml(value)}</w:t></w:r>`
+      : "";
+    return `${open}${pPr}${labelRun}${colonRun}${tabRun}${valueRun}</w:p>`;
+  }
+
   const labelRun = `<w:r>${boldLabelRPr}<w:t xml:space="preserve">${escapeXml(`${label}:`)}</w:t></w:r>`;
   const valueRun = value
     ? `<w:r>${plainRPr}<w:t xml:space="preserve"> ${escapeXml(value)}</w:t></w:r>`
