@@ -65,11 +65,16 @@ function decodeXmlEntities(text: string): string {
     .replace(/&quot;/g, '"');
 }
 
+/**
+ * Real text-node open tag. Do not use `<w:t[^>]*>` — it also matches `<w:tab/>`.
+ */
+const WT_TEXT_OPEN = /<w:t(?:\s[^>]*)?>/;
+const WT_TEXT_PAIR = /<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g;
+
 export function getParagraphText(pXml: string): string {
-  const raw = (pXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [])
-    .map((t) => t.replace(/<w:t[^>]*>/, "").replace(/<\/w:t>/, ""))
-    .join("");
-  return decodeXmlEntities(raw);
+  return decodeXmlEntities(
+    [...pXml.matchAll(WT_TEXT_PAIR)].map((m) => m[1]).join("")
+  );
 }
 
 /** Plain text with **bold** markers from Word run properties. */
@@ -87,16 +92,10 @@ export function getParagraphTextWithBold(pXml: string): string {
 
   let out = "";
   for (const run of runs) {
-    const text = (run.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) ?? [])
-      .map((t) => {
-        const match = t.match(/<w:t[^>]*>([^<]*)<\/w:t>/);
-        return match?.[1] ?? "";
-      })
-      .join("");
+    const text = getRunPlainText(run);
     if (!text) continue;
-    const decoded = decodeXmlEntities(text);
     const isBold = /<w:b(?:\s[^>]*)?\/>|<w:b(?:\s[^>]*)?>[^<]*<\/w:b>/.test(run);
-    out += isBold ? `**${decoded}**` : decoded;
+    out += isBold ? `**${text}**` : text;
   }
 
   return out || getParagraphText(pXml);
@@ -303,10 +302,12 @@ function stripBoldRunProperties(rPr: string): string {
 
 function getRunPlainText(runXml: string): string {
   return decodeXmlEntities(
-    (runXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) ?? [])
-      .map((t) => t.replace(/<w:t[^>]*>/, "").replace(/<\/w:t>/, ""))
-      .join("")
+    [...runXml.matchAll(WT_TEXT_PAIR)].map((m) => m[1]).join("")
   );
+}
+
+function runHasTextNode(runXml: string): boolean {
+  return WT_TEXT_OPEN.test(runXml) && /<\/w:t>/.test(runXml);
 }
 
 /** True when every non-empty text run in the paragraph is bold (template job-header style). */
@@ -486,9 +487,9 @@ function parseSkillCategoryLine(line: string): { label: string; value: string } 
 }
 
 function replaceRunText(runXml: string, text: string): string {
-  if (!/<w:t[\s\S]*?<\/w:t>/.test(runXml)) return runXml;
+  if (!runHasTextNode(runXml)) return runXml;
   return runXml.replace(
-    /<w:t[^>]*>[\s\S]*?<\/w:t>/,
+    WT_TEXT_PAIR,
     `<w:t xml:space="preserve">${escapeXml(text)}</w:t>`
   );
 }
@@ -514,27 +515,56 @@ function extractSkillTabRun(pXml: string, fallbackRPr: string): string {
 function inferSkillColonSuffix(pXml: string): string {
   const runs = matchTextRuns(pXml);
   for (const run of runs) {
-    if (!/<w:t[\s\S]*?<\/w:t>/.test(run)) continue;
+    if (!runHasTextNode(run)) continue;
     const text = getRunPlainText(run);
     if (/^:\s*$/.test(text)) return text;
   }
   return ": ";
 }
 
+/** Left tab stop (twips) past the longest category label so values share one column. */
+function estimateSkillTabStopTwips(labels: string[]): number {
+  const longest = labels.reduce((max, label) => Math.max(max, label.length), 0);
+  // Cambria ~11pt ≈ 110–130 twips/char; include ": " and a clear gap.
+  const estimated = Math.ceil((longest + 2) * 125 + 360);
+  return Math.max(1800, Math.ceil(estimated / 180) * 180);
+}
+
+/** Inject/replace an explicit left tab stop so Word + docx-preview honor the TAB gap. */
+function withSkillTabStop(pPr: string, posTwips: number): string {
+  const tabsXml = `<w:tabs><w:tab w:val="left" w:pos="${posTwips}"/></w:tabs>`;
+  if (!pPr) return `<w:pPr>${tabsXml}</w:pPr>`;
+  if (/<w:tabs\b[\s\S]*?<\/w:tabs>/.test(pPr)) {
+    return pPr.replace(/<w:tabs\b[\s\S]*?<\/w:tabs>/, tabsXml);
+  }
+  return pPr.replace(/<\/w:pPr>/, `${tabsXml}</w:pPr>`);
+}
+
+type SkillLineWriteOptions = {
+  /** When any skills-region template uses TAB, force TAB on every category line. */
+  forceTab?: boolean;
+  /** Shared left tab stop for value alignment (twips). */
+  tabStopTwips?: number;
+};
+
 /** Rebuild category skill lines — preserve Word TAB between label and values when the template uses one. */
-function setSkillLineParagraphText(pXml: string, line: string): string {
+function setSkillLineParagraphText(
+  pXml: string,
+  line: string,
+  options: SkillLineWriteOptions = {}
+): string {
   const trimmed = line.trim();
   const parsed = parseSkillCategoryLine(trimmed);
   if (!parsed) return setParagraphText(pXml, trimmed);
 
   const open = pXml.match(/^(<w:p[^>]*>)/)?.[1] ?? "<w:p>";
-  const pPr = extractParagraphProperties(pXml);
+  let pPr = extractParagraphProperties(pXml);
   const runs = matchTextRuns(pXml);
 
   let boldLabelRPr = "";
   let plainRPr = "";
   for (const run of runs) {
-    if (!/<w:t[\s\S]*?<\/w:t>/.test(run)) continue;
+    if (!runHasTextNode(run)) continue;
     const isBold = /<w:b(?:\s[^>]*)?\/>|<w:b(?:\s[^>]*)?>[^<]*<\/w:b>/.test(run);
     if (isBold && !boldLabelRPr) {
       boldLabelRPr = ensureLatinBoldRunProperties(extractRunProperties(run));
@@ -550,12 +580,14 @@ function setSkillLineParagraphText(pXml: string, line: string): string {
   if (!plainRPr) plainRPr = stripBoldRunProperties(baseRPr) || baseRPr;
 
   const { label, value } = parsed;
-  const useTab = skillTemplateUsesTab(pXml);
+  const useTab = Boolean(options.forceTab) || skillTemplateUsesTab(pXml);
   const colonSuffix = useTab ? inferSkillColonSuffix(pXml) : ":";
 
   // Joao-style: bold label | plain ": " | <w:tab/> | plain values (no leading space).
   // Space-style templates: bold "Label:" | plain " values".
   if (useTab) {
+    const tabStop = options.tabStopTwips ?? estimateSkillTabStopTwips([label]);
+    pPr = withSkillTabStop(pPr, tabStop);
     const labelRun = `<w:r>${boldLabelRPr}<w:t xml:space="preserve">${escapeXml(label)}</w:t></w:r>`;
     const colonRun = `<w:r>${plainRPr}<w:t xml:space="preserve">${escapeXml(colonSuffix)}</w:t></w:r>`;
     const tabRun = extractSkillTabRun(pXml, plainRPr);
@@ -989,13 +1021,25 @@ function buildSkillsRegionParagraphs(regionParagraphs: string[], skillsContent: 
     .map((line) => line.trim())
     .filter(Boolean);
 
+  const regionUsesTab = contentTemplates.some((p) => skillTemplateUsesTab(p));
+  const labels = lines
+    .map((line) => parseSkillCategoryLine(line)?.label)
+    .filter((label): label is string => Boolean(label));
+  const tabStopTwips = regionUsesTab ? estimateSkillTabStopTwips(labels) : undefined;
+  const writeOpts: SkillLineWriteOptions = {
+    forceTab: regionUsesTab,
+    tabStopTwips,
+  };
+
   if (lines.length === 0 || contentTemplates.length === 0) {
-    return buildSectionParagraphs(regionParagraphs, skillsContent, setSkillLineParagraphText);
+    return buildSectionParagraphs(regionParagraphs, skillsContent, (pXml, line) =>
+      setSkillLineParagraphText(pXml, line, writeOpts)
+    );
   }
 
   const fallback = contentTemplates[contentTemplates.length - 1];
   const skillParagraphs = lines.map((line, index) =>
-    setSkillLineParagraphText(contentTemplates[index] ?? fallback, line)
+    setSkillLineParagraphText(contentTemplates[index] ?? fallback, line, writeOpts)
   );
 
   const gapTrailing =

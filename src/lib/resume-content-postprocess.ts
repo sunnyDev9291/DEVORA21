@@ -1,5 +1,5 @@
 import { isProjectLayout } from "@/lib/resume-experience-utils";
-import { formatSkillsWithTemplateStyle } from "@/lib/resume-skills-style";
+import { formatSkillsWithTemplateStyle, parseTemplateSkillLines } from "@/lib/resume-skills-style";
 
 import type { GeneratedResumeContent, ResumeProject, ResumeTemplateLayout } from "@/lib/resume-types";
 
@@ -171,7 +171,13 @@ export function applyResumeContentPostProcess(
   const alignedSkills = templateSkillsSample?.trim()
     ? formatSkillsWithTemplateStyle(content.skills, templateSkillsSample, layout)
     : content.skills;
-  const skillsWithTemplateStyle = projectMode ? boldSkillCategoryLabels(alignedSkills) : alignedSkills;
+  const templateHasCategoryLabels = templateSkillsSample?.trim()
+    ? parseTemplateSkillLines(templateSkillsSample).some((line) => Boolean(line.label))
+    : false;
+  const skillsWithTemplateStyle =
+    projectMode || templateHasCategoryLabels
+      ? boldSkillCategoryLabels(alignedSkills)
+      : alignedSkills;
 
   return {
     ...content,

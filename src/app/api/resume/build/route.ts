@@ -76,6 +76,7 @@ function validateContent(
         company: String(e.company ?? "").trim(),
         role: String(e.role ?? "").trim(),
         dates: String(e.dates ?? "").trim(),
+        ...(e.location?.trim() ? { location: String(e.location).trim() } : {}),
         bullets: (e.bullets ?? []).map((b) => String(b).trim()).filter(Boolean),
       };
     }),
