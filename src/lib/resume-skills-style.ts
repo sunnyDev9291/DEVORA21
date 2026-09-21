@@ -56,6 +56,14 @@ function parseSkillLine(line: string): { label: string; value: string } | null {
     return label ? { label, value } : null;
   }
 
+  // Colon outside bold: **Frontend**: values
+  const boldLabel = trimmed.match(/^\*\*([^*]+)\*\*\s*:\s*(.*)$/);
+  if (boldLabel) {
+    const label = normalizeSkillLabel(boldLabel[1]);
+    const value = boldLabel[2].replace(/\*\*/g, "").trim();
+    return label ? { label, value } : null;
+  }
+
   const plain = trimmed.match(/^([^:]+):\s*(.*)$/);
   if (plain) {
     const label = normalizeSkillLabel(plain[1]);
@@ -130,10 +138,20 @@ export function formatSkillLineLikeTemplate(
   return trimmedValue ? `${label}: ${trimmedValue}` : `${label}:`;
 }
 
+function pickFormattingSample(templateLines: TemplateSkillLine[]): string {
+  return (
+    templateLines.find((line) => line.label)?.sampleLine ??
+    templateLines[0]?.sampleLine ??
+    "**Label:** values"
+  );
+}
+
 function formatBulletSkills(aiSkills: string, templateSkills: string): string {
   const templateLineCount = Math.max(parseTemplateSkillLines(templateSkills).length, 1);
   const tokens = collectSkillTokens(aiSkills);
-  const flat = tokens.length ? tokens.join(", ") : aiSkills.replace(/\*\*/g, "").replace(/\n+/g, ", ").trim();
+  const flat = tokens.length
+    ? tokens.join(", ")
+    : aiSkills.replace(/\*\*/g, "").replace(/\n+/g, ", ").trim();
   if (templateLineCount <= 1) return flat;
 
   const parts = flat.split(/\s*,\s*/).filter(Boolean);
@@ -145,6 +163,32 @@ function formatBulletSkills(aiSkills: string, templateSkills: string): string {
     .join("\n");
 }
 
+/**
+ * Keep AI/JD category labels and order; only borrow bold/colon style + max line count
+ * from the template. Prevents remapping "Databases: Snowflake" onto "Frontend: …".
+ */
+function formatCategorySkillsFromAi(aiSkills: string, templateSkills: string): string | null {
+  const templateLines = parseTemplateSkillLines(templateSkills);
+  const maxLines = Math.max(templateLines.filter((l) => l.label).length, templateLines.length, 1);
+  const sampleLine = pickFormattingSample(templateLines);
+
+  const aiCategoryLines: Array<{ label: string; value: string }> = [];
+  for (const line of aiSkills.split(/\n+/)) {
+    const parsed = parseSkillLine(line.trim());
+    if (!parsed?.label) continue;
+    if (!parsed.value.trim()) continue;
+    aiCategoryLines.push(parsed);
+  }
+
+  if (aiCategoryLines.length === 0) return null;
+
+  return aiCategoryLines
+    .slice(0, maxLines)
+    .map(({ label, value }) => formatSkillLineLikeTemplate(label, value, sampleLine))
+    .join("\n");
+}
+
+/** Fallback: map AI values onto the template's fixed category slots. */
 function formatProjectSkills(aiSkills: string, templateSkills: string): string {
   const templateLines = parseTemplateSkillLines(templateSkills);
   if (templateLines.length === 0) return aiSkills.trim();
@@ -192,7 +236,8 @@ function formatProjectSkills(aiSkills: string, templateSkills: string): string {
 
 /**
  * Shape skillsets to the detected resume layout.
- * Category-labeled templates (Joao-style Frontend:/Backend:) keep labels even on bullets layouts.
+ * Category templates: keep AI/JD labels + order (writing instructions win);
+ * only reuse template bold/colon style and max line count.
  * Plain bullet templates use a flat skill list.
  */
 export function formatSkillsWithTemplateStyle(
@@ -208,6 +253,8 @@ export function formatSkillsWithTemplateStyle(
   const hasCategoryLabels = templateLines.some((line) => Boolean(line.label));
 
   if (layout === "projects" || hasCategoryLabels) {
+    const fromAi = formatCategorySkillsFromAi(trimmed, templateSkills);
+    if (fromAi) return fromAi;
     return formatProjectSkills(trimmed, templateSkills);
   }
 
@@ -227,16 +274,19 @@ export function buildTemplateSkillsPromptBlock(
   if (lines.length === 0 || !templateSkills.trim()) return "";
 
   const hasCategoryLabels = lines.some((line) => Boolean(line.label));
+  const maxLines = lines.length;
 
   if (layout === "projects" || hasCategoryLabels) {
-    const labels = lines.map((line) => line.label).filter(Boolean);
     return [
-      "Template skillsets format (required — follow exactly):",
-      `Use exactly these category labels in this order: ${labels.join(", ")}.`,
-      `Return exactly ${lines.length} newline-separated skill line(s) in the "skills" JSON field.`,
-      "Mirror the template formatting (category labels, colons, line breaks). Only replace the technologies.",
-      "Keep a TAB-style gap after each category colon when the template uses one (label, colon, then skills).",
-      "Template example:",
+      "Template skillsets FORMAT (visual layout only — not fixed category names):",
+      `Return at most ${maxLines} newline-separated category skill line(s) in the "skills" JSON field.`,
+      "Each line must look like: **Category:** tech, tech, tech (bold label, colon, then skills).",
+      "Keep a TAB-style gap after each category colon when the template uses one.",
+      "Category NAMES and ORDER come from the Writing instructions / JD (e.g. Databases, Cloud, AI/ML for a data role).",
+      "Do NOT force the template sample labels (Frontend/Backend/Tooling/…) unless the Writing instructions say so.",
+      "If Writing instructions cap categories (e.g. keep 6), follow that cap and put JD-priority categories first.",
+      "Place each technology under the most suitable category; do not dump unrelated tech into Frontend/Backend.",
+      "Template formatting example (labels here are samples only):",
       templateSkills.trim(),
     ].join("\n");
   }
@@ -244,10 +294,9 @@ export function buildTemplateSkillsPromptBlock(
   return [
     "Template skillsets format (required — follow exactly):",
     "This bullet-style template uses a plain skill list with no category labels.",
-    `Return ${lines.length === 1 ? "one plain comma-separated skill line" : `exactly ${lines.length} plain skill line(s)`} in the "skills" JSON field.`,
+    `Return ${maxLines === 1 ? "one plain comma-separated skill line" : `exactly ${maxLines} plain skill line(s)`} in the "skills" JSON field.`,
     "Do not add category labels like Languages, Backend, Frontend, Data & ML, or DevOps.",
     "Template example:",
     templateSkills.trim(),
   ].join("\n");
 }
-

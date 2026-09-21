@@ -58,7 +58,7 @@ export function buildResumeSystemPrompt(regenerate = false, layout: ResumeTempla
     "Technical output rules (not content style):",
     "- Use **double asterisks** around skill category labels (e.g. **Languages:**) and tech terms so Word can render bold.",
     "- Match the template job count, companies, dates, locations, and fixed project names from the user message.",
-    "- Skillsets JSON must match the template skillsets layout in the user message (labels, line count, formatting).",
+    "- Skillsets: match the template's visual layout (category lines, bold labels, line count cap). Category NAMES and ORDER follow Writing instructions / JD — do not lock to sample template labels.",
     "- Bullet count per job is not taken from the template.",
     "- Keep each job's location/workplace line when the template provides one (e.g. \"City, Region | Remote\").",
     "- Do not invent employers or projects.",
@@ -134,8 +134,9 @@ export function buildResumeUserPrompt({
   const taskBlock = task?.trim() ? `Task:\n${task.trim()}` : "";
   const writingBlock = writingInstructions?.trim()
     ? [
-        "Writing instructions (source of truth for tone, content rules, and formatting — follow these exactly):",
+        "Writing instructions (source of truth for tone, content rules, skill categorization, and formatting — follow these exactly):",
         writingInstructions.trim(),
+        "When Writing instructions define skill category names/order/caps, those override any sample category labels in the template skillsets section below.",
       ].join("\n")
     : "";
 
