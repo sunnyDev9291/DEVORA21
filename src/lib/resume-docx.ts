@@ -530,14 +530,32 @@ function estimateSkillTabStopTwips(labels: string[]): number {
   return Math.max(1800, Math.ceil(estimated / 180) * 180);
 }
 
-/** Inject/replace an explicit left tab stop so Word + docx-preview honor the TAB gap. */
+/** Inject/replace left tab stop + hanging indent so wrapped skill values stay in the value column. */
 function withSkillTabStop(pPr: string, posTwips: number): string {
   const tabsXml = `<w:tabs><w:tab w:val="left" w:pos="${posTwips}"/></w:tabs>`;
-  if (!pPr) return `<w:pPr>${tabsXml}</w:pPr>`;
-  if (/<w:tabs\b[\s\S]*?<\/w:tabs>/.test(pPr)) {
-    return pPr.replace(/<w:tabs\b[\s\S]*?<\/w:tabs>/, tabsXml);
+  // First line: label at margin, TAB to pos. Continuation lines: indent at pos (no text under labels).
+  const indXml = `<w:ind w:left="${posTwips}" w:hanging="${posTwips}"/>`;
+
+  let next = pPr;
+  if (!next) {
+    return `<w:pPr>${tabsXml}${indXml}</w:pPr>`;
   }
-  return pPr.replace(/<\/w:pPr>/, `${tabsXml}</w:pPr>`);
+
+  if (/<w:tabs\b[\s\S]*?<\/w:tabs>/.test(next)) {
+    next = next.replace(/<w:tabs\b[\s\S]*?<\/w:tabs>/, tabsXml);
+  } else {
+    next = next.replace(/<\/w:pPr>/, `${tabsXml}</w:pPr>`);
+  }
+
+  if (/<w:ind\b[^/]*\/>/.test(next)) {
+    next = next.replace(/<w:ind\b[^/]*\/>/, indXml);
+  } else if (/<w:ind\b[\s\S]*?<\/w:ind>/.test(next)) {
+    next = next.replace(/<w:ind\b[\s\S]*?<\/w:ind>/, indXml);
+  } else {
+    next = next.replace(/<\/w:pPr>/, `${indXml}</w:pPr>`);
+  }
+
+  return next;
 }
 
 type SkillLineWriteOptions = {
@@ -1021,10 +1039,12 @@ function buildSkillsRegionParagraphs(regionParagraphs: string[], skillsContent: 
     .map((line) => line.trim())
     .filter(Boolean);
 
-  const regionUsesTab = contentTemplates.some((p) => skillTemplateUsesTab(p));
   const labels = lines
     .map((line) => parseSkillCategoryLine(line)?.label)
     .filter((label): label is string => Boolean(label));
+  // Category skill lines need TAB + hanging indent so wraps stay under the values column.
+  const regionUsesTab =
+    contentTemplates.some((p) => skillTemplateUsesTab(p)) || labels.length > 0;
   const tabStopTwips = regionUsesTab ? estimateSkillTabStopTwips(labels) : undefined;
   const writeOpts: SkillLineWriteOptions = {
     forceTab: regionUsesTab,
