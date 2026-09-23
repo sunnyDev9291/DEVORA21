@@ -1237,15 +1237,22 @@ export function applyContentToDocx(
     throw new Error("Template sections are out of order. Expected SUMMARY → SKILLS → EXPERIENCE.");
   }
 
+  const skillTerms = extractSkillTerms(content.skills);
+  const boldExpText = (text: string) => boldSkillTermsInText(text, skillTerms);
+
   const header = parseResumeHeaderFromDocxBuffer(buffer);
   const headerParagraphs = applyTitleToHeaderRegion(
     paragraphs.slice(0, summaryIdx),
-    content.title,
+    boldExpText(content.title),
     header.titleParagraphIndex
   );
 
   const summaryRegion = sliceSectionRegion(paragraphs, summaryIdx, skillsIdx);
-  const summaryBody = buildSectionParagraphs(summaryRegion, content.summary, setParagraphText);
+  const summaryBody = buildSectionParagraphs(
+    summaryRegion,
+    boldExpText(content.summary),
+    setParagraphText
+  );
 
   const skillsRegion = sliceSectionRegion(paragraphs, skillsIdx, expIdx);
   const skillsBody = buildSkillsRegionParagraphs(skillsRegion, content.skills);
@@ -1253,8 +1260,6 @@ export function applyContentToDocx(
   const expEnd = eduIdx === -1 ? paragraphs.length : eduIdx;
   const originalExperienceParagraphs = paragraphs.slice(expIdx + 1, expEnd);
   const layout = content.layout ?? detectResumeTemplateLayout(buffer);
-  const skillTerms = extractSkillTerms(content.skills);
-  const boldExpText = (text: string) => boldSkillTermsInText(text, skillTerms);
 
   let experienceParagraphs: string[] = [];
 

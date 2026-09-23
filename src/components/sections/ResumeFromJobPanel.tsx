@@ -438,7 +438,8 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
           Generate resume from job link
         </h3>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Backend scrapes the posting, fills your template, and returns a PDF. Progress updates while the job runs.
+          Backend scrapes the posting, fills your template, and returns a PDF. Progress updates while
+          the job runs.
         </p>
       </div>
 
@@ -466,109 +467,92 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
               onClick={stopRun}
               className="shrink-0 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/[0.05]"
             >
-              Cancel
+              Stop
             </button>
           ) : null}
         </div>
       </form>
 
       {error ? (
-        <div className="rounded-xl border border-red-500/25 bg-red-500/[0.08] px-4 py-3 text-sm text-red-600 dark:text-red-300">
+        <p className="rounded-xl border border-red-500/25 bg-red-500/[0.08] px-4 py-3 text-sm text-red-700 dark:text-red-300">
           {error}
+        </p>
+      ) : null}
+
+      {job ? (
+        <div ref={successRef}>
+          <ResumeFromJobProgress
+            message={job.message || ""}
+            progressPercent={progressPercent}
+            steps={steps}
+            jobTitle={jobTitle}
+            companyName={companyName}
+            warning={result?.warning || job.warning}
+            downloadUrl={pdfDownloadUrl}
+            downloadFileName={result?.pdfFileName || "resume.pdf"}
+            onPreview={pdfBlob ? () => setPreviewOpen(true) : undefined}
+          />
         </div>
       ) : null}
 
-      {running || job ? (
-        <ResumeFromJobProgress
-          message={job?.message || (running ? "Working…" : "")}
-          progressPercent={progressPercent}
-          steps={steps}
-          jobTitle={job?.jobTitle || result?.jobTitle}
-          companyName={job?.companyName || result?.companyName}
-          warning={job?.warning || result?.warning}
-          downloadUrl={pdfDownloadUrl}
-          downloadFileName={result?.pdfFileName || "resume.pdf"}
-          onPreview={result?.pdfBase64 ? () => setPreviewOpen(true) : undefined}
-        />
-      ) : null}
-
-      {result?.pdfBase64 && pdfDownloadUrl ? (
-        <div
-          ref={successRef}
-          className="rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.08] px-5 py-4 shadow-sm"
-        >
-          <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">
-            Generation complete
-          </p>
-          <p className="mt-1 text-xs text-emerald-700/90 dark:text-emerald-300/90">
-            {[result.jobTitle, result.companyName].filter(Boolean).join(" · ") || "Your resume PDF is ready."}
-          </p>
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <a
-              href={pdfDownloadUrl}
-              download={result.pdfFileName || "resume.pdf"}
-              className="inline-flex items-center rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500"
-            >
-              Download PDF — {result.pdfFileName || "resume.pdf"}
-            </a>
-            <button
-              type="button"
-              onClick={() => setPreviewOpen(true)}
-              className="rounded-xl border border-emerald-500/30 bg-white/80 px-4 py-2.5 text-sm font-semibold text-emerald-800 hover:bg-white dark:bg-white/10 dark:text-emerald-200"
-            >
-              Preview
-            </button>
-            {canOpenResumeChat ? (
-              <button
-                type="button"
-                onClick={() => setResumeChatOpen(true)}
-                className="inline-flex items-center gap-2 rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-2.5 text-sm font-semibold text-orange-700 transition-all hover:bg-orange-500/15 dark:text-orange-300"
-              >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-                Application Q&A
-              </button>
-            ) : null}
-          </div>
+      {result?.pdfBase64 ? (
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" onClick={handleDownloadPdf}>
+            Download PDF
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => setPreviewOpen(true)}>
+            Preview PDF
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => void runJobCheck()}
+            disabled={jobChecking || !(companyName || "").trim()}
+          >
+            {jobChecking ? "Job Check…" : "Job Check"}
+          </Button>
+          {hasClearableContent ? (
+            <Button type="button" variant="secondary" onClick={handleClear} disabled={running}>
+              Clear
+            </Button>
+          ) : null}
         </div>
       ) : null}
 
       <PdfPreviewModal
         open={previewOpen}
         onClose={() => setPreviewOpen(false)}
-        title={result?.pdfFileName || "Resume PDF"}
-        subtitle={[result?.jobTitle, result?.companyName].filter(Boolean).join(" · ") || undefined}
+        title={jobTitle || "Resume PDF"}
+        subtitle={companyName || undefined}
+        fileName={result?.pdfFileName}
         blob={pdfBlob}
-        fileName={result?.pdfFileName || "resume.pdf"}
+        waitingForPdf={running && !pdfBlob}
         onDownload={handleDownloadPdf}
+      />
+
+      <JobCheckBoard
+        open={jobCheckOpen}
+        onClose={() => {
+          jobCheckAbortRef.current?.abort();
+          setJobCheckOpen(false);
+        }}
+        companyName={companyName}
+        jobTitle={jobTitle}
+        output={jobCheckOutput}
+        error={jobCheckError}
+        loading={jobChecking}
+        onRetry={() => void runJobCheck()}
       />
 
       <ResumeChatDialog
         open={resumeChatOpen}
         onClose={() => setResumeChatOpen(false)}
         content={chatContent}
-        profile={chatProfile}
         jobTitle={jobTitle}
         companyName={companyName}
         jobDescription={jobDescription}
+        profile={chatProfile}
         generationKey={generationKey}
-      />
-
-      <JobCheckBoard
-        open={jobCheckOpen}
-        loading={jobChecking}
-        error={jobCheckError}
-        output={jobCheckOutput}
-        jobTitle={job?.jobTitle || result?.jobTitle || ""}
-        companyName={job?.companyName || result?.companyName || ""}
-        onClose={() => {
-          jobCheckAbortRef.current?.abort();
-          jobCheckAbortRef.current = null;
-          setJobCheckOpen(false);
-          setJobChecking(false);
-        }}
-        onRetry={() => void runJobCheck()}
       />
     </div>
   );

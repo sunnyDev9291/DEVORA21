@@ -14,8 +14,7 @@ import { generateResume } from "@/lib/resume-generate-client";
 import { scrapeJobFromUrl } from "@/lib/job-scrape-api";
 import { iterateJobCheckStream } from "@/lib/job-check-stream";
 import JobCheckBoard from "@/components/ui/JobCheckBoard";
-import { archiveResume } from "@/lib/resume-archive";
-import { notifyTodaysResumeCountChanged } from "@/lib/todays-resume-count";
+import { buildResumeDocx } from "@/lib/resume-build-client";
 import { formatElapsedMs } from "@/lib/format-elapsed";
 import {
   clearResumeGenerateTimer,
@@ -29,7 +28,6 @@ import type { ResumeScoreResult } from "@/lib/resume-score";
 import { buildJobKeywordsCacheKey } from "@/lib/resume-keywords-cache";
 import type {
   GeneratedResumeContent,
-  ResumeBuildResponse,
   ResumeUnifiedScoreResult,
   AtsScoreResult,
   RuleKeepScoreResult,
@@ -96,7 +94,6 @@ const inputClass = ui.input;
 // Keep the scoring code available, but disable the feature in the UI and network flow.
 const RESUME_SCORE_SYSTEM_ENABLED = false;
 
-const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const PDF_MIME = "application/pdf";
 
 function base64ToBlob(base64: string, mime: string): Blob {
@@ -844,18 +841,22 @@ export default function ResumeGenerator({
   }
 
   async function submitResumeArchive(docxB64: string, resumeFileName: string) {
+    if (!docxB64 || !resumeFileName) return;
     setArchiving(true);
     setArchiveError("");
     setPdfBase64("");
     setPdfFileName("");
 
     try {
-      const docxBlob = base64ToBlob(docxB64, DOCX_MIME);
+      const { archiveResume } = await import("@/lib/resume-archive");
+      const { notifyTodaysResumeCountChanged } = await import("@/lib/todays-resume-count");
+      const DOCX_MIME =
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
       const result = await archiveResume({
         jobTitle: content ? extractResumeTitleHeadline(content.title) : form.jobTitle,
         companyName: form.companyName,
         jobDescription: form.jobDescription,
-        docxBlob,
+        docxBlob: base64ToBlob(docxB64, DOCX_MIME),
         fileName: resumeFileName,
       });
       setPdfBase64(result.pdfBase64);
@@ -868,43 +869,94 @@ export default function ResumeGenerator({
     }
   }
 
-  async function handleApply() {
-    if (!content || !activeTemplate || applying) return;
+  async function applyDraftToResume(
+    draft: GeneratedResumeContent,
+    jobOverride?: {
+      jobTitle?: string;
+      companyName?: string;
+      jobDescription?: string;
+      customPrompt?: string;
+    }
+  ): Promise<{
+    docxBase64: string;
+    fileName: string;
+    pdfBase64: string;
+    pdfFileName: string;
+    archiveId?: string;
+  }> {
     const templateForRequest = resolveActiveUserTemplate(user?.id, activeTemplate);
-    if (!templateForRequest) return;
+    if (!templateForRequest) {
+      throw new Error("Upload a resume template on your dashboard before generating.");
+    }
 
-    setError("");
+    const jobTitle = jobOverride?.jobTitle?.trim() || form.jobTitle;
+    const companyName = jobOverride?.companyName?.trim() || form.companyName;
+    const jobDescription = jobOverride?.jobDescription?.trim() || form.jobDescription;
+    const customPrompt = jobOverride?.customPrompt?.trim() || form.customPrompt;
+
     setApplying(true);
+    setError("");
+    setArchiveError("");
     try {
-      const res = await fetch("/api/resume/build", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          templateName: templateForRequest.fileName,
-          templateBase64: templateForRequest.templateBase64,
-          customPrompt: form.customPrompt,
-          content,
-          resumeFileBaseName: resumeFileBaseName.trim(),
-          profileName: chatProfile?.fullName,
-        }),
+      const built = await buildResumeDocx({
+        templateName: templateForRequest.fileName,
+        templateBase64: templateForRequest.templateBase64,
+        content: draft,
+        customPrompt,
+        resumeFileBaseName: resumeFileBaseName.trim(),
+        profileName: chatProfile?.fullName,
       });
-      const data = (await res.json()) as ResumeBuildResponse & { error?: string };
-      if (!res.ok) throw new Error(data?.error || `Request failed (${res.status}).`);
-      setDocxBase64(data.docxBase64);
-      setFileName(data.fileName);
+
+      setDocxBase64(built.docxBase64);
+      setFileName(built.fileName);
       setStep("done");
       setAtsModalOpen(false);
-      setArchiveError("");
       setPreviewOpen(true);
       void import("@/components/ui/PdfPreviewModal");
       if (RESUME_SCORE_SYSTEM_ENABLED) {
-        void evaluateResumeScores(content, { openModal: false });
+        void evaluateResumeScores(draft, { openModal: false });
       }
-      void submitResumeArchive(data.docxBase64, data.fileName);
-    } catch (err) {
-      setError((err as Error).message || "Failed to update resume.");
+
+      setArchiving(true);
+      try {
+        const { archiveResume } = await import("@/lib/resume-archive");
+        const { notifyTodaysResumeCountChanged } = await import("@/lib/todays-resume-count");
+        const DOCX_MIME =
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        const archive = await archiveResume({
+          jobTitle: extractResumeTitleHeadline(draft.title) || jobTitle,
+          companyName,
+          jobDescription,
+          docxBlob: base64ToBlob(built.docxBase64, DOCX_MIME),
+          fileName: built.fileName,
+        });
+        setPdfBase64(archive.pdfBase64);
+        setPdfFileName(archive.pdfFileName);
+        notifyTodaysResumeCountChanged();
+        return {
+          docxBase64: built.docxBase64,
+          fileName: built.fileName,
+          pdfBase64: archive.pdfBase64,
+          pdfFileName: archive.pdfFileName,
+          archiveId: archive.id,
+        };
+      } catch (err) {
+        setArchiveError(resumeBuilderAccessDeniedMessage(err));
+        throw err;
+      } finally {
+        setArchiving(false);
+      }
     } finally {
       setApplying(false);
+    }
+  }
+
+  async function handleApply() {
+    if (!content || !activeTemplate || applying) return;
+    try {
+      await applyDraftToResume(content);
+    } catch (err) {
+      setError((err as Error).message || "Failed to update resume.");
     }
   }
 

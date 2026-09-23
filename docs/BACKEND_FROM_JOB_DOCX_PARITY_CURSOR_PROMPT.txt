@@ -1,0 +1,154 @@
+# Devora21 Backend Cursor Prompt — Make /resume/from-job DOCX match the web UI
+
+## Role
+You are implementing backend changes for Devora21 at https://api.devora21.com.
+
+## Problem
+The Next.js web UI ("New resume") builds DOCX correctly via frontend:
+- POST /api/resume/build -> applyContentToDocx() in src/lib/resume-docx.ts
+- Skills shaping in src/lib/resume-skills-style.ts
+- AI prompt rules in src/lib/resume-prompt.ts
+
+But POST /resume/from-job (API / job-link pipeline) uses a separate backend fill/render path. That path does NOT use the frontend DOCX builder, so API output is wrong/outdated for template style (skills TAB gap, hanging wrap, JD skill categories, Joao location lines, etc.).
+
+## Goal
+Make backend status step "filling" produce the same DOCX layout rules as the frontend Resume Builder. Then PDF render ("rendering") must preserve those rules.
+
+## Auth / inputs (already used by FE)
+- Auth: same session cookie and/or Bearer API key as existing resume endpoints
+- POST /resume/from-job body may include:
+  - url (job link)
+  - customPrompt / profilePrompt / promptContent (profile writing instructions)
+  - skipEnglishTeamGate / skip_english_team_gate (ignore English-team gate; FE already sends these)
+
+Do not break existing job polling contract (jobId, status steps, PDF response).
+
+---
+
+## Preferred implementation
+
+### Option A (recommended)
+Port the frontend DOCX XML fill rules into the backend filling stage.
+
+### Option B
+After AI JSON is ready, call a shared fill service that runs the same logic as frontend applyContentToDocx, then convert to PDF.
+
+Important: do NOT rely on the LLM alone to create Word layout. Tabs, tab stops, and hanging indents must be written into DOCX XML.
+
+---
+
+## Required DOCX fill rules (must match FE)
+
+### 1) Skills category lines: TAB + shared tab stop + hanging indent
+
+For each line like "Languages: JavaScript, TypeScript, ..." build paragraph runs in this order:
+1. Bold category label — ensure Latin bold <w:b/> (not only <w:bCs/>)
+2. Plain colon suffix (": " or ":" matching template)
+3. Separate run with <w:tab/>
+4. Plain skill values (no leading space after tab)
+
+Paragraph properties MUST include both of these (same POS value):
+
+  <w:tabs>
+    <w:tab w:val="left" w:pos="{POS}"/>
+  </w:tabs>
+  <w:ind w:left="{POS}" w:hanging="{POS}"/>
+
+POS = one shared left tab stop for all skill lines in the section.
+Estimate from longest category label (frontend formula approx):
+max(1800, ceil(((longestLabel + 2) * 125 + 360) / 180) * 180) twips.
+
+Why:
+- TAB without an explicit stop often looks like a normal space
+- Hanging indent keeps wrapped skill text under the skills column, never under the category-name column
+
+Do not use only a normal space after the colon for category-style templates.
+
+### 2) Skills categories: writing instructions are ABSOLUTE (do not force template labels or caps)
+
+Do NOT force template sample labels like Frontend / Backend / Tooling / Monitoring.
+
+- Template controls FORMAT only: bold label, colon, TAB + hanging indent
+- ABSOLUTE: Writing instructions alone control category count, category names/order, and items per category
+- Do NOT cap to template sample line count (e.g. do not slice to 6 because the template has 6 sample lines)
+- Do NOT remap AI categories onto template Frontend/Backend slots
+- Place each technology in the correct category from Writing instructions + JD (e.g. Snowflake under Databases)
+- After AI returns skills, preserve AI category labels/order/line count when reshaping; apply bold/colon style only
+
+### 3) Joao-style experience location lines
+
+If template has a workplace/location line under the job header (e.g. "City | Remote"):
+- Treat as location, NOT a bullet
+- Keep template location paragraph style (often italic / darker blue)
+- Keep company/dates/location fixed from template when regenerating content
+
+### 4) Bullets
+- Do not clip AI bullet count to template bullet slot count
+- Exact per-bullet word count is soft unless you add explicit enforcement later
+
+### 5) Title/seniority sync (if backend syncs title into roles)
+Replace only job-title core ("Software Engineer" -> "Data Engineer"). Preserve seniority tokens: Junior, Mid, Senior, Staff, Principal, Lead, etc.
+
+---
+
+## Required AI prompt rules (backend generating step)
+
+When building the LLM prompt:
+1. Put Writing instructions (customPrompt) first as ABSOLUTE source of truth for skill category count, names/order, items per category, bullet counts, and tone
+2. Template skills section must say FORMAT ONLY, for example:
+   - Each line like **Category:** tech, tech (bold label, colon, then skills)
+   - Category count/names/items come ONLY from Writing instructions — never from template sample counts
+   - Do NOT force template sample labels (Frontend/Backend/...)
+   - Do NOT say "return at most N lines" based on template sample length
+3. System prompt must NOT say "use exactly these template skill category labels"
+4. Post-process skills: format bold/colon only — never slice/remap to template sample lines
+
+---
+
+## Pipeline checklist for /resume/from-job
+
+1. scraping — scrape JD (existing)
+2. generating — AI JSON with corrected skills/category prompt rules above
+3. filling — apply DOCX rules 1-4 to the user's stored template
+4. rendering — DOCX to PDF; tabs + hanging indent must survive conversion
+5. Return existing response shape (PDF base64 / archive metadata / optional content JSON)
+
+---
+
+## Acceptance tests
+
+1. Category template + Data Engineer JD:
+   Skills use JD categories (Databases/Cloud/etc.). Snowflake is under Databases, not Frontend.
+
+2. Long skill line wraps:
+   Continuation starts at skills column; no skill text under category labels.
+
+3. Category gap:
+   Clear aligned TAB column after category labels (not a single space).
+
+4. Joao location line:
+   Still under job header, not converted into a bullet.
+
+5. Parity:
+   Same user template + same JD + same profile prompt -> API PDF skills/experience layout matches UI Apply DOCX (minor PDF font differences OK).
+
+---
+
+## Frontend source of truth (for behavior parity)
+
+- src/lib/resume-docx.ts — applyContentToDocx, skill TAB/hanging, location lines
+- src/lib/resume-skills-style.ts — preserve JD category labels
+- src/lib/resume-prompt.ts — writing instructions override template sample labels
+- FE caller: src/lib/resume-from-job-api.ts -> POST /resume/from-job with customPrompt
+
+---
+
+## Out of scope
+- Archive list/download endpoint redesign
+- English-team gate reintroduction
+- Scraper redesign
+
+---
+
+## Deliverable
+Implement Option A or B, update backend fill + generate prompts, and verify all acceptance tests pass.
