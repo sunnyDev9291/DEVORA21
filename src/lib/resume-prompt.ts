@@ -58,8 +58,7 @@ export function buildResumeSystemPrompt(regenerate = false, layout: ResumeTempla
     "Technical output rules (not content style):",
     "- Use **double asterisks** around skill category labels (e.g. **Languages:**) and tech terms so Word can render bold.",
     "- Match the template job count, companies, dates, locations, and fixed project names from the user message.",
-    "- Skillsets: match the template's visual layout (category lines, bold labels, line count cap). Category NAMES and ORDER follow Writing instructions / JD — do not lock to sample template labels.",
-    "- Bullet count per job is not taken from the template.",
+    "- ABSOLUTE: Writing instructions alone control skill category count, category names/order, items per category, bullet count per job, and bullet word counts. Template samples are format-only — never treat them as limits.",
     "- Keep each job's location/workplace line when the template provides one (e.g. \"City, Region | Remote\").",
     "- Do not invent employers or projects.",
     "- No markdown fences or commentary.",
@@ -80,7 +79,7 @@ function formatTemplateStructureLine(
     const names = projects.map((p) => `"${p.name}"`).join(", ");
     return `${prefix} | ${projects.length} project(s), fixed names: ${names}`;
   }
-  return `${prefix} | keep company/dates/location fixed; bullet count is not taken from the template (template currently has ${e.bullets.length} slots)`;
+  return `${prefix} | keep company/dates/location fixed; bullet count and bullet word count follow Writing instructions only (ignore template bullet slot count)`;
 }
 
 export function buildResumeUserPrompt({
@@ -112,8 +111,9 @@ export function buildResumeUserPrompt({
   const isRegenerate = Boolean(previousContent);
 
   const structureBlock = [
-    `Template layout (${experiences.length} job(s) — keep company, dates, and project names fixed; do not copy the template bullet count):`,
+    `Template layout (${experiences.length} job(s) — keep company, dates, and project names fixed):`,
     experiences.map((e, i) => formatTemplateStructureLine(e, i, layout)).join("\n"),
+    "Content rules for bullets and skills come ONLY from Writing instructions (not from template sample counts).",
   ].join("\n");
 
   const previousDraftBlock =
@@ -134,9 +134,9 @@ export function buildResumeUserPrompt({
   const taskBlock = task?.trim() ? `Task:\n${task.trim()}` : "";
   const writingBlock = writingInstructions?.trim()
     ? [
-        "Writing instructions (source of truth for tone, content rules, skill categorization, and formatting — follow these exactly):",
+        "Writing instructions (ABSOLUTE source of truth for tone, skill categories/counts/items, bullet count, bullet word count, and formatting — follow exactly; override every template sample limit):",
         writingInstructions.trim(),
-        "When Writing instructions define skill category names/order/caps, those override any sample category labels in the template skillsets section below.",
+        "Ignore template skill line counts, sample category labels, and template bullet slot counts whenever they conflict with these Writing instructions.",
       ].join("\n")
     : "";
 
