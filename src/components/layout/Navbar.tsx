@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { NAV_LINKS } from "@/lib/constants";
 import { brand } from "@/lib/ui-styles";
 import ThemeToggle from "@/components/ui/ThemeToggle";
+import SmartCursorToggle from "@/components/ui/SmartCursorToggle";
 import NavbarActions from "@/components/layout/NavbarActions";
 
 function navLinkClass(pathname: string, href: string) {
@@ -66,6 +67,7 @@ export default function Navbar() {
             </span>
           </Link>
           <div className="flex shrink-0 items-center gap-2">
+            <SmartCursorToggle />
             <ThemeToggle />
             <button
               type="button"
@@ -124,6 +126,7 @@ export default function Navbar() {
                   </li>
                 ))}
               </ul>
+              <SmartCursorToggle />
               <ThemeToggle />
               <NavbarActions variant="desktop" zone="tools" />
             </div>
