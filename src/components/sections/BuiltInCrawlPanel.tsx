@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { getApiErrorMessage } from "@/lib/auth-api";
 import { crawlBuiltInJobs, crawlHiringCafeJobs, crawlHimalayasJobs, crawlWorkableJobs, crawlWorkingNomadsJobs } from "@/lib/builtin-crawl-api";
@@ -384,6 +384,37 @@ function filterJobsByTitle(jobs: DiscoveredJobRow[], titleFilter: string): Displ
     .filter(({ job }) => !trimmed || jobTitleMatchesFilter(job.jobTitle, trimmed));
 }
 
+function JobSelectCheckbox({
+  checked,
+  onChange,
+  ariaLabel,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  ariaLabel: string;
+}) {
+  return (
+    <label
+      className="job-select-check"
+      data-checked={checked ? "true" : "false"}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <input type="checkbox" checked={checked} onChange={onChange} aria-label={ariaLabel} />
+      <span className="job-select-box" aria-hidden="true">
+        <svg className="job-select-mark" viewBox="0 0 20 20" fill="none">
+          <path
+            d="M4.5 10.5l3.2 3.2 7.8-7.8"
+            stroke="currentColor"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </span>
+    </label>
+  );
+}
+
 function MergedJobTable({
   rows,
   sortMode,
@@ -408,6 +439,47 @@ function MergedJobTable({
     () => buildPlatformGroups(rows, platformOrder),
     [rows, platformOrder]
   );
+  const [flashKeys, setFlashKeys] = useState<Set<string>>(() => new Set());
+  const flashTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  useEffect(() => {
+    const timers = flashTimersRef.current;
+    return () => {
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
+    };
+  }, []);
+
+  function flashRow(key: string) {
+    setFlashKeys((current) => {
+      const next = new Set(current);
+      next.add(key);
+      return next;
+    });
+    const existing = flashTimersRef.current.get(key);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      setFlashKeys((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+      flashTimersRef.current.delete(key);
+    }, 420);
+    flashTimersRef.current.set(key, timer);
+  }
+
+  function handleToggleRow(key: string) {
+    flashRow(key);
+    onToggleRow(key);
+  }
+
+  function handleRowClick(event: MouseEvent<HTMLTableRowElement>, key: string) {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    if (target.closest("a, button, input, label, [data-no-row-toggle]")) return;
+    handleToggleRow(key);
+  }
 
   if (rows.length === 0) {
     return (
@@ -422,19 +494,17 @@ function MergedJobTable({
       <table className="min-w-full text-base">
         <thead className="border-b border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.02] text-left text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
           <tr>
+            <th className="px-2 py-3 font-semibold text-center w-14">
+              <JobSelectCheckbox
+                checked={allChecked}
+                onChange={onToggleAll}
+                ariaLabel="Select all jobs"
+              />
+            </th>
             <th className="px-4 py-3 font-semibold whitespace-nowrap">Company name</th>
             <th className="px-4 py-3 font-semibold min-w-[12rem]">Job title</th>
             <th className="px-4 py-3 font-semibold min-w-[10rem]">Job URL</th>
             <th className="px-4 py-3 font-semibold whitespace-nowrap">Platform</th>
-            <th className="px-4 py-3 font-semibold text-center w-12">
-              <input
-                type="checkbox"
-                checked={allChecked}
-                onChange={onToggleAll}
-                aria-label="Select all jobs"
-                className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500/30 dark:border-white/20 dark:bg-white/5"
-              />
-            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-white/[0.06]">
@@ -443,16 +513,22 @@ function MergedJobTable({
                 group.rows.map((row, rowIndex) => {
                   const key = jobRowKey(row.job, row.originalIndex);
                   const checked = checkedKeys.has(key);
+                  const flashing = flashKeys.has(key);
 
                   return (
                     <tr
                       key={key}
-                      className={
-                        checked
-                          ? "bg-orange-500/[0.06] hover:bg-orange-500/[0.08]"
-                          : "hover:bg-slate-50/80 dark:hover:bg-white/[0.02]"
-                      }
+                      data-checked={checked ? "true" : "false"}
+                      className={`job-select-row ${flashing ? "is-flashing" : ""}`}
+                      onClick={(event) => handleRowClick(event, key)}
                     >
+                      <td className="px-2 py-2.5 text-center align-middle">
+                        <JobSelectCheckbox
+                          checked={checked}
+                          onChange={() => handleToggleRow(key)}
+                          ariaLabel={`Select ${row.job.jobTitle || "job"}`}
+                        />
+                      </td>
                       {rowIndex === 0 ? (
                         <td
                           rowSpan={group.rows.length}
@@ -464,7 +540,7 @@ function MergedJobTable({
                       <td className="px-4 py-3 text-slate-800 dark:text-slate-100">{row.job.jobTitle || "—"}</td>
                       <td className="px-4 py-3 max-w-[20rem]">
                         {row.job.jobUrl ? (
-                          <div className="flex items-center gap-2 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0" data-no-row-toggle>
                             <span title={row.job.jobUrl} className="truncate text-orange-600 dark:text-orange-400 select-all">
                               {row.job.jobUrl}
                             </span>
@@ -481,15 +557,6 @@ function MergedJobTable({
                           {PLATFORM_LABEL[row.job.platform]}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-center">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => onToggleRow(key)}
-                          aria-label={`Select ${row.job.jobTitle || "job"}`}
-                          className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500/30 dark:border-white/20 dark:bg-white/5"
-                        />
-                      </td>
                     </tr>
                   );
                 })
@@ -498,23 +565,29 @@ function MergedJobTable({
                 group.rows.map((row, rowIndex) => {
                   const key = jobRowKey(row.job, row.originalIndex);
                   const checked = checkedKeys.has(key);
+                  const flashing = flashKeys.has(key);
 
                   return (
                     <tr
                       key={key}
-                      className={
-                        checked
-                          ? "bg-orange-500/[0.06] hover:bg-orange-500/[0.08]"
-                          : "hover:bg-slate-50/80 dark:hover:bg-white/[0.02]"
-                      }
+                      data-checked={checked ? "true" : "false"}
+                      className={`job-select-row ${flashing ? "is-flashing" : ""}`}
+                      onClick={(event) => handleRowClick(event, key)}
                     >
+                      <td className="px-2 py-2.5 text-center align-middle">
+                        <JobSelectCheckbox
+                          checked={checked}
+                          onChange={() => handleToggleRow(key)}
+                          ariaLabel={`Select ${row.job.jobTitle || "job"}`}
+                        />
+                      </td>
                       <td className="px-4 py-3 font-medium text-slate-900 dark:text-white whitespace-nowrap">
                         {normalizeCompanyName(row.job.companyName) || "—"}
                       </td>
                       <td className="px-4 py-3 text-slate-800 dark:text-slate-100">{row.job.jobTitle || "—"}</td>
                       <td className="px-4 py-3 max-w-[20rem]">
                         {row.job.jobUrl ? (
-                          <div className="flex items-center gap-2 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0" data-no-row-toggle>
                             <span title={row.job.jobUrl} className="truncate text-orange-600 dark:text-orange-400 select-all">
                               {row.job.jobUrl}
                             </span>
@@ -536,15 +609,6 @@ function MergedJobTable({
                           </span>
                         </td>
                       ) : null}
-                      <td className="px-4 py-3 text-center">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => onToggleRow(key)}
-                          aria-label={`Select ${row.job.jobTitle || "job"}`}
-                          className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500/30 dark:border-white/20 dark:bg-white/5"
-                        />
-                      </td>
                     </tr>
                   );
                 })
