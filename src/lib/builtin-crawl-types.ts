@@ -13,7 +13,8 @@ export type JobCrawlPlatform =
   | "hiringcafe"
   | "workable"
   | "workingnomads"
-  | "himalayas";
+  | "himalayas"
+  | "getonboard";
 
 export const ALL_JOB_CRAWL_PLATFORMS: JobCrawlPlatform[] = [
   "builtin",
@@ -21,6 +22,7 @@ export const ALL_JOB_CRAWL_PLATFORMS: JobCrawlPlatform[] = [
   "workable",
   "workingnomads",
   "himalayas",
+  "getonboard",
 ];
 
 export type JobCrawlResult = {
@@ -65,12 +67,16 @@ export const DEFAULT_HIMALAYAS_COUNTRY = "Argentina";
 /** @deprecated Use DEFAULT_HIMALAYAS_COUNTRY — stored value is a country name, not a URL. */
 export const DEFAULT_HIMALAYAS_LISTING_URL = DEFAULT_HIMALAYAS_COUNTRY;
 
+/** Default Get on Board country filter (public search API — no listing URL). */
+export const DEFAULT_GETONBOARD_COUNTRY = "Argentina";
+
 export const DEFAULT_LISTING_URLS: Record<JobCrawlPlatform, string> = {
   builtin: DEFAULT_BUILTIN_LISTING_URL,
   hiringcafe: DEFAULT_HIRINGCAFE_LISTING_URL,
   workable: DEFAULT_WORKABLE_LISTING_URL,
   workingnomads: DEFAULT_WORKINGNOMADS_LISTING_URL,
   himalayas: DEFAULT_HIMALAYAS_COUNTRY,
+  getonboard: DEFAULT_GETONBOARD_COUNTRY,
 };
 
 export const JOB_CRAWL_PLATFORM_LABEL: Record<JobCrawlPlatform, string> = {
@@ -79,6 +85,7 @@ export const JOB_CRAWL_PLATFORM_LABEL: Record<JobCrawlPlatform, string> = {
   workable: "Workable",
   workingnomads: "Working Nomads",
   himalayas: "Himalayas",
+  getonboard: "Get on Board",
 };
 
 export const JOB_CRAWL_PLATFORM_PLACEHOLDER: Record<JobCrawlPlatform, string> = {
@@ -87,6 +94,7 @@ export const JOB_CRAWL_PLATFORM_PLACEHOLDER: Record<JobCrawlPlatform, string> = 
   workable: "https://jobs.workable.com/search?…",
   workingnomads: "https://www.workingnomads.com/jobs?…",
   himalayas: "Argentina",
+  getonboard: "Argentina",
 };
 
 export const JOB_CRAWL_PLATFORM_HINT: Record<JobCrawlPlatform, string> = {
@@ -96,11 +104,13 @@ export const JOB_CRAWL_PLATFORM_HINT: Record<JobCrawlPlatform, string> = {
   workingnomads:
     "Copy the full /jobs URL from Working Nomads after setting filters (single page, no pagination).",
   himalayas: "Country name only (e.g. Argentina). Uses Himalayas free API — no listing URL needed.",
+  getonboard:
+    "Country name or ISO code (e.g. Argentina or AR). Uses Get on Board via backend — remote jobs from the last 24 hours.",
 };
 
 /** Platforms that store a listing URL vs a simple filter value. */
 export function isJobCrawlUrlPlatform(platform: JobCrawlPlatform): boolean {
-  return platform !== "himalayas";
+  return platform !== "himalayas" && platform !== "getonboard";
 }
 
 export const JOB_CRAWL_PLATFORM_VALIDATOR: Record<JobCrawlPlatform, (value: string) => boolean> = {
@@ -109,6 +119,7 @@ export const JOB_CRAWL_PLATFORM_VALIDATOR: Record<JobCrawlPlatform, (value: stri
   workable: isWorkableListingUrl,
   workingnomads: isWorkingNomadsListingUrl,
   himalayas: isHimalayasCountry,
+  getonboard: isGetOnBoardCountry,
 };
 
 /** Fill missing platform URLs from defaults (e.g. after adding Workable to saved sessions). */
@@ -121,6 +132,7 @@ export function mergeListingUrls(
     workable: stored?.workable?.trim() || DEFAULT_WORKABLE_LISTING_URL,
     workingnomads: stored?.workingnomads?.trim() || DEFAULT_WORKINGNOMADS_LISTING_URL,
     himalayas: normalizeHimalayasCountry(stored?.himalayas ?? "") || DEFAULT_HIMALAYAS_COUNTRY,
+    getonboard: normalizeGetOnBoardCountry(stored?.getonboard ?? "") || DEFAULT_GETONBOARD_COUNTRY,
   };
 }
 
@@ -248,12 +260,58 @@ export function isHimalayasCountry(value: string): boolean {
   return /^[A-Za-z][A-Za-z\s.'-]*$/.test(country);
 }
 
+/** Normalize Get on Board profile value to a country name (same rules as Himalayas). */
+export function normalizeGetOnBoardCountry(value: string): string {
+  return normalizeHimalayasCountry(value);
+}
+
+/** Country name for Get on Board public search (`country_code` resolved on backend). */
+export function isGetOnBoardCountry(value: string): boolean {
+  return isHimalayasCountry(value);
+}
+
+/**
+ * Map a user-entered country name to ISO 3166-1 alpha-2 for Get on Board `country_code`.
+ * Backend should use this (or extend it) when calling the public search API.
+ */
+export function getOnBoardCountryToIso(country: string): string | null {
+  const key = normalizeGetOnBoardCountry(country).toLowerCase();
+  if (/^[a-z]{2}$/.test(key)) return key.toUpperCase();
+  const map: Record<string, string> = {
+    argentina: "AR",
+    brazil: "BR",
+    brasil: "BR",
+    chile: "CL",
+    colombia: "CO",
+    "dominican republic": "DO",
+    mexico: "MX",
+    peru: "PE",
+    uruguay: "UY",
+    paraguay: "PY",
+    bolivia: "BO",
+    ecuador: "EC",
+    venezuela: "VE",
+    "costa rica": "CR",
+    panama: "PA",
+    guatemala: "GT",
+    honduras: "HN",
+    "el salvador": "SV",
+    nicaragua: "NI",
+    cuba: "CU",
+    "puerto rico": "PR",
+    spain: "ES",
+    "united states": "US",
+    usa: "US",
+  };
+  return map[key] ?? null;
+}
+
 export function detectJobCrawlPlatform(url: string): JobCrawlPlatform | null {
   if (isBuiltInListingUrl(url)) return "builtin";
   if (isHiringCafeListingUrl(url)) return "hiringcafe";
   if (isWorkableListingUrl(url)) return "workable";
   if (isWorkingNomadsListingUrl(url)) return "workingnomads";
-  // Himalayas no longer uses listing URLs for crawl — country-only.
+  // Himalayas / Get on Board use country-only filters — not listing URLs.
   return null;
 }
 

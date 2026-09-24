@@ -1,0 +1,70 @@
+# Frontend Cursor Prompt — Add Get on Board job crawl (country + official API)
+# Status: IMPLEMENTED in this repo (aligns with backend contract below)
+
+## Role
+Wire Resume Builder Get on Board discovery the same way as Himalayas: user provides a country name only (not a listing URL). Backend already calls Get on Board’s public Search API and returns remote jobs posted in the last 24 hours.
+
+## Endpoint
+
+POST /jobs/crawl/getonboard
+Content-Type: application/json
+
+Auth: same as other crawl routes (session cookie and/or Bearer dv21_ API key). Resume Builder must be enabled.
+
+### Request body
+{
+  "country": "Argentina",
+  "countryName": "Argentina"
+}
+
+- Send either country or countryName (or both; same value).
+- If omitted → backend uses listingUrls.getonboard from profile → else default "Argentina".
+- Accept a country name ("Argentina") or ISO alpha-2 ("AR"). Do not send a Get on Board URL.
+
+### Success response
+{
+  "sourceUrl": "getonboard:AR",
+  "platform": "getonboard",
+  "country": "Argentina",
+  "countryCode": "AR",
+  "pagesScraped": 2,
+  "totalCount": 9,
+  "jobs": [
+    {
+      "jobId": "data-engineer-senior-improving-remote",
+      "companyName": "Improving",
+      "jobTitle": "Data Engineer Senior",
+      "jobUrl": "https://www.getonbrd.com/jobs/data-engineer-senior-improving-remote"
+    }
+  ]
+}
+
+Use the same job list UI as Himalayas: jobId, companyName, jobTitle, jobUrl. totalCount === jobs.length.
+
+## Profile / onboarding
+- Platform key: getonboard
+- Store country string in listingUrls.getonboard (e.g. "Argentina"), not a URL
+- Flat field also accepted: listingUrl_getonboard
+- Mirror Himalayas UX: country text input / country picker, not a URL field
+- Label: "Get on Board" / "GetOnBoard"
+
+## UI behavior
+1. Platform: Get on Board
+2. Country from profile or picker (default Argentina)
+3. Call POST /jobs/crawl/getonboard with { country }
+4. Render returned jobs like Himalayas / other crawls
+5. On empty jobs, show "No remote jobs posted in the last 24 hours for this country"
+6. Handle 400 (unknown/invalid country), 401/403, 422 (bad saved profile country), 502 (upstream)
+
+## Do not
+- Do not build or send Get on Board search URLs
+- Do not call getonbrd.com from the browser (CORS / rate limits) — always use this backend endpoint
+- Do not send remote filters from FE; backend handles remote + 24h filtering
+
+## FE files (this repo)
+- src/lib/builtin-crawl-types.ts — platform key, defaults, validators
+- src/lib/builtin-crawl-api.ts — crawlGetOnBoardJobs()
+- src/components/sections/BuiltInCrawlPanel.tsx — discovery UI
+- src/components/dashboard/DashboardProfilePanel.tsx — country text field
+- src/lib/job-crawl-storage.ts — persist platform key
+- src/lib/profile-api.ts — listingUrl_getonboard flat field via compact listingUrls loop

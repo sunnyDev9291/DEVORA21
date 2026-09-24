@@ -9,9 +9,11 @@ import {
   isBuiltInListingUrl,
   isHiringCafeListingUrl,
   isHimalayasCountry,
+  isGetOnBoardCountry,
   isWorkableListingUrl,
   isWorkingNomadsListingUrl,
   normalizeHimalayasCountry,
+  normalizeGetOnBoardCountry,
   stripListingPageParam,
   type JobCrawlJob,
   type JobCrawlPlatform,
@@ -123,7 +125,8 @@ function parsePlatform(value: unknown, fallback: JobCrawlPlatform): JobCrawlPlat
     value === "builtin" ||
     value === "workable" ||
     value === "workingnomads" ||
-    value === "himalayas"
+    value === "himalayas" ||
+    value === "getonboard"
     ? value
     : fallback;
 }
@@ -175,7 +178,8 @@ type CrawlConfig = {
     | "/jobs/crawl/hiringcafe"
     | "/jobs/crawl/workable"
     | "/jobs/crawl/workingnomads"
-    | "/jobs/crawl/himalayas";
+    | "/jobs/crawl/himalayas"
+    | "/jobs/crawl/getonboard";
 
   label: string;
 
@@ -271,6 +275,14 @@ const CRAWL_CONFIG: Record<JobCrawlPlatform, CrawlConfig> = {
 
   },
 
+  getonboard: {
+    platform: "getonboard",
+    path: "/jobs/crawl/getonboard",
+    label: "Get on Board",
+    validate: isGetOnBoardCountry,
+    invalidMessage: "Enter a country name or ISO code for Get on Board (e.g. Argentina or AR).",
+    emptyMessage: "No remote jobs posted in the last 24 hours for this country",
+  },
 };
 
 
@@ -591,6 +603,145 @@ export async function crawlHimalayasJobs(country: string, signal?: AbortSignal):
 
 
 
+/** POST /jobs/crawl/getonboard — public search API filtered by country (not a listing URL). */
+
+export async function crawlGetOnBoardJobs(country: string, signal?: AbortSignal): Promise<JobCrawlResult> {
+
+  const config = CRAWL_CONFIG.getonboard;
+
+  const normalized = normalizeGetOnBoardCountry(country);
+
+  if (!normalized || !isGetOnBoardCountry(normalized)) {
+
+    throw new ApiError(config.invalidMessage, 400);
+
+  }
+
+
+
+  let res: Response;
+
+  try {
+
+    res = await apiAuthFetch(`${API_BASE_URL}${config.path}`, {
+
+      method: "POST",
+
+      headers: {
+
+        "Content-Type": "application/json",
+
+        Accept: "application/json",
+
+      },
+
+      body: JSON.stringify({
+
+        country: normalized,
+
+        countryName: normalized,
+
+      }),
+
+      signal,
+
+    });
+
+  } catch (err) {
+
+    if ((err as Error).name === "AbortError") {
+
+      throw new ApiError(
+
+        `${config.label} crawl timed out. Try again or use a narrower country filter.`,
+
+        504
+
+      );
+
+    }
+
+    throw new Error(
+
+      `Could not reach the ${config.label} crawl service. Check your connection and try again.`
+
+    );
+
+  }
+
+
+
+  const data = await readJson(res);
+
+
+
+  if (!res.ok) {
+
+    const body = asApiErrorBody(data);
+
+    const message = errorMessage(data, `${config.label} crawl failed (${res.status}).`);
+
+    if (res.status === 401) {
+
+      throw new ApiError("Authentication required. Sign in or connect a dv21_ API key.", 401, body);
+
+    }
+
+    if (res.status === 403) {
+
+      const err = new ApiError(message, 403, body);
+
+      if (isResumeBuilderAccessDenied(err)) {
+
+        throw new ApiError(RESUME_BUILDER_ACCESS_MESSAGE, 403, body);
+
+      }
+
+      throw new ApiError(resumeBuilderAccessDeniedMessage(err), 403, body);
+
+    }
+
+    if (res.status === 422) {
+
+      throw new ApiError(
+        message ||
+          "Invalid Get on Board country on your profile. Update it on the dashboard (name or ISO code like AR).",
+        422,
+        body
+      );
+
+    }
+
+    if (res.status === 502) {
+
+      throw new ApiError(
+        errorMessage(data, "Get on Board upstream failed. Try again shortly."),
+        502,
+        body
+      );
+
+    }
+
+    throw new ApiError(message, res.status, body);
+
+  }
+
+
+
+  const result = parseResult(data, `getonboard:${normalized}`, "getonboard");
+
+  if (result.jobs.length === 0) {
+
+    throw new ApiError(config.emptyMessage, 422);
+
+  }
+
+  return result;
+
+}
+
+
+
 /** POST /jobs/discover/hiringcafe — page 0 only. */
 
 export async function discoverHiringCafeJobs(url: string, signal?: AbortSignal): Promise<JobCrawlResult> {
@@ -670,7 +821,7 @@ export async function crawlJobs(url: string, signal?: AbortSignal): Promise<JobC
   if (platform === "himalayas") return crawlHimalayasJobs(url, signal);
 
   throw new ApiError(
-    "URL must be a builtin.com, hiringcafe.com, jobs.workable.com, workingnomads.com, or himalayas.app listing.",
+    "URL must be a builtin.com, hiringcafe.com, jobs.workable.com, or workingnomads.com listing.",
     400
   );
 

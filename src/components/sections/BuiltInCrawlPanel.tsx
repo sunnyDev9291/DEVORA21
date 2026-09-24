@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { getApiErrorMessage } from "@/lib/auth-api";
-import { crawlBuiltInJobs, crawlHiringCafeJobs, crawlHimalayasJobs, crawlWorkableJobs, crawlWorkingNomadsJobs } from "@/lib/builtin-crawl-api";
+import { crawlBuiltInJobs, crawlGetOnBoardJobs, crawlHiringCafeJobs, crawlHimalayasJobs, crawlWorkableJobs, crawlWorkingNomadsJobs } from "@/lib/builtin-crawl-api";
 import {
   ALL_JOB_CRAWL_PLATFORMS,
   BUILTIN_CRAWL_TIMEOUT_MS,
@@ -52,6 +52,7 @@ const PLATFORM_TABLE_BADGE_CLASS: Record<JobCrawlPlatform, string> = {
   workable: "bg-amber-500/15 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500/20",
   workingnomads: "bg-sky-500/15 text-sky-800 dark:text-sky-300 ring-1 ring-sky-500/20",
   himalayas: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 ring-1 ring-emerald-500/20",
+  getonboard: "bg-rose-500/15 text-rose-800 dark:text-rose-300 ring-1 ring-rose-500/20",
 };
 
 const PLATFORM_BLURB: Record<JobCrawlPlatform, string> = {
@@ -60,6 +61,7 @@ const PLATFORM_BLURB: Record<JobCrawlPlatform, string> = {
   workable: "Workable job search",
   workingnomads: "Remote nomad listings",
   himalayas: "Remote roles via Himalayas free API (country filter)",
+  getonboard: "Remote roles via Get on Board (country filter, last 24 hours)",
 };
 
 function defaultSelectedPlatforms(): JobCrawlPlatform[] {
@@ -79,6 +81,7 @@ function crawlPlatform(
   if (platform === "hiringcafe") return crawlHiringCafeJobs(url, signal);
   if (platform === "workable") return crawlWorkableJobs(url, signal);
   if (platform === "workingnomads") return crawlWorkingNomadsJobs(url, signal);
+  if (platform === "getonboard") return crawlGetOnBoardJobs(url, signal);
   return crawlHimalayasJobs(url, signal);
 }
 

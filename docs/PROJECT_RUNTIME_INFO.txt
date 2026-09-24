@@ -1,0 +1,154 @@
+================================================================================
+DEVORA21 FRONTEND — PROJECT RUNTIME / DEPLOY INFO
+================================================================================
+Purpose: enough information to run or migrate this Next.js frontend to another
+host (Netlify, Vercel, Docker, etc.) without guessing secrets or URLs.
+
+Last updated: 2026-09-24
+Repo (typical): DEVORA21 frontend (Next.js 15 App Router)
+Production site (current): https://devora21.com
+Backend API (current): https://api.devora21.com
+
+--------------------------------------------------------------------------------
+1) STACK
+--------------------------------------------------------------------------------
+- Next.js 15 + React 19 + TypeScript + Tailwind
+- Hosted build: Netlify (@netlify/plugin-nextjs) — see netlify.toml
+- Auth + most business APIs live on the backend (api.devora21.com), not in this repo
+- Some Next.js /api/* routes are local proxies or Google Sheets helpers
+
+--------------------------------------------------------------------------------
+2) INSTALL / LOCAL DEV
+--------------------------------------------------------------------------------
+Node: 20+ recommended
+Commands:
+  npm install
+  npm run dev          # http://localhost:3000
+  npm run build
+  npm run start
+
+Copy env template:
+  cp .env.example .env.local
+Then fill values below.
+
+--------------------------------------------------------------------------------
+3) REQUIRED ENVIRONMENT VARIABLES (frontend host)
+--------------------------------------------------------------------------------
+Set these on the frontend deploy environment (Netlify site env, Vercel project
+env, Docker env, etc.). Do NOT prefix secrets with NEXT_PUBLIC_.
+
+A) Core API / auth
+  NEXT_PUBLIC_API_BASE_URL=https://api.devora21.com
+    Browser-facing API base. Must be absolute HTTPS so cookies work
+    (SameSite=None on api.devora21.com). Do not use /backend unless you
+    also rewrite Set-Cookie correctly for the site host.
+
+  BACKEND_API_URL=https://api.devora21.com
+    Server-side upstream for Next.js API routes and Netlify functions.
+
+  AI_INTERNAL_API_KEY=<shared secret>
+    Server-only shared key for Next/Netlify → backend AI routes.
+    Same value must exist on the backend as AI_INTERNAL_API_KEY.
+    Never NEXT_PUBLIC_ (Netlify secret scanning will fail the build).
+
+B) Optional site URL (SEO / absolute links)
+  NEXT_PUBLIC_SITE_URL=https://devora21.com
+
+C) Job crawl → Google Sheet (“Add Sheet”)
+  GOOGLE_SHEETS_SPREADSHEET_ID=<spreadsheet id from docs.google.com/.../d/ID/edit>
+  GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account",...,"client_email":"...","private_key":"-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n",...}
+    Prefer the single JSON env var.
+    Or instead:
+      GOOGLE_SERVICE_ACCOUNT_EMAIL=...
+      GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+
+  Sheet setup notes:
+  - Share spreadsheet with the service account email as Editor
+  - Tab names exactly: Brazil | Argentina | Colombia | Dominican Republic | Other
+  - Columns: No | Date | Day_Count | Country | Job_Platform | Job_URL
+  - Prefer protecting only header row; allow A2:F for the service account
+  - Docs: docs/JOB_CRAWL_GOOGLE_SHEET.md
+
+D) Backend-only (NOT needed on frontend host)
+  DEEPSEEK_API_KEY=...   # lives on api.devora21.com only
+
+--------------------------------------------------------------------------------
+4) NETLIFY-SPECIFIC NOTES (current deploy)
+--------------------------------------------------------------------------------
+File: netlify.toml
+- build command: npm run build
+- publish: .next
+- plugin: @netlify/plugin-nextjs
+- functions dir: netlify/functions (esbuild)
+- Redirect: /backend/* → https://api.devora21.com/:splat (force 200)
+  Used as optional same-origin proxy; primary browser API is still
+  NEXT_PUBLIC_API_BASE_URL absolute URL.
+
+After changing env vars: trigger a new deploy so server routes see them.
+
+--------------------------------------------------------------------------------
+5) MIGRATING TO ANOTHER HOST
+--------------------------------------------------------------------------------
+Checklist:
+  [ ] Node 20+ runtime
+  [ ] Set NEXT_PUBLIC_API_BASE_URL + BACKEND_API_URL to the live API
+  [ ] Set AI_INTERNAL_API_KEY to match backend
+  [ ] Set Google Sheets vars if Add Sheet is required
+  [ ] Ensure HTTPS on both site and API (cookies / OAuth)
+  [ ] CORS on backend must allow the new frontend origin(s)
+  [ ] Rebuild (npm run build) — do not copy .next between hosts blindly
+  [ ] If leaving Netlify: remove or adapt netlify.toml redirects/functions
+      (resume background function under netlify/functions may need a replacement)
+
+CORS origins currently expected by backend docs include:
+  https://devora21.com
+  https://www.devora21.com
+  https://devora21-dev.netlify.app
+  http://localhost:3000
+Add the new production origin on the backend before cutover.
+
+--------------------------------------------------------------------------------
+6) KEY FEATURE TOUCHPOINTS (for operators)
+--------------------------------------------------------------------------------
+Auth:
+  Session cookies against api.devora21.com and/or user API key dv21_…
+
+Job discovery crawl platforms (profile listingUrls):
+  builtin, hiringcafe, workable, workingnomads  → listing URLs
+  himalayas, getonboard                         → country name only
+
+Get on Board (frontend wired; needs backend endpoint):
+  Platform key: getonboard
+  FE calls: POST /jobs/crawl/getonboard
+  Body: { "country": "Argentina", "countryName": "Argentina" }
+  Backend prompt: docs/BACKEND_GETONBOARD_CRAWL_CURSOR_PROMPT.txt
+  Official API docs: https://api-doc.getonbrd.com/?version=latest
+  Public search: GET https://www.getonbrd.com/api/v0/search/jobs
+    Query params (official): query, country_code (ISO alpha-2), remote,
+    companies, featured, lang, page, per_page, expand
+    IMPORTANT: do NOT pass country_code and remote in the same request
+    (API returns 422 localization conflict). Filter remote after fetch.
+
+Saved resumes:
+  Lists via GET {API}/resume/archives
+  FE cache: src/lib/saved-resumes-cache.ts
+
+Local browser storage (not server):
+  Job crawl session: localStorage dv21:job-discovery-crawl:v3:{userId}
+  Smart cursor preference, sheet country preference, profile draft, etc.
+
+--------------------------------------------------------------------------------
+7) USEFUL DOCS IN REPO
+--------------------------------------------------------------------------------
+  .env.example
+  docs/JOB_CRAWL_GOOGLE_SHEET.md
+  docs/JOB_CRAWL_PROFILE_URLS.md
+  docs/BACKEND_HIMALAYAS_CRAWL_CURSOR_PROMPT.txt
+  docs/BACKEND_GETONBOARD_CRAWL_CURSOR_PROMPT.txt
+  docs/SAVED_RESUMES_BACKEND.md
+  docs/AUTH_CONTEXT.md
+  docs/AI_BACKEND.md
+
+================================================================================
+END
+================================================================================
