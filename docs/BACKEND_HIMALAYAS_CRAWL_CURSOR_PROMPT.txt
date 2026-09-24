@@ -1,0 +1,91 @@
+# Backend Cursor Prompt — Add Himalayas job crawl
+
+## Role
+Implement Himalayas as a new job-crawl platform on api.devora21.com, matching existing Built In / HiringCafe / Workable / Working Nomads crawl contracts.
+
+## Frontend (already wired)
+- Platform key: `himalayas`
+- FE calls: `POST /jobs/crawl/himalayas`
+- Body: `{ "url": "<listing url>" }`
+- Auth: same session cookie and/or Bearer `dv21_` key as other crawl endpoints
+- Valid listing URL: `https://himalayas.app/jobs` or `https://himalayas.app/jobs?...`
+  - Accept `www.himalayas.app`
+  - Reject job detail pages like `/jobs/{slug}`
+  - Reject `/jobs/api` and `/jobs/api/search` (those are API endpoints, not browser listing URLs)
+- Default FE listing URL example:
+  `https://himalayas.app/jobs?countries=Argentina&sort=recent`
+- Profile `listingUrls.himalayas` may be saved via PATCH /auth/profile (same as other platforms)
+
+## Endpoint
+
+```
+POST /jobs/crawl/himalayas
+Content-Type: application/json
+Authorization: Bearer <session JWT or dv21_ API key>
+```
+
+### Request
+```json
+{ "url": "https://himalayas.app/jobs?countries=Argentina&sort=recent" }
+```
+
+Also accept alias `listingUrl` if you already do for other crawlers.
+
+### Success response (same shape as other crawl endpoints)
+```json
+{
+  "sourceUrl": "https://himalayas.app/jobs?countries=Argentina&sort=recent",
+  "platform": "himalayas",
+  "pagesScraped": 1,
+  "totalCount": 42,
+  "jobs": [
+    {
+      "jobId": "senior-software-engineer-abc123",
+      "companyName": "Acme",
+      "jobTitle": "Senior Software Engineer",
+      "jobUrl": "https://himalayas.app/jobs/senior-software-engineer-abc123"
+    }
+  ]
+}
+```
+
+Rules:
+- `totalCount` MUST equal `jobs.length`
+- Return every opening visible for that filtered listing (paginate until exhausted if the listing is multi-page)
+- Deduplicate by `jobUrl` / `jobId`
+- `jobUrl` must be absolute https links on himalayas.app
+- `jobId` = stable id from URL slug or GUID (not array index)
+
+## How to fetch (recommended)
+
+Himalayas exposes a public JSON API (no key):
+- Browse: `GET https://himalayas.app/jobs/api?limit=&offset=`
+- Search: `GET https://himalayas.app/jobs/api/search?...`
+
+Preferred approach:
+1. Parse the browser listing `url` query filters (`countries`, `q`, `sort`, skills, etc.)
+2. Map those filters onto `/jobs/api/search` (or browse feed) and paginate
+3. Map each API job to `{ jobId, companyName, jobTitle, jobUrl }`
+   - Prefer official application / guid / link fields for `jobUrl`
+   - `companyName` from company name fields
+   - `jobTitle` from title
+   - `jobId` from guid/slug
+
+Fallback (if API mapping is incomplete): Zyte-render the listing HTML pages and extract cards, same pattern as Working Nomads / Built In.
+
+Credit Himalayas as source; do not resubmit their listings to third-party aggregators.
+
+## Profile listingUrls
+Ensure GET /auth/me and PATCH /auth/profile support `listingUrls.himalayas` (and flat `listingUrl_himalayas`) without wiping other platforms.
+
+## Errors
+- 400 invalid URL (not himalayas.app `/jobs` listing)
+- 401/403 same as other crawl routes
+- 502/500 with clear message if scrape/API fails
+
+## Acceptance
+1. POST /jobs/crawl/himalayas with a filtered `/jobs?...` URL returns jobs[] with totalCount === jobs.length
+2. Each job has non-empty companyName, jobTitle, jobUrl
+3. Detail URLs like `/jobs/some-role-slug` are rejected as input
+4. FE Job Discovery “Himalayas” checkbox crawl succeeds end-to-end
+5. Saved profile listingUrls.himalayas round-trips via /auth/me

@@ -5,25 +5,16 @@ import { apiAuthFetch } from "@/lib/api-auth";
 import { ApiError } from "@/lib/auth-api";
 
 import {
-
   detectJobCrawlPlatform,
-
   isBuiltInListingUrl,
-
   isHiringCafeListingUrl,
-
+  isHimalayasListingUrl,
   isWorkableListingUrl,
-
   isWorkingNomadsListingUrl,
-
   stripListingPageParam,
-
   type JobCrawlJob,
-
   type JobCrawlPlatform,
-
   type JobCrawlResult,
-
 } from "@/lib/builtin-crawl-types";
 
 import {
@@ -127,11 +118,13 @@ function parseJob(raw: unknown, index: number): JobCrawlJob {
 
 
 function parsePlatform(value: unknown, fallback: JobCrawlPlatform): JobCrawlPlatform {
-
-  return value === "hiringcafe" || value === "builtin" || value === "workable" || value === "workingnomads"
+  return value === "hiringcafe" ||
+    value === "builtin" ||
+    value === "workable" ||
+    value === "workingnomads" ||
+    value === "himalayas"
     ? value
     : fallback;
-
 }
 
 
@@ -176,7 +169,12 @@ type CrawlConfig = {
 
   platform: JobCrawlPlatform;
 
-  path: "/jobs/crawl/builtin" | "/jobs/crawl/hiringcafe" | "/jobs/crawl/workable" | "/jobs/crawl/workingnomads";
+  path:
+    | "/jobs/crawl/builtin"
+    | "/jobs/crawl/hiringcafe"
+    | "/jobs/crawl/workable"
+    | "/jobs/crawl/workingnomads"
+    | "/jobs/crawl/himalayas";
 
   label: string;
 
@@ -253,6 +251,22 @@ const CRAWL_CONFIG: Record<JobCrawlPlatform, CrawlConfig> = {
     invalidMessage: "URL must be a valid https://www.workingnomads.com/jobs?… listing URL.",
 
     emptyMessage: "No jobs found for this search. The listing may be empty or Working Nomads changed their layout.",
+
+  },
+
+  himalayas: {
+
+    platform: "himalayas",
+
+    path: "/jobs/crawl/himalayas",
+
+    label: "Himalayas",
+
+    validate: isHimalayasListingUrl,
+
+    invalidMessage: "URL must be a valid https://himalayas.app/jobs?… listing URL.",
+
+    emptyMessage: "No jobs found for this search. The listing may be empty or Himalayas changed their layout.",
 
   },
 
@@ -466,6 +480,16 @@ export async function crawlWorkingNomadsJobs(url: string, signal?: AbortSignal):
 
 
 
+/** POST /jobs/crawl/himalayas — Himalayas /jobs listing (paginate if needed). */
+
+export async function crawlHimalayasJobs(url: string, signal?: AbortSignal): Promise<JobCrawlResult> {
+
+  return postJobCrawl("himalayas", url, signal);
+
+}
+
+
+
 /** POST /jobs/discover/hiringcafe — page 0 only. */
 
 export async function discoverHiringCafeJobs(url: string, signal?: AbortSignal): Promise<JobCrawlResult> {
@@ -528,7 +552,7 @@ export async function discoverHiringCafeJobs(url: string, signal?: AbortSignal):
 
 
 
-/** Route to Built In, HiringCafe, or Workable crawl based on listing URL host. */
+/** Route to platform crawl based on listing URL host. */
 
 export async function crawlJobs(url: string, signal?: AbortSignal): Promise<JobCrawlResult> {
 
@@ -542,8 +566,10 @@ export async function crawlJobs(url: string, signal?: AbortSignal): Promise<JobC
 
   if (platform === "workingnomads") return crawlWorkingNomadsJobs(url, signal);
 
+  if (platform === "himalayas") return crawlHimalayasJobs(url, signal);
+
   throw new ApiError(
-    "URL must be a builtin.com, hiringcafe.com, jobs.workable.com, or workingnomads.com listing.",
+    "URL must be a builtin.com, hiringcafe.com, jobs.workable.com, workingnomads.com, or himalayas.app listing.",
     400
   );
 

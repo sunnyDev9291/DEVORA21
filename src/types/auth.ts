@@ -14,7 +14,7 @@ export interface User {
   resumeBuilderEnabled?: boolean;
   resumeTemplateFileName?: string;
   promptFileName?: string;
-  /** Per-user job crawl listing URLs (Built In, HiringCafe, Workable, Working Nomads). */
+  /** Per-user job crawl listing URLs (Built In, HiringCafe, Workable, Working Nomads, Himalayas). */
   listingUrls?: ProfileListingUrls;
   createdAt?: string;
 }

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { getApiErrorMessage } from "@/lib/auth-api";
-import { crawlBuiltInJobs, crawlHiringCafeJobs, crawlWorkableJobs, crawlWorkingNomadsJobs } from "@/lib/builtin-crawl-api";
+import { crawlBuiltInJobs, crawlHiringCafeJobs, crawlHimalayasJobs, crawlWorkableJobs, crawlWorkingNomadsJobs } from "@/lib/builtin-crawl-api";
 import {
   ALL_JOB_CRAWL_PLATFORMS,
   BUILTIN_CRAWL_TIMEOUT_MS,
@@ -43,6 +43,7 @@ const PLATFORM_TABLE_BADGE_CLASS: Record<JobCrawlPlatform, string> = {
   hiringcafe: "bg-orange-500/15 text-orange-700 dark:text-orange-300 ring-1 ring-orange-500/20",
   workable: "bg-amber-500/15 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500/20",
   workingnomads: "bg-sky-500/15 text-sky-800 dark:text-sky-300 ring-1 ring-sky-500/20",
+  himalayas: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 ring-1 ring-emerald-500/20",
 };
 
 const PLATFORM_BLURB: Record<JobCrawlPlatform, string> = {
@@ -50,6 +51,7 @@ const PLATFORM_BLURB: Record<JobCrawlPlatform, string> = {
   hiringcafe: "Cafe search listings",
   workable: "Workable job search",
   workingnomads: "Remote nomad listings",
+  himalayas: "Remote roles from Himalayas",
 };
 
 function defaultSelectedPlatforms(): JobCrawlPlatform[] {
@@ -68,7 +70,8 @@ function crawlPlatform(
   if (platform === "builtin") return crawlBuiltInJobs(url, signal);
   if (platform === "hiringcafe") return crawlHiringCafeJobs(url, signal);
   if (platform === "workable") return crawlWorkableJobs(url, signal);
-  return crawlWorkingNomadsJobs(url, signal);
+  if (platform === "workingnomads") return crawlWorkingNomadsJobs(url, signal);
+  return crawlHimalayasJobs(url, signal);
 }
 
 async function copyTextToClipboard(text: string): Promise<boolean> {

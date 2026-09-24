@@ -8,13 +8,19 @@ export type JobCrawlJob = {
 /** @deprecated Use JobCrawlJob */
 export type BuiltInCrawlJob = JobCrawlJob;
 
-export type JobCrawlPlatform = "builtin" | "hiringcafe" | "workable" | "workingnomads";
+export type JobCrawlPlatform =
+  | "builtin"
+  | "hiringcafe"
+  | "workable"
+  | "workingnomads"
+  | "himalayas";
 
 export const ALL_JOB_CRAWL_PLATFORMS: JobCrawlPlatform[] = [
   "builtin",
   "hiringcafe",
   "workable",
   "workingnomads",
+  "himalayas",
 ];
 
 export type JobCrawlResult = {
@@ -53,11 +59,16 @@ export const DEFAULT_WORKABLE_LISTING_URL =
 export const DEFAULT_WORKINGNOMADS_LISTING_URL =
   "https://www.workingnomads.com/jobs?category=development&location=argentina&postedDate=1";
 
+/** Default Himalayas listing URL (copy filters from browser; backend may paginate). */
+export const DEFAULT_HIMALAYAS_LISTING_URL =
+  "https://himalayas.app/jobs?countries=Argentina&sort=recent";
+
 export const DEFAULT_LISTING_URLS: Record<JobCrawlPlatform, string> = {
   builtin: DEFAULT_BUILTIN_LISTING_URL,
   hiringcafe: DEFAULT_HIRINGCAFE_LISTING_URL,
   workable: DEFAULT_WORKABLE_LISTING_URL,
   workingnomads: DEFAULT_WORKINGNOMADS_LISTING_URL,
+  himalayas: DEFAULT_HIMALAYAS_LISTING_URL,
 };
 
 export const JOB_CRAWL_PLATFORM_LABEL: Record<JobCrawlPlatform, string> = {
@@ -65,6 +76,7 @@ export const JOB_CRAWL_PLATFORM_LABEL: Record<JobCrawlPlatform, string> = {
   hiringcafe: "HiringCafe",
   workable: "Workable",
   workingnomads: "Working Nomads",
+  himalayas: "Himalayas",
 };
 
 export const JOB_CRAWL_PLATFORM_PLACEHOLDER: Record<JobCrawlPlatform, string> = {
@@ -72,6 +84,7 @@ export const JOB_CRAWL_PLATFORM_PLACEHOLDER: Record<JobCrawlPlatform, string> = 
   hiringcafe: "https://hiringcafe.com/?searchState=…",
   workable: "https://jobs.workable.com/search?…",
   workingnomads: "https://www.workingnomads.com/jobs?…",
+  himalayas: "https://himalayas.app/jobs?…",
 };
 
 export const JOB_CRAWL_PLATFORM_HINT: Record<JobCrawlPlatform, string> = {
@@ -80,6 +93,8 @@ export const JOB_CRAWL_PLATFORM_HINT: Record<JobCrawlPlatform, string> = {
   workable: "Copy the full /search URL from Workable after setting filters (single page, no pagination).",
   workingnomads:
     "Copy the full /jobs URL from Working Nomads after setting filters (single page, no pagination).",
+  himalayas:
+    "Copy the full /jobs URL from Himalayas after setting filters (backend handles pagination).",
 };
 
 export const JOB_CRAWL_PLATFORM_VALIDATOR: Record<JobCrawlPlatform, (url: string) => boolean> = {
@@ -87,6 +102,7 @@ export const JOB_CRAWL_PLATFORM_VALIDATOR: Record<JobCrawlPlatform, (url: string
   hiringcafe: isHiringCafeListingUrl,
   workable: isWorkableListingUrl,
   workingnomads: isWorkingNomadsListingUrl,
+  himalayas: isHimalayasListingUrl,
 };
 
 /** Fill missing platform URLs from defaults (e.g. after adding Workable to saved sessions). */
@@ -98,6 +114,7 @@ export function mergeListingUrls(
     hiringcafe: stored?.hiringcafe?.trim() || DEFAULT_HIRINGCAFE_LISTING_URL,
     workable: stored?.workable?.trim() || DEFAULT_WORKABLE_LISTING_URL,
     workingnomads: stored?.workingnomads?.trim() || DEFAULT_WORKINGNOMADS_LISTING_URL,
+    himalayas: stored?.himalayas?.trim() || DEFAULT_HIMALAYAS_LISTING_URL,
   };
 }
 
@@ -182,11 +199,26 @@ export function isWorkingNomadsListingUrl(url: string): boolean {
   }
 }
 
+/** Listing only — not /jobs/{slug} detail pages or /jobs/api. */
+export function isHimalayasListingUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url.trim());
+    if (parsed.protocol !== "https:") return false;
+    const host = parsed.hostname.replace(/^www\./, "");
+    if (host !== "himalayas.app") return false;
+    const path = parsed.pathname.replace(/\/+$/, "") || "/";
+    return path === "/jobs";
+  } catch {
+    return false;
+  }
+}
+
 export function detectJobCrawlPlatform(url: string): JobCrawlPlatform | null {
   if (isBuiltInListingUrl(url)) return "builtin";
   if (isHiringCafeListingUrl(url)) return "hiringcafe";
   if (isWorkableListingUrl(url)) return "workable";
   if (isWorkingNomadsListingUrl(url)) return "workingnomads";
+  if (isHimalayasListingUrl(url)) return "himalayas";
   return null;
 }
 
