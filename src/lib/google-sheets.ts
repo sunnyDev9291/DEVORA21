@@ -258,16 +258,31 @@ export async function appendJobsToCountrySheet(
     values.push([nextNo, today, dayCount, country, job.platform, job.jobUrl]);
   }
 
-  await sheetsFetch(
-    `/values/${encodeURIComponent(sheetRange(country))}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
-    {
-      method: "POST",
+  // Write into the next empty rows (UPDATE), not INSERT_ROWS.
+  // Inserting rows often fails when the tab has "Protect sheet", even if a range
+  // allows the service account to edit cells.
+  const startRow = rows.length + 1; // 1-indexed A1 row after last returned row
+  const endRow = startRow + values.length - 1;
+  const writeRange = sheetRange(country, `A${startRow}:F${endRow}`);
+
+  try {
+    await sheetsFetch(`/values/${encodeURIComponent(writeRange)}?valueInputOption=USER_ENTERED`, {
+      method: "PUT",
       body: JSON.stringify({
         majorDimension: "ROWS",
+        range: writeRange,
         values,
       }),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/protected cell|protected sheet|permission/i.test(message)) {
+      throw new Error(
+        `${message} Tip: In Data → Protect sheets and ranges, check every rule on the "${country}" tab (including Protect sheet). Allow your service account on all of A:F data rows — or remove sheet protection and only protect the header row.`
+      );
     }
-  );
+    throw error;
+  }
 
   return {
     country,

@@ -52,9 +52,16 @@ GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END P
 
 On Netlify, after saving env vars, trigger a new deploy so the API route can read them.
 
-## Dashboard usage
+## Sheet protection (common “protected cell” error)
 
-1. Crawl jobs as usual.
-2. Check one or more rows.
-3. Choose **Sheet country** (must match the tab).
-4. Click **Add Sheet**.
+Allowing the service account on **one range** is not always enough.
+
+1. Open **Data → Protect sheets and ranges**.
+2. Check **every** item for that country tab:
+   - **Protect sheet** (whole tab) — add the service account as an editor, or delete this rule.
+   - **Protect range** — must cover the rows you write into, typically **`A2:F`** (or `A2:F5000`), and include the service account.
+3. Best setup: protect **only row 1** (headers). Leave all data rows editable.
+4. Confirm Netlify `GOOGLE_SERVICE_ACCOUNT_JSON` → `client_email` is **exactly** the same email you checked in the permission dialog (e.g. `franco@….iam.gserviceaccount.com`).
+5. The sheet must also be **Shared** with that service account as **Editor**.
+
+The app writes columns **A–F** on the next empty rows (it does not only touch column F).
