@@ -59,16 +59,18 @@ export const DEFAULT_WORKABLE_LISTING_URL =
 export const DEFAULT_WORKINGNOMADS_LISTING_URL =
   "https://www.workingnomads.com/jobs?category=development&location=argentina&postedDate=1";
 
-/** Default Himalayas listing URL (copy filters from browser; backend may paginate). */
-export const DEFAULT_HIMALAYAS_LISTING_URL =
-  "https://himalayas.app/jobs?countries=Argentina&sort=recent";
+/** Default Himalayas country filter (free public API — no listing URL). */
+export const DEFAULT_HIMALAYAS_COUNTRY = "Argentina";
+
+/** @deprecated Use DEFAULT_HIMALAYAS_COUNTRY — stored value is a country name, not a URL. */
+export const DEFAULT_HIMALAYAS_LISTING_URL = DEFAULT_HIMALAYAS_COUNTRY;
 
 export const DEFAULT_LISTING_URLS: Record<JobCrawlPlatform, string> = {
   builtin: DEFAULT_BUILTIN_LISTING_URL,
   hiringcafe: DEFAULT_HIRINGCAFE_LISTING_URL,
   workable: DEFAULT_WORKABLE_LISTING_URL,
   workingnomads: DEFAULT_WORKINGNOMADS_LISTING_URL,
-  himalayas: DEFAULT_HIMALAYAS_LISTING_URL,
+  himalayas: DEFAULT_HIMALAYAS_COUNTRY,
 };
 
 export const JOB_CRAWL_PLATFORM_LABEL: Record<JobCrawlPlatform, string> = {
@@ -84,7 +86,7 @@ export const JOB_CRAWL_PLATFORM_PLACEHOLDER: Record<JobCrawlPlatform, string> = 
   hiringcafe: "https://hiringcafe.com/?searchState=…",
   workable: "https://jobs.workable.com/search?…",
   workingnomads: "https://www.workingnomads.com/jobs?…",
-  himalayas: "https://himalayas.app/jobs?…",
+  himalayas: "Argentina",
 };
 
 export const JOB_CRAWL_PLATFORM_HINT: Record<JobCrawlPlatform, string> = {
@@ -93,16 +95,20 @@ export const JOB_CRAWL_PLATFORM_HINT: Record<JobCrawlPlatform, string> = {
   workable: "Copy the full /search URL from Workable after setting filters (single page, no pagination).",
   workingnomads:
     "Copy the full /jobs URL from Working Nomads after setting filters (single page, no pagination).",
-  himalayas:
-    "Copy the full /jobs URL from Himalayas after setting filters (backend handles pagination).",
+  himalayas: "Country name only (e.g. Argentina). Uses Himalayas free API — no listing URL needed.",
 };
 
-export const JOB_CRAWL_PLATFORM_VALIDATOR: Record<JobCrawlPlatform, (url: string) => boolean> = {
+/** Platforms that store a listing URL vs a simple filter value. */
+export function isJobCrawlUrlPlatform(platform: JobCrawlPlatform): boolean {
+  return platform !== "himalayas";
+}
+
+export const JOB_CRAWL_PLATFORM_VALIDATOR: Record<JobCrawlPlatform, (value: string) => boolean> = {
   builtin: isBuiltInListingUrl,
   hiringcafe: isHiringCafeListingUrl,
   workable: isWorkableListingUrl,
   workingnomads: isWorkingNomadsListingUrl,
-  himalayas: isHimalayasListingUrl,
+  himalayas: isHimalayasCountry,
 };
 
 /** Fill missing platform URLs from defaults (e.g. after adding Workable to saved sessions). */
@@ -114,7 +120,7 @@ export function mergeListingUrls(
     hiringcafe: stored?.hiringcafe?.trim() || DEFAULT_HIRINGCAFE_LISTING_URL,
     workable: stored?.workable?.trim() || DEFAULT_WORKABLE_LISTING_URL,
     workingnomads: stored?.workingnomads?.trim() || DEFAULT_WORKINGNOMADS_LISTING_URL,
-    himalayas: stored?.himalayas?.trim() || DEFAULT_HIMALAYAS_LISTING_URL,
+    himalayas: normalizeHimalayasCountry(stored?.himalayas ?? "") || DEFAULT_HIMALAYAS_COUNTRY,
   };
 }
 
@@ -213,12 +219,41 @@ export function isHimalayasListingUrl(url: string): boolean {
   }
 }
 
+/**
+ * Normalize Himalayas profile value to a country name.
+ * Accepts plain "Argentina" or a legacy himalayas.app/jobs?countries=… URL.
+ */
+export function normalizeHimalayasCountry(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.hostname.replace(/^www\./, "") === "himalayas.app") {
+      const fromQuery =
+        parsed.searchParams.get("countries")?.trim() ||
+        parsed.searchParams.get("country")?.trim() ||
+        "";
+      return fromQuery || DEFAULT_HIMALAYAS_COUNTRY;
+    }
+  } catch {
+    // Not a URL — treat as country name / ISO code.
+  }
+  return trimmed;
+}
+
+/** Country name or ISO code for Himalayas free API (not a listing URL). */
+export function isHimalayasCountry(value: string): boolean {
+  const country = normalizeHimalayasCountry(value);
+  if (country.length < 2 || country.length > 56) return false;
+  return /^[A-Za-z][A-Za-z\s.'-]*$/.test(country);
+}
+
 export function detectJobCrawlPlatform(url: string): JobCrawlPlatform | null {
   if (isBuiltInListingUrl(url)) return "builtin";
   if (isHiringCafeListingUrl(url)) return "hiringcafe";
   if (isWorkableListingUrl(url)) return "workable";
   if (isWorkingNomadsListingUrl(url)) return "workingnomads";
-  if (isHimalayasListingUrl(url)) return "himalayas";
+  // Himalayas no longer uses listing URLs for crawl — country-only.
   return null;
 }
 

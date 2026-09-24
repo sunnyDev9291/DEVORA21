@@ -16,10 +16,12 @@ builtin | hiringcafe | workable | workingnomads | himalayas
     "hiringcafe": "https://hiringcafe.com/?searchState=...",
     "workable": "https://jobs.workable.com/search?...",
     "workingnomads": "https://www.workingnomads.com/jobs?...",
-    "himalayas": "https://himalayas.app/jobs?..."
+    "himalayas": "Argentina"
   }
 }
 ```
+
+Note: `himalayas` stores a **country name**, not a URL (Himalayas free API).
 
 ## Required API behavior
 
@@ -44,7 +46,7 @@ Support **both**:
     "hiringcafe": "...",
     "workable": "...",
     "workingnomads": "...",
-    "himalayas": "..."
+    "himalayas": "Argentina"
   }
 }
 ```

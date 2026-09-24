@@ -51,7 +51,7 @@ const PLATFORM_BLURB: Record<JobCrawlPlatform, string> = {
   hiringcafe: "Cafe search listings",
   workable: "Workable job search",
   workingnomads: "Remote nomad listings",
-  himalayas: "Remote roles from Himalayas",
+  himalayas: "Remote roles via Himalayas free API (country filter)",
 };
 
 function defaultSelectedPlatforms(): JobCrawlPlatform[] {

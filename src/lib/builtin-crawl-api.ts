@@ -8,9 +8,10 @@ import {
   detectJobCrawlPlatform,
   isBuiltInListingUrl,
   isHiringCafeListingUrl,
-  isHimalayasListingUrl,
+  isHimalayasCountry,
   isWorkableListingUrl,
   isWorkingNomadsListingUrl,
+  normalizeHimalayasCountry,
   stripListingPageParam,
   type JobCrawlJob,
   type JobCrawlPlatform,
@@ -262,11 +263,11 @@ const CRAWL_CONFIG: Record<JobCrawlPlatform, CrawlConfig> = {
 
     label: "Himalayas",
 
-    validate: isHimalayasListingUrl,
+    validate: isHimalayasCountry,
 
-    invalidMessage: "URL must be a valid https://himalayas.app/jobs?… listing URL.",
+    invalidMessage: "Enter a country name for Himalayas (e.g. Argentina).",
 
-    emptyMessage: "No jobs found for this search. The listing may be empty or Himalayas changed their layout.",
+    emptyMessage: "No jobs found for this country. Try another country name.",
 
   },
 
@@ -480,11 +481,111 @@ export async function crawlWorkingNomadsJobs(url: string, signal?: AbortSignal):
 
 
 
-/** POST /jobs/crawl/himalayas — Himalayas /jobs listing (paginate if needed). */
+/** POST /jobs/crawl/himalayas — free API filtered by country name (not a listing URL). */
 
-export async function crawlHimalayasJobs(url: string, signal?: AbortSignal): Promise<JobCrawlResult> {
+export async function crawlHimalayasJobs(country: string, signal?: AbortSignal): Promise<JobCrawlResult> {
 
-  return postJobCrawl("himalayas", url, signal);
+  const config = CRAWL_CONFIG.himalayas;
+
+  const normalized = normalizeHimalayasCountry(country);
+
+  if (!normalized || !isHimalayasCountry(normalized)) {
+
+    throw new ApiError(config.invalidMessage, 400);
+
+  }
+
+
+
+  let res: Response;
+
+  try {
+
+    res = await apiAuthFetch(`${API_BASE_URL}${config.path}`, {
+
+      method: "POST",
+
+      headers: {
+
+        "Content-Type": "application/json",
+
+        Accept: "application/json",
+
+      },
+
+      body: JSON.stringify({
+
+        country: normalized,
+
+        countryName: normalized,
+
+      }),
+
+      signal,
+
+    });
+
+  } catch (err) {
+
+    if ((err as Error).name === "AbortError") {
+
+      throw new ApiError(
+
+        `${config.label} crawl timed out. Try again or use a narrower country filter.`,
+
+        504
+
+      );
+
+    }
+
+    throw new Error(
+
+      `Could not reach the ${config.label} crawl service. Check your connection and try again.`
+
+    );
+
+  }
+
+
+
+  const data = await readJson(res);
+
+
+
+  if (!res.ok) {
+
+    const body = asApiErrorBody(data);
+
+    const message = errorMessage(data, `${config.label} crawl failed (${res.status}).`);
+
+    if (res.status === 401) {
+
+      throw new ApiError("Authentication required. Sign in or connect a dv21_ API key.", 401, body);
+
+    }
+
+    if (res.status === 403) {
+
+      const err = new ApiError(message, 403, body);
+
+      if (isResumeBuilderAccessDenied(err)) {
+
+        throw new ApiError(RESUME_BUILDER_ACCESS_MESSAGE, 403, body);
+
+      }
+
+      throw new ApiError(resumeBuilderAccessDeniedMessage(err), 403, body);
+
+    }
+
+    throw new ApiError(message, res.status, body);
+
+  }
+
+
+
+  return parseResult(data, `himalayas:${normalized}`, "himalayas");
 
 }
 

@@ -180,9 +180,13 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
     setMessage("");
 
     for (const platform of ALL_JOB_CRAWL_PLATFORMS) {
-      const url = listingUrls[platform]?.trim() ?? "";
-      if (url && !JOB_CRAWL_PLATFORM_VALIDATOR[platform](url)) {
-        setError(`Invalid ${JOB_CRAWL_PLATFORM_LABEL[platform]} listing URL.`);
+      const value = listingUrls[platform]?.trim() ?? "";
+      if (value && !JOB_CRAWL_PLATFORM_VALIDATOR[platform](value)) {
+        setError(
+          platform === "himalayas"
+            ? `Invalid ${JOB_CRAWL_PLATFORM_LABEL[platform]} country (e.g. Argentina).`
+            : `Invalid ${JOB_CRAWL_PLATFORM_LABEL[platform]} listing URL.`
+        );
         setSaving(false);
         return;
       }
@@ -368,10 +372,11 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
       </div>
 
       <div id="crawl-urls" className="mt-8 scroll-mt-28 border-t border-white/10 pt-8">
-        <h3 className="mb-1 text-sm font-semibold text-white">Job crawl listing URLs</h3>
+        <h3 className="mb-1 text-sm font-semibold text-white">Job crawl settings</h3>
         <p className="mb-4 text-xs text-slate-500">
-          Edit your crawl links here, then click <span className="font-semibold text-slate-300">Save profile</span>.
-          They are stored on the backend for your account and used by Job discovery.
+          Edit crawl listing URLs (or Himalayas country) here, then click{" "}
+          <span className="font-semibold text-slate-300">Save profile</span>. They are stored on the
+          backend for your account and used by Job discovery.
         </p>
         <div className="space-y-4">
           {ALL_JOB_CRAWL_PLATFORMS.map((platform) => (
@@ -381,10 +386,11 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
                 className="mb-1.5 block text-xs font-medium text-slate-400"
               >
                 {JOB_CRAWL_PLATFORM_LABEL[platform]}
+                {platform === "himalayas" ? " country" : ""}
               </label>
               <input
                 id={`profile-listing-${platform}`}
-                type="url"
+                type={platform === "himalayas" ? "text" : "url"}
                 value={listingUrls[platform]}
                 onChange={(e) =>
                   setListingUrls((current) => ({ ...current, [platform]: e.target.value }))
@@ -393,6 +399,7 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
                 className={fieldClass}
                 disabled={saving}
                 spellCheck={false}
+                autoComplete="off"
               />
               <p className="mt-1.5 text-[12px] text-slate-500">{JOB_CRAWL_PLATFORM_HINT[platform]}</p>
             </div>
