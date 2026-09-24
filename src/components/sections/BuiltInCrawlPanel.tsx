@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { getApiErrorMessage } from "@/lib/auth-api";
 import { crawlBuiltInJobs, crawlHiringCafeJobs, crawlHimalayasJobs, crawlWorkableJobs, crawlWorkingNomadsJobs } from "@/lib/builtin-crawl-api";
@@ -474,7 +474,7 @@ function MergedJobTable({
     onToggleRow(key);
   }
 
-  function handleRowClick(event: MouseEvent<HTMLTableRowElement>, key: string) {
+  function handleRowClick(event: ReactMouseEvent<HTMLTableRowElement>, key: string) {
     const target = event.target as HTMLElement | null;
     if (!target) return;
     if (target.closest("a, button, input, label, [data-no-row-toggle]")) return;
