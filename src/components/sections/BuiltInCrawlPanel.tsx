@@ -20,8 +20,15 @@ import { AUTH_LINKS } from "@/lib/constants";
 import { formatEstDateTimeParts } from "@/lib/format-est-datetime";
 import { flattenCrawlResults } from "@/lib/job-crawl-list";
 import { loadStoredJobCrawl, saveStoredJobCrawl } from "@/lib/job-crawl-storage";
+import {
+  DEFAULT_JOB_SHEET_COUNTRY,
+  JOB_SHEET_COUNTRIES,
+  type JobSheetCountry,
+} from "@/lib/job-sheet-countries";
 import { loadStoredProfile, resolveListingUrls } from "@/lib/user-profile";
 import { ui } from "@/lib/ui-styles";
+
+const SHEET_COUNTRY_STORAGE_KEY = "dv21:job-crawl-sheet-country";
 
 const filterInputClass = `${ui.input} py-3.5 text-base placeholder:text-slate-400 dark:placeholder:text-slate-500`;
 
@@ -568,6 +575,11 @@ export default function BuiltInCrawlPanel() {
   const [crawling, setCrawling] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [lastCrawledAt, setLastCrawledAt] = useState<string | null>(null);
+  const [sheetCountry, setSheetCountry] = useState<JobSheetCountry>(DEFAULT_JOB_SHEET_COUNTRY);
+  const [addingToSheet, setAddingToSheet] = useState(false);
+  const [sheetFeedback, setSheetFeedback] = useState<{ tone: "ok" | "err"; text: string } | null>(
+    null
+  );
 
   useEffect(() => {
     const stored = loadStoredJobCrawl(userId);
@@ -577,6 +589,14 @@ export default function BuiltInCrawlPanel() {
       setSelectedPlatforms(stored.selectedPlatforms);
       setJobList(stored.jobs);
       if (stored.savedAt) setLastCrawledAt(stored.savedAt);
+    }
+    try {
+      const savedCountry = window.localStorage.getItem(SHEET_COUNTRY_STORAGE_KEY);
+      if (savedCountry && (JOB_SHEET_COUNTRIES as readonly string[]).includes(savedCountry)) {
+        setSheetCountry(savedCountry as JobSheetCountry);
+      }
+    } catch {
+      // ignore
     }
     setHydrated(true);
   }, [userId, profileListingUrls]);
@@ -653,6 +673,70 @@ export default function BuiltInCrawlPanel() {
       }
       return next;
     });
+  }
+
+  function handleSheetCountryChange(value: JobSheetCountry) {
+    setSheetCountry(value);
+    setSheetFeedback(null);
+    try {
+      window.localStorage.setItem(SHEET_COUNTRY_STORAGE_KEY, value);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function handleAddToSheet() {
+    if (addingToSheet || checkedJobKeys.size === 0) return;
+
+    const selectedJobs = jobList
+      .map((job, originalIndex) => ({ job, originalIndex }))
+      .filter(({ job, originalIndex }) => checkedJobKeys.has(jobRowKey(job, originalIndex)))
+      .map(({ job }) => ({
+        platform: job.platform,
+        jobUrl: job.jobUrl,
+      }))
+      .filter((job) => job.jobUrl.trim().length > 0);
+
+    if (selectedJobs.length === 0) {
+      setSheetFeedback({ tone: "err", text: "Selected jobs are missing URLs." });
+      return;
+    }
+
+    setAddingToSheet(true);
+    setSheetFeedback(null);
+
+    try {
+      const response = await fetch("/api/jobs/crawl/add-to-sheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          country: sheetCountry,
+          jobs: selectedJobs,
+        }),
+      });
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        message?: string;
+        added?: number;
+      };
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to add jobs to the sheet.");
+      }
+
+      setSheetFeedback({
+        tone: "ok",
+        text: data.message || `Added ${data.added ?? selectedJobs.length} job(s) to ${sheetCountry}.`,
+      });
+      setCheckedJobKeys(new Set());
+    } catch (error) {
+      setSheetFeedback({
+        tone: "err",
+        text: getApiErrorMessage(error, "Failed to add jobs to the sheet."),
+      });
+    } finally {
+      setAddingToSheet(false);
+    }
   }
 
   async function handleCrawl() {
@@ -879,6 +963,66 @@ export default function BuiltInCrawlPanel() {
               <JobTableSortDropdown value={jobTableSortMode} onChange={setJobTableSortMode} />
             </div>
           </div>
+
+          <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-white/[0.08] dark:bg-white/[0.02] sm:flex-row sm:flex-wrap sm:items-end">
+            <div className="min-w-[12rem]">
+              <label
+                htmlFor="jobSheetCountry"
+                className="mb-1.5 block text-sm font-medium text-slate-600 dark:text-slate-300"
+              >
+                Sheet country
+              </label>
+              <select
+                id="jobSheetCountry"
+                value={sheetCountry}
+                onChange={(e) => handleSheetCountryChange(e.target.value as JobSheetCountry)}
+                className={`${ui.input} py-2.5 text-sm`}
+              >
+                {JOB_SHEET_COUNTRIES.map((country) => (
+                  <option key={country} value={country}>
+                    {country}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              onClick={handleAddToSheet}
+              disabled={addingToSheet || checkedJobKeys.size === 0}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {addingToSheet ? (
+                <>
+                  <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                    />
+                  </svg>
+                  Adding…
+                </>
+              ) : (
+                <>Add Sheet{checkedJobKeys.size > 0 ? ` (${checkedJobKeys.size})` : ""}</>
+              )}
+            </button>
+            <p className="text-sm text-slate-500 dark:text-slate-400 sm:pb-2.5">
+              Check jobs, pick the sheet tab country, then add rows automatically.
+            </p>
+          </div>
+
+          {sheetFeedback ? (
+            <div
+              className={`rounded-xl border px-4 py-3 text-sm ${
+                sheetFeedback.tone === "ok"
+                  ? "border-emerald-500/25 bg-emerald-500/[0.08] text-emerald-800 dark:text-emerald-200"
+                  : "border-red-500/25 bg-red-500/[0.08] text-red-700 dark:text-red-300"
+              }`}
+            >
+              {sheetFeedback.text}
+            </div>
+          ) : null}
 
           <MergedJobTable
             rows={filteredJobRows}
