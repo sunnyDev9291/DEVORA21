@@ -622,10 +622,17 @@ function MergedJobTable({
 export default function BuiltInCrawlPanel() {
   const { user } = useAuth();
   const userId = user?.id;
-  const profileListingUrls = useMemo(
-    () => resolveListingUrls(user, userId ? loadStoredProfile(userId) : null),
-    [user, userId]
-  );
+  const profileListingKey = useMemo(() => {
+    const urls = resolveListingUrls(user, userId ? loadStoredProfile(userId) : null);
+    if (!urls) return "";
+    return ALL_JOB_CRAWL_PLATFORMS.map((platform) => `${platform}:${urls[platform] ?? ""}`).join("|");
+  }, [user, userId]);
+  const profileListingUrls = useMemo(() => {
+    if (!profileListingKey) return undefined;
+    return resolveListingUrls(user, userId ? loadStoredProfile(userId) : null);
+    // profileListingKey already captures listing URL contents
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: stabilize on content, not user identity
+  }, [profileListingKey, userId]);
 
   const [selectedPlatforms, setSelectedPlatforms] = useState<JobCrawlPlatform[]>(defaultSelectedPlatforms);
   const [listingUrls, setListingUrls] = useState<Record<JobCrawlPlatform, string>>(() =>
@@ -644,25 +651,51 @@ export default function BuiltInCrawlPanel() {
   const [sheetFeedback, setSheetFeedback] = useState<{ tone: "ok" | "err"; text: string } | null>(
     null
   );
+  const hydratedUserIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
+    const isNewUserSession = hydratedUserIdRef.current !== userId;
+    hydratedUserIdRef.current = userId;
+
     const stored = loadStoredJobCrawl(userId);
-    // Profile listing URLs are the source of truth; session only keeps jobs + platforms.
-    setListingUrls(mergeListingUrls(profileListingUrls ?? stored?.listingUrls));
-    if (stored) {
-      setSelectedPlatforms(stored.selectedPlatforms);
-      setJobList(stored.jobs);
-      if (stored.savedAt) setLastCrawledAt(stored.savedAt);
-    }
-    try {
-      const savedCountry = window.localStorage.getItem(SHEET_COUNTRY_STORAGE_KEY);
-      if (savedCountry && (JOB_SHEET_COUNTRIES as readonly string[]).includes(savedCountry)) {
-        setSheetCountry(savedCountry as JobSheetCountry);
+
+    if (isNewUserSession) {
+      // Full hydrate only when the signed-in user changes (or first mount).
+      setListingUrls(mergeListingUrls(profileListingUrls ?? stored?.listingUrls));
+      if (stored) {
+        setSelectedPlatforms(stored.selectedPlatforms);
+        setJobList(stored.jobs);
+        if (stored.savedAt) setLastCrawledAt(stored.savedAt);
+      } else {
+        setSelectedPlatforms(defaultSelectedPlatforms());
+        setJobList([]);
+        setLastCrawledAt(null);
       }
-    } catch {
-      // ignore
+      setCheckedJobKeys(new Set());
+      setPlatformErrors({});
+      setSheetFeedback(null);
+      try {
+        const savedCountry = window.localStorage.getItem(SHEET_COUNTRY_STORAGE_KEY);
+        if (savedCountry && (JOB_SHEET_COUNTRIES as readonly string[]).includes(savedCountry)) {
+          setSheetCountry(savedCountry as JobSheetCountry);
+        }
+      } catch {
+        // ignore
+      }
+      setHydrated(true);
+      return;
     }
-    setHydrated(true);
+
+    // Same user: refresh crawl URL defaults from profile only — never wipe the job table.
+    if (profileListingUrls) {
+      const nextUrls = mergeListingUrls(profileListingUrls);
+      setListingUrls((current) => {
+        const unchanged = ALL_JOB_CRAWL_PLATFORMS.every(
+          (platform) => current[platform] === nextUrls[platform]
+        );
+        return unchanged ? current : nextUrls;
+      });
+    }
   }, [userId, profileListingUrls]);
 
   const allPlatformSelected = ALL_JOB_CRAWL_PLATFORMS.every((p) => selectedPlatforms.includes(p));

@@ -201,7 +201,39 @@ export function mergeAuthUserState(previous: User | null, next: User): User {
     }
   }
 
+  // Keep the previous reference when session keepalive returns the same profile.
+  // Avoids remounting dashboard panels on every /auth/me poll.
+  if (previous && isSameAuthUserSnapshot(previous, merged)) {
+    return previous;
+  }
+
   return merged;
+}
+
+function listingUrlsSnapshot(urls: User["listingUrls"]): string {
+  if (!urls) return "";
+  return Object.keys(urls)
+    .sort()
+    .map((key) => `${key}:${urls[key as keyof typeof urls] ?? ""}`)
+    .join("|");
+}
+
+/** True when auth UI state would look identical (ignore object identity). */
+export function isSameAuthUserSnapshot(a: User, b: User): boolean {
+  return (
+    a.id === b.id &&
+    a.email === b.email &&
+    a.name === b.name &&
+    a.firstName === b.firstName &&
+    a.lastName === b.lastName &&
+    a.avatar === b.avatar &&
+    a.emailVerified === b.emailVerified &&
+    a.onboardingCompleted === b.onboardingCompleted &&
+    a.resumeBuilderEnabled === b.resumeBuilderEnabled &&
+    a.resumeTemplateFileName === b.resumeTemplateFileName &&
+    a.promptFileName === b.promptFileName &&
+    listingUrlsSnapshot(a.listingUrls) === listingUrlsSnapshot(b.listingUrls)
+  );
 }
 
 /** Backend may return firstName/lastName/avatar instead of name, or nest under `user`. */
