@@ -6,10 +6,15 @@ import Button from "@/components/ui/Button";
 import {
   downloadBlob,
   fetchSavedResumeFile,
-  listSavedResumes,
   resolveArchiveFileName,
   type SavedResumeSearchFilters,
 } from "@/lib/saved-resumes-api";
+import {
+  filterSavedResumes,
+  invalidateSavedResumesCache,
+  listSavedResumesCached,
+  peekCachedSavedResumes,
+} from "@/lib/saved-resumes-cache";
 import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
 import { TODAYS_RESUME_COUNT_CHANGED_EVENT } from "@/lib/todays-resume-count";
 import { brand, ui } from "@/lib/ui-styles";
@@ -440,8 +445,12 @@ function ApplicationRows({
 
 export default function SavedResumesPanel({ variant = "dashboard" }: SavedResumesPanelProps) {
   const styles = STYLES[variant];
-  const [items, setItems] = useState<SavedResumeArchive[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cachedOnMount = peekCachedSavedResumes();
+  const [items, setItems] = useState<SavedResumeArchive[]>(() =>
+    cachedOnMount ? sortByBidDate(cachedOnMount) : []
+  );
+  const [loading, setLoading] = useState(() => !cachedOnMount);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [companySearch, setCompanySearch] = useState("");
   const [jobTitleSearch, setJobTitleSearch] = useState("");
@@ -479,17 +488,22 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
 
   const filtersActive = hasActiveFilters(activeFilters);
 
-  const loadItems = useCallback(async (filters: SavedResumeSearchFilters) => {
-    setLoading(true);
+  const loadItems = useCallback(async (options?: { force?: boolean }) => {
+    const force = Boolean(options?.force);
+    const hasLocal = peekCachedSavedResumes() != null;
     setError("");
+    if (!hasLocal) setLoading(true);
+    else setRefreshing(true);
+
     try {
-      const data = await listSavedResumes(filters);
+      const data = await listSavedResumesCached({ force });
       setItems(sortByBidDate(data));
     } catch (err) {
-      setItems([]);
+      if (!hasLocal) setItems([]);
       setError((err as Error).message || "Could not load saved resumes.");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
@@ -498,23 +512,29 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
       setDebouncedCompany(companySearch);
       setDebouncedJobTitle(jobTitleSearch);
       setDebouncedJd(jdSearch);
-    }, 300);
+    }, 200);
     return () => window.clearTimeout(timer);
   }, [companySearch, jobTitleSearch, jdSearch]);
 
   useEffect(() => {
-    void loadItems(activeFilters);
-  }, [activeFilters, loadItems]);
+    void loadItems();
+    // Mount / signed-in session only — filters are client-side.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional one-shot + event refresh
+  }, []);
 
   useEffect(() => {
     function onArchiveChanged() {
-      void loadItems(activeFilters);
+      invalidateSavedResumesCache();
+      void loadItems({ force: true });
     }
     window.addEventListener(TODAYS_RESUME_COUNT_CHANGED_EVENT, onArchiveChanged);
     return () => window.removeEventListener(TODAYS_RESUME_COUNT_CHANGED_EVENT, onArchiveChanged);
-  }, [activeFilters, loadItems]);
+  }, [loadItems]);
 
-  const visibleItems = items;
+  const visibleItems = useMemo(
+    () => filterSavedResumes(items, activeFilters),
+    [items, activeFilters]
+  );
 
   const yearGroups = useMemo(() => groupByYearMonthDay(visibleItems), [visibleItems]);
 
@@ -665,6 +685,12 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
           Filter by date range, company, job title, or job description, then pick a year and month to browse
           applications.
         </p>
+        {refreshing ? (
+          <p className="relative mt-2 inline-flex items-center gap-2 text-xs font-medium text-orange-700/80 dark:text-orange-300/80">
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
+            Updating list…
+          </p>
+        ) : null}
       </div>
 
       <div className={styles.searchPanel}>

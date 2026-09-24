@@ -1,5 +1,5 @@
-import { listSavedResumes } from "@/lib/saved-resumes-api";
 import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
+import { invalidateSavedResumesCache, listSavedResumesCached } from "@/lib/saved-resumes-cache";
 
 /** Dispatched after a resume is archived so UI can refresh today's count. */
 export const TODAYS_RESUME_COUNT_CHANGED_EVENT = "devora21-todays-resume-count-changed";
@@ -28,13 +28,13 @@ export function countResumesOnLocalDate(
 /** Fetch archives and count how many fall on today's local calendar day. */
 export async function fetchTodaysResumeCount(): Promise<number> {
   const today = getLocalDateKey();
-  // Do not rely on backend from/to filters — they can disagree with local calendar days.
-  // Pull the list and count bidAt in the user's local timezone.
-  const items = await listSavedResumes();
+  // Shared cache with Saved Resumes panel — one network trip when both load.
+  const items = await listSavedResumesCached();
   return countResumesOnLocalDate(items, today);
 }
 
 export function notifyTodaysResumeCountChanged(): void {
   if (typeof window === "undefined") return;
+  invalidateSavedResumesCache();
   window.dispatchEvent(new Event(TODAYS_RESUME_COUNT_CHANGED_EVENT));
 }

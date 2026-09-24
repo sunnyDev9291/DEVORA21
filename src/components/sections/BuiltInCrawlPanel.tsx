@@ -19,6 +19,7 @@ import {
 import { AUTH_LINKS } from "@/lib/constants";
 import { formatEstDateTimeParts } from "@/lib/format-est-datetime";
 import { flattenCrawlResults } from "@/lib/job-crawl-list";
+import { diffCrawlJobs, jobIdentityKey } from "@/lib/job-crawl-diff";
 import { loadStoredJobCrawl, saveStoredJobCrawl } from "@/lib/job-crawl-storage";
 import {
   DEFAULT_JOB_SHEET_COUNTRY,
@@ -415,11 +416,29 @@ function JobSelectCheckbox({
   );
 }
 
+function NewJobBadge() {
+  return (
+    <span className="inline-flex shrink-0 items-center rounded-md bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm shadow-emerald-500/30">
+      New
+    </span>
+  );
+}
+
+function JobTitleCell({ title, isNew }: { title: string; isNew: boolean }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {isNew ? <NewJobBadge /> : null}
+      <span>{title || "—"}</span>
+    </div>
+  );
+}
+
 function MergedJobTable({
   rows,
   sortMode,
   platformOrder,
   checkedKeys,
+  newJobKeys,
   onToggleRow,
   onToggleAll,
   allChecked,
@@ -429,6 +448,7 @@ function MergedJobTable({
   sortMode: JobTableSortMode;
   platformOrder: JobCrawlPlatform[];
   checkedKeys: Set<string>;
+  newJobKeys: Set<string>;
   onToggleRow: (key: string) => void;
   onToggleAll: () => void;
   allChecked: boolean;
@@ -514,6 +534,7 @@ function MergedJobTable({
                   const key = jobRowKey(row.job, row.originalIndex);
                   const checked = checkedKeys.has(key);
                   const flashing = flashKeys.has(key);
+                  const isNew = newJobKeys.has(jobIdentityKey(row.job));
 
                   return (
                     <tr
@@ -537,7 +558,9 @@ function MergedJobTable({
                           {group.companyLabel}
                         </td>
                       ) : null}
-                      <td className="px-4 py-3 text-slate-800 dark:text-slate-100">{row.job.jobTitle || "—"}</td>
+                      <td className="px-4 py-3 text-slate-800 dark:text-slate-100">
+                        <JobTitleCell title={row.job.jobTitle} isNew={isNew} />
+                      </td>
                       <td className="px-4 py-3 max-w-[20rem]">
                         {row.job.jobUrl ? (
                           <div className="flex items-center gap-2 min-w-0" data-no-row-toggle>
@@ -566,6 +589,7 @@ function MergedJobTable({
                   const key = jobRowKey(row.job, row.originalIndex);
                   const checked = checkedKeys.has(key);
                   const flashing = flashKeys.has(key);
+                  const isNew = newJobKeys.has(jobIdentityKey(row.job));
 
                   return (
                     <tr
@@ -584,7 +608,9 @@ function MergedJobTable({
                       <td className="px-4 py-3 font-medium text-slate-900 dark:text-white whitespace-nowrap">
                         {normalizeCompanyName(row.job.companyName) || "—"}
                       </td>
-                      <td className="px-4 py-3 text-slate-800 dark:text-slate-100">{row.job.jobTitle || "—"}</td>
+                      <td className="px-4 py-3 text-slate-800 dark:text-slate-100">
+                        <JobTitleCell title={row.job.jobTitle} isNew={isNew} />
+                      </td>
                       <td className="px-4 py-3 max-w-[20rem]">
                         {row.job.jobUrl ? (
                           <div className="flex items-center gap-2 min-w-0" data-no-row-toggle>
@@ -651,6 +677,8 @@ export default function BuiltInCrawlPanel() {
   const [sheetFeedback, setSheetFeedback] = useState<{ tone: "ok" | "err"; text: string } | null>(
     null
   );
+  const [newJobKeys, setNewJobKeys] = useState<Set<string>>(() => new Set());
+  const [crawlDiff, setCrawlDiff] = useState<{ added: number; removed: number } | null>(null);
   const hydratedUserIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
@@ -666,10 +694,14 @@ export default function BuiltInCrawlPanel() {
         setSelectedPlatforms(stored.selectedPlatforms);
         setJobList(stored.jobs);
         if (stored.savedAt) setLastCrawledAt(stored.savedAt);
+        setNewJobKeys(new Set(stored.newJobKeys ?? []));
+        setCrawlDiff(stored.lastDiff ?? null);
       } else {
         setSelectedPlatforms(defaultSelectedPlatforms());
         setJobList([]);
         setLastCrawledAt(null);
+        setNewJobKeys(new Set());
+        setCrawlDiff(null);
       }
       setCheckedJobKeys(new Set());
       setPlatformErrors({});
@@ -865,9 +897,17 @@ export default function BuiltInCrawlPanel() {
     if (hadSuccess) {
       const freshJobs = flattenCrawlResults(crawlResults, selectedPlatforms);
       const savedAt = new Date().toISOString();
+      const previousJobs = jobList;
+      const diff = previousJobs.length > 0
+        ? diffCrawlJobs(previousJobs, freshJobs)
+        : { added: 0, removed: 0, newKeys: new Set<string>() };
+      const nextDiff =
+        previousJobs.length > 0 ? { added: diff.added, removed: diff.removed } : null;
 
       setJobList(freshJobs);
       setCheckedJobKeys(new Set());
+      setNewJobKeys(diff.newKeys);
+      setCrawlDiff(nextDiff);
       // Always re-apply default keywords so results are filtered immediately (not only after refresh).
       setJobTitleFilter(DEFAULT_JOB_TITLE_FILTER);
       setLastCrawledAt(savedAt);
@@ -877,6 +917,8 @@ export default function BuiltInCrawlPanel() {
           listingUrls,
           jobs: freshJobs,
           savedAt,
+          newJobKeys: [...diff.newKeys],
+          lastDiff: nextDiff ?? undefined,
         },
         userId
       );
@@ -1029,6 +1071,22 @@ export default function BuiltInCrawlPanel() {
                 ? `${filteredJobRows.length} of ${jobList.length} job${jobList.length === 1 ? "" : "s"}`
                 : `${jobList.length} job${jobList.length === 1 ? "" : "s"}`}
             </span>
+            {crawlDiff ? (
+              <>
+                <span
+                  className="inline-flex items-center rounded-full bg-emerald-500/15 px-3 py-1.5 text-sm font-semibold text-emerald-800 dark:text-emerald-300"
+                  title="Jobs that appeared since the previous crawl"
+                >
+                  +{crawlDiff.added} new
+                </span>
+                <span
+                  className="inline-flex items-center rounded-full bg-rose-500/15 px-3 py-1.5 text-sm font-semibold text-rose-800 dark:text-rose-300"
+                  title="Jobs from the previous crawl that are gone now"
+                >
+                  −{crawlDiff.removed} gone
+                </span>
+              </>
+            ) : null}
             {checkedJobKeys.size > 0 ? (
               <span className="text-slate-500 dark:text-slate-400">
                 {checkedJobKeys.size} selected
@@ -1126,6 +1184,7 @@ export default function BuiltInCrawlPanel() {
             sortMode={jobTableSortMode}
             platformOrder={crawlPlatformOrder}
             checkedKeys={checkedJobKeys}
+            newJobKeys={newJobKeys}
             onToggleRow={toggleJobRow}
             onToggleAll={toggleAllJobs}
             allChecked={allJobsChecked}

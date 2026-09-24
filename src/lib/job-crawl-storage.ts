@@ -9,11 +9,20 @@ function storageKeyForUser(userId?: string | null): string {
   return id ? `${STORAGE_KEY}:${id}` : STORAGE_KEY;
 }
 
+export type StoredJobCrawlDiff = {
+  added: number;
+  removed: number;
+};
+
 export type StoredJobCrawlSession = {
   selectedPlatforms: JobCrawlPlatform[];
   listingUrls: Record<JobCrawlPlatform, string>;
   jobs: DiscoveredJobRow[];
   savedAt: string;
+  /** Jobs that appeared in the latest crawl vs the previous one. */
+  newJobKeys?: string[];
+  /** Latest crawl delta vs previous stored list. */
+  lastDiff?: StoredJobCrawlDiff;
 };
 
 function isPlatform(value: unknown): value is JobCrawlPlatform {
@@ -139,6 +148,19 @@ function migrateLegacy(rawKey: string): StoredJobCrawlSession | null {
         listingUrls,
         jobs,
         savedAt: typeof obj.savedAt === "string" ? obj.savedAt : "",
+        newJobKeys: Array.isArray(obj.newJobKeys)
+          ? obj.newJobKeys.filter((key): key is string => typeof key === "string")
+          : undefined,
+        lastDiff:
+          obj.lastDiff &&
+          typeof obj.lastDiff === "object" &&
+          typeof (obj.lastDiff as StoredJobCrawlDiff).added === "number" &&
+          typeof (obj.lastDiff as StoredJobCrawlDiff).removed === "number"
+            ? {
+                added: (obj.lastDiff as StoredJobCrawlDiff).added,
+                removed: (obj.lastDiff as StoredJobCrawlDiff).removed,
+              }
+            : undefined,
       };
     }
 

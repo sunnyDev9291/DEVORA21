@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { listSavedResumesCached } from "@/lib/saved-resumes-cache";
 import { ui } from "@/lib/ui-styles";
 
 const TABS = [
@@ -17,6 +18,7 @@ const TABS = [
     href: "/resume/saved",
     label: "Saved resumes",
     isActive: (path: string) => path === "/resume/saved" || path.startsWith("/resume/saved/"),
+    prefetchArchives: true,
   },
 ] as const;
 
@@ -25,12 +27,19 @@ type SliderRect = {
   width: number;
 };
 
+function prefetchSavedResumes() {
+  void listSavedResumesCached().catch(() => {
+    // Warm cache only — ignore errors until the page loads.
+  });
+}
+
 export default function ResumePanelTabs() {
   const pathname = usePathname();
   const navRef = useRef<HTMLElement>(null);
   const tabRefs = useRef<(HTMLAnchorElement | null)[]>([]);
   const [slider, setSlider] = useState<SliderRect | null>(null);
   const [sliderReady, setSliderReady] = useState(false);
+  const prefetchedRef = useRef(false);
 
   const activeIndex = TABS.findIndex((tab) => tab.isActive(pathname));
 
@@ -66,6 +75,12 @@ export default function ResumePanelTabs() {
     void document.fonts.ready.then(updateSlider);
   }, [updateSlider]);
 
+  function warmSavedCache() {
+    if (prefetchedRef.current) return;
+    prefetchedRef.current = true;
+    prefetchSavedResumes();
+  }
+
   return (
     <div className="relative z-10 mx-auto w-full max-w-[70vw] px-4 sm:px-6 lg:px-8">
       <nav
@@ -86,6 +101,7 @@ export default function ResumePanelTabs() {
 
         {TABS.map((tab, index) => {
           const active = tab.isActive(pathname);
+          const prefetchArchives = "prefetchArchives" in tab && tab.prefetchArchives;
 
           return (
             <Link
@@ -96,6 +112,9 @@ export default function ResumePanelTabs() {
               href={tab.href}
               role="tab"
               aria-selected={active}
+              onMouseEnter={prefetchArchives ? warmSavedCache : undefined}
+              onFocus={prefetchArchives ? warmSavedCache : undefined}
+              onTouchStart={prefetchArchives ? warmSavedCache : undefined}
               className={`relative z-10 flex-1 rounded-lg px-4 py-2.5 text-center text-sm font-semibold transition-colors duration-500 sm:flex-none sm:px-6 ${
                 active
                   ? "text-white"
