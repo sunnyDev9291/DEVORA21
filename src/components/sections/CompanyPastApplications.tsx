@@ -37,9 +37,10 @@ export default function CompanyPastApplications({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [downloadTarget, setDownloadTarget] = useState<SavedResumeArchive | null>(null);
-  const [downloadFeedback, setDownloadFeedback] = useState<{ tone: "ok" | "err"; text: string } | null>(
-    null
-  );
+  const [downloadFeedback, setDownloadFeedback] = useState<{
+    tone: "ok" | "err" | "pending";
+    text: string;
+  } | null>(null);
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
@@ -195,7 +196,9 @@ export default function CompanyPastApplications({
           className={`mt-2 text-xs font-medium ${
             downloadFeedback.tone === "ok"
               ? "text-emerald-700 dark:text-emerald-300"
-              : "text-red-700 dark:text-red-300"
+              : downloadFeedback.tone === "pending"
+                ? "text-orange-700 dark:text-orange-300"
+                : "text-red-700 dark:text-red-300"
           }`}
           role="status"
         >

@@ -43,6 +43,9 @@ export type ResumeDeliverRemoteResponse = {
   deviceName: string;
   archiveId: string;
   status: RemoteDeliveryStatus;
+  message?: string;
+  isTerminal?: boolean;
+  isSuccess?: boolean;
   expiresAt?: string;
 };
 
@@ -54,11 +57,24 @@ export type RemoteDelivery = {
   deliveryId: string;
   deviceId: string;
   deviceName: string;
+  deviceLastSeenAt?: string | null;
   archiveId: string;
+  jobTitle?: string | null;
+  companyName?: string | null;
+  pdfFileName?: string | null;
+  resumeFileName?: string | null;
   status: RemoteDeliveryStatus;
+  message?: string | null;
+  isTerminal?: boolean;
+  isSuccess?: boolean;
+  includePdf?: boolean;
+  includeDocx?: boolean;
   error?: string | null;
+  claimedAt?: string | null;
   deliveredAt?: string | null;
   expiresAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 };
 
 export type DeliverResumeOptions = {
@@ -234,17 +250,172 @@ export async function deliverResumeArchive(
     throw new ApiError("Unexpected deliver response.", 502);
   }
 
+  if (data.mode === "remote") {
+    const status = parseDeliveryStatus(data.status);
+    return {
+      mode: "remote",
+      deliveryId: typeof data.deliveryId === "string" ? data.deliveryId : "",
+      deviceId: typeof data.deviceId === "string" ? data.deviceId : "",
+      deviceName: typeof data.deviceName === "string" ? data.deviceName : "remote computer",
+      archiveId: typeof data.archiveId === "string" ? data.archiveId : id,
+      status,
+      message: typeof data.message === "string" ? data.message : undefined,
+      isTerminal:
+        typeof data.isTerminal === "boolean" ? data.isTerminal : isRemoteDeliveryTerminal(status),
+      isSuccess: typeof data.isSuccess === "boolean" ? data.isSuccess : status === "delivered",
+      expiresAt: typeof data.expiresAt === "string" ? data.expiresAt : undefined,
+    };
+  }
+
   return data;
 }
 
 export async function getRemoteDelivery(deliveryId: string): Promise<RemoteDelivery> {
-  const data = await remoteRequest<{ delivery: RemoteDelivery }>(
-    `/resume/remote-deliveries/${encodeURIComponent(deliveryId)}`
+  const res = await apiAuthFetch(
+    `${API_BASE_URL}/resume/remote-deliveries/${encodeURIComponent(deliveryId)}`,
+    {
+      method: "GET",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+      },
+    }
   );
-  if (!data.delivery?.deliveryId) {
+
+  const data = await parseJson<{
+    delivery?: RemoteDelivery;
+    message?: string;
+    error?: string;
+  }>(res);
+
+  if (!res.ok) {
+    throw authError(
+      res.status,
+      data?.error || data?.message || `Could not load delivery status (${res.status}).`
+    );
+  }
+
+  const delivery = parseRemoteDelivery(data?.delivery);
+  if (!delivery) {
     throw new ApiError("Delivery not found.", 404);
   }
-  return data.delivery;
+  return delivery;
+}
+
+function parseRemoteDelivery(raw: unknown): RemoteDelivery | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  const deliveryId =
+    (typeof obj.deliveryId === "string" && obj.deliveryId) ||
+    (typeof obj.id === "string" && obj.id) ||
+    "";
+  if (!deliveryId) return null;
+
+  const status = parseDeliveryStatus(obj.status);
+  const isTerminal =
+    typeof obj.isTerminal === "boolean" ? obj.isTerminal : isRemoteDeliveryTerminal(status);
+  const isSuccess =
+    typeof obj.isSuccess === "boolean" ? obj.isSuccess : status === "delivered";
+
+  return {
+    deliveryId,
+    deviceId: typeof obj.deviceId === "string" ? obj.deviceId : "",
+    deviceName: typeof obj.deviceName === "string" ? obj.deviceName : "remote computer",
+    deviceLastSeenAt: typeof obj.deviceLastSeenAt === "string" ? obj.deviceLastSeenAt : null,
+    archiveId: typeof obj.archiveId === "string" ? obj.archiveId : "",
+    jobTitle: typeof obj.jobTitle === "string" ? obj.jobTitle : null,
+    companyName: typeof obj.companyName === "string" ? obj.companyName : null,
+    pdfFileName: typeof obj.pdfFileName === "string" ? obj.pdfFileName : null,
+    resumeFileName: typeof obj.resumeFileName === "string" ? obj.resumeFileName : null,
+    status,
+    message: typeof obj.message === "string" ? obj.message : null,
+    isTerminal,
+    isSuccess,
+    includePdf: typeof obj.includePdf === "boolean" ? obj.includePdf : undefined,
+    includeDocx: typeof obj.includeDocx === "boolean" ? obj.includeDocx : undefined,
+    error: typeof obj.error === "string" ? obj.error : null,
+    claimedAt: typeof obj.claimedAt === "string" ? obj.claimedAt : null,
+    deliveredAt: typeof obj.deliveredAt === "string" ? obj.deliveredAt : null,
+    expiresAt: typeof obj.expiresAt === "string" ? obj.expiresAt : null,
+    createdAt: typeof obj.createdAt === "string" ? obj.createdAt : null,
+    updatedAt: typeof obj.updatedAt === "string" ? obj.updatedAt : null,
+  };
+}
+
+function parseDeliveryStatus(value: unknown): RemoteDeliveryStatus {
+  if (
+    value === "pending" ||
+    value === "claimed" ||
+    value === "delivered" ||
+    value === "failed" ||
+    value === "expired"
+  ) {
+    return value;
+  }
+  return "pending";
+}
+
+/** Human-readable UI copy for a delivery snapshot. */
+export function remoteDeliveryUiState(delivery: Pick<
+  RemoteDelivery,
+  "status" | "deviceName" | "message" | "error" | "isSuccess" | "isTerminal"
+>): {
+  tone: "pending" | "ok" | "err";
+  spinning: boolean;
+  headline: string;
+  detail: string;
+} {
+  const deviceName = delivery.deviceName?.trim() || "remote computer";
+  const backendMessage = delivery.message?.trim() || "";
+
+  if (delivery.isSuccess || delivery.status === "delivered") {
+    return {
+      tone: "ok",
+      spinning: false,
+      headline: `Delivered to ${deviceName}`,
+      detail: backendMessage || `File saved on ${deviceName}.`,
+    };
+  }
+
+  if (delivery.status === "failed") {
+    return {
+      tone: "err",
+      spinning: false,
+      headline: "Delivery failed",
+      detail: backendMessage || delivery.error?.trim() || `Could not deliver to ${deviceName}.`,
+    };
+  }
+
+  if (delivery.status === "expired") {
+    return {
+      tone: "err",
+      spinning: false,
+      headline: "Expired — is the remote agent running?",
+      detail:
+        backendMessage ||
+        `The queue for ${deviceName} expired before the agent picked it up.`,
+    };
+  }
+
+  if (delivery.status === "claimed") {
+    return {
+      tone: "pending",
+      spinning: true,
+      headline: "Downloading on remote PC…",
+      detail: backendMessage || `${deviceName} is downloading the file.`,
+    };
+  }
+
+  return {
+    tone: "pending",
+    spinning: true,
+    headline: "Waiting for remote PC…",
+    detail:
+      backendMessage ||
+      `Queued for ${deviceName} — waiting for the remote computer agent to pick up.`,
+  };
 }
 
 /** Resolve deliver file URLs and trigger browser downloads (Here mode only). */
@@ -314,6 +485,18 @@ function resolveDeliverFileUrl(url: string): string {
   return `${API_BASE_URL}/${trimmed}`;
 }
 
-export function isRemoteDeliveryTerminal(status: RemoteDeliveryStatus): boolean {
-  return status === "delivered" || status === "failed" || status === "expired";
+export function isRemoteDeliveryTerminal(
+  statusOrDelivery: RemoteDeliveryStatus | Pick<RemoteDelivery, "status" | "isTerminal">
+): boolean {
+  if (typeof statusOrDelivery === "string") {
+    return (
+      statusOrDelivery === "delivered" ||
+      statusOrDelivery === "failed" ||
+      statusOrDelivery === "expired"
+    );
+  }
+  if (typeof statusOrDelivery.isTerminal === "boolean") {
+    return statusOrDelivery.isTerminal;
+  }
+  return isRemoteDeliveryTerminal(statusOrDelivery.status);
 }

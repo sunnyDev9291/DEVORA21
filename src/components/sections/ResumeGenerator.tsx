@@ -153,9 +153,10 @@ export default function ResumeGenerator({
   const [pdfFileName, setPdfFileName] = useState("");
   const [archiveId, setArchiveId] = useState<string | null>(null);
   const [downloadChooserOpen, setDownloadChooserOpen] = useState(false);
-  const [downloadFeedback, setDownloadFeedback] = useState<{ tone: "ok" | "err"; text: string } | null>(
-    null
-  );
+  const [downloadFeedback, setDownloadFeedback] = useState<{
+    tone: "ok" | "err" | "pending";
+    text: string;
+  } | null>(null);
   const [archiving, setArchiving] = useState(false);
   const [archiveError, setArchiveError] = useState("");
   const [generating, setGenerating] = useState(false);
@@ -1362,7 +1363,9 @@ export default function ResumeGenerator({
                   className={`text-sm font-medium ${
                     downloadFeedback.tone === "ok"
                       ? "text-emerald-700 dark:text-emerald-300"
-                      : "text-red-700 dark:text-red-300"
+                      : downloadFeedback.tone === "pending"
+                        ? "text-orange-700 dark:text-orange-300"
+                        : "text-red-700 dark:text-red-300"
                   }`}
                   role="status"
                 >

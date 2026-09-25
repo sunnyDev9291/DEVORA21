@@ -79,9 +79,10 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
   const [generationKey, setGenerationKey] = useState(0);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [downloadChooserOpen, setDownloadChooserOpen] = useState(false);
-  const [downloadFeedback, setDownloadFeedback] = useState<{ tone: "ok" | "err"; text: string } | null>(
-    null
-  );
+  const [downloadFeedback, setDownloadFeedback] = useState<{
+    tone: "ok" | "err" | "pending";
+    text: string;
+  } | null>(null);
   const [jobCheckOpen, setJobCheckOpen] = useState(false);
   const [jobChecking, setJobChecking] = useState(false);
   const [jobCheckOutput, setJobCheckOutput] = useState("");
@@ -536,7 +537,9 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
               className={`text-sm font-medium ${
                 downloadFeedback.tone === "ok"
                   ? "text-emerald-700 dark:text-emerald-300"
-                  : "text-red-700 dark:text-red-300"
+                  : downloadFeedback.tone === "pending"
+                    ? "text-orange-700 dark:text-orange-300"
+                    : "text-red-700 dark:text-red-300"
               }`}
               role="status"
             >

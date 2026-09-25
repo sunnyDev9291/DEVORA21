@@ -469,9 +469,10 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
     pdf: true,
     docx: true,
   });
-  const [downloadFeedback, setDownloadFeedback] = useState<{ tone: "ok" | "err"; text: string } | null>(
-    null
-  );
+  const [downloadFeedback, setDownloadFeedback] = useState<{
+    tone: "ok" | "err" | "pending";
+    text: string;
+  } | null>(null);
 
   const activeFilters = useMemo<SavedResumeSearchFilters>(
     () => ({
@@ -690,7 +691,9 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
             className={`relative mt-2 text-sm font-medium ${
               downloadFeedback.tone === "ok"
                 ? "text-emerald-700 dark:text-emerald-300"
-                : "text-red-700 dark:text-red-300"
+                : downloadFeedback.tone === "pending"
+                  ? "text-orange-700 dark:text-orange-300"
+                  : "text-red-700 dark:text-red-300"
             }`}
             role="status"
           >
