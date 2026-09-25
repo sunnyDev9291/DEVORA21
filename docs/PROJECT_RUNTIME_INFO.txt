@@ -115,7 +115,7 @@ Auth:
 
 Job discovery crawl platforms (profile listingUrls):
   builtin, hiringcafe, workable, workingnomads  → listing URLs
-  himalayas, getonboard                         → country name only
+  himalayas, getonboard, jobicy                 → country name only
 
 Get on Board (frontend wired; needs backend endpoint):
   Platform key: getonboard
@@ -128,6 +128,13 @@ Get on Board (frontend wired; needs backend endpoint):
     companies, featured, lang, page, per_page, expand
     IMPORTANT: do NOT pass country_code and remote in the same request
     (API returns 422 localization conflict). Filter remote after fetch.
+
+Jobicy (frontend wired; needs backend endpoint):
+  Platform key: jobicy
+  FE calls: POST /jobs/crawl/jobicy
+  Body: { "country": "Argentina", "countryName": "Argentina" }
+  Frontend prompt: docs/FRONTEND_JOBICY_CRAWL_CURSOR_PROMPT.txt
+  Free Remote Jobs API — backend resolves geo from country (anywhere fallback).
 
 Saved resumes:
   Lists via GET {API}/resume/archives

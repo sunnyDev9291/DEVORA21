@@ -375,7 +375,7 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
       <div id="crawl-urls" className="mt-8 scroll-mt-28 border-t border-white/10 pt-8">
         <h3 className="mb-1 text-sm font-semibold text-white">Job crawl settings</h3>
         <p className="mb-4 text-xs text-slate-500">
-          Edit crawl listing URLs (or Himalayas / Get on Board country) here, then click{" "}
+          Edit crawl listing URLs (or Himalayas / Get on Board / Jobicy country) here, then click{" "}
           <span className="font-semibold text-slate-300">Save profile</span>. They are stored on the
           backend for your account and used by Job discovery.
         </p>

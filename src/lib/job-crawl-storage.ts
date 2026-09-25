@@ -32,7 +32,8 @@ function isPlatform(value: unknown): value is JobCrawlPlatform {
     value === "workable" ||
     value === "workingnomads" ||
     value === "himalayas" ||
-    value === "getonboard"
+    value === "getonboard" ||
+    value === "jobicy"
   );
 }
 
@@ -67,6 +68,7 @@ function parseListingUrls(raw: unknown): Record<JobCrawlPlatform, string> | null
     workingnomads: typeof obj.workingnomads === "string" ? obj.workingnomads : "",
     himalayas: typeof obj.himalayas === "string" ? obj.himalayas : "",
     getonboard: typeof obj.getonboard === "string" ? obj.getonboard : "",
+    jobicy: typeof obj.jobicy === "string" ? obj.jobicy : "",
   });
 }
 
@@ -128,6 +130,10 @@ function parseResults(raw: unknown): Partial<Record<JobCrawlPlatform, JobCrawlRe
   if (obj.getonboard) {
     const parsed = parseResult(obj.getonboard);
     if (parsed) out.getonboard = parsed;
+  }
+  if (obj.jobicy) {
+    const parsed = parseResult(obj.jobicy);
+    if (parsed) out.jobicy = parsed;
   }
 
   return out;
@@ -199,6 +205,7 @@ function migrateLegacy(rawKey: string): StoredJobCrawlSession | null {
           workingnomads: platform === "workingnomads" ? listingUrl : "",
           himalayas: platform === "himalayas" ? listingUrl : "",
           getonboard: platform === "getonboard" ? listingUrl : "",
+          jobicy: platform === "jobicy" ? listingUrl : "",
         }),
         jobs: flattenCrawlResults({ [platform]: result }, [platform]),
         savedAt: typeof obj.savedAt === "string" ? obj.savedAt : "",

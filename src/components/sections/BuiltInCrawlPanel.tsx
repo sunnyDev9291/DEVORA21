@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { getApiErrorMessage } from "@/lib/auth-api";
-import { crawlBuiltInJobs, crawlGetOnBoardJobs, crawlHiringCafeJobs, crawlHimalayasJobs, crawlWorkableJobs, crawlWorkingNomadsJobs } from "@/lib/builtin-crawl-api";
+import { crawlBuiltInJobs, crawlGetOnBoardJobs, crawlHiringCafeJobs, crawlHimalayasJobs, crawlJobicyJobs, crawlWorkableJobs, crawlWorkingNomadsJobs } from "@/lib/builtin-crawl-api";
 import {
   ALL_JOB_CRAWL_PLATFORMS,
   BUILTIN_CRAWL_TIMEOUT_MS,
@@ -53,6 +53,7 @@ const PLATFORM_TABLE_BADGE_CLASS: Record<JobCrawlPlatform, string> = {
   workingnomads: "bg-sky-500/15 text-sky-800 dark:text-sky-300 ring-1 ring-sky-500/20",
   himalayas: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 ring-1 ring-emerald-500/20",
   getonboard: "bg-rose-500/15 text-rose-800 dark:text-rose-300 ring-1 ring-rose-500/20",
+  jobicy: "bg-indigo-500/15 text-indigo-800 dark:text-indigo-300 ring-1 ring-indigo-500/20",
 };
 
 const PLATFORM_BLURB: Record<JobCrawlPlatform, string> = {
@@ -62,6 +63,7 @@ const PLATFORM_BLURB: Record<JobCrawlPlatform, string> = {
   workingnomads: "Remote nomad listings",
   himalayas: "Remote roles via Himalayas free API (country filter)",
   getonboard: "Remote roles via Get on Board (country filter, last 24 hours)",
+  jobicy: "Remote roles via Jobicy free API (country filter, last 24 hours)",
 };
 
 function defaultSelectedPlatforms(): JobCrawlPlatform[] {
@@ -82,6 +84,7 @@ function crawlPlatform(
   if (platform === "workable") return crawlWorkableJobs(url, signal);
   if (platform === "workingnomads") return crawlWorkingNomadsJobs(url, signal);
   if (platform === "getonboard") return crawlGetOnBoardJobs(url, signal);
+  if (platform === "jobicy") return crawlJobicyJobs(url, signal);
   return crawlHimalayasJobs(url, signal);
 }
 
@@ -747,6 +750,15 @@ export default function BuiltInCrawlPanel() {
     [jobList, jobTitleFilter]
   );
   const hasTitleFilter = jobTitleFilter.trim().length > 0;
+  /** New badges only appear on visible rows; keep the pill in sync with the title filter. */
+  const visibleNewCount = useMemo(() => {
+    if (newJobKeys.size === 0) return 0;
+    let count = 0;
+    for (const { job } of filteredJobRows) {
+      if (newJobKeys.has(jobIdentityKey(job))) count += 1;
+    }
+    return count;
+  }, [filteredJobRows, newJobKeys]);
   const crawlPlatformOrder = useMemo(() => buildPlatformOrder(jobList), [jobList]);
 
   const allJobsChecked = useMemo(() => {
@@ -1078,9 +1090,16 @@ export default function BuiltInCrawlPanel() {
               <>
                 <span
                   className="inline-flex items-center rounded-full bg-emerald-500/15 px-3 py-1.5 text-sm font-semibold text-emerald-800 dark:text-emerald-300"
-                  title="Jobs that appeared since the previous crawl"
+                  title={
+                    hasTitleFilter && crawlDiff.added !== visibleNewCount
+                      ? `${visibleNewCount} new in this filtered view (${crawlDiff.added} new in the full crawl)`
+                      : "Jobs that appeared since the previous crawl"
+                  }
                 >
-                  +{crawlDiff.added} new
+                  +{visibleNewCount} new
+                  {hasTitleFilter && crawlDiff.added !== visibleNewCount
+                    ? ` of ${crawlDiff.added}`
+                    : ""}
                 </span>
                 <span
                   className="inline-flex items-center rounded-full bg-rose-500/15 px-3 py-1.5 text-sm font-semibold text-rose-800 dark:text-rose-300"

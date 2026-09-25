@@ -10,10 +10,12 @@ import {
   isHiringCafeListingUrl,
   isHimalayasCountry,
   isGetOnBoardCountry,
+  isJobicyCountry,
   isWorkableListingUrl,
   isWorkingNomadsListingUrl,
   normalizeHimalayasCountry,
   normalizeGetOnBoardCountry,
+  normalizeJobicyCountry,
   stripListingPageParam,
   type JobCrawlJob,
   type JobCrawlPlatform,
@@ -126,7 +128,8 @@ function parsePlatform(value: unknown, fallback: JobCrawlPlatform): JobCrawlPlat
     value === "workable" ||
     value === "workingnomads" ||
     value === "himalayas" ||
-    value === "getonboard"
+    value === "getonboard" ||
+    value === "jobicy"
     ? value
     : fallback;
 }
@@ -179,7 +182,8 @@ type CrawlConfig = {
     | "/jobs/crawl/workable"
     | "/jobs/crawl/workingnomads"
     | "/jobs/crawl/himalayas"
-    | "/jobs/crawl/getonboard";
+    | "/jobs/crawl/getonboard"
+    | "/jobs/crawl/jobicy";
 
   label: string;
 
@@ -281,6 +285,14 @@ const CRAWL_CONFIG: Record<JobCrawlPlatform, CrawlConfig> = {
     label: "Get on Board",
     validate: isGetOnBoardCountry,
     invalidMessage: "Enter a country name or ISO code for Get on Board (e.g. Argentina or AR).",
+    emptyMessage: "No remote jobs posted in the last 24 hours for this country",
+  },
+  jobicy: {
+    platform: "jobicy",
+    path: "/jobs/crawl/jobicy",
+    label: "Jobicy",
+    validate: isJobicyCountry,
+    invalidMessage: "Enter a country name for Jobicy (e.g. Argentina).",
     emptyMessage: "No remote jobs posted in the last 24 hours for this country",
   },
 };
@@ -729,6 +741,145 @@ export async function crawlGetOnBoardJobs(country: string, signal?: AbortSignal)
 
 
   const result = parseResult(data, `getonboard:${normalized}`, "getonboard");
+
+  if (result.jobs.length === 0) {
+
+    throw new ApiError(config.emptyMessage, 422);
+
+  }
+
+  return result;
+
+}
+
+
+
+/** POST /jobs/crawl/jobicy — free Remote Jobs API filtered by country (not a listing URL). */
+
+export async function crawlJobicyJobs(country: string, signal?: AbortSignal): Promise<JobCrawlResult> {
+
+  const config = CRAWL_CONFIG.jobicy;
+
+  const normalized = normalizeJobicyCountry(country);
+
+  if (!normalized || !isJobicyCountry(normalized)) {
+
+    throw new ApiError(config.invalidMessage, 400);
+
+  }
+
+
+
+  let res: Response;
+
+  try {
+
+    res = await apiAuthFetch(`${API_BASE_URL}${config.path}`, {
+
+      method: "POST",
+
+      headers: {
+
+        "Content-Type": "application/json",
+
+        Accept: "application/json",
+
+      },
+
+      body: JSON.stringify({
+
+        country: normalized,
+
+        countryName: normalized,
+
+      }),
+
+      signal,
+
+    });
+
+  } catch (err) {
+
+    if ((err as Error).name === "AbortError") {
+
+      throw new ApiError(
+
+        `${config.label} crawl timed out. Try again or use a narrower country filter.`,
+
+        504
+
+      );
+
+    }
+
+    throw new Error(
+
+      `Could not reach the ${config.label} crawl service. Check your connection and try again.`
+
+    );
+
+  }
+
+
+
+  const data = await readJson(res);
+
+
+
+  if (!res.ok) {
+
+    const body = asApiErrorBody(data);
+
+    const message = errorMessage(data, `${config.label} crawl failed (${res.status}).`);
+
+    if (res.status === 401) {
+
+      throw new ApiError("Authentication required. Sign in or connect a dv21_ API key.", 401, body);
+
+    }
+
+    if (res.status === 403) {
+
+      const err = new ApiError(message, 403, body);
+
+      if (isResumeBuilderAccessDenied(err)) {
+
+        throw new ApiError(RESUME_BUILDER_ACCESS_MESSAGE, 403, body);
+
+      }
+
+      throw new ApiError(resumeBuilderAccessDeniedMessage(err), 403, body);
+
+    }
+
+    if (res.status === 422) {
+
+      throw new ApiError(
+        message ||
+          "Invalid Jobicy country on your profile. Update it on the dashboard (e.g. Argentina).",
+        422,
+        body
+      );
+
+    }
+
+    if (res.status === 502) {
+
+      throw new ApiError(
+        errorMessage(data, "Jobicy upstream failed. Try again shortly."),
+        502,
+        body
+      );
+
+    }
+
+    throw new ApiError(message, res.status, body);
+
+  }
+
+
+
+  const result = parseResult(data, `jobicy:${normalized.toLowerCase()}`, "jobicy");
 
   if (result.jobs.length === 0) {
 
