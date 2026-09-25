@@ -4,7 +4,6 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Button from "@/components/ui/Button";
 import {
-  downloadBlob,
   fetchSavedResumeFile,
   resolveArchiveFileName,
   type SavedResumeSearchFilters,
@@ -22,6 +21,9 @@ import CopyIconButton from "@/components/ui/CopyIconButton";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
 const Modal = dynamic(() => import("@/components/ui/Modal"), { ssr: false });
+const ResumeDownloadChooser = dynamic(() => import("@/components/ui/ResumeDownloadChooser"), {
+  ssr: false,
+});
 
 type SavedResumesPanelProps = {
   variant?: "dashboard" | "resume";
@@ -354,16 +356,16 @@ function JobDescriptionModal({
 function ApplicationRows({
   items,
   styles,
-  downloadingKey,
+  downloadingId,
   onPreview,
   onDownload,
   onJobDescription,
 }: {
   items: SavedResumeArchive[];
   styles: PanelStyles;
-  downloadingKey: string | null;
+  downloadingId: string | null;
   onPreview: (item: SavedResumeArchive) => void;
-  onDownload: (item: SavedResumeArchive, format: "docx" | "pdf") => void;
+  onDownload: (item: SavedResumeArchive) => void;
   onJobDescription: (item: SavedResumeArchive) => void;
 }) {
   return (
@@ -382,8 +384,6 @@ function ApplicationRows({
           </thead>
           <tbody className={styles.tbody}>
             {items.map((item) => {
-              const docxKey = `${item.id}:docx`;
-              const pdfKey = `${item.id}:pdf`;
               const timeLabel = parseBidAt(item.bidAt)?.timeLabel ?? "—";
               const hasDescription = Boolean(item.jobDescription?.trim());
 
@@ -417,19 +417,10 @@ function ApplicationRows({
                         type="button"
                         variant="outline"
                         size="sm"
-                        disabled={downloadingKey === docxKey}
-                        onClick={() => onDownload(item, "docx")}
+                        disabled={downloadingId === item.id}
+                        onClick={() => onDownload(item)}
                       >
-                        {downloadingKey === docxKey ? "…" : "DOCX"}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={downloadingKey === pdfKey}
-                        onClick={() => onDownload(item, "pdf")}
-                      >
-                        {downloadingKey === pdfKey ? "…" : "PDF"}
+                        {downloadingId === item.id ? "…" : "Download"}
                       </Button>
                     </div>
                   </td>
@@ -473,7 +464,14 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
   const [jobDescOpen, setJobDescOpen] = useState(false);
   const [jobDescItem, setJobDescItem] = useState<SavedResumeArchive | null>(null);
 
-  const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
+  const [downloadTarget, setDownloadTarget] = useState<SavedResumeArchive | null>(null);
+  const [downloadDefaults, setDownloadDefaults] = useState<{ pdf: boolean; docx: boolean }>({
+    pdf: true,
+    docx: true,
+  });
+  const [downloadFeedback, setDownloadFeedback] = useState<{ tone: "ok" | "err"; text: string } | null>(
+    null
+  );
 
   const activeFilters = useMemo<SavedResumeSearchFilters>(
     () => ({
@@ -641,21 +639,17 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
     setPreviewLoading(false);
   }
 
-  async function handleDownload(item: SavedResumeArchive, format: "docx" | "pdf") {
-    const key = `${item.id}:${format}`;
-    setDownloadingKey(key);
-    try {
-      const { blob, fileName } = await fetchSavedResumeFile(
-        item.id,
-        format,
-        resolveArchiveFileName(item, format)
-      );
-      downloadBlob(blob, fileName);
-    } catch (err) {
-      setError((err as Error).message || "Download failed.");
-    } finally {
-      setDownloadingKey(null);
-    }
+  function openDownloadChooser(
+    item: SavedResumeArchive,
+    defaults: { pdf: boolean; docx: boolean } = { pdf: true, docx: true }
+  ) {
+    setDownloadFeedback(null);
+    setDownloadDefaults(defaults);
+    setDownloadTarget(item);
+  }
+
+  function closeDownloadChooser() {
+    setDownloadTarget(null);
   }
 
   const monthSlots = useMemo(() => {
@@ -689,6 +683,18 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
           <p className="relative mt-2 inline-flex items-center gap-2 text-xs font-medium text-orange-700/80 dark:text-orange-300/80">
             <span className="h-3 w-3 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
             Updating list…
+          </p>
+        ) : null}
+        {downloadFeedback ? (
+          <p
+            className={`relative mt-2 text-sm font-medium ${
+              downloadFeedback.tone === "ok"
+                ? "text-emerald-700 dark:text-emerald-300"
+                : "text-red-700 dark:text-red-300"
+            }`}
+            role="status"
+          >
+            {downloadFeedback.text}
           </p>
         ) : null}
       </div>
@@ -867,9 +873,9 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
                           <ApplicationRows
                             items={day.items}
                             styles={styles}
-                            downloadingKey={downloadingKey}
+                            downloadingId={downloadTarget?.id ?? null}
                             onPreview={(item) => void openPreview(item)}
-                            onDownload={(item, format) => void handleDownload(item, format)}
+                            onDownload={(item) => openDownloadChooser(item)}
                             onJobDescription={openJobDescription}
                           />
                         </div>
@@ -909,7 +915,26 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
         blob={previewBlob}
         waitingForPdf={previewLoading}
         error={previewError}
-        onDownload={previewItem ? () => void handleDownload(previewItem, "pdf") : undefined}
+        onDownload={
+          previewItem
+            ? () => {
+                closePreview();
+                openDownloadChooser(previewItem, { pdf: true, docx: false });
+              }
+            : undefined
+        }
+      />
+
+      <ResumeDownloadChooser
+        open={Boolean(downloadTarget)}
+        archiveId={downloadTarget?.id}
+        onClose={closeDownloadChooser}
+        defaultIncludePdf={downloadDefaults.pdf}
+        defaultIncludeDocx={downloadDefaults.docx}
+        onFeedback={(feedback) => {
+          setDownloadFeedback(feedback);
+          if (feedback.tone === "err") setError(feedback.text);
+        }}
       />
     </section>
   );

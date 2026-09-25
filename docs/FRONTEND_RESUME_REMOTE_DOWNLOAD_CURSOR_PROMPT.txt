@@ -1,0 +1,19 @@
+# Frontend Cursor Prompt — Resume download: Here vs Remote computer
+# Status: IMPLEMENTED in this repo
+
+## Goal
+After a resume is created/archived, the Download action offers:
+1) Here download — save on this browser/device
+2) Remote computer download — queue delivery to a registered remote PC
+
+## FE files
+- src/lib/remote-devices-api.ts — devices + deliver + delivery status
+- src/components/dashboard/DashboardRemoteDevicesPanel.tsx — settings UI
+- src/components/ui/ResumeDownloadChooser.tsx — Here / Remote modal
+- Wired: SavedResumesPanel, CompanyPastApplications, ResumeGenerator, ResumeFromJobPanel
+- Dashboard mounts Remote computers panel at /dashboard#remote-computers
+
+## Notes
+- rawSecret shown once on create; cleared when modal dismisses
+- Remote 422 → prompt to add a device
+- Here uses pdfUrl/docxUrl from deliver response (no local browser download for remote mode)

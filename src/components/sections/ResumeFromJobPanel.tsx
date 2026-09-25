@@ -28,6 +28,9 @@ import { resolveWritingPrompt } from "@/lib/writing-prompt";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
 const ResumeChatDialog = dynamic(() => import("@/components/ui/ResumeChatDialog"));
+const ResumeDownloadChooser = dynamic(() => import("@/components/ui/ResumeDownloadChooser"), {
+  ssr: false,
+});
 
 const inputClass =
   "w-full bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.10] hover:border-slate-300 dark:hover:border-white/[0.16] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 rounded-xl px-4 py-3 text-slate-900 dark:text-white text-sm outline-none transition-all";
@@ -75,6 +78,10 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
   const [resumeChatOpen, setResumeChatOpen] = useState(false);
   const [generationKey, setGenerationKey] = useState(0);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [downloadChooserOpen, setDownloadChooserOpen] = useState(false);
+  const [downloadFeedback, setDownloadFeedback] = useState<{ tone: "ok" | "err"; text: string } | null>(
+    null
+  );
   const [jobCheckOpen, setJobCheckOpen] = useState(false);
   const [jobChecking, setJobChecking] = useState(false);
   const [jobCheckOutput, setJobCheckOutput] = useState("");
@@ -424,6 +431,12 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
   }
 
   function handleDownloadPdf() {
+    const id = result?.id?.trim();
+    if (id) {
+      setDownloadFeedback(null);
+      setDownloadChooserOpen(true);
+      return;
+    }
     if (!pdfBlob || !result) return;
     downloadBlob(pdfBlob, result.pdfFileName || "resume.pdf");
   }
@@ -496,25 +509,39 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
       ) : null}
 
       {result?.pdfBase64 ? (
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" onClick={handleDownloadPdf}>
-            Download PDF
-          </Button>
-          <Button type="button" variant="secondary" onClick={() => setPreviewOpen(true)}>
-            Preview PDF
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => void runJobCheck()}
-            disabled={jobChecking || !(companyName || "").trim()}
-          >
-            {jobChecking ? "Job Check…" : "Job Check"}
-          </Button>
-          {hasClearableContent ? (
-            <Button type="button" variant="secondary" onClick={handleClear} disabled={running}>
-              Clear
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" onClick={handleDownloadPdf}>
+              Download
             </Button>
+            <Button type="button" variant="secondary" onClick={() => setPreviewOpen(true)}>
+              Preview PDF
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void runJobCheck()}
+              disabled={jobChecking || !(companyName || "").trim()}
+            >
+              {jobChecking ? "Job Check…" : "Job Check"}
+            </Button>
+            {hasClearableContent ? (
+              <Button type="button" variant="secondary" onClick={handleClear} disabled={running}>
+                Clear
+              </Button>
+            ) : null}
+          </div>
+          {downloadFeedback ? (
+            <p
+              className={`text-sm font-medium ${
+                downloadFeedback.tone === "ok"
+                  ? "text-emerald-700 dark:text-emerald-300"
+                  : "text-red-700 dark:text-red-300"
+              }`}
+              role="status"
+            >
+              {downloadFeedback.text}
+            </p>
           ) : null}
         </div>
       ) : null}
@@ -528,6 +555,15 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
         blob={pdfBlob}
         waitingForPdf={running && !pdfBlob}
         onDownload={handleDownloadPdf}
+      />
+
+      <ResumeDownloadChooser
+        open={downloadChooserOpen}
+        archiveId={result?.id}
+        onClose={() => setDownloadChooserOpen(false)}
+        defaultIncludePdf
+        defaultIncludeDocx
+        onFeedback={setDownloadFeedback}
       />
 
       <JobCheckBoard

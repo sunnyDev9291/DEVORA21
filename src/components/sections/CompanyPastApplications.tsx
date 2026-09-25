@@ -1,14 +1,15 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
-import {
-  downloadBlob,
-  fetchSavedResumeFile,
-  listSavedResumes,
-} from "@/lib/saved-resumes-api";
+import { listSavedResumes } from "@/lib/saved-resumes-api";
 import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
 import { formatEstDateTime } from "@/lib/format-est-datetime";
+
+const ResumeDownloadChooser = dynamic(() => import("@/components/ui/ResumeDownloadChooser"), {
+  ssr: false,
+});
 
 const DEBOUNCE_MS = 350;
 const MIN_QUERY_CHARS = 2;
@@ -35,7 +36,10 @@ export default function CompanyPastApplications({
   const [items, setItems] = useState<SavedResumeArchive[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
+  const [downloadTarget, setDownloadTarget] = useState<SavedResumeArchive | null>(null);
+  const [downloadFeedback, setDownloadFeedback] = useState<{ tone: "ok" | "err"; text: string } | null>(
+    null
+  );
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
@@ -82,17 +86,9 @@ export default function CompanyPastApplications({
       });
   }, [query, disabled]);
 
-  async function handleDownload(item: SavedResumeArchive, format: "docx" | "pdf") {
-    const key = `${item.id}:${format}`;
-    setDownloadingKey(key);
-    try {
-      const { blob, fileName } = await fetchSavedResumeFile(item.id, format);
-      downloadBlob(blob, fileName);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : `Could not download ${format.toUpperCase()}.`);
-    } finally {
-      setDownloadingKey(null);
-    }
+  function openDownload(item: SavedResumeArchive) {
+    setDownloadFeedback(null);
+    setDownloadTarget(item);
   }
 
   if (companyName.trim().length < MIN_QUERY_CHARS) return null;
@@ -140,8 +136,6 @@ export default function CompanyPastApplications({
         <ul id={listId} className="mt-3 space-y-2">
           {visibleItems.map((item) => {
             const when = formatEstDateTime(item.bidAt) ?? item.bidAt;
-            const docxKey = `${item.id}:docx`;
-            const pdfKey = `${item.id}:pdf`;
             return (
               <li
                 key={item.id}
@@ -182,19 +176,11 @@ export default function CompanyPastApplications({
                     ) : null}
                     <button
                       type="button"
-                      disabled={disabled || downloadingKey === docxKey}
-                      onClick={() => void handleDownload(item, "docx")}
+                      disabled={disabled || downloadTarget?.id === item.id}
+                      onClick={() => openDownload(item)}
                       className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition-colors hover:border-orange-300 hover:text-orange-800 disabled:opacity-50 dark:border-white/10 dark:bg-transparent dark:text-slate-200 dark:hover:border-orange-400/40 dark:hover:text-orange-200"
                     >
-                      {downloadingKey === docxKey ? "…" : "DOCX"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={disabled || downloadingKey === pdfKey}
-                      onClick={() => void handleDownload(item, "pdf")}
-                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition-colors hover:border-orange-300 hover:text-orange-800 disabled:opacity-50 dark:border-white/10 dark:bg-transparent dark:text-slate-200 dark:hover:border-orange-400/40 dark:hover:text-orange-200"
-                    >
-                      {downloadingKey === pdfKey ? "…" : "PDF"}
+                      Download
                     </button>
                   </div>
                 </div>
@@ -202,6 +188,19 @@ export default function CompanyPastApplications({
             );
           })}
         </ul>
+      ) : null}
+
+      {downloadFeedback ? (
+        <p
+          className={`mt-2 text-xs font-medium ${
+            downloadFeedback.tone === "ok"
+              ? "text-emerald-700 dark:text-emerald-300"
+              : "text-red-700 dark:text-red-300"
+          }`}
+          role="status"
+        >
+          {downloadFeedback.text}
+        </p>
       ) : null}
 
       {hasMore && !expanded ? (
@@ -228,6 +227,16 @@ export default function CompanyPastApplications({
           Show less
         </button>
       ) : null}
+
+      <ResumeDownloadChooser
+        open={Boolean(downloadTarget)}
+        archiveId={downloadTarget?.id}
+        onClose={() => setDownloadTarget(null)}
+        onFeedback={(feedback) => {
+          setDownloadFeedback(feedback);
+          if (feedback.tone === "err") setError(feedback.text);
+        }}
+      />
     </div>
   );
 }

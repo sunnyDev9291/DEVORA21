@@ -75,6 +75,9 @@ function resolveActiveUserTemplate(
 }
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
+const ResumeDownloadChooser = dynamic(() => import("@/components/ui/ResumeDownloadChooser"), {
+  ssr: false,
+});
 const ResumeAtsScoreModal = dynamic(() => import("@/components/ui/ResumeAtsScoreModal"));
 const ResumeChatDialog = dynamic(() => import("@/components/ui/ResumeChatDialog"));
 
@@ -148,6 +151,11 @@ export default function ResumeGenerator({
   const [fileName, setFileName] = useState("");
   const [pdfBase64, setPdfBase64] = useState("");
   const [pdfFileName, setPdfFileName] = useState("");
+  const [archiveId, setArchiveId] = useState<string | null>(null);
+  const [downloadChooserOpen, setDownloadChooserOpen] = useState(false);
+  const [downloadFeedback, setDownloadFeedback] = useState<{ tone: "ok" | "err"; text: string } | null>(
+    null
+  );
   const [archiving, setArchiving] = useState(false);
   const [archiveError, setArchiveError] = useState("");
   const [generating, setGenerating] = useState(false);
@@ -846,6 +854,7 @@ export default function ResumeGenerator({
     setArchiveError("");
     setPdfBase64("");
     setPdfFileName("");
+    setArchiveId(null);
 
     try {
       const { archiveResume } = await import("@/lib/resume-archive");
@@ -861,6 +870,7 @@ export default function ResumeGenerator({
       });
       setPdfBase64(result.pdfBase64);
       setPdfFileName(result.pdfFileName);
+      setArchiveId(result.id ?? null);
       notifyTodaysResumeCountChanged();
     } catch (err) {
       setArchiveError(resumeBuilderAccessDeniedMessage(err));
@@ -932,6 +942,7 @@ export default function ResumeGenerator({
         });
         setPdfBase64(archive.pdfBase64);
         setPdfFileName(archive.pdfFileName);
+        setArchiveId(archive.id ?? null);
         notifyTodaysResumeCountChanged();
         return {
           docxBase64: built.docxBase64,
@@ -961,11 +972,16 @@ export default function ResumeGenerator({
   }
 
   function handleDownloadPdf() {
-    if (!pdfBlob) return;
-    downloadBlob(
-      pdfBlob,
-      pdfFileName || fileName.replace(/\.docx$/i, ".pdf") || "resume.pdf"
-    );
+    if (!archiveId) {
+      if (!pdfBlob) return;
+      downloadBlob(
+        pdfBlob,
+        pdfFileName || fileName.replace(/\.docx$/i, ".pdf") || "resume.pdf"
+      );
+      return;
+    }
+    setDownloadFeedback(null);
+    setDownloadChooserOpen(true);
   }
 
   function handleStartOver() {
@@ -975,6 +991,9 @@ export default function ResumeGenerator({
     setFileName("");
     setPdfBase64("");
     setPdfFileName("");
+    setArchiveId(null);
+    setDownloadChooserOpen(false);
+    setDownloadFeedback(null);
     setArchiveError("");
     setPreviewOpen(false);
     setError("");
@@ -1328,16 +1347,28 @@ export default function ResumeGenerator({
                   <button
                     type="button"
                     onClick={handleDownloadPdf}
-                    disabled={!pdfBlob || archiving}
+                    disabled={(!pdfBlob && !archiveId) || archiving}
                     className="px-4 py-2 rounded-xl text-sm font-semibold bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-green-600/20 transition-all"
                   >
-                    Download PDF
+                    Download
                   </button>
                   <button type="button" onClick={handleStartOver} className="px-4 py-2 rounded-xl text-sm font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-all">
                     Start over
                   </button>
                 </div>
               </div>
+              {downloadFeedback ? (
+                <p
+                  className={`text-sm font-medium ${
+                    downloadFeedback.tone === "ok"
+                      ? "text-emerald-700 dark:text-emerald-300"
+                      : "text-red-700 dark:text-red-300"
+                  }`}
+                  role="status"
+                >
+                  {downloadFeedback.text}
+                </p>
+              ) : null}
               {archiveError && (
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3">
                   <p className="text-sm text-amber-800 dark:text-amber-200">{archiveError}</p>
@@ -1533,6 +1564,15 @@ export default function ResumeGenerator({
         waitingForPdf={archiving}
         error={archiveError}
         onDownload={handleDownloadPdf}
+      />
+
+      <ResumeDownloadChooser
+        open={downloadChooserOpen}
+        archiveId={archiveId}
+        onClose={() => setDownloadChooserOpen(false)}
+        defaultIncludePdf
+        defaultIncludeDocx
+        onFeedback={setDownloadFeedback}
       />
 
       <JobCheckBoard
