@@ -60,6 +60,8 @@ export default function ResumeDownloadChooser({
   const [tracking, setTracking] = useState<RemoteDelivery | null>(null);
   const [pollError, setPollError] = useState("");
   const pollStopRef = useRef(false);
+  const wasOpenRef = useRef(false);
+  const lastFeedbackRef = useRef<ResumeDownloadFeedback | null>(null);
   const onFeedbackRef = useRef(onFeedback);
   onFeedbackRef.current = onFeedback;
 
@@ -90,8 +92,26 @@ export default function ResumeDownloadChooser({
     }
   }, []);
 
-  const resetChooser = useCallback(() => {
-    pollStopRef.current = true;
+  // Only reset when the modal opens (false → true), not on every parent re-render.
+  useEffect(() => {
+    const justOpened = open && !wasOpenRef.current;
+    const justClosed = !open && wasOpenRef.current;
+    wasOpenRef.current = open;
+
+    if (justClosed) {
+      pollStopRef.current = true;
+      lastFeedbackRef.current = null;
+      setTracking(null);
+      setPollError("");
+      setSubmitting(false);
+      setError("");
+      return;
+    }
+
+    if (!justOpened) return;
+
+    pollStopRef.current = false;
+    lastFeedbackRef.current = null;
     setMode("here");
     setIncludePdf(defaultIncludePdf);
     setIncludeDocx(defaultIncludeDocx);
@@ -99,25 +119,16 @@ export default function ResumeDownloadChooser({
     setSubmitting(false);
     setTracking(null);
     setPollError("");
-  }, [defaultIncludePdf, defaultIncludeDocx]);
-
-  useEffect(() => {
-    if (!open) {
-      pollStopRef.current = true;
-      return;
-    }
-    resetChooser();
-    pollStopRef.current = false;
     void loadDevices();
-  }, [open, resetChooser, loadDevices]);
+  }, [open, defaultIncludePdf, defaultIncludeDocx, loadDevices]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || tracking) return;
     setDeviceId((current) => {
       if (current && activeDevices.some((d) => d.id === current)) return current;
       return defaultDeviceId;
     });
-  }, [open, activeDevices, defaultDeviceId]);
+  }, [open, tracking, activeDevices, defaultDeviceId]);
 
   useEffect(() => {
     if (!open || !tracking?.deliveryId || trackingDone) return;
@@ -125,19 +136,37 @@ export default function ResumeDownloadChooser({
     pollStopRef.current = false;
     let cancelled = false;
     let timer: number | null = null;
+    const deliveryId = tracking.deliveryId;
 
     const tick = async () => {
       if (cancelled || pollStopRef.current) return;
       try {
-        const next = await getRemoteDelivery(tracking.deliveryId);
+        const next = await getRemoteDelivery(deliveryId);
         if (cancelled || pollStopRef.current) return;
-        setTracking(next);
         setPollError("");
-        const ui = remoteDeliveryUiState(next);
-        onFeedbackRef.current?.({
-          tone: ui.tone === "pending" ? "pending" : ui.tone,
-          text: ui.detail || ui.headline,
+
+        setTracking((prev) => {
+          const unchanged =
+            !!prev &&
+            prev.status === next.status &&
+            prev.message === next.message &&
+            prev.error === next.error &&
+            prev.isTerminal === next.isTerminal &&
+            prev.isSuccess === next.isSuccess &&
+            prev.deviceName === next.deviceName;
+          return unchanged ? prev : next;
         });
+
+        // Publish feedback outside setState; skip identical copy.
+        const ui = remoteDeliveryUiState(next);
+        const text = ui.detail || ui.headline;
+        const tone = ui.tone === "pending" ? "pending" : ui.tone;
+        const last = lastFeedbackRef.current;
+        if (!last || last.tone !== tone || last.text !== text) {
+          lastFeedbackRef.current = { tone, text };
+          onFeedbackRef.current?.({ tone, text });
+        }
+
         if (isRemoteDeliveryTerminal(next)) return;
       } catch (err) {
         if (cancelled || pollStopRef.current) return;
@@ -218,10 +247,12 @@ export default function ResumeDownloadChooser({
 
       setTracking(initial);
       const ui = remoteDeliveryUiState(initial);
-      onFeedback?.({
-        tone: "pending",
+      const feedback = {
+        tone: "pending" as const,
         text: ui.detail || ui.headline,
-      });
+      };
+      lastFeedbackRef.current = feedback;
+      onFeedback?.(feedback);
     } catch (err) {
       if (err instanceof ApiError && err.status === 422 && mode === "remote") {
         setError("No remote computer registered. Add one in settings, then try again.");
