@@ -278,16 +278,32 @@ export async function downloadDeliverFiles(result: ResumeDeliverHereResponse): P
 async function downloadFromUrl(url: string, fileName: string): Promise<void> {
   const absolute = resolveDeliverFileUrl(url);
   const useAuth = absolute.startsWith(API_BASE_URL);
-  const res = useAuth
-    ? await apiAuthFetch(absolute, { method: "GET" })
-    : await fetch(absolute);
 
+  // API-hosted files need auth headers. External storage (e.g. Backblaze) is
+  // usually CORS-blocked for fetch — trigger a normal browser download instead.
+  if (!useAuth) {
+    triggerBrowserDownload(absolute, fileName);
+    return;
+  }
+
+  const res = await apiAuthFetch(absolute, { method: "GET" });
   if (!res.ok) {
     throw authError(res.status, `Could not download ${fileName} (${res.status}).`);
   }
 
   const blob = await res.blob();
   downloadBlob(blob, fileName);
+}
+
+function triggerBrowserDownload(url: string, fileName: string): void {
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.rel = "noopener";
+  anchor.target = "_blank";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
 }
 
 function resolveDeliverFileUrl(url: string): string {
