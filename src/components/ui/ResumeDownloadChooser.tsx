@@ -136,6 +136,7 @@ export default function ResumeDownloadChooser({
     pollStopRef.current = false;
     let cancelled = false;
     let timer: number | null = null;
+    let consecutiveFailures = 0;
     const deliveryId = tracking.deliveryId;
 
     const tick = async () => {
@@ -143,6 +144,7 @@ export default function ResumeDownloadChooser({
       try {
         const next = await getRemoteDelivery(deliveryId);
         if (cancelled || pollStopRef.current) return;
+        consecutiveFailures = 0;
         setPollError("");
 
         setTracking((prev) => {
@@ -170,7 +172,17 @@ export default function ResumeDownloadChooser({
         if (isRemoteDeliveryTerminal(next)) return;
       } catch (err) {
         if (cancelled || pollStopRef.current) return;
-        setPollError(getApiErrorMessage(err, "Could not refresh delivery status."));
+        // Ignore abort noise from effect cleanup / navigation.
+        if ((err as Error)?.name === "AbortError") {
+          // keep going
+        } else {
+          consecutiveFailures += 1;
+          // Only surface after repeated failures so a single CORS/network blip
+          // doesn't look like the remote download failed.
+          if (consecutiveFailures >= 2) {
+            setPollError(getApiErrorMessage(err, "Could not refresh delivery status."));
+          }
+        }
       }
       if (cancelled || pollStopRef.current) return;
       timer = window.setTimeout(() => {
@@ -178,9 +190,8 @@ export default function ResumeDownloadChooser({
       }, REMOTE_POLL_MS);
     };
 
-    timer = window.setTimeout(() => {
-      void tick();
-    }, REMOTE_POLL_MS);
+    // First poll immediately so claimed/delivered shows without an extra delay.
+    void tick();
 
     return () => {
       cancelled = true;

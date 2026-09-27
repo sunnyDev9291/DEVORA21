@@ -271,18 +271,20 @@ export async function deliverResumeArchive(
 }
 
 export async function getRemoteDelivery(deliveryId: string): Promise<RemoteDelivery> {
-  const res = await apiAuthFetch(
-    `${API_BASE_URL}/resume/remote-deliveries/${encodeURIComponent(deliveryId)}`,
-    {
-      method: "GET",
-      cache: "no-store",
-      headers: {
-        Accept: "application/json",
-        "Cache-Control": "no-cache",
-        Pragma: "no-cache",
-      },
-    }
-  );
+  // Bust caches with a query param. Do NOT send Cache-Control/Pragma headers —
+  // on cross-origin calls they trigger a CORS preflight that often fails as
+  // "Failed to fetch", even though deliver + the remote agent already succeeded.
+  const url =
+    `${API_BASE_URL}/resume/remote-deliveries/${encodeURIComponent(deliveryId)}` +
+    `?_=${Date.now()}`;
+
+  const res = await apiAuthFetch(url, {
+    method: "GET",
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+    },
+  });
 
   const data = await parseJson<{
     delivery?: RemoteDelivery;
