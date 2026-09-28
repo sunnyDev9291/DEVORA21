@@ -76,12 +76,6 @@ function DashboardContent() {
             <p className={`mt-1 ${ui.muted}`}>{user?.email}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Link
-              href={AUTH_LINKS.superAdmin}
-              className="inline-flex h-9 items-center border border-[#1e2a36] bg-[#0b0f14] px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-teal-300 transition-colors hover:border-teal-400/40 hover:text-teal-200"
-            >
-              Super Admin
-            </Link>
             <Button variant="outline" size="sm" onClick={handleLogout} disabled={isLoggingOut}>
               {isLoggingOut ? "Signing out…" : "Sign out"}
             </Button>
