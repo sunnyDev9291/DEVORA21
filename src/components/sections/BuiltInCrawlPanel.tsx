@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { getApiErrorMessage } from "@/lib/auth-api";
-import { crawlBuiltInJobs, crawlHiringCafeJobs, crawlWorkableJobs, crawlWorkingNomadsJobs } from "@/lib/builtin-crawl-api";
+import { crawlBuiltInJobs, crawlGetOnBoardJobs, crawlHiringCafeJobs, crawlHimalayasJobs, crawlJobicyJobs, crawlWorkableJobs, crawlWorkingNomadsJobs } from "@/lib/builtin-crawl-api";
 import {
   ALL_JOB_CRAWL_PLATFORMS,
   BUILTIN_CRAWL_TIMEOUT_MS,
@@ -19,9 +19,17 @@ import {
 import { AUTH_LINKS } from "@/lib/constants";
 import { formatEstDateTimeParts } from "@/lib/format-est-datetime";
 import { flattenCrawlResults } from "@/lib/job-crawl-list";
+import { diffCrawlJobs, jobIdentityKey } from "@/lib/job-crawl-diff";
 import { loadStoredJobCrawl, saveStoredJobCrawl } from "@/lib/job-crawl-storage";
+import {
+  DEFAULT_JOB_SHEET_COUNTRY,
+  JOB_SHEET_COUNTRIES,
+  type JobSheetCountry,
+} from "@/lib/job-sheet-countries";
 import { loadStoredProfile, resolveListingUrls } from "@/lib/user-profile";
 import { ui } from "@/lib/ui-styles";
+
+const SHEET_COUNTRY_STORAGE_KEY = "dv21:job-crawl-sheet-country";
 
 const filterInputClass = `${ui.input} py-3.5 text-base placeholder:text-slate-400 dark:placeholder:text-slate-500`;
 
@@ -43,6 +51,9 @@ const PLATFORM_TABLE_BADGE_CLASS: Record<JobCrawlPlatform, string> = {
   hiringcafe: "bg-orange-500/15 text-orange-700 dark:text-orange-300 ring-1 ring-orange-500/20",
   workable: "bg-amber-500/15 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500/20",
   workingnomads: "bg-sky-500/15 text-sky-800 dark:text-sky-300 ring-1 ring-sky-500/20",
+  himalayas: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 ring-1 ring-emerald-500/20",
+  getonboard: "bg-rose-500/15 text-rose-800 dark:text-rose-300 ring-1 ring-rose-500/20",
+  jobicy: "bg-indigo-500/15 text-indigo-800 dark:text-indigo-300 ring-1 ring-indigo-500/20",
 };
 
 const PLATFORM_BLURB: Record<JobCrawlPlatform, string> = {
@@ -50,6 +61,9 @@ const PLATFORM_BLURB: Record<JobCrawlPlatform, string> = {
   hiringcafe: "Cafe search listings",
   workable: "Workable job search",
   workingnomads: "Remote nomad listings",
+  himalayas: "Remote roles via Himalayas free API (country filter)",
+  getonboard: "Remote roles via Get on Board (country filter, last 24 hours)",
+  jobicy: "Remote roles via Jobicy free API (country filter, last 24 hours)",
 };
 
 function defaultSelectedPlatforms(): JobCrawlPlatform[] {
@@ -68,7 +82,10 @@ function crawlPlatform(
   if (platform === "builtin") return crawlBuiltInJobs(url, signal);
   if (platform === "hiringcafe") return crawlHiringCafeJobs(url, signal);
   if (platform === "workable") return crawlWorkableJobs(url, signal);
-  return crawlWorkingNomadsJobs(url, signal);
+  if (platform === "workingnomads") return crawlWorkingNomadsJobs(url, signal);
+  if (platform === "getonboard") return crawlGetOnBoardJobs(url, signal);
+  if (platform === "jobicy") return crawlJobicyJobs(url, signal);
+  return crawlHimalayasJobs(url, signal);
 }
 
 async function copyTextToClipboard(text: string): Promise<boolean> {
@@ -374,11 +391,60 @@ function filterJobsByTitle(jobs: DiscoveredJobRow[], titleFilter: string): Displ
     .filter(({ job }) => !trimmed || jobTitleMatchesFilter(job.jobTitle, trimmed));
 }
 
+function JobSelectCheckbox({
+  checked,
+  onChange,
+  ariaLabel,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  ariaLabel: string;
+}) {
+  return (
+    <label
+      className="job-select-check"
+      data-checked={checked ? "true" : "false"}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <input type="checkbox" checked={checked} onChange={onChange} aria-label={ariaLabel} />
+      <span className="job-select-box" aria-hidden="true">
+        <svg className="job-select-mark" viewBox="0 0 20 20" fill="none">
+          <path
+            d="M4.5 10.5l3.2 3.2 7.8-7.8"
+            stroke="currentColor"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </span>
+    </label>
+  );
+}
+
+function NewJobBadge() {
+  return (
+    <span className="inline-flex shrink-0 items-center rounded-md bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm shadow-emerald-500/30">
+      New
+    </span>
+  );
+}
+
+function JobTitleCell({ title, isNew }: { title: string; isNew: boolean }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {isNew ? <NewJobBadge /> : null}
+      <span>{title || "—"}</span>
+    </div>
+  );
+}
+
 function MergedJobTable({
   rows,
   sortMode,
   platformOrder,
   checkedKeys,
+  newJobKeys,
   onToggleRow,
   onToggleAll,
   allChecked,
@@ -388,6 +454,7 @@ function MergedJobTable({
   sortMode: JobTableSortMode;
   platformOrder: JobCrawlPlatform[];
   checkedKeys: Set<string>;
+  newJobKeys: Set<string>;
   onToggleRow: (key: string) => void;
   onToggleAll: () => void;
   allChecked: boolean;
@@ -398,6 +465,47 @@ function MergedJobTable({
     () => buildPlatformGroups(rows, platformOrder),
     [rows, platformOrder]
   );
+  const [flashKeys, setFlashKeys] = useState<Set<string>>(() => new Set());
+  const flashTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  useEffect(() => {
+    const timers = flashTimersRef.current;
+    return () => {
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
+    };
+  }, []);
+
+  function flashRow(key: string) {
+    setFlashKeys((current) => {
+      const next = new Set(current);
+      next.add(key);
+      return next;
+    });
+    const existing = flashTimersRef.current.get(key);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      setFlashKeys((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+      flashTimersRef.current.delete(key);
+    }, 420);
+    flashTimersRef.current.set(key, timer);
+  }
+
+  function handleToggleRow(key: string) {
+    flashRow(key);
+    onToggleRow(key);
+  }
+
+  function handleRowClick(event: ReactMouseEvent<HTMLTableRowElement>, key: string) {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    if (target.closest("a, button, input, label, [data-no-row-toggle]")) return;
+    handleToggleRow(key);
+  }
 
   if (rows.length === 0) {
     return (
@@ -412,19 +520,17 @@ function MergedJobTable({
       <table className="min-w-full text-base">
         <thead className="border-b border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.02] text-left text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
           <tr>
+            <th className="px-2 py-3 font-semibold text-center w-14">
+              <JobSelectCheckbox
+                checked={allChecked}
+                onChange={onToggleAll}
+                ariaLabel="Select all jobs"
+              />
+            </th>
             <th className="px-4 py-3 font-semibold whitespace-nowrap">Company name</th>
             <th className="px-4 py-3 font-semibold min-w-[12rem]">Job title</th>
             <th className="px-4 py-3 font-semibold min-w-[10rem]">Job URL</th>
             <th className="px-4 py-3 font-semibold whitespace-nowrap">Platform</th>
-            <th className="px-4 py-3 font-semibold text-center w-12">
-              <input
-                type="checkbox"
-                checked={allChecked}
-                onChange={onToggleAll}
-                aria-label="Select all jobs"
-                className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500/30 dark:border-white/20 dark:bg-white/5"
-              />
-            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-white/[0.06]">
@@ -433,16 +539,23 @@ function MergedJobTable({
                 group.rows.map((row, rowIndex) => {
                   const key = jobRowKey(row.job, row.originalIndex);
                   const checked = checkedKeys.has(key);
+                  const flashing = flashKeys.has(key);
+                  const isNew = newJobKeys.has(jobIdentityKey(row.job));
 
                   return (
                     <tr
                       key={key}
-                      className={
-                        checked
-                          ? "bg-orange-500/[0.06] hover:bg-orange-500/[0.08]"
-                          : "hover:bg-slate-50/80 dark:hover:bg-white/[0.02]"
-                      }
+                      data-checked={checked ? "true" : "false"}
+                      className={`job-select-row ${flashing ? "is-flashing" : ""}`}
+                      onClick={(event) => handleRowClick(event, key)}
                     >
+                      <td className="px-2 py-2.5 text-center align-middle">
+                        <JobSelectCheckbox
+                          checked={checked}
+                          onChange={() => handleToggleRow(key)}
+                          ariaLabel={`Select ${row.job.jobTitle || "job"}`}
+                        />
+                      </td>
                       {rowIndex === 0 ? (
                         <td
                           rowSpan={group.rows.length}
@@ -451,10 +564,12 @@ function MergedJobTable({
                           {group.companyLabel}
                         </td>
                       ) : null}
-                      <td className="px-4 py-3 text-slate-800 dark:text-slate-100">{row.job.jobTitle || "—"}</td>
+                      <td className="px-4 py-3 text-slate-800 dark:text-slate-100">
+                        <JobTitleCell title={row.job.jobTitle} isNew={isNew} />
+                      </td>
                       <td className="px-4 py-3 max-w-[20rem]">
                         {row.job.jobUrl ? (
-                          <div className="flex items-center gap-2 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0" data-no-row-toggle>
                             <span title={row.job.jobUrl} className="truncate text-orange-600 dark:text-orange-400 select-all">
                               {row.job.jobUrl}
                             </span>
@@ -471,15 +586,6 @@ function MergedJobTable({
                           {PLATFORM_LABEL[row.job.platform]}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-center">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => onToggleRow(key)}
-                          aria-label={`Select ${row.job.jobTitle || "job"}`}
-                          className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500/30 dark:border-white/20 dark:bg-white/5"
-                        />
-                      </td>
                     </tr>
                   );
                 })
@@ -488,23 +594,32 @@ function MergedJobTable({
                 group.rows.map((row, rowIndex) => {
                   const key = jobRowKey(row.job, row.originalIndex);
                   const checked = checkedKeys.has(key);
+                  const flashing = flashKeys.has(key);
+                  const isNew = newJobKeys.has(jobIdentityKey(row.job));
 
                   return (
                     <tr
                       key={key}
-                      className={
-                        checked
-                          ? "bg-orange-500/[0.06] hover:bg-orange-500/[0.08]"
-                          : "hover:bg-slate-50/80 dark:hover:bg-white/[0.02]"
-                      }
+                      data-checked={checked ? "true" : "false"}
+                      className={`job-select-row ${flashing ? "is-flashing" : ""}`}
+                      onClick={(event) => handleRowClick(event, key)}
                     >
+                      <td className="px-2 py-2.5 text-center align-middle">
+                        <JobSelectCheckbox
+                          checked={checked}
+                          onChange={() => handleToggleRow(key)}
+                          ariaLabel={`Select ${row.job.jobTitle || "job"}`}
+                        />
+                      </td>
                       <td className="px-4 py-3 font-medium text-slate-900 dark:text-white whitespace-nowrap">
                         {normalizeCompanyName(row.job.companyName) || "—"}
                       </td>
-                      <td className="px-4 py-3 text-slate-800 dark:text-slate-100">{row.job.jobTitle || "—"}</td>
+                      <td className="px-4 py-3 text-slate-800 dark:text-slate-100">
+                        <JobTitleCell title={row.job.jobTitle} isNew={isNew} />
+                      </td>
                       <td className="px-4 py-3 max-w-[20rem]">
                         {row.job.jobUrl ? (
-                          <div className="flex items-center gap-2 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0" data-no-row-toggle>
                             <span title={row.job.jobUrl} className="truncate text-orange-600 dark:text-orange-400 select-all">
                               {row.job.jobUrl}
                             </span>
@@ -526,15 +641,6 @@ function MergedJobTable({
                           </span>
                         </td>
                       ) : null}
-                      <td className="px-4 py-3 text-center">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => onToggleRow(key)}
-                          aria-label={`Select ${row.job.jobTitle || "job"}`}
-                          className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500/30 dark:border-white/20 dark:bg-white/5"
-                        />
-                      </td>
                     </tr>
                   );
                 })
@@ -548,10 +654,17 @@ function MergedJobTable({
 export default function BuiltInCrawlPanel() {
   const { user } = useAuth();
   const userId = user?.id;
-  const profileListingUrls = useMemo(
-    () => resolveListingUrls(user, userId ? loadStoredProfile(userId) : null),
-    [user, userId]
-  );
+  const profileListingKey = useMemo(() => {
+    const urls = resolveListingUrls(user, userId ? loadStoredProfile(userId) : null);
+    if (!urls) return "";
+    return ALL_JOB_CRAWL_PLATFORMS.map((platform) => `${platform}:${urls[platform] ?? ""}`).join("|");
+  }, [user, userId]);
+  const profileListingUrls = useMemo(() => {
+    if (!profileListingKey) return undefined;
+    return resolveListingUrls(user, userId ? loadStoredProfile(userId) : null);
+    // profileListingKey already captures listing URL contents
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: stabilize on content, not user identity
+  }, [profileListingKey, userId]);
 
   const [selectedPlatforms, setSelectedPlatforms] = useState<JobCrawlPlatform[]>(defaultSelectedPlatforms);
   const [listingUrls, setListingUrls] = useState<Record<JobCrawlPlatform, string>>(() =>
@@ -565,17 +678,62 @@ export default function BuiltInCrawlPanel() {
   const [crawling, setCrawling] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [lastCrawledAt, setLastCrawledAt] = useState<string | null>(null);
+  const [sheetCountry, setSheetCountry] = useState<JobSheetCountry>(DEFAULT_JOB_SHEET_COUNTRY);
+  const [addingToSheet, setAddingToSheet] = useState(false);
+  const [sheetFeedback, setSheetFeedback] = useState<{ tone: "ok" | "err"; text: string } | null>(
+    null
+  );
+  const [newJobKeys, setNewJobKeys] = useState<Set<string>>(() => new Set());
+  const [crawlDiff, setCrawlDiff] = useState<{ added: number; removed: number } | null>(null);
+  const hydratedUserIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
+    const isNewUserSession = hydratedUserIdRef.current !== userId;
+    hydratedUserIdRef.current = userId;
+
     const stored = loadStoredJobCrawl(userId);
-    // Profile listing URLs are the source of truth; session only keeps jobs + platforms.
-    setListingUrls(mergeListingUrls(profileListingUrls ?? stored?.listingUrls));
-    if (stored) {
-      setSelectedPlatforms(stored.selectedPlatforms);
-      setJobList(stored.jobs);
-      if (stored.savedAt) setLastCrawledAt(stored.savedAt);
+
+    if (isNewUserSession) {
+      // Full hydrate only when the signed-in user changes (or first mount).
+      setListingUrls(mergeListingUrls(profileListingUrls ?? stored?.listingUrls));
+      if (stored) {
+        setSelectedPlatforms(stored.selectedPlatforms);
+        setJobList(stored.jobs);
+        if (stored.savedAt) setLastCrawledAt(stored.savedAt);
+        setNewJobKeys(new Set(stored.newJobKeys ?? []));
+        setCrawlDiff(stored.lastDiff ?? null);
+      } else {
+        setSelectedPlatforms(defaultSelectedPlatforms());
+        setJobList([]);
+        setLastCrawledAt(null);
+        setNewJobKeys(new Set());
+        setCrawlDiff(null);
+      }
+      setCheckedJobKeys(new Set());
+      setPlatformErrors({});
+      setSheetFeedback(null);
+      try {
+        const savedCountry = window.localStorage.getItem(SHEET_COUNTRY_STORAGE_KEY);
+        if (savedCountry && (JOB_SHEET_COUNTRIES as readonly string[]).includes(savedCountry)) {
+          setSheetCountry(savedCountry as JobSheetCountry);
+        }
+      } catch {
+        // ignore
+      }
+      setHydrated(true);
+      return;
     }
-    setHydrated(true);
+
+    // Same user: refresh crawl URL defaults from profile only — never wipe the job table.
+    if (profileListingUrls) {
+      const nextUrls = mergeListingUrls(profileListingUrls);
+      setListingUrls((current) => {
+        const unchanged = ALL_JOB_CRAWL_PLATFORMS.every(
+          (platform) => current[platform] === nextUrls[platform]
+        );
+        return unchanged ? current : nextUrls;
+      });
+    }
   }, [userId, profileListingUrls]);
 
   const allPlatformSelected = ALL_JOB_CRAWL_PLATFORMS.every((p) => selectedPlatforms.includes(p));
@@ -592,6 +750,15 @@ export default function BuiltInCrawlPanel() {
     [jobList, jobTitleFilter]
   );
   const hasTitleFilter = jobTitleFilter.trim().length > 0;
+  /** New badges only appear on visible rows; keep the pill in sync with the title filter. */
+  const visibleNewCount = useMemo(() => {
+    if (newJobKeys.size === 0) return 0;
+    let count = 0;
+    for (const { job } of filteredJobRows) {
+      if (newJobKeys.has(jobIdentityKey(job))) count += 1;
+    }
+    return count;
+  }, [filteredJobRows, newJobKeys]);
   const crawlPlatformOrder = useMemo(() => buildPlatformOrder(jobList), [jobList]);
 
   const allJobsChecked = useMemo(() => {
@@ -652,6 +819,70 @@ export default function BuiltInCrawlPanel() {
     });
   }
 
+  function handleSheetCountryChange(value: JobSheetCountry) {
+    setSheetCountry(value);
+    setSheetFeedback(null);
+    try {
+      window.localStorage.setItem(SHEET_COUNTRY_STORAGE_KEY, value);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function handleAddToSheet() {
+    if (addingToSheet || checkedJobKeys.size === 0) return;
+
+    const selectedJobs = jobList
+      .map((job, originalIndex) => ({ job, originalIndex }))
+      .filter(({ job, originalIndex }) => checkedJobKeys.has(jobRowKey(job, originalIndex)))
+      .map(({ job }) => ({
+        platform: job.platform,
+        jobUrl: job.jobUrl,
+      }))
+      .filter((job) => job.jobUrl.trim().length > 0);
+
+    if (selectedJobs.length === 0) {
+      setSheetFeedback({ tone: "err", text: "Selected jobs are missing URLs." });
+      return;
+    }
+
+    setAddingToSheet(true);
+    setSheetFeedback(null);
+
+    try {
+      const response = await fetch("/api/jobs/crawl/add-to-sheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          country: sheetCountry,
+          jobs: selectedJobs,
+        }),
+      });
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        message?: string;
+        added?: number;
+      };
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to add jobs to the sheet.");
+      }
+
+      setSheetFeedback({
+        tone: "ok",
+        text: data.message || `Added ${data.added ?? selectedJobs.length} job(s) to ${sheetCountry}.`,
+      });
+      setCheckedJobKeys(new Set());
+    } catch (error) {
+      setSheetFeedback({
+        tone: "err",
+        text: getApiErrorMessage(error, "Failed to add jobs to the sheet."),
+      });
+    } finally {
+      setAddingToSheet(false);
+    }
+  }
+
   async function handleCrawl() {
     if (!canCrawl) return;
 
@@ -681,9 +912,17 @@ export default function BuiltInCrawlPanel() {
     if (hadSuccess) {
       const freshJobs = flattenCrawlResults(crawlResults, selectedPlatforms);
       const savedAt = new Date().toISOString();
+      const previousJobs = jobList;
+      const diff = previousJobs.length > 0
+        ? diffCrawlJobs(previousJobs, freshJobs)
+        : { added: 0, removed: 0, newKeys: new Set<string>() };
+      const nextDiff =
+        previousJobs.length > 0 ? { added: diff.added, removed: diff.removed } : null;
 
       setJobList(freshJobs);
       setCheckedJobKeys(new Set());
+      setNewJobKeys(diff.newKeys);
+      setCrawlDiff(nextDiff);
       // Always re-apply default keywords so results are filtered immediately (not only after refresh).
       setJobTitleFilter(DEFAULT_JOB_TITLE_FILTER);
       setLastCrawledAt(savedAt);
@@ -693,6 +932,8 @@ export default function BuiltInCrawlPanel() {
           listingUrls,
           jobs: freshJobs,
           savedAt,
+          newJobKeys: [...diff.newKeys],
+          lastDiff: nextDiff ?? undefined,
         },
         userId
       );
@@ -845,6 +1086,29 @@ export default function BuiltInCrawlPanel() {
                 ? `${filteredJobRows.length} of ${jobList.length} job${jobList.length === 1 ? "" : "s"}`
                 : `${jobList.length} job${jobList.length === 1 ? "" : "s"}`}
             </span>
+            {crawlDiff ? (
+              <>
+                <span
+                  className="inline-flex items-center rounded-full bg-emerald-500/15 px-3 py-1.5 text-sm font-semibold text-emerald-800 dark:text-emerald-300"
+                  title={
+                    hasTitleFilter && crawlDiff.added !== visibleNewCount
+                      ? `${visibleNewCount} new in this filtered view (${crawlDiff.added} new in the full crawl)`
+                      : "Jobs that appeared since the previous crawl"
+                  }
+                >
+                  +{visibleNewCount} new
+                  {hasTitleFilter && crawlDiff.added !== visibleNewCount
+                    ? ` of ${crawlDiff.added}`
+                    : ""}
+                </span>
+                <span
+                  className="inline-flex items-center rounded-full bg-rose-500/15 px-3 py-1.5 text-sm font-semibold text-rose-800 dark:text-rose-300"
+                  title="Jobs from the previous crawl that are gone now"
+                >
+                  −{crawlDiff.removed} gone
+                </span>
+              </>
+            ) : null}
             {checkedJobKeys.size > 0 ? (
               <span className="text-slate-500 dark:text-slate-400">
                 {checkedJobKeys.size} selected
@@ -877,11 +1141,72 @@ export default function BuiltInCrawlPanel() {
             </div>
           </div>
 
+          <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-white/[0.08] dark:bg-white/[0.02] sm:flex-row sm:flex-wrap sm:items-end">
+            <div className="min-w-[12rem]">
+              <label
+                htmlFor="jobSheetCountry"
+                className="mb-1.5 block text-sm font-medium text-slate-600 dark:text-slate-300"
+              >
+                Sheet country
+              </label>
+              <select
+                id="jobSheetCountry"
+                value={sheetCountry}
+                onChange={(e) => handleSheetCountryChange(e.target.value as JobSheetCountry)}
+                className={`${ui.input} py-2.5 text-sm`}
+              >
+                {JOB_SHEET_COUNTRIES.map((country) => (
+                  <option key={country} value={country}>
+                    {country}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              onClick={handleAddToSheet}
+              disabled={addingToSheet || checkedJobKeys.size === 0}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {addingToSheet ? (
+                <>
+                  <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                    />
+                  </svg>
+                  Adding…
+                </>
+              ) : (
+                <>Add Sheet{checkedJobKeys.size > 0 ? ` (${checkedJobKeys.size})` : ""}</>
+              )}
+            </button>
+            <p className="text-sm text-slate-500 dark:text-slate-400 sm:pb-2.5">
+              Check jobs, pick the sheet tab country, then add rows automatically.
+            </p>
+          </div>
+
+          {sheetFeedback ? (
+            <div
+              className={`rounded-xl border px-4 py-3 text-sm ${
+                sheetFeedback.tone === "ok"
+                  ? "border-emerald-500/25 bg-emerald-500/[0.08] text-emerald-800 dark:text-emerald-200"
+                  : "border-red-500/25 bg-red-500/[0.08] text-red-700 dark:text-red-300"
+              }`}
+            >
+              {sheetFeedback.text}
+            </div>
+          ) : null}
+
           <MergedJobTable
             rows={filteredJobRows}
             sortMode={jobTableSortMode}
             platformOrder={crawlPlatformOrder}
             checkedKeys={checkedJobKeys}
+            newJobKeys={newJobKeys}
             onToggleRow={toggleJobRow}
             onToggleAll={toggleAllJobs}
             allChecked={allJobsChecked}

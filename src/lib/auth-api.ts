@@ -1,5 +1,6 @@
 import { API_BASE_URL } from "@/lib/api-base-url";
 import { apiAuthFetch, type ApiAuthMode } from "@/lib/api-auth";
+import { refreshAuthSession } from "@/lib/auth-refresh";
 import { parseListingUrlsPartial } from "@/lib/builtin-crawl-types";
 import { readEmailVerified, mergeEmailVerifiedState } from "@/lib/email-verification";
 import type {
@@ -200,7 +201,39 @@ export function mergeAuthUserState(previous: User | null, next: User): User {
     }
   }
 
+  // Keep the previous reference when session keepalive returns the same profile.
+  // Avoids remounting dashboard panels on every /auth/me poll.
+  if (previous && isSameAuthUserSnapshot(previous, merged)) {
+    return previous;
+  }
+
   return merged;
+}
+
+function listingUrlsSnapshot(urls: User["listingUrls"]): string {
+  if (!urls) return "";
+  return Object.keys(urls)
+    .sort()
+    .map((key) => `${key}:${urls[key as keyof typeof urls] ?? ""}`)
+    .join("|");
+}
+
+/** True when auth UI state would look identical (ignore object identity). */
+export function isSameAuthUserSnapshot(a: User, b: User): boolean {
+  return (
+    a.id === b.id &&
+    a.email === b.email &&
+    a.name === b.name &&
+    a.firstName === b.firstName &&
+    a.lastName === b.lastName &&
+    a.avatar === b.avatar &&
+    a.emailVerified === b.emailVerified &&
+    a.onboardingCompleted === b.onboardingCompleted &&
+    a.resumeBuilderEnabled === b.resumeBuilderEnabled &&
+    a.resumeTemplateFileName === b.resumeTemplateFileName &&
+    a.promptFileName === b.promptFileName &&
+    listingUrlsSnapshot(a.listingUrls) === listingUrlsSnapshot(b.listingUrls)
+  );
 }
 
 /** Backend may return firstName/lastName/avatar instead of name, or nest under `user`. */
@@ -293,12 +326,13 @@ export const authApi = {
       data: normalizeAuthUser(data),
     })),
 
-  login: (email: string, password: string, rememberMe = true) =>
+  login: (email: string, password: string, _rememberMe = true) =>
     apiRequest<AuthResponse & Record<string, unknown>>(
       "/auth/login",
       {
         method: "POST",
-        body: JSON.stringify({ email, password, rememberMe }),
+        // Always request long-lived refresh (30d). UI checkbox may still be shown.
+        body: JSON.stringify({ email, password, rememberMe: true }),
       },
       "cookie"
     ).then((data) => {
@@ -306,11 +340,14 @@ export const authApi = {
       return { data: { ...data, user } };
     }),
 
-  /** Extend an existing session cookie (sliding / long-lived sessions). */
-  refreshSession: () =>
-    apiRequest<MessageResponse>("/auth/refresh", { method: "POST" }, "cookie").then((data) => ({
-      data,
-    })),
+  /** Extend access cookie via shared single-flight refresh (multi-tab safe). */
+  refreshSession: async () => {
+    const ok = await refreshAuthSession();
+    if (!ok) {
+      throw new ApiError("Refresh token required", 401);
+    }
+    return { data: { message: "ok" } satisfies MessageResponse };
+  },
 
   register: (name: string, email: string, password: string) => {
     const { firstName, lastName } = splitFullName(name);

@@ -6,7 +6,7 @@
 - Job discovery reads those URLs; it does **not** offer URL edit inputs
 
 ## Platform keys (exact)
-builtin | hiringcafe | workable | workingnomads
+builtin | hiringcafe | workable | workingnomads | himalayas | getonboard | jobicy
 
 ## Shape
 ```json
@@ -15,10 +15,16 @@ builtin | hiringcafe | workable | workingnomads
     "builtin": "https://builtin.com/jobs/...",
     "hiringcafe": "https://hiringcafe.com/?searchState=...",
     "workable": "https://jobs.workable.com/search?...",
-    "workingnomads": "https://www.workingnomads.com/jobs?..."
+    "workingnomads": "https://www.workingnomads.com/jobs?...",
+    "himalayas": "Argentina",
+    "getonboard": "Argentina",
+    "jobicy": "Argentina"
   }
 }
 ```
+
+Note:
+- `himalayas`, `getonboard`, and `jobicy` store a **country name**, not a URL (public APIs).
 
 ## Required API behavior
 
@@ -30,7 +36,7 @@ Support **both**:
 
 1. **multipart/form-data** (existing profile save):
    - field `listingUrls` = JSON string of the object above
-   - optional flat fields: `listingUrl_builtin`, `listingUrl_hiringcafe`, `listingUrl_workable`, `listingUrl_workingnomads`
+   - optional flat fields: `listingUrl_builtin`, `listingUrl_hiringcafe`, `listingUrl_workable`, `listingUrl_workingnomads`, `listingUrl_himalayas`, `listingUrl_getonboard`, `listingUrl_jobicy`
 
 2. **application/json**:
 ```json
@@ -42,7 +48,10 @@ Support **both**:
     "builtin": "...",
     "hiringcafe": "...",
     "workable": "...",
-    "workingnomads": "..."
+    "workingnomads": "...",
+    "himalayas": "Argentina",
+    "getonboard": "Argentina",
+    "jobicy": "Argentina"
   }
 }
 ```

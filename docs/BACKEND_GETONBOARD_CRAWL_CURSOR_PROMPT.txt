@@ -1,0 +1,150 @@
+# Backend Cursor Prompt — Add Get on Board job crawl (country + public API)
+
+## Role
+Implement Get on Board as a job-crawl platform on api.devora21.com using the
+**Get on Board public REST API (v0)**. Users provide a **country name only**
+(same UX as Himalayas) — not a listing URL.
+
+Official docs: https://api-doc.getonbrd.com/?version=latest  
+Manual: https://www.getonbrd.com/user-manual/get-on-board-s-api  
+Base URL: `https://www.getonbrd.com/api/v0/`  
+Sandbox: `https://sandbox.getonbrd.dev/api/v0/`
+
+No Get on Board company API key is required (public search only).
+
+## Frontend (already wired)
+- Platform key: `getonboard`
+- FE calls: `POST /jobs/crawl/getonboard`
+- Body: `{ "country": "Argentina", "countryName": "Argentina" }`
+- Auth: same session cookie and/or Bearer `dv21_` key as other crawl endpoints
+- Profile field `listingUrls.getonboard` stores the **country string** (e.g. `"Argentina"`)
+- Default country: `Argentina`
+- Helper on FE: `getOnBoardCountryToIso()` in `src/lib/builtin-crawl-types.ts` (extend on backend as needed)
+
+## Endpoint
+
+```
+POST /jobs/crawl/getonboard
+Content-Type: application/json
+Authorization: Bearer <session JWT or dv21_ API key>
+```
+
+### Request
+```json
+{ "country": "Argentina", "countryName": "Argentina" }
+```
+
+Accept either `country` or `countryName` (non-empty string). Reject empty/missing with 400.
+Do **not** require `url`.
+
+### Success response (same shape as other crawl endpoints)
+```json
+{
+  "sourceUrl": "getonboard:Argentina",
+  "platform": "getonboard",
+  "pagesScraped": 2,
+  "totalCount": 12,
+  "jobs": [
+    {
+      "jobId": "fractional-full-stack-engineer-valsnapp-remote",
+      "companyName": "Valsnapp",
+      "jobTitle": "Fractional Full-Stack Engineer",
+      "jobUrl": "https://www.getonbrd.com/jobs/fractional-full-stack-engineer-valsnapp-remote"
+    }
+  ]
+}
+```
+
+Rules:
+- `totalCount` MUST equal `jobs.length`
+- Deduplicate by `jobUrl` / `jobId`
+- `jobUrl` = `links.public_url` (absolute https on getonbrd.com)
+- `jobId` = resource `id` slug from API (not array index)
+- `companyName` from expanded company `attributes.name` when present
+- `sourceUrl` can be `getonboard:<country>` for logging
+
+## How to fetch (required — verified against official public API)
+
+### 1) Resolve country → ISO 3166-1 alpha-2
+Map user country name to `country_code`, e.g.:
+- Argentina → `AR`
+- Brazil / Brasil → `BR`
+- Chile → `CL`
+- Colombia → `CO`
+- Dominican Republic → `DO`
+- Mexico → `MX`
+If the user already sends a 2-letter code, uppercase it.
+Unknown country → 400 with a clear message.
+
+Optional: cross-check names via public `GET /api/v0/countries?lang=en&per_page=120&page=…`
+(countries return slug ids like `argentina`, not ISO — keep an ISO map).
+
+### 2) Search jobs by country (public, no auth)
+```
+GET https://www.getonbrd.com/api/v0/search/jobs
+  ?country_code=AR
+  &per_page=120
+  &page=1
+  &lang=en
+  &expand[]=company
+```
+
+Official search query params include: `query`, `country_code`, `remote`, `companies`,
+`featured`, `lang`, `page`, `per_page`, `expand`, `board_host`.
+
+**CRITICAL:** Do **NOT** pass `country_code` and `remote` in the same request.
+The API returns `422` / `unprocessable_content`:
+"Localization conflict. Do not pass country code and remote parameters at the same time."
+
+### 3) Paginate
+Read `meta.total_pages`. Loop `page=1..N` with `per_page=120` (API max) until done
+or a sane max page cap.
+
+### 4) Keep remote jobs only (post-filter)
+Keep a job if:
+- `attributes.remote === true`, OR
+- `attributes.remote_modality` is one of:
+  `fully_remote`, `remote_local`, `temporarily_remote`
+
+Drop `no_remote` / `hybrid` unless product later asks for them.
+
+### 5) Keep jobs published **today** (calendar day)
+`attributes.published_at` is a **Unix epoch seconds** timestamp.
+Filter to the current calendar day in `America/New_York` (same timezone used for
+sheet dates / “Last crawled” EST display), unless product specifies UTC.
+
+### 6) Map fields
+```
+jobId       = data[].id
+jobTitle    = data[].attributes.title
+companyName = data[].attributes.company.data.attributes.name  (needs expand[]=company)
+jobUrl      = data[].links.public_url
+```
+
+## Profile listingUrls
+- `listingUrls.getonboard` = country name string
+- Support on GET /auth/me and PATCH /auth/profile (and flat `listingUrl_getonboard` if used)
+- Do not wipe other platforms
+
+## Errors
+- 400 missing/invalid country / unknown ISO mapping
+- 401/403 same as other crawl routes
+- 502/504 upstream Get on Board failures / timeouts
+- Empty remote+today result → 200 with `jobs: []` and `totalCount: 0` (FE shows empty message)
+
+## Tests (smoke)
+```bash
+# Country-only search (OK)
+curl "https://www.getonbrd.com/api/v0/search/jobs?country_code=AR&per_page=5&lang=en&expand[]=company"
+
+# Must fail with localization conflict
+curl "https://www.getonbrd.com/api/v0/search/jobs?country_code=AR&remote=true&per_page=5&lang=en"
+
+# Countries reference
+curl "https://www.getonbrd.com/api/v0/countries?per_page=5&lang=en"
+```
+
+## Do not
+- Require a Get on Board private company API key for this crawl
+- Scrape HTML when the public search API works
+- Pass `remote=true` together with `country_code`

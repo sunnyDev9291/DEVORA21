@@ -16,6 +16,7 @@ import {
   JOB_CRAWL_PLATFORM_LABEL,
   JOB_CRAWL_PLATFORM_PLACEHOLDER,
   JOB_CRAWL_PLATFORM_VALIDATOR,
+  isJobCrawlUrlPlatform,
   mergeListingUrls,
   type JobCrawlPlatform,
 } from "@/lib/builtin-crawl-types";
@@ -145,14 +146,29 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
     setUploading(true);
     try {
       const content = await readPromptFile(file);
-      // Keep as a real File for PATCH; preview content until save verifies upload.
       setPromptFile(file);
       setPendingPromptName(file.name);
       setCustomPrompt(content);
-    } catch (err) {
+
+      // Upload immediately so a new file is applied without waiting for Save profile.
+      const result = await profileApi.uploadPromptFile(file, content);
+      const toUse = result.uploadedContent.trim() || content.trim();
+      setCustomPrompt(toUse);
+      setPromptFileName(result.fileName || file.name);
+      setPromptVerified(true);
       setPromptFile(null);
       setPendingPromptName("");
-      setError((err as Error).message || "Could not read prompt file.");
+      await cacheUploadedPrompt(user.id, file, toUse);
+      onProfileUpdated?.();
+      setMessage(
+        result.serverMatchesUpload
+          ? "Prompt uploaded and verified."
+          : "Prompt uploaded. Generation will use your new file (server still returned an older copy)."
+      );
+    } catch (err) {
+      setError(
+        getApiErrorMessage(err, "Could not upload prompt file. Click Save profile to retry.")
+      );
     } finally {
       setUploading(false);
     }
@@ -165,9 +181,13 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
     setMessage("");
 
     for (const platform of ALL_JOB_CRAWL_PLATFORMS) {
-      const url = listingUrls[platform]?.trim() ?? "";
-      if (url && !JOB_CRAWL_PLATFORM_VALIDATOR[platform](url)) {
-        setError(`Invalid ${JOB_CRAWL_PLATFORM_LABEL[platform]} listing URL.`);
+      const value = listingUrls[platform]?.trim() ?? "";
+      if (value && !JOB_CRAWL_PLATFORM_VALIDATOR[platform](value)) {
+        setError(
+          isJobCrawlUrlPlatform(platform)
+            ? `Invalid ${JOB_CRAWL_PLATFORM_LABEL[platform]} listing URL.`
+            : `Invalid ${JOB_CRAWL_PLATFORM_LABEL[platform]} country (e.g. Argentina).`
+        );
         setSaving(false);
         return;
       }
@@ -217,14 +237,20 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
 
       if (promptFile instanceof File) {
         try {
-          const verified = await profileApi.uploadPromptFile(promptFile);
-          setCustomPrompt(verified.content);
+          const fileContent = customPrompt.trim() || (await readPromptFile(promptFile));
+          const verified = await profileApi.uploadPromptFile(promptFile, fileContent);
+          const toUse = verified.uploadedContent.trim() || fileContent.trim();
+          setCustomPrompt(toUse);
           setPromptFileName(verified.fileName || promptFile.name);
           setPromptVerified(true);
           setPromptFile(null);
           setPendingPromptName("");
-          await cacheUploadedPrompt(user.id, promptFile, verified.content.trim());
-          notes.push("Prompt uploaded.");
+          await cacheUploadedPrompt(user.id, promptFile, toUse);
+          notes.push(
+            verified.serverMatchesUpload
+              ? "Prompt uploaded."
+              : "Prompt uploaded (using your new file locally)."
+          );
         } catch (promptErr) {
           setPromptFile(null);
           setPendingPromptName("");
@@ -347,23 +373,27 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
       </div>
 
       <div id="crawl-urls" className="mt-8 scroll-mt-28 border-t border-white/10 pt-8">
-        <h3 className="mb-1 text-sm font-semibold text-white">Job crawl listing URLs</h3>
+        <h3 className="mb-1 text-sm font-semibold text-white">Job crawl settings</h3>
         <p className="mb-4 text-xs text-slate-500">
-          Edit your crawl links here, then click <span className="font-semibold text-slate-300">Save profile</span>.
-          They are stored on the backend for your account and used by Job discovery.
+          Edit crawl listing URLs (or Himalayas / Get on Board / Jobicy country) here, then click{" "}
+          <span className="font-semibold text-slate-300">Save profile</span>. They are stored on the
+          backend for your account and used when running job crawls.
         </p>
         <div className="space-y-4">
-          {ALL_JOB_CRAWL_PLATFORMS.map((platform) => (
+          {ALL_JOB_CRAWL_PLATFORMS.map((platform) => {
+            const countryOnly = !isJobCrawlUrlPlatform(platform);
+            return (
             <div key={platform}>
               <label
                 htmlFor={`profile-listing-${platform}`}
                 className="mb-1.5 block text-xs font-medium text-slate-400"
               >
                 {JOB_CRAWL_PLATFORM_LABEL[platform]}
+                {countryOnly ? " country" : ""}
               </label>
               <input
                 id={`profile-listing-${platform}`}
-                type="url"
+                type={countryOnly ? "text" : "url"}
                 value={listingUrls[platform]}
                 onChange={(e) =>
                   setListingUrls((current) => ({ ...current, [platform]: e.target.value }))
@@ -372,10 +402,12 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
                 className={fieldClass}
                 disabled={saving}
                 spellCheck={false}
+                autoComplete="off"
               />
               <p className="mt-1.5 text-[12px] text-slate-500">{JOB_CRAWL_PLATFORM_HINT[platform]}</p>
             </div>
-          ))}
+            );
+          })}
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <button
@@ -386,14 +418,6 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
           >
             Reset to app defaults
           </button>
-          {isResumeBuilderEnabled ? (
-            <Link
-              href="/resume/discover"
-              className="rounded-xl border border-white/10 px-3 py-2 text-xs font-semibold text-slate-200 transition-colors hover:bg-white/[0.05]"
-            >
-              Open job discovery
-            </Link>
-          ) : null}
         </div>
       </div>
 
@@ -436,7 +460,7 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
           id="dashboard-prompt-file"
           accept=".txt,.md,.json,text/plain,text/markdown,application/json"
           label="Replace prompt file"
-          hint=".txt, .md, or .json with a content field · save profile to upload"
+          hint=".txt, .md, or .json with a content field · uploads as soon as you select a file"
           fileName={pendingPromptName || undefined}
           uploading={uploading}
           disabled={saving}
@@ -444,7 +468,7 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
         />
         <p className="mt-3 text-xs text-slate-500">
           {pendingPromptName
-            ? `Selected: ${pendingPromptName} (not uploaded until you save)`
+            ? `Selected: ${pendingPromptName}`
             : promptVerified && promptFileName
               ? `Prompt uploaded · ${promptFileName}`
               : promptVerified

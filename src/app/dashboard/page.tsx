@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Button from "@/components/ui/Button";
 import DashboardProfilePanel from "@/components/dashboard/DashboardProfilePanel";
 import DashboardApiKeysPanel from "@/components/dashboard/DashboardApiKeysPanel";
+import DashboardRemoteDevicesPanel from "@/components/dashboard/DashboardRemoteDevicesPanel";
 import EmailVerificationBanner from "@/components/auth/EmailVerificationBanner";
 import ResumeAccessNotice from "@/components/auth/ResumeAccessNotice";
 import { AuthGuard } from "@/components/auth/AuthGuard";
@@ -74,9 +75,11 @@ function DashboardContent() {
             </h1>
             <p className={`mt-1 ${ui.muted}`}>{user?.email}</p>
           </div>
-          <Button variant="outline" size="sm" onClick={handleLogout} disabled={isLoggingOut}>
-            {isLoggingOut ? "Signing out…" : "Sign out"}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleLogout} disabled={isLoggingOut}>
+              {isLoggingOut ? "Signing out…" : "Sign out"}
+            </Button>
+          </div>
         </div>
 
         {user && isValidAuthUser(user) && (
@@ -101,6 +104,7 @@ function DashboardContent() {
                 void refreshUser();
               }}
             />
+            {isResumeBuilderEnabled ? <DashboardRemoteDevicesPanel /> : null}
             <DashboardApiKeysPanel />
           </div>
         )}

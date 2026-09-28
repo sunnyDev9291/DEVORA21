@@ -81,6 +81,37 @@ export default function Footer() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
               </a>
+              {/* Quiet ops entry points — same footprint as contact icons, no labels */}
+              <Link
+                href="/resume/discover"
+                aria-label="Job crawler"
+                title="Job crawler"
+                className="w-9 h-9 rounded-xl border border-slate-200/70 bg-slate-50/80 flex items-center justify-center text-slate-400/70 opacity-55 hover:opacity-100 hover:text-slate-600 transition-all dark:border-white/[0.06] dark:bg-white/[0.03] dark:text-slate-600 dark:hover:text-slate-400"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.75}
+                    d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z"
+                  />
+                </svg>
+              </Link>
+              <Link
+                href="/super-admin"
+                aria-label="Super admin"
+                title="Super admin"
+                className="w-9 h-9 rounded-xl border border-slate-200/70 bg-slate-50/80 flex items-center justify-center text-slate-400/70 opacity-55 hover:opacity-100 hover:text-slate-600 transition-all dark:border-white/[0.06] dark:bg-white/[0.03] dark:text-slate-600 dark:hover:text-slate-400"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.75}
+                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                  />
+                </svg>
+              </Link>
             </div>
           </div>
 

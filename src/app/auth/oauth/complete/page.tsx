@@ -4,6 +4,7 @@ import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { isValidAuthUser } from "@/lib/auth-api";
+import { fetchSessionUser } from "@/lib/auth-session";
 import { OAUTH_NOTICE } from "@/lib/auth-oauth";
 import { getPostAuthRedirectPath, getSafeRedirectPath } from "@/lib/auth-redirect";
 import { AUTH_LINKS } from "@/lib/constants";
@@ -43,41 +44,44 @@ function OAuthCompleteContent() {
         return;
       }
 
-      if (result === OAUTH_NOTICE.loginSuccess || result === "login_success") {
-        try {
-          await refreshUser();
-        } catch {
-          // fall through to login
-        }
+      const treatAsLogin =
+        result === OAUTH_NOTICE.loginSuccess ||
+        result === "login_success" ||
+        !result;
 
+      if (treatAsLogin) {
+        // Soft retries: cookie may not be visible on the first tick after redirect.
+        await refreshUser({ softRetry: true });
         if (cancelled) return;
 
-        // Re-fetch user from context after refresh — use getMe via redirect check
-        try {
-          const { authApi } = await import("@/lib/auth-api");
-          const { data } = await authApi.getMe();
-          if (isValidAuthUser(data)) {
-            router.replace(getPostAuthRedirectPath(data, next));
-            return;
-          }
-        } catch {
-          // no session
-        }
+        let session = await fetchSessionUser({ softRetry: true });
+        if (cancelled) return;
 
-        router.replace(`${AUTH_LINKS.login}?notice=${OAUTH_NOTICE.oauthError}`);
-        return;
-      }
-
-      // Default: backend set session cookie and sent user here without result — treat as login.
-      try {
-        const { authApi } = await import("@/lib/auth-api");
-        const { data } = await authApi.getMe();
-        if (!cancelled && isValidAuthUser(data)) {
-          router.replace(getPostAuthRedirectPath(data, next ?? getSafeRedirectPath(null)));
+        if (session.status === "authenticated" && isValidAuthUser(session.user)) {
+          router.replace(getPostAuthRedirectPath(session.user, next ?? getSafeRedirectPath(null)));
           return;
         }
-      } catch {
-        // ignore
+
+        // Do not clear auth solely because one race returned 401 — delayed retry.
+        await new Promise((r) => setTimeout(r, 600));
+        await refreshUser({ softRetry: true });
+        if (cancelled) return;
+
+        session = await fetchSessionUser({ softRetry: true });
+        if (cancelled) return;
+
+        if (session.status === "authenticated" && isValidAuthUser(session.user)) {
+          router.replace(getPostAuthRedirectPath(session.user, next ?? getSafeRedirectPath(null)));
+          return;
+        }
+
+        if (result === OAUTH_NOTICE.loginSuccess || result === "login_success") {
+          router.replace(`${AUTH_LINKS.login}?notice=${OAUTH_NOTICE.oauthError}`);
+          return;
+        }
+
+        router.replace(AUTH_LINKS.login);
+        return;
       }
 
       if (!cancelled) {

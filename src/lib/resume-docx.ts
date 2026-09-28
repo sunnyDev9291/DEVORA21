@@ -65,11 +65,16 @@ function decodeXmlEntities(text: string): string {
     .replace(/&quot;/g, '"');
 }
 
+/**
+ * Real text-node open tag. Do not use `<w:t[^>]*>` — it also matches `<w:tab/>`.
+ */
+const WT_TEXT_OPEN = /<w:t(?:\s[^>]*)?>/;
+const WT_TEXT_PAIR = /<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g;
+
 export function getParagraphText(pXml: string): string {
-  const raw = (pXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [])
-    .map((t) => t.replace(/<w:t[^>]*>/, "").replace(/<\/w:t>/, ""))
-    .join("");
-  return decodeXmlEntities(raw);
+  return decodeXmlEntities(
+    [...pXml.matchAll(WT_TEXT_PAIR)].map((m) => m[1]).join("")
+  );
 }
 
 /** Plain text with **bold** markers from Word run properties. */
@@ -87,16 +92,10 @@ export function getParagraphTextWithBold(pXml: string): string {
 
   let out = "";
   for (const run of runs) {
-    const text = (run.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) ?? [])
-      .map((t) => {
-        const match = t.match(/<w:t[^>]*>([^<]*)<\/w:t>/);
-        return match?.[1] ?? "";
-      })
-      .join("");
+    const text = getRunPlainText(run);
     if (!text) continue;
-    const decoded = decodeXmlEntities(text);
     const isBold = /<w:b(?:\s[^>]*)?\/>|<w:b(?:\s[^>]*)?>[^<]*<\/w:b>/.test(run);
-    out += isBold ? `**${decoded}**` : decoded;
+    out += isBold ? `**${text}**` : text;
   }
 
   return out || getParagraphText(pXml);
@@ -166,8 +165,31 @@ function replaceSingleRunParagraphText(pXml: string, text: string): string | nul
 type ExperienceStyleBlock = {
   headerTemplate: string;
   roleTemplate?: string;
+  /** Joao-style workplace line under the combined job header. */
+  locationTemplate?: string;
   bulletTemplate: string;
 };
+
+/**
+ * Workplace / location line under a job header, e.g.
+ * "Boston, Massachusetts, USA | Remote" or "Miami, Florida, USA | On-Site".
+ */
+export function isExperienceLocationLine(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  if (isSectionHeader(t) || isPlainBulletLine(t) || parseDatesFromLine(t)) return false;
+  if (looksLikeBulletSentence(t)) return false;
+  if (t.length > 100) return false;
+
+  if (/\|\s*(Remote|On-?Site|Hybrid|Onsite)\b/i.test(t)) return true;
+
+  // Short place-like line with commas, no sentence punctuation.
+  if (t.includes(",") && !/[.!?]/.test(t) && /^[\p{L}\d ,./'’|&()-]+$/u.test(t)) {
+    return t.split(",").length >= 2;
+  }
+
+  return false;
+}
 
 function extractExperienceStyleBlocks(
   originalParas: string[],
@@ -207,17 +229,31 @@ function extractExperienceStyleBlocks(
         block.roleTemplate = lines[i].xml;
         i += 1;
       }
-    } else if (headerMatch.skipNext) {
+    } else if (headerMatch.skipNext && i < lines.length) {
+      // Combined header + workplace location line.
+      block.locationTemplate = lines[i].xml;
+      i += 1;
+    } else if (i < lines.length && !lines[i].isListItem && isExperienceLocationLine(lines[i].text)) {
+      block.locationTemplate = lines[i].xml;
       i += 1;
     }
 
     if (i < lines.length && lines[i].isListItem) {
       block.bulletTemplate = lines[i].xml;
+    } else {
+      // Fall back to the first list paragraph in the experience region.
+      const listSample = lines.find((candidate) => candidate.isListItem);
+      if (listSample) block.bulletTemplate = listSample.xml;
     }
 
     blocks.push(block);
 
     while (i < lines.length && lines[i].isListItem) {
+      i += 1;
+    }
+
+    // Skip blank spacers between jobs.
+    while (i < lines.length && !lines[i].text) {
       i += 1;
     }
   }
@@ -266,10 +302,12 @@ function stripBoldRunProperties(rPr: string): string {
 
 function getRunPlainText(runXml: string): string {
   return decodeXmlEntities(
-    (runXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) ?? [])
-      .map((t) => t.replace(/<w:t[^>]*>/, "").replace(/<\/w:t>/, ""))
-      .join("")
+    [...runXml.matchAll(WT_TEXT_PAIR)].map((m) => m[1]).join("")
   );
+}
+
+function runHasTextNode(runXml: string): boolean {
+  return WT_TEXT_OPEN.test(runXml) && /<\/w:t>/.test(runXml);
 }
 
 /** True when every non-empty text run in the paragraph is bold (template job-header style). */
@@ -449,27 +487,102 @@ function parseSkillCategoryLine(line: string): { label: string; value: string } 
 }
 
 function replaceRunText(runXml: string, text: string): string {
-  if (!/<w:t[\s\S]*?<\/w:t>/.test(runXml)) return runXml;
+  if (!runHasTextNode(runXml)) return runXml;
   return runXml.replace(
-    /<w:t[^>]*>[\s\S]*?<\/w:t>/,
+    WT_TEXT_PAIR,
     `<w:t xml:space="preserve">${escapeXml(text)}</w:t>`
   );
 }
 
-/** Rebuild category skill lines with two runs — multi-run templates break LibreOffice PDF conversion. */
-function setSkillLineParagraphText(pXml: string, line: string): string {
+function skillTemplateUsesTab(pXml: string): boolean {
+  return /<w:tab\b/.test(pXml);
+}
+
+/** Clone a template tab run (rPr + w:tab) so skill values align on the same tab stop. */
+function extractSkillTabRun(pXml: string, fallbackRPr: string): string {
+  const match = pXml.match(/<w:r\b[^>]*>[\s\S]*?<w:tab\b[^/]*\/>[\s\S]*?<\/w:r>/);
+  if (match) {
+    const rPr = extractRunProperties(match[0]) || fallbackRPr;
+    return `<w:r>${rPr}<w:tab/></w:r>`;
+  }
+  return `<w:r>${fallbackRPr}<w:tab/></w:r>`;
+}
+
+/**
+ * Infer the colon run text after the label from the template
+ * (Joao uses ": " before the tab; some lines use only ":").
+ */
+function inferSkillColonSuffix(pXml: string): string {
+  const runs = matchTextRuns(pXml);
+  for (const run of runs) {
+    if (!runHasTextNode(run)) continue;
+    const text = getRunPlainText(run);
+    if (/^:\s*$/.test(text)) return text;
+  }
+  return ": ";
+}
+
+/** Left tab stop (twips) past the longest category label so values share one column. */
+function estimateSkillTabStopTwips(labels: string[]): number {
+  const longest = labels.reduce((max, label) => Math.max(max, label.length), 0);
+  // Cambria ~11pt ≈ 110–130 twips/char; include ": " and a clear gap.
+  const estimated = Math.ceil((longest + 2) * 125 + 360);
+  return Math.max(1800, Math.ceil(estimated / 180) * 180);
+}
+
+/** Inject/replace left tab stop + hanging indent so wrapped skill values stay in the value column. */
+function withSkillTabStop(pPr: string, posTwips: number): string {
+  const tabsXml = `<w:tabs><w:tab w:val="left" w:pos="${posTwips}"/></w:tabs>`;
+  // First line: label at margin, TAB to pos. Continuation lines: indent at pos (no text under labels).
+  const indXml = `<w:ind w:left="${posTwips}" w:hanging="${posTwips}"/>`;
+
+  let next = pPr;
+  if (!next) {
+    return `<w:pPr>${tabsXml}${indXml}</w:pPr>`;
+  }
+
+  if (/<w:tabs\b[\s\S]*?<\/w:tabs>/.test(next)) {
+    next = next.replace(/<w:tabs\b[\s\S]*?<\/w:tabs>/, tabsXml);
+  } else {
+    next = next.replace(/<\/w:pPr>/, `${tabsXml}</w:pPr>`);
+  }
+
+  if (/<w:ind\b[^/]*\/>/.test(next)) {
+    next = next.replace(/<w:ind\b[^/]*\/>/, indXml);
+  } else if (/<w:ind\b[\s\S]*?<\/w:ind>/.test(next)) {
+    next = next.replace(/<w:ind\b[\s\S]*?<\/w:ind>/, indXml);
+  } else {
+    next = next.replace(/<\/w:pPr>/, `${indXml}</w:pPr>`);
+  }
+
+  return next;
+}
+
+type SkillLineWriteOptions = {
+  /** When any skills-region template uses TAB, force TAB on every category line. */
+  forceTab?: boolean;
+  /** Shared left tab stop for value alignment (twips). */
+  tabStopTwips?: number;
+};
+
+/** Rebuild category skill lines — preserve Word TAB between label and values when the template uses one. */
+function setSkillLineParagraphText(
+  pXml: string,
+  line: string,
+  options: SkillLineWriteOptions = {}
+): string {
   const trimmed = line.trim();
   const parsed = parseSkillCategoryLine(trimmed);
   if (!parsed) return setParagraphText(pXml, trimmed);
 
   const open = pXml.match(/^(<w:p[^>]*>)/)?.[1] ?? "<w:p>";
-  const pPr = extractParagraphProperties(pXml);
+  let pPr = extractParagraphProperties(pXml);
   const runs = matchTextRuns(pXml);
 
   let boldLabelRPr = "";
   let plainRPr = "";
   for (const run of runs) {
-    if (!/<w:t[\s\S]*?<\/w:t>/.test(run)) continue;
+    if (!runHasTextNode(run)) continue;
     const isBold = /<w:b(?:\s[^>]*)?\/>|<w:b(?:\s[^>]*)?>[^<]*<\/w:b>/.test(run);
     if (isBold && !boldLabelRPr) {
       boldLabelRPr = ensureLatinBoldRunProperties(extractRunProperties(run));
@@ -485,6 +598,23 @@ function setSkillLineParagraphText(pXml: string, line: string): string {
   if (!plainRPr) plainRPr = stripBoldRunProperties(baseRPr) || baseRPr;
 
   const { label, value } = parsed;
+  const useTab = Boolean(options.forceTab) || skillTemplateUsesTab(pXml);
+  const colonSuffix = useTab ? inferSkillColonSuffix(pXml) : ":";
+
+  // Joao-style: bold label | plain ": " | <w:tab/> | plain values (no leading space).
+  // Space-style templates: bold "Label:" | plain " values".
+  if (useTab) {
+    const tabStop = options.tabStopTwips ?? estimateSkillTabStopTwips([label]);
+    pPr = withSkillTabStop(pPr, tabStop);
+    const labelRun = `<w:r>${boldLabelRPr}<w:t xml:space="preserve">${escapeXml(label)}</w:t></w:r>`;
+    const colonRun = `<w:r>${plainRPr}<w:t xml:space="preserve">${escapeXml(colonSuffix)}</w:t></w:r>`;
+    const tabRun = extractSkillTabRun(pXml, plainRPr);
+    const valueRun = value
+      ? `<w:r>${plainRPr}<w:t xml:space="preserve">${escapeXml(value)}</w:t></w:r>`
+      : "";
+    return `${open}${pPr}${labelRun}${colonRun}${tabRun}${valueRun}</w:p>`;
+  }
+
   const labelRun = `<w:r>${boldLabelRPr}<w:t xml:space="preserve">${escapeXml(`${label}:`)}</w:t></w:r>`;
   const valueRun = value
     ? `<w:r>${plainRPr}<w:t xml:space="preserve"> ${escapeXml(value)}</w:t></w:r>`
@@ -603,11 +733,20 @@ function looksLikeBulletSentence(text: string): boolean {
 function tryParseJobHeader(
   line: DocxParagraph,
   next: DocxParagraph | null
-): { header: Pick<GeneratedResumeContent["experiences"][number], "company" | "role" | "dates">; skipNext: boolean } | null {
+): {
+  header: Pick<GeneratedResumeContent["experiences"][number], "company" | "role" | "dates" | "location">;
+  skipNext: boolean;
+} | null {
   if (line.isListItem || !line.text) return null;
 
   const combined = parseCombinedExperienceLine(line.text);
   if (combined && !looksLikeBulletSentence(line.text)) {
+    if (next && !next.isListItem && isExperienceLocationLine(next.text)) {
+      return {
+        header: { ...combined, location: next.text.trim() },
+        skipNext: true,
+      };
+    }
     return { header: combined, skipNext: false };
   }
 
@@ -900,13 +1039,27 @@ function buildSkillsRegionParagraphs(regionParagraphs: string[], skillsContent: 
     .map((line) => line.trim())
     .filter(Boolean);
 
+  const labels = lines
+    .map((line) => parseSkillCategoryLine(line)?.label)
+    .filter((label): label is string => Boolean(label));
+  // Category skill lines need TAB + hanging indent so wraps stay under the values column.
+  const regionUsesTab =
+    contentTemplates.some((p) => skillTemplateUsesTab(p)) || labels.length > 0;
+  const tabStopTwips = regionUsesTab ? estimateSkillTabStopTwips(labels) : undefined;
+  const writeOpts: SkillLineWriteOptions = {
+    forceTab: regionUsesTab,
+    tabStopTwips,
+  };
+
   if (lines.length === 0 || contentTemplates.length === 0) {
-    return buildSectionParagraphs(regionParagraphs, skillsContent, setSkillLineParagraphText);
+    return buildSectionParagraphs(regionParagraphs, skillsContent, (pXml, line) =>
+      setSkillLineParagraphText(pXml, line, writeOpts)
+    );
   }
 
   const fallback = contentTemplates[contentTemplates.length - 1];
   const skillParagraphs = lines.map((line, index) =>
-    setSkillLineParagraphText(contentTemplates[index] ?? fallback, line)
+    setSkillLineParagraphText(contentTemplates[index] ?? fallback, line, writeOpts)
   );
 
   const gapTrailing =
@@ -1084,15 +1237,22 @@ export function applyContentToDocx(
     throw new Error("Template sections are out of order. Expected SUMMARY → SKILLS → EXPERIENCE.");
   }
 
+  const skillTerms = extractSkillTerms(content.skills);
+  const boldExpText = (text: string) => boldSkillTermsInText(text, skillTerms);
+
   const header = parseResumeHeaderFromDocxBuffer(buffer);
   const headerParagraphs = applyTitleToHeaderRegion(
     paragraphs.slice(0, summaryIdx),
-    content.title,
+    boldExpText(content.title),
     header.titleParagraphIndex
   );
 
   const summaryRegion = sliceSectionRegion(paragraphs, summaryIdx, skillsIdx);
-  const summaryBody = buildSectionParagraphs(summaryRegion, content.summary, setParagraphText);
+  const summaryBody = buildSectionParagraphs(
+    summaryRegion,
+    boldExpText(content.summary),
+    setParagraphText
+  );
 
   const skillsRegion = sliceSectionRegion(paragraphs, skillsIdx, expIdx);
   const skillsBody = buildSkillsRegionParagraphs(skillsRegion, content.skills);
@@ -1100,8 +1260,6 @@ export function applyContentToDocx(
   const expEnd = eduIdx === -1 ? paragraphs.length : eduIdx;
   const originalExperienceParagraphs = paragraphs.slice(expIdx + 1, expEnd);
   const layout = content.layout ?? detectResumeTemplateLayout(buffer);
-  const skillTerms = extractSkillTerms(content.skills);
-  const boldExpText = (text: string) => boldSkillTermsInText(text, skillTerms);
 
   let experienceParagraphs: string[] = [];
 
@@ -1142,6 +1300,14 @@ export function applyContentToDocx(
           boldExpText
         );
         experienceParagraphs.push(setParagraphText(style.headerTemplate, headerText));
+        if (style.locationTemplate) {
+          const locationText =
+            exp.location?.trim() ||
+            getParagraphText(style.locationTemplate).trim();
+          if (locationText) {
+            experienceParagraphs.push(setParagraphText(style.locationTemplate, locationText));
+          }
+        }
       } else {
         experienceParagraphs.push(setParagraphText(style.headerTemplate, exp.company));
         const roleDates = exp.dates
@@ -1199,13 +1365,21 @@ export function parseExperiencesFromDocxBuffer(buffer: Buffer) {
 
   let currentHeader: Pick<
     GeneratedResumeContent["experiences"][number],
-    "company" | "role" | "dates"
+    "company" | "role" | "dates" | "location"
   > | null = null;
   let bullets: string[] = [];
 
   const flush = () => {
     if (!currentHeader) return;
-    experiences.push({ ...currentHeader, bullets: [...bullets] });
+    experiences.push({
+      company: currentHeader.company,
+      role: currentHeader.role,
+      dates: currentHeader.dates,
+      ...(currentHeader.location?.trim()
+        ? { location: currentHeader.location.trim() }
+        : {}),
+      bullets: [...bullets],
+    });
     currentHeader = null;
     bullets = [];
   };
@@ -1225,6 +1399,19 @@ export function parseExperiencesFromDocxBuffer(buffer: Buffer) {
       flush();
       currentHeader = headerMatch.header;
       if (headerMatch.skipNext) i += 1;
+      continue;
+    }
+
+    // Workplace location already captured via tryParseJobHeader; never treat as a bullet.
+    if (isExperienceLocationLine(line.text)) {
+      if (currentHeader && !currentHeader.location) {
+        currentHeader = {
+          company: currentHeader.company,
+          role: currentHeader.role,
+          dates: currentHeader.dates,
+          location: line.text.trim(),
+        };
+      }
       continue;
     }
 

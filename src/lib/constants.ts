@@ -291,6 +291,7 @@ export const AUTH_LINKS = {
   login: "/login",
   register: "/register",
   dashboard: "/dashboard",
+  superAdmin: "/super-admin",
   forgotPassword: "/forgot-password",
   resetPassword: "/reset-password",
   verifyEmail: "/verify-email",
@@ -299,7 +300,7 @@ export const AUTH_LINKS = {
   onboarding: "/onboarding",
 } as const;
 
-export { API_BASE_URL, BACKEND_API_URL, DEFAULT_API_URL } from "@/lib/api-base-url";
+export { API_BASE_URL, BACKEND_API_URL, DEFAULT_API_URL, SAME_ORIGIN_API_PREFIX } from "@/lib/api-base-url";
 
 export const NAV_LINKS = [
   { label: "Services", href: "/services" },

@@ -9,14 +9,12 @@ import { resolveResumeWizardStep } from "@/components/sections/ResumeStepper";
 import type { ResumeWorkspaceFabActions } from "@/components/ui/ResumeWorkspaceFabs";
 import { useAuth } from "@/context/AuthContext";
 import type { UserResumeTemplateAsset } from "@/lib/profile-api";
-import { profileApi } from "@/lib/profile-api";
 import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
 import { generateResume } from "@/lib/resume-generate-client";
 import { scrapeJobFromUrl } from "@/lib/job-scrape-api";
 import { iterateJobCheckStream } from "@/lib/job-check-stream";
 import JobCheckBoard from "@/components/ui/JobCheckBoard";
-import { archiveResume } from "@/lib/resume-archive";
-import { notifyTodaysResumeCountChanged } from "@/lib/todays-resume-count";
+import { buildResumeDocx } from "@/lib/resume-build-client";
 import { formatElapsedMs } from "@/lib/format-elapsed";
 import {
   clearResumeGenerateTimer,
@@ -30,7 +28,6 @@ import type { ResumeScoreResult } from "@/lib/resume-score";
 import { buildJobKeywordsCacheKey } from "@/lib/resume-keywords-cache";
 import type {
   GeneratedResumeContent,
-  ResumeBuildResponse,
   ResumeUnifiedScoreResult,
   AtsScoreResult,
   RuleKeepScoreResult,
@@ -50,12 +47,10 @@ import {
   buildExpectedResumeBaseName,
   extractResumeTitleHeadline,
 } from "@/lib/resume-filename";
-import { loadStoredProfile, resolveUserNames, saveStoredProfile } from "@/lib/user-profile";
+import { loadStoredProfile, resolveUserNames } from "@/lib/user-profile";
+import { resolveWritingPrompt } from "@/lib/writing-prompt";
 import CompanyPastApplications from "@/components/sections/CompanyPastApplications";
-import EnglishTeamCheck from "@/components/ui/EnglishTeamCheck";
-import EnglishTeamRequiredDialog from "@/components/ui/EnglishTeamRequiredDialog";
 import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
-import { isEnglishTeamRequiredError } from "@/lib/english-team-gate";
 
 /**
  * Prefer the template resolved by useUserProfileAssets (remote-synced).
@@ -80,6 +75,9 @@ function resolveActiveUserTemplate(
 }
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
+const ResumeDownloadChooser = dynamic(() => import("@/components/ui/ResumeDownloadChooser"), {
+  ssr: false,
+});
 const ResumeAtsScoreModal = dynamic(() => import("@/components/ui/ResumeAtsScoreModal"));
 const ResumeChatDialog = dynamic(() => import("@/components/ui/ResumeChatDialog"));
 
@@ -99,7 +97,6 @@ const inputClass = ui.input;
 // Keep the scoring code available, but disable the feature in the UI and network flow.
 const RESUME_SCORE_SYSTEM_ENABLED = false;
 
-const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const PDF_MIME = "application/pdf";
 
 function base64ToBlob(base64: string, mime: string): Blob {
@@ -154,6 +151,12 @@ export default function ResumeGenerator({
   const [fileName, setFileName] = useState("");
   const [pdfBase64, setPdfBase64] = useState("");
   const [pdfFileName, setPdfFileName] = useState("");
+  const [archiveId, setArchiveId] = useState<string | null>(null);
+  const [downloadChooserOpen, setDownloadChooserOpen] = useState(false);
+  const [downloadFeedback, setDownloadFeedback] = useState<{
+    tone: "ok" | "err" | "pending";
+    text: string;
+  } | null>(null);
   const [archiving, setArchiving] = useState(false);
   const [archiveError, setArchiveError] = useState("");
   const [generating, setGenerating] = useState(false);
@@ -184,9 +187,6 @@ export default function ResumeGenerator({
   const [jobChecking, setJobChecking] = useState(false);
   const [jobCheckOutput, setJobCheckOutput] = useState("");
   const [jobCheckError, setJobCheckError] = useState("");
-  const [englishTeamGateOpen, setEnglishTeamGateOpen] = useState(false);
-  const [englishTeamGateMessage, setEnglishTeamGateMessage] = useState("");
-  const [englishTeamContinuing, setEnglishTeamContinuing] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const jobCheckAbortRef = useRef<AbortController | null>(null);
   const atsAbortRef = useRef<AbortController | null>(null);
@@ -410,7 +410,7 @@ export default function ResumeGenerator({
       clearDisabled: generating || applying || !hasClearableContent,
       onClear: handleClear,
       showChat: true,
-      chatDisabled: generating || applying,
+      chatDisabled: false,
       onOpenChat: () => setResumeChatOpen(true),
     });
   }, [
@@ -634,10 +634,7 @@ export default function ResumeGenerator({
     }
   }
 
-  async function handleGenerate(
-    e?: React.FormEvent,
-    options?: { skipEnglishTeamGate?: boolean }
-  ) {
+  async function handleGenerate(e?: React.FormEvent) {
     e?.preventDefault();
     if (applying) return;
     if (!user?.id) {
@@ -663,15 +660,10 @@ export default function ResumeGenerator({
       return;
     }
 
-    const skipEnglishTeamGate = Boolean(options?.skipEnglishTeamGate);
-
     abortRef.current?.abort();
 
     const runId = ++generationRunRef.current;
     setError("");
-    setEnglishTeamGateOpen(false);
-    setEnglishTeamGateMessage("");
-    setEnglishTeamContinuing(false);
     setRegenerateNotice("");
     setRegenerateBaseline(null);
     setRegenerateBaselineScore(null);
@@ -696,22 +688,11 @@ export default function ResumeGenerator({
       setFileName("");
       setStep("review");
 
-      // Always load the latest verified profile prompt so generation does not use a stale form cache.
-      let freshPrompt = form.customPrompt;
-      try {
-        const verified = await profileApi.requireStoredPrompt();
-        freshPrompt = verified.content.trim();
-        if (freshPrompt) {
-          setForm((prev) => ({ ...prev, customPrompt: freshPrompt }));
-          saveStoredProfile(user.id, {
-            customPrompt: freshPrompt,
-            promptFileName: verified.fileName,
-            promptUpdatedAt: Date.now(),
-          });
-        }
-      } catch {
-        const local = loadStoredProfile(user.id).customPrompt.trim();
-        if (local) freshPrompt = local;
+      // Prefer a just-uploaded local prompt when the profile API still returns a stale copy.
+      const resolved = await resolveWritingPrompt(user.id, form.customPrompt);
+      const freshPrompt = resolved.content;
+      if (freshPrompt) {
+        setForm((prev) => ({ ...prev, customPrompt: freshPrompt }));
       }
 
       const data = await generateResume(
@@ -731,7 +712,7 @@ export default function ResumeGenerator({
             if (generationRunRef.current === runId) setStreamOutput(full);
           },
           signal: controller.signal,
-          skipEnglishTeamGate,
+          skipEnglishTeamGate: true,
         }
       );
 
@@ -743,25 +724,14 @@ export default function ResumeGenerator({
       publishResumeGenerateTimer({ active: true, elapsedMs: durationMs });
       setContent(data.content);
       setGenerationKey((k) => k + 1);
-      setResumeChatOpen(true);
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       if (generationRunRef.current !== runId) return;
-      if (isEnglishTeamRequiredError(err) && !skipEnglishTeamGate) {
-        setStep("form");
-        setContent(null);
-        setStreamOutput("");
-        setStreamPhase("starting");
-        setEnglishTeamGateMessage(err.message);
-        setEnglishTeamGateOpen(true);
-        return;
-      }
       setError((err as Error).message || "Something went wrong.");
     } finally {
       if (generationRunRef.current === runId) {
         setGenerating(false);
         abortRef.current = null;
-        setEnglishTeamContinuing(false);
       }
     }
   }
@@ -804,25 +774,10 @@ export default function ResumeGenerator({
     const targetedInstruction = buildImproveTargetInstruction(target);
 
     try {
-      let freshPrompt = form.customPrompt;
-      try {
-        const verified = await profileApi.requireStoredPrompt();
-        freshPrompt = verified.content.trim() || freshPrompt;
-        if (freshPrompt) {
-          setForm((prev) => ({ ...prev, customPrompt: freshPrompt }));
-          if (user?.id) {
-            saveStoredProfile(user.id, {
-              customPrompt: freshPrompt,
-              promptFileName: verified.fileName,
-              promptUpdatedAt: Date.now(),
-            });
-          }
-        }
-      } catch {
-        if (user?.id) {
-          const local = loadStoredProfile(user.id).customPrompt.trim();
-          if (local) freshPrompt = local;
-        }
+      const resolved = await resolveWritingPrompt(user?.id, form.customPrompt);
+      const freshPrompt = resolved.content;
+      if (freshPrompt) {
+        setForm((prev) => ({ ...prev, customPrompt: freshPrompt }));
       }
 
       const draft = await generateResume(
@@ -846,6 +801,7 @@ export default function ResumeGenerator({
             if (generationRunRef.current === runId) setStreamOutput(full);
           },
           signal: controller.signal,
+          skipEnglishTeamGate: true,
         }
       );
 
@@ -882,13 +838,6 @@ export default function ResumeGenerator({
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       if (generationRunRef.current !== runId) return;
-      if (isEnglishTeamRequiredError(err)) {
-        setStreamOutput("");
-        setStreamPhase("starting");
-        setEnglishTeamGateMessage(err.message);
-        setEnglishTeamGateOpen(true);
-        return;
-      }
       setError((err as Error).message || "Could not improve this score item.");
     } finally {
       if (generationRunRef.current === runId) {
@@ -901,22 +850,28 @@ export default function ResumeGenerator({
   }
 
   async function submitResumeArchive(docxB64: string, resumeFileName: string) {
+    if (!docxB64 || !resumeFileName) return;
     setArchiving(true);
     setArchiveError("");
     setPdfBase64("");
     setPdfFileName("");
+    setArchiveId(null);
 
     try {
-      const docxBlob = base64ToBlob(docxB64, DOCX_MIME);
+      const { archiveResume } = await import("@/lib/resume-archive");
+      const { notifyTodaysResumeCountChanged } = await import("@/lib/todays-resume-count");
+      const DOCX_MIME =
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
       const result = await archiveResume({
         jobTitle: content ? extractResumeTitleHeadline(content.title) : form.jobTitle,
         companyName: form.companyName,
         jobDescription: form.jobDescription,
-        docxBlob,
+        docxBlob: base64ToBlob(docxB64, DOCX_MIME),
         fileName: resumeFileName,
       });
       setPdfBase64(result.pdfBase64);
       setPdfFileName(result.pdfFileName);
+      setArchiveId(result.id ?? null);
       notifyTodaysResumeCountChanged();
     } catch (err) {
       setArchiveError(resumeBuilderAccessDeniedMessage(err));
@@ -925,52 +880,109 @@ export default function ResumeGenerator({
     }
   }
 
-  async function handleApply() {
-    if (!content || !activeTemplate || applying) return;
+  async function applyDraftToResume(
+    draft: GeneratedResumeContent,
+    jobOverride?: {
+      jobTitle?: string;
+      companyName?: string;
+      jobDescription?: string;
+      customPrompt?: string;
+    }
+  ): Promise<{
+    docxBase64: string;
+    fileName: string;
+    pdfBase64: string;
+    pdfFileName: string;
+    archiveId?: string;
+  }> {
     const templateForRequest = resolveActiveUserTemplate(user?.id, activeTemplate);
-    if (!templateForRequest) return;
+    if (!templateForRequest) {
+      throw new Error("Upload a resume template on your dashboard before generating.");
+    }
 
-    setError("");
+    const jobTitle = jobOverride?.jobTitle?.trim() || form.jobTitle;
+    const companyName = jobOverride?.companyName?.trim() || form.companyName;
+    const jobDescription = jobOverride?.jobDescription?.trim() || form.jobDescription;
+    const customPrompt = jobOverride?.customPrompt?.trim() || form.customPrompt;
+
     setApplying(true);
+    setError("");
+    setArchiveError("");
     try {
-      const res = await fetch("/api/resume/build", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          templateName: templateForRequest.fileName,
-          templateBase64: templateForRequest.templateBase64,
-          customPrompt: form.customPrompt,
-          content,
-          resumeFileBaseName: resumeFileBaseName.trim(),
-          profileName: chatProfile?.fullName,
-        }),
+      const built = await buildResumeDocx({
+        templateName: templateForRequest.fileName,
+        templateBase64: templateForRequest.templateBase64,
+        content: draft,
+        customPrompt,
+        resumeFileBaseName: resumeFileBaseName.trim(),
+        profileName: chatProfile?.fullName,
       });
-      const data = (await res.json()) as ResumeBuildResponse & { error?: string };
-      if (!res.ok) throw new Error(data?.error || `Request failed (${res.status}).`);
-      setDocxBase64(data.docxBase64);
-      setFileName(data.fileName);
+
+      setDocxBase64(built.docxBase64);
+      setFileName(built.fileName);
       setStep("done");
       setAtsModalOpen(false);
-      setArchiveError("");
       setPreviewOpen(true);
       void import("@/components/ui/PdfPreviewModal");
       if (RESUME_SCORE_SYSTEM_ENABLED) {
-        void evaluateResumeScores(content, { openModal: false });
+        void evaluateResumeScores(draft, { openModal: false });
       }
-      void submitResumeArchive(data.docxBase64, data.fileName);
-    } catch (err) {
-      setError((err as Error).message || "Failed to update resume.");
+
+      setArchiving(true);
+      try {
+        const { archiveResume } = await import("@/lib/resume-archive");
+        const { notifyTodaysResumeCountChanged } = await import("@/lib/todays-resume-count");
+        const DOCX_MIME =
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        const archive = await archiveResume({
+          jobTitle: extractResumeTitleHeadline(draft.title) || jobTitle,
+          companyName,
+          jobDescription,
+          docxBlob: base64ToBlob(built.docxBase64, DOCX_MIME),
+          fileName: built.fileName,
+        });
+        setPdfBase64(archive.pdfBase64);
+        setPdfFileName(archive.pdfFileName);
+        setArchiveId(archive.id ?? null);
+        notifyTodaysResumeCountChanged();
+        return {
+          docxBase64: built.docxBase64,
+          fileName: built.fileName,
+          pdfBase64: archive.pdfBase64,
+          pdfFileName: archive.pdfFileName,
+          archiveId: archive.id,
+        };
+      } catch (err) {
+        setArchiveError(resumeBuilderAccessDeniedMessage(err));
+        throw err;
+      } finally {
+        setArchiving(false);
+      }
     } finally {
       setApplying(false);
     }
   }
 
+  async function handleApply() {
+    if (!content || !activeTemplate || applying) return;
+    try {
+      await applyDraftToResume(content);
+    } catch (err) {
+      setError((err as Error).message || "Failed to update resume.");
+    }
+  }
+
   function handleDownloadPdf() {
-    if (!pdfBlob) return;
-    downloadBlob(
-      pdfBlob,
-      pdfFileName || fileName.replace(/\.docx$/i, ".pdf") || "resume.pdf"
-    );
+    if (!archiveId) {
+      if (!pdfBlob) return;
+      downloadBlob(
+        pdfBlob,
+        pdfFileName || fileName.replace(/\.docx$/i, ".pdf") || "resume.pdf"
+      );
+      return;
+    }
+    setDownloadFeedback(null);
+    setDownloadChooserOpen(true);
   }
 
   function handleStartOver() {
@@ -980,6 +992,9 @@ export default function ResumeGenerator({
     setFileName("");
     setPdfBase64("");
     setPdfFileName("");
+    setArchiveId(null);
+    setDownloadChooserOpen(false);
+    setDownloadFeedback(null);
     setArchiveError("");
     setPreviewOpen(false);
     setError("");
@@ -1163,11 +1178,6 @@ export default function ResumeGenerator({
                 className="h-12 self-start"
               />
             </div>
-            <EnglishTeamCheck
-              jobTitle={form.jobTitle}
-              jobDescription={form.jobDescription}
-              disabled={generating || applying || importingJob}
-            />
           </div>
 
           {form.customPrompt.trim() ? (
@@ -1338,16 +1348,30 @@ export default function ResumeGenerator({
                   <button
                     type="button"
                     onClick={handleDownloadPdf}
-                    disabled={!pdfBlob || archiving}
+                    disabled={(!pdfBlob && !archiveId) || archiving}
                     className="px-4 py-2 rounded-xl text-sm font-semibold bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-green-600/20 transition-all"
                   >
-                    Download PDF
+                    Download
                   </button>
                   <button type="button" onClick={handleStartOver} className="px-4 py-2 rounded-xl text-sm font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-all">
                     Start over
                   </button>
                 </div>
               </div>
+              {downloadFeedback ? (
+                <p
+                  className={`text-sm font-medium ${
+                    downloadFeedback.tone === "ok"
+                      ? "text-emerald-700 dark:text-emerald-300"
+                      : downloadFeedback.tone === "pending"
+                        ? "text-orange-700 dark:text-orange-300"
+                        : "text-red-700 dark:text-red-300"
+                  }`}
+                  role="status"
+                >
+                  {downloadFeedback.text}
+                </p>
+              ) : null}
               {archiveError && (
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3">
                   <p className="text-sm text-amber-800 dark:text-amber-200">{archiveError}</p>
@@ -1545,27 +1569,13 @@ export default function ResumeGenerator({
         onDownload={handleDownloadPdf}
       />
 
-      <EnglishTeamRequiredDialog
-        open={englishTeamGateOpen}
-        message={englishTeamGateMessage}
-        jobTitle={form.jobTitle}
-        companyName={form.companyName}
-        jobDescription={form.jobDescription}
-        continuing={englishTeamContinuing || generating}
-        onJobCheck={() => {
-          setEnglishTeamGateOpen(false);
-          setEnglishTeamGateMessage("");
-          void runJobCheck();
-        }}
-        onContinueCreating={() => {
-          setEnglishTeamContinuing(true);
-          void handleGenerate(undefined, { skipEnglishTeamGate: true });
-        }}
-        onClose={() => {
-          setEnglishTeamGateOpen(false);
-          setEnglishTeamGateMessage("");
-          setEnglishTeamContinuing(false);
-        }}
+      <ResumeDownloadChooser
+        open={downloadChooserOpen}
+        archiveId={archiveId}
+        onClose={() => setDownloadChooserOpen(false)}
+        defaultIncludePdf
+        defaultIncludeDocx
+        onFeedback={setDownloadFeedback}
       />
 
       <JobCheckBoard

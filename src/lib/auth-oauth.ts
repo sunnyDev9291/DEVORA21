@@ -47,6 +47,7 @@ export function getGoogleOAuthUrl(options: {
   const params = new URLSearchParams();
   params.set("intent", options.intent);
   params.set("rememberMe", "true");
+  params.set("remember_me", "true");
 
   // Always show Google account picker — signup and login must not silently reuse a Google session.
   params.set("prompt", "select_account");

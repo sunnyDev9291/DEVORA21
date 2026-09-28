@@ -1,5 +1,13 @@
 import type { NextConfig } from "next";
 
+const upstreamApi = (
+  process.env.BACKEND_API_URL?.trim() ||
+  (process.env.NEXT_PUBLIC_API_BASE_URL?.trim().startsWith("http")
+    ? process.env.NEXT_PUBLIC_API_BASE_URL.trim()
+    : "") ||
+  "https://api.devora21.com"
+).replace(/\/$/, "");
+
 const nextConfig: NextConfig = {
   devIndicators: false,
   images: {
@@ -10,6 +18,15 @@ const nextConfig: NextConfig = {
   },
   compiler: {
     removeConsole: process.env.NODE_ENV === "production" ? { exclude: ["error", "warn"] } : false,
+  },
+  // Same-origin /backend → api.devora21.com so browser cookies are first-party.
+  async rewrites() {
+    return [
+      {
+        source: "/backend/:path*",
+        destination: `${upstreamApi}/:path*`,
+      },
+    ];
   },
   // Ship the resume templates folder with the serverless functions so the
   // /api/templates routes can read it at runtime (e.g. on Netlify).

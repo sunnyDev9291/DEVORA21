@@ -109,7 +109,7 @@ async function fetchDirect(
 ): Promise<Response> {
   return fetch(`${API_BASE_URL}/jobs/check/english-team`, {
     method: "POST",
-    credentials: "omit",
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       Accept: "application/json",

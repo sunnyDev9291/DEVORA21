@@ -14,23 +14,23 @@ import {
   RESUME_FROM_JOB_TIMEOUT_MS,
   resolveResumeFromJobResult,
   startResumeFromJob,
-  throwIfEnglishTeamRequiredJob,
   type ResumeFromJobJob,
   type ResumeFromJobResult,
 } from "@/lib/resume-from-job-api";
 import { iterateJobCheckStream } from "@/lib/job-check-stream";
-import { isEnglishTeamRequiredError } from "@/lib/english-team-gate";
-import EnglishTeamRequiredDialog from "@/components/ui/EnglishTeamRequiredDialog";
-import { profileApi } from "@/lib/profile-api";
 import { useAuth } from "@/context/AuthContext";
 import { loadStoredProfile, resolveUserNames } from "@/lib/user-profile";
 import { scrapeJobFromUrl } from "@/lib/job-scrape-api";
 import { resolveResumeChatContent } from "@/lib/resume-chat-prompt";
 import type { GeneratedResumeContent } from "@/lib/resume-types";
 import type { ResumeWorkspaceFabActions } from "@/components/ui/ResumeWorkspaceFabs";
+import { resolveWritingPrompt } from "@/lib/writing-prompt";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
 const ResumeChatDialog = dynamic(() => import("@/components/ui/ResumeChatDialog"));
+const ResumeDownloadChooser = dynamic(() => import("@/components/ui/ResumeDownloadChooser"), {
+  ssr: false,
+});
 
 const inputClass =
   "w-full bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.10] hover:border-slate-300 dark:hover:border-white/[0.16] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 rounded-xl px-4 py-3 text-slate-900 dark:text-white text-sm outline-none transition-all";
@@ -78,9 +78,11 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
   const [resumeChatOpen, setResumeChatOpen] = useState(false);
   const [generationKey, setGenerationKey] = useState(0);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [englishTeamGateOpen, setEnglishTeamGateOpen] = useState(false);
-  const [englishTeamGateMessage, setEnglishTeamGateMessage] = useState("");
-  const [englishTeamContinuing, setEnglishTeamContinuing] = useState(false);
+  const [downloadChooserOpen, setDownloadChooserOpen] = useState(false);
+  const [downloadFeedback, setDownloadFeedback] = useState<{
+    tone: "ok" | "err" | "pending";
+    text: string;
+  } | null>(null);
   const [jobCheckOpen, setJobCheckOpen] = useState(false);
   const [jobChecking, setJobChecking] = useState(false);
   const [jobCheckOutput, setJobCheckOutput] = useState("");
@@ -167,9 +169,6 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
     setJobDescription("");
     setResumeChatOpen(false);
     setPreviewOpen(false);
-    setEnglishTeamGateOpen(false);
-    setEnglishTeamGateMessage("");
-    setEnglishTeamContinuing(false);
     setJobCheckOpen(false);
     setJobChecking(false);
     setJobCheckOutput("");
@@ -184,16 +183,17 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
     if (!onFabActionsChange) return;
 
     const hasResult = Boolean(result?.pdfBase64);
-    if (!hasResult && !canOpenResumeChat) {
+    const ready = hasResult || canOpenResumeChat;
+    if (!ready) {
       onFabActionsChange(null);
       return;
     }
 
     onFabActionsChange({
-      showClear: hasResult || canOpenResumeChat || hasClearableContent,
+      showClear: true,
       clearDisabled: running,
       onClear: handleClear,
-      showChat: canOpenResumeChat,
+      showChat: true,
       chatDisabled: running || !canOpenResumeChat,
       onOpenChat: () => setResumeChatOpen(true),
     });
@@ -201,7 +201,6 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
     onFabActionsChange,
     result?.pdfBase64,
     canOpenResumeChat,
-    hasClearableContent,
     running,
   ]); // eslint-disable-line react-hooks/exhaustive-deps -- handleClear reads latest state
 
@@ -238,7 +237,6 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
     setChatContent(nextContent);
     setJobDescription(description);
     setGenerationKey((k) => k + 1);
-    if (nextContent) setResumeChatOpen(true);
   }
 
   async function finishWithResult(jobSnapshot: ResumeFromJobJob, signal: AbortSignal) {
@@ -279,7 +277,6 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
       }
 
       if (latest.status === "error") {
-        throwIfEnglishTeamRequiredJob(latest);
         throw new Error(latest.error || latest.message || "Resume generation failed.");
       }
 
@@ -347,10 +344,7 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
     }
   }
 
-  async function handleGenerate(
-    e?: React.FormEvent,
-    options?: { skipEnglishTeamGate?: boolean }
-  ) {
+  async function handleGenerate(e?: React.FormEvent) {
     e?.preventDefault();
     if (running) return;
 
@@ -360,23 +354,14 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
       return;
     }
 
-    const skipEnglishTeamGate = Boolean(options?.skipEnglishTeamGate);
-
     let freshPrompt = "";
     try {
-      const verified = await profileApi.requireStoredPrompt();
-      freshPrompt = verified.content.trim();
-      if (freshPrompt && user?.id) {
-        const { saveStoredProfile } = await import("@/lib/user-profile");
-        const { PROFILE_PROMPT_UPDATED_EVENT } = await import("@/lib/template-fingerprint");
-        saveStoredProfile(user.id, {
-          customPrompt: freshPrompt,
-          promptFileName: verified.fileName,
-          promptUpdatedAt: Date.now(),
-        });
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent(PROFILE_PROMPT_UPDATED_EVENT));
-        }
+      const resolved = await resolveWritingPrompt(user?.id);
+      freshPrompt = resolved.content.trim();
+      if (!freshPrompt) {
+        throw new Error(
+          "Profile prompt not found. Upload a prompt in your Devora21 profile before generating a resume."
+        );
       }
     } catch (err) {
       setError(
@@ -394,9 +379,6 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
     abortRef.current = controller;
 
     setError("");
-    setEnglishTeamGateOpen(false);
-    setEnglishTeamGateMessage("");
-    setEnglishTeamContinuing(false);
     setResult(null);
     setChatContent(null);
     setJobDescription("");
@@ -414,21 +396,15 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
 
     try {
       const started = await startResumeFromJob(url, controller.signal, {
-        skipEnglishTeamGate,
+        skipEnglishTeamGate: true,
         customPrompt: freshPrompt || undefined,
       });
       setJob(started);
-      if (!skipEnglishTeamGate) {
-        throwIfEnglishTeamRequiredJob(started);
-      }
 
       if (isResumeFromJobTerminal(started.status)) {
         if (started.status === "done") {
           await finishWithResult(started, controller.signal);
           return;
-        }
-        if (!skipEnglishTeamGate) {
-          throwIfEnglishTeamRequiredJob(started);
         }
         throw new Error(started.error || started.message || "Resume generation failed.");
       }
@@ -436,35 +412,6 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
       await pollUntilDone(started.jobId, startedAt, controller.signal);
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
-      if (isEnglishTeamRequiredError(err) && !skipEnglishTeamGate) {
-        setResult(null);
-        setChatContent(null);
-        setPreviewOpen(false);
-        setEnglishTeamGateMessage(err.message);
-        setEnglishTeamGateOpen(true);
-        setJob((prev) =>
-          prev
-            ? {
-                ...prev,
-                status: "error",
-                code: err.code,
-                answer: err.answer,
-                workWithEnglishTeam: err.workWithEnglishTeam,
-                message: err.message,
-                error: err.message,
-              }
-            : {
-                jobId: "",
-                status: "error",
-                code: err.code,
-                answer: err.answer,
-                workWithEnglishTeam: err.workWithEnglishTeam,
-                message: err.message,
-                error: err.message,
-              }
-        );
-        return;
-      }
       setError(getApiErrorMessage(err, (err as Error)?.message || "Resume generation failed."));
       setJob((prev) =>
         prev
@@ -480,12 +427,17 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
         setRunning(false);
         abortRef.current = null;
       }
-      setEnglishTeamContinuing(false);
       clearPollTimer();
     }
   }
 
   function handleDownloadPdf() {
+    const id = result?.id?.trim();
+    if (id) {
+      setDownloadFeedback(null);
+      setDownloadChooserOpen(true);
+      return;
+    }
     if (!pdfBlob || !result) return;
     downloadBlob(pdfBlob, result.pdfFileName || "resume.pdf");
   }
@@ -500,7 +452,8 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
           Generate resume from job link
         </h3>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Backend scrapes the posting, fills your template, and returns a PDF. Progress updates while the job runs.
+          Backend scrapes the posting, fills your template, and returns a PDF. Progress updates while
+          the job runs.
         </p>
       </div>
 
@@ -528,132 +481,117 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
               onClick={stopRun}
               className="shrink-0 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/[0.05]"
             >
-              Cancel
+              Stop
             </button>
           ) : null}
         </div>
       </form>
 
       {error ? (
-        <div className="rounded-xl border border-red-500/25 bg-red-500/[0.08] px-4 py-3 text-sm text-red-600 dark:text-red-300">
+        <p className="rounded-xl border border-red-500/25 bg-red-500/[0.08] px-4 py-3 text-sm text-red-700 dark:text-red-300">
           {error}
+        </p>
+      ) : null}
+
+      {job ? (
+        <div ref={successRef}>
+          <ResumeFromJobProgress
+            message={job.message || ""}
+            progressPercent={progressPercent}
+            steps={steps}
+            jobTitle={jobTitle}
+            companyName={companyName}
+            warning={result?.warning || job.warning}
+            downloadUrl={pdfDownloadUrl}
+            downloadFileName={result?.pdfFileName || "resume.pdf"}
+            onPreview={pdfBlob ? () => setPreviewOpen(true) : undefined}
+          />
         </div>
       ) : null}
 
-      {!englishTeamGateOpen && (running || job) ? (
-        <ResumeFromJobProgress
-          message={job?.message || (running ? "Working…" : "")}
-          progressPercent={progressPercent}
-          steps={steps}
-          jobTitle={job?.jobTitle || result?.jobTitle}
-          companyName={job?.companyName || result?.companyName}
-          warning={job?.warning || result?.warning}
-          downloadUrl={pdfDownloadUrl}
-          downloadFileName={result?.pdfFileName || "resume.pdf"}
-          onPreview={result?.pdfBase64 ? () => setPreviewOpen(true) : undefined}
-        />
-      ) : null}
-
-      {result?.pdfBase64 && pdfDownloadUrl ? (
-        <div
-          ref={successRef}
-          className="rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.08] px-5 py-4 shadow-sm"
-        >
-          <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">
-            Generation complete
-          </p>
-          <p className="mt-1 text-xs text-emerald-700/90 dark:text-emerald-300/90">
-            {[result.jobTitle, result.companyName].filter(Boolean).join(" · ") || "Your resume PDF is ready."}
-          </p>
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <a
-              href={pdfDownloadUrl}
-              download={result.pdfFileName || "resume.pdf"}
-              className="inline-flex items-center rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500"
-            >
-              Download PDF — {result.pdfFileName || "resume.pdf"}
-            </a>
-            <button
+      {result?.pdfBase64 ? (
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" onClick={handleDownloadPdf}>
+              Download
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => setPreviewOpen(true)}>
+              Preview PDF
+            </Button>
+            <Button
               type="button"
-              onClick={() => setPreviewOpen(true)}
-              className="rounded-xl border border-emerald-500/30 bg-white/80 px-4 py-2.5 text-sm font-semibold text-emerald-800 hover:bg-white dark:bg-white/10 dark:text-emerald-200"
+              variant="secondary"
+              onClick={() => void runJobCheck()}
+              disabled={jobChecking || !(companyName || "").trim()}
             >
-              Preview
-            </button>
-            {canOpenResumeChat ? (
-              <button
-                type="button"
-                onClick={() => setResumeChatOpen(true)}
-                className="inline-flex items-center gap-2 rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-2.5 text-sm font-semibold text-orange-700 transition-all hover:bg-orange-500/15 dark:text-orange-300"
-              >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-                Application Q&A
-              </button>
+              {jobChecking ? "Job Check…" : "Job Check"}
+            </Button>
+            {hasClearableContent ? (
+              <Button type="button" variant="secondary" onClick={handleClear} disabled={running}>
+                Clear
+              </Button>
             ) : null}
           </div>
+          {downloadFeedback ? (
+            <p
+              className={`text-sm font-medium ${
+                downloadFeedback.tone === "ok"
+                  ? "text-emerald-700 dark:text-emerald-300"
+                  : downloadFeedback.tone === "pending"
+                    ? "text-orange-700 dark:text-orange-300"
+                    : "text-red-700 dark:text-red-300"
+              }`}
+              role="status"
+            >
+              {downloadFeedback.text}
+            </p>
+          ) : null}
         </div>
       ) : null}
 
       <PdfPreviewModal
         open={previewOpen}
         onClose={() => setPreviewOpen(false)}
-        title={result?.pdfFileName || "Resume PDF"}
-        subtitle={[result?.jobTitle, result?.companyName].filter(Boolean).join(" · ") || undefined}
+        title={jobTitle || "Resume PDF"}
+        subtitle={companyName || undefined}
+        fileName={result?.pdfFileName}
         blob={pdfBlob}
-        fileName={result?.pdfFileName || "resume.pdf"}
+        waitingForPdf={running && !pdfBlob}
         onDownload={handleDownloadPdf}
+      />
+
+      <ResumeDownloadChooser
+        open={downloadChooserOpen}
+        archiveId={result?.id}
+        onClose={() => setDownloadChooserOpen(false)}
+        defaultIncludePdf
+        defaultIncludeDocx
+        onFeedback={setDownloadFeedback}
+      />
+
+      <JobCheckBoard
+        open={jobCheckOpen}
+        onClose={() => {
+          jobCheckAbortRef.current?.abort();
+          setJobCheckOpen(false);
+        }}
+        companyName={companyName}
+        jobTitle={jobTitle}
+        output={jobCheckOutput}
+        error={jobCheckError}
+        loading={jobChecking}
+        onRetry={() => void runJobCheck()}
       />
 
       <ResumeChatDialog
         open={resumeChatOpen}
         onClose={() => setResumeChatOpen(false)}
         content={chatContent}
-        profile={chatProfile}
         jobTitle={jobTitle}
         companyName={companyName}
         jobDescription={jobDescription}
+        profile={chatProfile}
         generationKey={generationKey}
-      />
-
-      <EnglishTeamRequiredDialog
-        open={englishTeamGateOpen}
-        message={englishTeamGateMessage}
-        jobTitle={job?.jobTitle || result?.jobTitle || ""}
-        companyName={job?.companyName || result?.companyName || ""}
-        jobDescription={jobDescription || job?.url || jobUrl}
-        continuing={englishTeamContinuing || running}
-        onJobCheck={() => {
-          setEnglishTeamGateOpen(false);
-          setEnglishTeamGateMessage("");
-          void runJobCheck();
-        }}
-        onContinueCreating={() => {
-          setEnglishTeamContinuing(true);
-          void handleGenerate(undefined, { skipEnglishTeamGate: true });
-        }}
-        onClose={() => {
-          setEnglishTeamGateOpen(false);
-          setEnglishTeamGateMessage("");
-          setEnglishTeamContinuing(false);
-        }}
-      />
-
-      <JobCheckBoard
-        open={jobCheckOpen}
-        loading={jobChecking}
-        error={jobCheckError}
-        output={jobCheckOutput}
-        jobTitle={job?.jobTitle || result?.jobTitle || ""}
-        companyName={job?.companyName || result?.companyName || ""}
-        onClose={() => {
-          jobCheckAbortRef.current?.abort();
-          jobCheckAbortRef.current = null;
-          setJobCheckOpen(false);
-          setJobChecking(false);
-        }}
-        onRetry={() => void runJobCheck()}
       />
     </div>
   );

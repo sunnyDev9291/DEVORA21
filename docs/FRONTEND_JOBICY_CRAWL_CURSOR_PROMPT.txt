@@ -1,0 +1,78 @@
+# Frontend Cursor Prompt — Add Jobicy job crawl (country + free API)
+# Status: IMPLEMENTED in this repo (aligns with backend contract below)
+
+## Role
+Wire Resume Builder Jobicy discovery like Himalayas / Get on Board: user provides a country name only (not a listing URL). Backend already uses Jobicy’s free public Remote Jobs API and returns remote jobs posted in the last 24 hours.
+
+## Endpoint
+
+POST /jobs/crawl/jobicy
+Content-Type: application/json
+
+Auth: same as other crawl routes (session cookie and/or Bearer dv21_ API key). Resume Builder must be enabled.
+
+### Request body
+{
+  "country": "Argentina",
+  "countryName": "Argentina"
+}
+
+- Send either country or countryName (or both; same value).
+- If omitted → backend uses listingUrls.jobicy from profile → else default "Argentina".
+- Accept a country name (e.g. "Argentina", "Brazil", "USA"). Do not send a Jobicy URL.
+
+### Success response
+{
+  "sourceUrl": "jobicy:argentina",
+  "platform": "jobicy",
+  "country": "Argentina",
+  "geoSlug": "argentina",
+  "pagesScraped": 2,
+  "totalCount": 11,
+  "jobs": [
+    {
+      "jobId": "154029-senior-implementation-project-manager",
+      "companyName": "Launchpad Technologies",
+      "jobTitle": "Senior Implementation Project Manager",
+      "jobUrl": "https://jobicy.com/jobs/154029-senior-implementation-project-manager"
+    }
+  ]
+}
+
+Notes:
+- geoSlug is the Jobicy taxonomy slug when the country exists in Jobicy locations; null when it does not (e.g. Chile) — backend then uses anywhere-only.
+- Use the same job list UI as Himalayas: jobId, companyName, jobTitle, jobUrl. totalCount === jobs.length.
+
+## Profile / onboarding
+- Platform key: jobicy
+- Store country string in listingUrls.jobicy (e.g. "Argentina"), not a URL
+- Flat field also accepted: listingUrl_jobicy
+- Mirror Himalayas UX: country text input / country picker, not a URL field
+- Label: "Jobicy"
+
+## Backend behavior (for UX copy only)
+- Jobicy API is already remote-only
+- Country in Jobicy geo list → country geo + anywhere, merged, last 24h
+- Country not in list → anywhere only, last 24h
+- FE does not choose modes; just send country
+
+## UI behavior
+1. Platform: Jobicy
+2. Country from profile or picker (default Argentina)
+3. Call POST /jobs/crawl/jobicy with { country }
+4. Render returned jobs like Himalayas / Get on Board
+5. On empty jobs, show "No remote jobs posted in the last 24 hours for this country"
+6. Handle 400 (invalid country), 401/403, 422 (bad saved profile country), 502 (upstream)
+
+## Do not
+- Do not build or send Jobicy search URLs
+- Do not call jobicy.com from the browser — always use this backend endpoint
+- Do not send industry/tag/geo filters from FE; backend resolves geo from country
+
+## FE files (this repo)
+- src/lib/builtin-crawl-types.ts — platform key, defaults, validators
+- src/lib/builtin-crawl-api.ts — crawlJobicyJobs()
+- src/components/sections/BuiltInCrawlPanel.tsx — discovery UI
+- src/components/dashboard/DashboardProfilePanel.tsx — country text field
+- src/lib/job-crawl-storage.ts — persist platform key
+- src/lib/profile-api.ts — listingUrl_jobicy flat field via compact listingUrls loop

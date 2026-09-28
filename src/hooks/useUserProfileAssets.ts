@@ -135,7 +135,7 @@ export function useUserProfileAssets(userId: string | undefined) {
             storedAfterLocal.promptUpdatedAt > 0 &&
             // Prefer a just-uploaded local prompt over a possibly cached remote copy.
             storedAfterLocal.customPrompt.trim() !== remotePrompt.content.trim() &&
-            Date.now() - storedAfterLocal.promptUpdatedAt < 10 * 60 * 1000;
+            Date.now() - storedAfterLocal.promptUpdatedAt < 7 * 24 * 60 * 60 * 1000;
 
           if (localIsNewer) {
             const localPrompt = {

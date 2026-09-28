@@ -9,6 +9,14 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
+# Same-origin API proxy — browser calls /backend/* so auth cookies are first-party.
+# Next.js already owns /api/* (resume, chat, templates); do not overwrite that path.
+[[redirects]]
+  from = "/backend/*"
+  to = "https://api.devora21.com/:splat"
+  status = 200
+  force = true
+
 [[headers]]
   for = "/_next/static/*"
   [headers.values]
@@ -23,4 +31,3 @@
   for = "/bg.jpeg"
   [headers.values]
     Cache-Control = "public, max-age=604800, stale-while-revalidate=86400"
-

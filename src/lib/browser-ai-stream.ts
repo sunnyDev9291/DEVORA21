@@ -222,10 +222,10 @@ async function fetchDirectAiStream(
     jobDescription
   );
 
-  // Bearer + body.userId identify the user; omit cookies to avoid credential CORS failures.
+  // Prefer cookies on the same-origin /backend proxy (or localhost API).
   return fetch(url, {
     method: "POST",
-    credentials: "omit",
+    credentials: "include",
     headers,
     body: JSON.stringify(buildAiStreamBody(messages, maxTokens, options)),
     signal: options.signal,

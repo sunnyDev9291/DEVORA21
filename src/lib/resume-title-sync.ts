@@ -4,6 +4,10 @@ import {
   sanitizeResumeFileBaseName,
 } from "@/lib/resume-filename";
 
+/** Leading seniority / level tokens — kept when syncing a title change into roles/summary. */
+const SENIORITY_TOKEN =
+  /^(junior|jr|associate|mid-level|midlevel|mid|senior|sr|staff|principal|lead|head|distinguished|fellow)$/i;
+
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -16,19 +20,36 @@ function slugifyRole(value: string): string {
     .replace(/^_+|_+$/g, "");
 }
 
+/** Split "Senior Staff Software Engineer" → prefix "Senior Staff", core "Software Engineer". */
+export function splitSeniorityFromHeadline(headline: string): { prefix: string; core: string } {
+  const parts = headline.trim().split(/\s+/).filter(Boolean);
+  const levels: string[] = [];
+  let i = 0;
+  while (i < parts.length && SENIORITY_TOKEN.test(parts[i])) {
+    levels.push(parts[i]);
+    i += 1;
+  }
+  return {
+    prefix: levels.join(" "),
+    core: parts.slice(i).join(" ").trim(),
+  };
+}
+
 function replaceHeadlineInText(text: string, oldHeadline: string, newHeadline: string): string {
   if (!text || !oldHeadline) return text;
   return text.replace(new RegExp(escapeRegex(oldHeadline), "gi"), newHeadline);
 }
 
-function syncExperienceRole(role: string, oldHeadline: string, newHeadline: string): string {
+/**
+ * Sync experience role to a new resume title core — preserve each role's own level
+ * (Senior / Staff / …). Never overwrite the whole role with the new title headline.
+ */
+function syncExperienceRole(role: string, oldCore: string, newCore: string): string {
   const plain = role.replace(/\*\*/g, "").trim();
-  if (!plain) return newHeadline;
-  if (oldHeadline && new RegExp(escapeRegex(oldHeadline), "i").test(plain)) {
-    return replaceHeadlineInText(role, oldHeadline, newHeadline);
-  }
-  // Role no longer matches prior title headline — align it to the new resume title role.
-  return newHeadline;
+  if (!plain || !oldCore || !newCore) return role;
+  if (oldCore.toLowerCase() === newCore.toLowerCase()) return role;
+  if (!new RegExp(escapeRegex(oldCore), "i").test(plain)) return role;
+  return replaceHeadlineInText(role, oldCore, newCore);
 }
 
 /** Replace the role slug / underscored headline inside a resume file base name. */
@@ -39,11 +60,14 @@ export function replaceRoleInResumeFileBaseName(
 ): string {
   if (!baseName.trim() || !oldHeadline.trim() || !newHeadline.trim()) return baseName;
 
-  let result = baseName;
-  const oldPlain = oldHeadline.trim();
-  const newPlain = newHeadline.trim();
+  const { core: oldCoreRaw } = splitSeniorityFromHeadline(oldHeadline);
+  const { core: newCoreRaw } = splitSeniorityFromHeadline(newHeadline);
+  const oldPlain = (oldCoreRaw || oldHeadline).trim();
+  const newPlain = (newCoreRaw || newHeadline).trim();
 
-  // Spaced headline (e.g. "Senior Solutions Engineer")
+  let result = baseName;
+
+  // Spaced core title (e.g. "Software Engineer" — not "Senior Software Engineer")
   if (oldPlain && newPlain && oldPlain.toLowerCase() !== newPlain.toLowerCase()) {
     result = result.replace(new RegExp(escapeRegex(oldPlain), "gi"), newPlain);
   }
@@ -54,8 +78,8 @@ export function replaceRoleInResumeFileBaseName(
     result = result.replace(new RegExp(escapeRegex(oldUnderscore), "gi"), newUnderscore);
   }
 
-  const oldSlug = slugifyRole(oldHeadline);
-  const newSlug = slugifyRole(newHeadline);
+  const oldSlug = slugifyRole(oldPlain);
+  const newSlug = slugifyRole(newPlain);
   if (oldSlug && newSlug && oldSlug !== newSlug) {
     result = result.replace(new RegExp(escapeRegex(oldSlug), "gi"), newSlug);
   }
@@ -64,8 +88,9 @@ export function replaceRoleInResumeFileBaseName(
 }
 
 /**
- * When the resume title's main role (text before the first `|`) changes, keep
- * summary, experience roles, and fileName role segment aligned with it.
+ * When the resume title's main role (text before the first `|`) changes, sync the
+ * job-title core into summary / experience roles / fileName — without changing
+ * seniority levels (Senior, Staff, Principal, …) already on those fields.
  */
 export function applyResumeTitleHeadlineChange(
   content: GeneratedResumeContent,
@@ -83,10 +108,18 @@ export function applyResumeTitleHeadlineChange(
     return { ...content, title: nextTitle };
   }
 
-  const summary = replaceHeadlineInText(content.summary, oldHeadline, newHeadline);
+  const { core: oldCore } = splitSeniorityFromHeadline(oldHeadline);
+  const { core: newCore } = splitSeniorityFromHeadline(newHeadline);
+
+  // Only seniority changed (e.g. Senior → Staff) — keep roles/summary levels as-is.
+  if (!oldCore || !newCore || oldCore.toLowerCase() === newCore.toLowerCase()) {
+    return { ...content, title: nextTitle };
+  }
+
+  const summary = replaceHeadlineInText(content.summary, oldCore, newCore);
   const experiences = content.experiences.map((exp) => ({
     ...exp,
-    role: syncExperienceRole(exp.role, oldHeadline, newHeadline),
+    role: syncExperienceRole(exp.role, oldCore, newCore),
   }));
 
   const nextFileName = content.fileName?.trim()

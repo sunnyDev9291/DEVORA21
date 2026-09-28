@@ -1,0 +1,88 @@
+# Backend Cursor Prompt — Add Himalayas job crawl (country + free API)
+
+## Role
+Implement Himalayas as a job-crawl platform on api.devora21.com using the **Himalayas free public JSON API**. Users provide a **country name only** — not a listing URL.
+
+## Frontend (already wired)
+- Platform key: `himalayas`
+- FE calls: `POST /jobs/crawl/himalayas`
+- Body: `{ "country": "Argentina", "countryName": "Argentina" }`
+- Auth: same session cookie and/or Bearer `dv21_` key as other crawl endpoints
+- Profile field `listingUrls.himalayas` stores the **country string** (e.g. `"Argentina"`), not a URL
+- Default country: `Argentina`
+
+## Endpoint
+
+```
+POST /jobs/crawl/himalayas
+Content-Type: application/json
+Authorization: Bearer <session JWT or dv21_ API key>
+```
+
+### Request
+```json
+{ "country": "Argentina", "countryName": "Argentina" }
+```
+
+Accept either `country` or `countryName` (non-empty string). Reject empty/missing country with 400.
+
+Do **not** require `url`.
+
+### Success response (same shape as other crawl endpoints)
+```json
+{
+  "sourceUrl": "himalayas:Argentina",
+  "platform": "himalayas",
+  "pagesScraped": 3,
+  "totalCount": 42,
+  "jobs": [
+    {
+      "jobId": "senior-software-engineer-abc123",
+      "companyName": "Acme",
+      "jobTitle": "Senior Software Engineer",
+      "jobUrl": "https://himalayas.app/jobs/senior-software-engineer-abc123"
+    }
+  ]
+}
+```
+
+Rules:
+- `totalCount` MUST equal `jobs.length`
+- Paginate the free API until exhausted (or a sane max pages)
+- Deduplicate by `jobUrl` / `jobId`
+- `jobUrl` absolute https on himalayas.app
+- `jobId` = stable slug/guid from API (not array index)
+- `sourceUrl` can be `himalayas:<country>` for logging
+
+## How to fetch (required)
+
+Use Himalayas public JSON API (no API key):
+- Search: `GET https://himalayas.app/jobs/api/search?country=<country>&sort=recent&page=<n>`
+- Or browse + filter if search params differ — map FE country string to the API `country` param (ISO or name as Himalayas accepts)
+
+Docs: https://himalayas.app/docs/remote-jobs-api
+
+1. Read `country` / `countryName` from body
+2. Call search API with that country; paginate
+3. Map each job → `{ jobId, companyName, jobTitle, jobUrl }`
+   - Prefer official application / guid / link fields for `jobUrl`
+   - Credit Himalayas as source; do not resubmit to third-party aggregators
+
+No Zyte / HTML scrape needed for Himalayas.
+
+## Profile listingUrls
+- `listingUrls.himalayas` = country name string
+- Support on GET /auth/me and PATCH /auth/profile (and flat `listingUrl_himalayas`)
+- Do not wipe other platforms
+
+## Errors
+- 400 missing/invalid country
+- 401/403 same as other crawl routes
+- 502/500 with clear message if Himalayas API fails
+
+## Acceptance
+1. POST `{ "country": "Argentina" }` returns jobs[] with totalCount === jobs.length
+2. Each job has companyName, jobTitle, jobUrl
+3. No listing URL required
+4. FE Job Discovery Himalayas crawl with country "Argentina" works end-to-end
+5. listingUrls.himalayas round-trips as country via /auth/me

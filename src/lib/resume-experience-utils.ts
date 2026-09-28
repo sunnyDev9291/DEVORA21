@@ -76,6 +76,9 @@ export function normalizeResumeExperience(
     company: String(raw.company ?? "").trim(),
     role: String(raw.role ?? "").trim(),
     dates: String(raw.dates ?? "").trim(),
+    ...(String(raw.location ?? "").trim()
+      ? { location: String(raw.location ?? "").trim() }
+      : {}),
     bullets: (raw.bullets ?? []).map((bullet) => String(bullet).trim()).filter(Boolean),
     ...(isProjectLayout(layout) || projects?.length ? { projects: projects ?? [] } : {}),
   };

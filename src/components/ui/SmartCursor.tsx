@@ -50,7 +50,7 @@ const MAX_TRAIL_NODES = 48;
 const MAX_PARTICLES = 32;
 const CLICK_EFFECT_MS = 1200;
 const MAX_CLICK_BURSTS = 4;
-const EFFECT_ALPHA = 0.86;
+const EFFECT_ALPHA = 0.72;
 
 const CLICK_PARTICLES = Array.from({ length: 10 }, (_, index) => ({
   angle: (index / 10) * 360,

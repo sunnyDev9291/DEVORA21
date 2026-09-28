@@ -572,4 +572,145 @@ html.smart-cursor-active * {
     animation: none !important;
     display: none;
   }
+
+  .job-select-check,
+  .job-select-box,
+  .job-select-mark,
+  .job-select-row {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Job crawl table — larger select checkbox + row pulse */
+.job-select-check {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.9rem;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1), background-color 160ms ease;
+}
+
+.job-select-check:hover {
+  background: rgba(249, 115, 22, 0.1);
+  transform: scale(1.06);
+}
+
+.job-select-check:active {
+  transform: scale(0.92);
+}
+
+.job-select-check:focus-visible {
+  outline: 2px solid rgba(249, 115, 22, 0.55);
+  outline-offset: 2px;
+}
+
+.job-select-check input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.job-select-box {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 0.5rem;
+  border: 2px solid #d6d3d1;
+  background: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html.dark .job-select-box {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: none;
+}
+
+.job-select-check[data-checked="true"] .job-select-box {
+  border-color: #ea580c;
+  background: linear-gradient(145deg, #fb923c, #ea580c);
+  box-shadow:
+    0 0 0 4px rgba(249, 115, 22, 0.18),
+    0 8px 16px -8px rgba(234, 88, 12, 0.65);
+  animation: job-select-pop 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.job-select-mark {
+  width: 0.85rem;
+  height: 0.85rem;
+  opacity: 0;
+  transform: scale(0.4) rotate(-12deg);
+  color: #fff;
+  transition: opacity 140ms ease, transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.job-select-check[data-checked="true"] .job-select-mark {
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+}
+
+.job-select-row {
+  cursor: pointer;
+  transition:
+    background-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.job-select-row:hover {
+  background: rgba(249, 115, 22, 0.045);
+}
+
+html.dark .job-select-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.job-select-row[data-checked="true"] {
+  background: rgba(249, 115, 22, 0.1);
+  box-shadow: inset 3px 0 0 #ea580c;
+}
+
+html.dark .job-select-row[data-checked="true"] {
+  background: rgba(249, 115, 22, 0.14);
+}
+
+.job-select-row.is-flashing {
+  animation: job-select-row-flash 420ms ease;
+}
+
+@keyframes job-select-pop {
+  0% {
+    transform: scale(0.82);
+  }
+  55% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes job-select-row-flash {
+  0% {
+    background-color: rgba(249, 115, 22, 0.28);
+  }
+  100% {
+    background-color: rgba(249, 115, 22, 0.1);
+  }
 }
