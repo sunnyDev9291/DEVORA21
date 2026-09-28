@@ -9,12 +9,6 @@ import { ui } from "@/lib/ui-styles";
 const TABS = [
   { href: "/resume", label: "New resume", isActive: (path: string) => path === "/resume" },
   {
-    href: "/resume/discover",
-    label: "Job discovery",
-    isActive: (path: string) =>
-      path === "/resume/discover" || path.startsWith("/resume/discover/"),
-  },
-  {
     href: "/resume/saved",
     label: "Saved resumes",
     isActive: (path: string) => path === "/resume/saved" || path.startsWith("/resume/saved/"),

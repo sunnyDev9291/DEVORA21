@@ -377,7 +377,7 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
         <p className="mb-4 text-xs text-slate-500">
           Edit crawl listing URLs (or Himalayas / Get on Board / Jobicy country) here, then click{" "}
           <span className="font-semibold text-slate-300">Save profile</span>. They are stored on the
-          backend for your account and used by Job discovery.
+          backend for your account and used when running job crawls.
         </p>
         <div className="space-y-4">
           {ALL_JOB_CRAWL_PLATFORMS.map((platform) => {
@@ -418,14 +418,6 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
           >
             Reset to app defaults
           </button>
-          {isResumeBuilderEnabled ? (
-            <Link
-              href="/resume/discover"
-              className="rounded-xl border border-white/10 px-3 py-2 text-xs font-semibold text-slate-200 transition-colors hover:bg-white/[0.05]"
-            >
-              Open job discovery
-            </Link>
-          ) : null}
         </div>
       </div>
 
