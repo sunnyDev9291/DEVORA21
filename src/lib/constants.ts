@@ -291,6 +291,7 @@ export const AUTH_LINKS = {
   login: "/login",
   register: "/register",
   dashboard: "/dashboard",
+  superAdmin: "/super-admin",
   forgotPassword: "/forgot-password",
   resetPassword: "/reset-password",
   verifyEmail: "/verify-email",
