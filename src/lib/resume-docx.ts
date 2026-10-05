@@ -324,30 +324,28 @@ export function boldEntirePlainText(text: string): string {
 
 export function formatExperienceRoleText(
   role: string,
-  templateXml: string,
-  boldSkillTerms: (text: string) => string
+  _templateXml: string,
+  _boldSkillTerms: (text: string) => string
 ): string {
-  if (paragraphXmlIsFullyBold(templateXml)) {
-    return boldEntirePlainText(role);
-  }
-  return boldSkillTerms(role);
+  // Experience role/title lines must always be fully bold (not template-dependent).
+  return boldEntirePlainText(role);
 }
 
 export function formatCombinedExperienceHeaderText(
   role: string,
   company: string,
   dates: string,
-  templateXml: string,
-  boldSkillTerms: (text: string) => string
+  _templateXml: string,
+  _boldSkillTerms: (text: string) => string
 ): string {
   const plainRole = role.replace(/\*\*/g, "").trim();
-  const line = dates ? `${plainRole}, ${company}, ${dates}` : `${plainRole}, ${company}`;
-  if (paragraphXmlIsFullyBold(templateXml)) {
-    return boldEntirePlainText(line);
-  }
-  return dates
-    ? `${boldSkillTerms(role)}, ${company}, ${dates}`
-    : `${boldSkillTerms(role)}, ${company}`;
+  const plainCompany = company.replace(/\*\*/g, "").trim();
+  const plainDates = dates.replace(/\*\*/g, "").trim();
+  const line = plainDates
+    ? `${plainRole}, ${plainCompany}, ${plainDates}`
+    : `${plainRole}, ${plainCompany}`;
+  // Combined job header (role, company, dates) must always be fully bold.
+  return boldEntirePlainText(line);
 }
 
 function hasLatinItalic(rPr: string): boolean {
@@ -1241,9 +1239,10 @@ export function applyContentToDocx(
   const boldExpText = (text: string) => boldSkillTermsInText(text, skillTerms);
 
   const header = parseResumeHeaderFromDocxBuffer(buffer);
+  // Resume title under the name must always be fully bold.
   const headerParagraphs = applyTitleToHeaderRegion(
     paragraphs.slice(0, summaryIdx),
-    boldExpText(content.title),
+    boldEntirePlainText(content.title),
     header.titleParagraphIndex
   );
 
@@ -1309,9 +1308,12 @@ export function applyContentToDocx(
           }
         }
       } else {
-        experienceParagraphs.push(setParagraphText(style.headerTemplate, exp.company));
+        experienceParagraphs.push(
+          setParagraphText(style.headerTemplate, boldEntirePlainText(exp.company))
+        );
+        const rolePlain = exp.role.replace(/\*\*/g, "").trim();
         const roleDates = exp.dates
-          ? `${formatExperienceRoleText(exp.role, style.roleTemplate ?? defaultRoleTemplate, boldExpText)}    ${exp.dates}`
+          ? boldEntirePlainText(`${rolePlain}    ${exp.dates}`)
           : formatExperienceRoleText(exp.role, style.roleTemplate ?? defaultRoleTemplate, boldExpText);
         experienceParagraphs.push(
           setParagraphText(style.roleTemplate ?? defaultRoleTemplate, roleDates)
