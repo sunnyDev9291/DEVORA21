@@ -207,7 +207,7 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
     });
 
     try {
-      await authApi.updateProfileWithFiles({
+      const updatedUser = await authApi.updateProfileWithFiles({
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         avatarFile,
@@ -230,7 +230,18 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
       }
 
       if (resumeTemplateFile) {
-        await cacheUploadedTemplate(user.id, resumeTemplateFile);
+        await cacheUploadedTemplate(
+          user.id,
+          resumeTemplateFile,
+          updatedUser.resumeTemplateId
+        );
+        // Refresh id from dedicated template endpoint when profile PATCH omits it.
+        if (!updatedUser.resumeTemplateId) {
+          const remote = await profileApi.fetchResumeTemplate().catch(() => null);
+          if (remote?.templateId) {
+            await cacheUploadedTemplate(user.id, resumeTemplateFile, remote.templateId);
+          }
+        }
       }
 
       const notes: string[] = ["Profile saved."];

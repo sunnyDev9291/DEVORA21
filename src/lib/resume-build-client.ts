@@ -28,7 +28,11 @@ export type BuildResumeDocxResult = {
   templateName: string;
 };
 
-/** Same /api/resume/build call used by New resume Apply. */
+/**
+ * @deprecated Prefer `renderResumeOnBackend` (`src/lib/resume-render-api.ts`).
+ * Step-by-step Apply no longer builds DOCX on Next.js — the API backend owns
+ * fill + PDF. Kept for scripts/legacy callers only.
+ */
 export async function buildResumeDocx(
   input: BuildResumeDocxInput
 ): Promise<BuildResumeDocxResult> {

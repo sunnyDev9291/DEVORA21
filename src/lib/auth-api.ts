@@ -231,6 +231,7 @@ export function isSameAuthUserSnapshot(a: User, b: User): boolean {
     a.onboardingCompleted === b.onboardingCompleted &&
     a.resumeBuilderEnabled === b.resumeBuilderEnabled &&
     a.resumeTemplateFileName === b.resumeTemplateFileName &&
+    a.resumeTemplateId === b.resumeTemplateId &&
     a.promptFileName === b.promptFileName &&
     listingUrlsSnapshot(a.listingUrls) === listingUrlsSnapshot(b.listingUrls)
   );
@@ -278,6 +279,13 @@ export function normalizeAuthUser(raw: unknown): User {
         ? source.resumeTemplateName.trim()
         : undefined;
 
+  const resumeTemplateId =
+    typeof source.resumeTemplateId === "string"
+      ? source.resumeTemplateId.trim()
+      : typeof source.templateId === "string"
+        ? source.templateId.trim()
+        : undefined;
+
   const promptFileName =
     typeof source.promptFileName === "string" ? source.promptFileName.trim() : undefined;
 
@@ -305,6 +313,7 @@ export function normalizeAuthUser(raw: unknown): User {
     onboardingCompleted: onboardingCompleted || undefined,
     ...(resumeBuilderEnabled !== undefined ? { resumeBuilderEnabled } : {}),
     resumeTemplateFileName: resumeTemplateFileName || undefined,
+    resumeTemplateId: resumeTemplateId || undefined,
     promptFileName: promptFileName || undefined,
     listingUrls,
     createdAt,

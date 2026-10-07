@@ -12,13 +12,27 @@ function sameTemplate(
 ): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
-  return a.fileName === b.fileName && a.templateBase64 === b.templateBase64;
+  return (
+    a.fileName === b.fileName &&
+    (a.templateId ?? "") === (b.templateId ?? "") &&
+    (a.templateBase64 ?? "") === (b.templateBase64 ?? "")
+  );
 }
 
 function samePrompt(a: UserPromptAsset | null, b: UserPromptAsset | null): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
   return a.content === b.content && (a.fileName ?? "") === (b.fileName ?? "");
+}
+
+function storedToTemplateAsset(stored: ReturnType<typeof loadStoredProfile>): UserResumeTemplateAsset | null {
+  if (!stored.resumeTemplateFileName) return null;
+  if (!stored.resumeTemplateId && !stored.resumeTemplateBase64) return null;
+  return {
+    fileName: stored.resumeTemplateFileName,
+    templateBase64: stored.resumeTemplateBase64,
+    templateId: stored.resumeTemplateId,
+  };
 }
 
 /**
@@ -46,18 +60,11 @@ export function useUserProfileAssets(userId: string | undefined) {
 
   const hydrateFromLocal = useCallback(() => {
     if (!userId) return null;
-    const stored = loadStoredProfile(userId);
-    if (stored.resumeTemplateFileName && stored.resumeTemplateBase64) {
-      const next = {
-        fileName: stored.resumeTemplateFileName,
-        templateBase64: stored.resumeTemplateBase64,
-      };
-      if (!sameTemplate(templateRef.current, next)) {
-        setTemplate(next);
-      }
-      return next;
+    const next = storedToTemplateAsset(loadStoredProfile(userId));
+    if (next && !sameTemplate(templateRef.current, next)) {
+      setTemplate(next);
     }
-    return null;
+    return next;
   }, [userId]);
 
   const refresh = useCallback(
@@ -79,13 +86,7 @@ export function useUserProfileAssets(userId: string | undefined) {
       setError("");
 
       const stored = loadStoredProfile(userId);
-      const localTemplate =
-        stored.resumeTemplateFileName && stored.resumeTemplateBase64
-          ? {
-              fileName: stored.resumeTemplateFileName,
-              templateBase64: stored.resumeTemplateBase64,
-            }
-          : null;
+      const localTemplate = storedToTemplateAsset(stored);
 
       if (localTemplate && !sameTemplate(templateRef.current, localTemplate)) {
         setTemplate(localTemplate);
@@ -117,6 +118,7 @@ export function useUserProfileAssets(userId: string | undefined) {
           saveStoredProfile(userId, {
             resumeTemplateFileName: remoteTemplate.fileName,
             resumeTemplateBase64: remoteTemplate.templateBase64,
+            resumeTemplateId: remoteTemplate.templateId,
             resumeTemplateUpdatedAt: undefined,
           });
           templateLoaded = true;

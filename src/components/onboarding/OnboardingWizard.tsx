@@ -308,9 +308,11 @@ export default function OnboardingWizard({ user }: OnboardingWizardProps) {
 
 
 
+    let onboardedUser: Awaited<ReturnType<typeof authApi.completeOnboarding>> | null = null;
+
     try {
 
-      await authApi.completeOnboarding(payload);
+      onboardedUser = await authApi.completeOnboarding(payload);
 
     } catch (err) {
 
@@ -387,9 +389,12 @@ export default function OnboardingWizard({ user }: OnboardingWizardProps) {
 
 
     if (resumeTemplateFile) {
-
-      await cacheUploadedTemplate(user.id, resumeTemplateFile);
-
+      let templateId = onboardedUser?.resumeTemplateId;
+      if (!templateId) {
+        const remote = await profileApi.fetchResumeTemplate().catch(() => null);
+        templateId = remote?.templateId;
+      }
+      await cacheUploadedTemplate(user.id, resumeTemplateFile, templateId);
     }
 
     if (promptFile instanceof File && verifiedPromptContent) {

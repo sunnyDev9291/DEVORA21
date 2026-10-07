@@ -8,13 +8,16 @@ import ResumeContentReview from "@/components/sections/ResumeContentReview";
 import { resolveResumeWizardStep } from "@/components/sections/ResumeStepper";
 import type { ResumeWorkspaceFabActions } from "@/components/ui/ResumeWorkspaceFabs";
 import { useAuth } from "@/context/AuthContext";
-import type { UserResumeTemplateAsset } from "@/lib/profile-api";
+import { profileApi, type UserResumeTemplateAsset } from "@/lib/profile-api";
 import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
 import { generateResume } from "@/lib/resume-generate-client";
 import { scrapeJobFromUrl } from "@/lib/job-scrape-api";
 import { iterateJobCheckStream } from "@/lib/job-check-stream";
 import JobCheckBoard from "@/components/ui/JobCheckBoard";
-import { buildResumeDocx } from "@/lib/resume-build-client";
+import {
+  fetchRenderedPdf,
+  renderResumeOnBackend,
+} from "@/lib/resume-render-api";
 import { formatElapsedMs } from "@/lib/format-elapsed";
 import {
   clearResumeGenerateTimer,
@@ -61,14 +64,21 @@ function resolveActiveUserTemplate(
   userId: string | undefined,
   userTemplate: UserResumeTemplateAsset | null
 ): UserResumeTemplateAsset | null {
-  if (userTemplate?.templateBase64?.trim() && userTemplate.fileName?.trim()) {
+  if (
+    userTemplate?.fileName?.trim() &&
+    (userTemplate.templateId?.trim() || userTemplate.templateBase64?.trim())
+  ) {
     return userTemplate;
   }
   const stored = userId ? loadStoredProfile(userId) : null;
-  if (stored?.resumeTemplateBase64?.trim() && stored.resumeTemplateFileName?.trim()) {
+  if (
+    stored?.resumeTemplateFileName?.trim() &&
+    (stored.resumeTemplateId?.trim() || stored.resumeTemplateBase64?.trim())
+  ) {
     return {
       fileName: stored.resumeTemplateFileName,
       templateBase64: stored.resumeTemplateBase64,
+      templateId: stored.resumeTemplateId,
     };
   }
   return null;
@@ -106,15 +116,6 @@ function base64ToBlob(base64: string, mime: string): Blob {
   return new Blob([bytes], { type: mime });
 }
 
-function downloadBlob(blob: Blob, downloadName: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = downloadName;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 export default function ResumeGenerator({
   userTemplate,
   userPrompt,
@@ -135,7 +136,7 @@ export default function ResumeGenerator({
 
   const activeTemplate = useMemo(
     () => resolveActiveUserTemplate(user?.id, userTemplate),
-    [user?.id, userTemplate?.fileName, userTemplate?.templateBase64]
+    [user?.id, userTemplate?.fileName, userTemplate?.templateBase64, userTemplate?.templateId]
   );
 
   const [form, setForm] = useState({
@@ -681,12 +682,27 @@ export default function ResumeGenerator({
     abortRef.current = controller;
     syncKeywordsCacheKey();
 
-    const templateForRequest = resolveActiveUserTemplate(user?.id, activeTemplate)!;
+    let templateForRequest = resolveActiveUserTemplate(user?.id, activeTemplate)!;
 
     try {
       setDocxBase64("");
       setFileName("");
       setStep("review");
+
+      // Content prep still needs template bytes until backend owns Create content end-to-end.
+      if (!templateForRequest.templateBase64?.trim()) {
+        const remote = await profileApi.fetchResumeTemplate();
+        templateForRequest = {
+          fileName: remote.fileName || templateForRequest.fileName,
+          templateBase64: remote.templateBase64,
+          templateId: remote.templateId || templateForRequest.templateId,
+        };
+        if (!templateForRequest.templateBase64?.trim()) {
+          throw new Error(
+            "Resume template bytes are unavailable. Re-upload your template on the dashboard."
+          );
+        }
+      }
 
       // Prefer a just-uploaded local prompt when the profile API still returns a stale copy.
       const resolved = await resolveWritingPrompt(user.id, form.customPrompt);
@@ -849,37 +865,20 @@ export default function ResumeGenerator({
     }
   }
 
-  async function submitResumeArchive(docxB64: string, resumeFileName: string) {
-    if (!docxB64 || !resumeFileName) return;
-    setArchiving(true);
-    setArchiveError("");
-    setPdfBase64("");
-    setPdfFileName("");
-    setArchiveId(null);
-
+  /** Retry backend render using the latest edited draft (no FE DOCX rebuild). */
+  async function submitResumeArchive(_ignoredDocx?: string, _ignoredName?: string) {
+    if (!content) return;
     try {
-      const { archiveResume } = await import("@/lib/resume-archive");
-      const { notifyTodaysResumeCountChanged } = await import("@/lib/todays-resume-count");
-      const DOCX_MIME =
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-      const result = await archiveResume({
-        jobTitle: content ? extractResumeTitleHeadline(content.title) : form.jobTitle,
-        companyName: form.companyName,
-        jobDescription: form.jobDescription,
-        docxBlob: base64ToBlob(docxB64, DOCX_MIME),
-        fileName: resumeFileName,
-      });
-      setPdfBase64(result.pdfBase64);
-      setPdfFileName(result.pdfFileName);
-      setArchiveId(result.id ?? null);
-      notifyTodaysResumeCountChanged();
+      await applyDraftToResume(content);
     } catch (err) {
       setArchiveError(resumeBuilderAccessDeniedMessage(err));
-    } finally {
-      setArchiving(false);
     }
   }
 
+  /**
+   * Apply / Render — backend owns DOCX fill + PDF conversion + storage.
+   * Frontend only sends content + template id and then previews/downloads stored files.
+   */
   async function applyDraftToResume(
     draft: GeneratedResumeContent,
     jobOverride?: {
@@ -899,6 +898,9 @@ export default function ResumeGenerator({
     if (!templateForRequest) {
       throw new Error("Upload a resume template on your dashboard before generating.");
     }
+    if (!templateForRequest.templateId?.trim() && !templateForRequest.templateBase64?.trim()) {
+      throw new Error("Upload a resume template on your dashboard before generating.");
+    }
 
     const jobTitle = jobOverride?.jobTitle?.trim() || form.jobTitle;
     const companyName = jobOverride?.companyName?.trim() || form.companyName;
@@ -906,59 +908,78 @@ export default function ResumeGenerator({
     const customPrompt = jobOverride?.customPrompt?.trim() || form.customPrompt;
 
     setApplying(true);
+    setArchiving(true);
     setError("");
     setArchiveError("");
+    setPdfBase64("");
+    setPdfFileName("");
+    setArchiveId(null);
+    setDocxBase64("");
+
     try {
-      const built = await buildResumeDocx({
-        templateName: templateForRequest.fileName,
-        templateBase64: templateForRequest.templateBase64,
+      const rendered = await renderResumeOnBackend({
+        templateId: templateForRequest.templateId,
+        templateBase64: templateForRequest.templateId
+          ? undefined
+          : templateForRequest.templateBase64,
+        templateFileName: templateForRequest.fileName,
         content: draft,
+        jobTitle: extractResumeTitleHeadline(draft.title) || jobTitle,
+        companyName,
+        jobDescription,
         customPrompt,
         resumeFileBaseName: resumeFileBaseName.trim(),
         profileName: chatProfile?.fullName,
+        resumeId: undefined,
       });
 
-      setDocxBase64(built.docxBase64);
-      setFileName(built.fileName);
+      setFileName(rendered.fileName);
+      setPdfFileName(rendered.pdfFileName);
+      setArchiveId(rendered.archiveId);
+      // Marker so the success banner still appears (legacy state name).
+      setDocxBase64("backend-rendered");
       setStep("done");
       setAtsModalOpen(false);
+
+      let nextPdfBase64 = rendered.pdfBase64 ?? "";
+      try {
+        const pdf = await fetchRenderedPdf(rendered.archiveId, rendered.pdfFileName);
+        const buffer = await pdf.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+        nextPdfBase64 = btoa(binary);
+        setPdfFileName(pdf.fileName || rendered.pdfFileName);
+      } catch {
+        // Fall back to inline pdfBase64 from render response when file GET is delayed.
+        if (!nextPdfBase64) {
+          throw new Error("Rendered PDF is not available from the backend yet.");
+        }
+      }
+
+      setPdfBase64(nextPdfBase64);
       setPreviewOpen(true);
       void import("@/components/ui/PdfPreviewModal");
+
       if (RESUME_SCORE_SYSTEM_ENABLED) {
         void evaluateResumeScores(draft, { openModal: false });
       }
 
-      setArchiving(true);
-      try {
-        const { archiveResume } = await import("@/lib/resume-archive");
-        const { notifyTodaysResumeCountChanged } = await import("@/lib/todays-resume-count");
-        const DOCX_MIME =
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-        const archive = await archiveResume({
-          jobTitle: extractResumeTitleHeadline(draft.title) || jobTitle,
-          companyName,
-          jobDescription,
-          docxBlob: base64ToBlob(built.docxBase64, DOCX_MIME),
-          fileName: built.fileName,
-        });
-        setPdfBase64(archive.pdfBase64);
-        setPdfFileName(archive.pdfFileName);
-        setArchiveId(archive.id ?? null);
-        notifyTodaysResumeCountChanged();
-        return {
-          docxBase64: built.docxBase64,
-          fileName: built.fileName,
-          pdfBase64: archive.pdfBase64,
-          pdfFileName: archive.pdfFileName,
-          archiveId: archive.id,
-        };
-      } catch (err) {
-        setArchiveError(resumeBuilderAccessDeniedMessage(err));
-        throw err;
-      } finally {
-        setArchiving(false);
-      }
+      const { notifyTodaysResumeCountChanged } = await import("@/lib/todays-resume-count");
+      notifyTodaysResumeCountChanged();
+
+      return {
+        docxBase64: rendered.docxBase64 || "backend-rendered",
+        fileName: rendered.fileName,
+        pdfBase64: nextPdfBase64,
+        pdfFileName: rendered.pdfFileName,
+        archiveId: rendered.archiveId,
+      };
+    } catch (err) {
+      setArchiveError(resumeBuilderAccessDeniedMessage(err));
+      throw err;
     } finally {
+      setArchiving(false);
       setApplying(false);
     }
   }
@@ -973,16 +994,42 @@ export default function ResumeGenerator({
   }
 
   function handleDownloadPdf() {
+    // Downloads must come from backend-stored files (Here / Remote chooser).
     if (!archiveId) {
-      if (!pdfBlob) return;
-      downloadBlob(
-        pdfBlob,
-        pdfFileName || fileName.replace(/\.docx$/i, ".pdf") || "resume.pdf"
-      );
+      setDownloadFeedback({
+        tone: "err",
+        text: "Render the resume first so the backend can store the PDF.",
+      });
       return;
     }
     setDownloadFeedback(null);
     setDownloadChooserOpen(true);
+  }
+
+  async function handlePreviewPdf() {
+    if (!archiveId) {
+      if (pdfBlob) {
+        setPreviewOpen(true);
+        void import("@/components/ui/PdfPreviewModal");
+      }
+      return;
+    }
+    setPreviewOpen(true);
+    void import("@/components/ui/PdfPreviewModal");
+    try {
+      const pdf = await fetchRenderedPdf(
+        archiveId,
+        pdfFileName || fileName.replace(/\.docx$/i, ".pdf")
+      );
+      const buffer = await pdf.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      let binary = "";
+      for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+      setPdfBase64(btoa(binary));
+      setPdfFileName(pdf.fileName || pdfFileName);
+    } catch (err) {
+      setArchiveError(resumeBuilderAccessDeniedMessage(err));
+    }
   }
 
   function handleStartOver() {
@@ -1033,7 +1080,7 @@ export default function ResumeGenerator({
     [regenerateChanges]
   );
 
-  const canPreviewPdf = !!pdfBlob && !archiving;
+  const canPreviewPdf = (!!pdfBlob || !!archiveId) && !archiving;
 
   const showReview = step !== "form" && (Boolean(content) || generating || Boolean(streamOutput));
   const showStructuredReview = Boolean(content) && !generating;
@@ -1336,10 +1383,7 @@ export default function ResumeGenerator({
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      setPreviewOpen(true);
-                      void import("@/components/ui/PdfPreviewModal");
-                    }}
+                    onClick={() => void handlePreviewPdf()}
                     disabled={!canPreviewPdf && !archiving}
                     className="px-4 py-2 rounded-xl text-sm font-semibold bg-white dark:bg-white/10 border border-green-500/20 text-green-800 dark:text-green-200 hover:bg-green-50 dark:hover:bg-white/[0.08] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -1348,7 +1392,7 @@ export default function ResumeGenerator({
                   <button
                     type="button"
                     onClick={handleDownloadPdf}
-                    disabled={(!pdfBlob && !archiveId) || archiving}
+                    disabled={!archiveId || archiving}
                     className="px-4 py-2 rounded-xl text-sm font-semibold bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-green-600/20 transition-all"
                   >
                     Download

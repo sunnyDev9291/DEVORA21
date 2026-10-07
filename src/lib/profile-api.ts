@@ -7,7 +7,10 @@ import type { ProfileListingUrls, User } from "@/types/auth";
 
 export type UserResumeTemplateAsset = {
   fileName: string;
-  templateBase64: string;
+  /** Optional local/cache bytes for template preview + transitional content prep. */
+  templateBase64?: string;
+  /** Backend-stored template id — required for authoritative render. */
+  templateId?: string;
 };
 
 export type UserPromptAsset = {
@@ -256,14 +259,20 @@ export const profileApi = {
       fileName?: string;
       resumeTemplateFileName?: string;
       templateBase64?: string;
+      templateId?: string;
+      resumeTemplateId?: string;
+      id?: string;
     }>("/auth/profile/resume-template");
 
     const fileName = data.fileName || data.resumeTemplateFileName || "resume.docx";
-    const templateBase64 = String(data.templateBase64 ?? "");
-    if (!templateBase64) {
+    const templateBase64 = String(data.templateBase64 ?? "").trim() || undefined;
+    const templateId =
+      String(data.templateId ?? data.resumeTemplateId ?? data.id ?? "").trim() || undefined;
+
+    if (!templateId && !templateBase64) {
       throw new ApiError("Resume template data missing.", 404);
     }
 
-    return { fileName, templateBase64 };
+    return { fileName, templateBase64, templateId };
   },
 };

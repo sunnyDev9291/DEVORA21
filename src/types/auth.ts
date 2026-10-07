@@ -13,6 +13,8 @@ export interface User {
   onboardingCompleted?: boolean;
   resumeBuilderEnabled?: boolean;
   resumeTemplateFileName?: string;
+  /** Backend-stored template id — source of truth for render. */
+  resumeTemplateId?: string;
   promptFileName?: string;
   /** Per-user job crawl settings (listing URLs; Himalayas stores country name). */
   listingUrls?: ProfileListingUrls;

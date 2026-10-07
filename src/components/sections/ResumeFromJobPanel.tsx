@@ -25,6 +25,8 @@ import { resolveResumeChatContent } from "@/lib/resume-chat-prompt";
 import type { GeneratedResumeContent } from "@/lib/resume-types";
 import type { ResumeWorkspaceFabActions } from "@/components/ui/ResumeWorkspaceFabs";
 import { resolveWritingPrompt } from "@/lib/writing-prompt";
+import { fetchRenderedPdf } from "@/lib/resume-render-api";
+import { resumeBuilderAccessDeniedMessage } from "@/lib/resume-access";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
 const ResumeChatDialog = dynamic(() => import("@/components/ui/ResumeChatDialog"));
@@ -40,15 +42,6 @@ function base64ToBlob(base64: string, mime: string): Blob {
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
   return new Blob([bytes], { type: mime });
-}
-
-function downloadBlob(blob: Blob, fileName: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = fileName;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 interface ResumeFromJobPanelProps {
@@ -433,13 +426,42 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
 
   function handleDownloadPdf() {
     const id = result?.id?.trim();
-    if (id) {
-      setDownloadFeedback(null);
-      setDownloadChooserOpen(true);
+    if (!id) {
+      setDownloadFeedback({
+        tone: "err",
+        text: "Backend archive id missing — cannot download stored PDF yet.",
+      });
       return;
     }
-    if (!pdfBlob || !result) return;
-    downloadBlob(pdfBlob, result.pdfFileName || "resume.pdf");
+    setDownloadFeedback(null);
+    setDownloadChooserOpen(true);
+  }
+
+  async function handlePreviewPdf() {
+    const id = result?.id?.trim();
+    setPreviewOpen(true);
+    if (!id) return;
+    try {
+      const pdf = await fetchRenderedPdf(id, result?.pdfFileName);
+      const buffer = await pdf.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      let binary = "";
+      for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+      setResult((prev) =>
+        prev
+          ? {
+              ...prev,
+              pdfBase64: btoa(binary),
+              pdfFileName: pdf.fileName || prev.pdfFileName,
+            }
+          : prev
+      );
+    } catch (err) {
+      setDownloadFeedback({
+        tone: "err",
+        text: resumeBuilderAccessDeniedMessage(err),
+      });
+    }
   }
 
   return (
@@ -504,7 +526,7 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
             warning={result?.warning || job.warning}
             downloadUrl={pdfDownloadUrl}
             downloadFileName={result?.pdfFileName || "resume.pdf"}
-            onPreview={pdfBlob ? () => setPreviewOpen(true) : undefined}
+            onPreview={pdfBlob || result?.id ? () => void handlePreviewPdf() : undefined}
           />
         </div>
       ) : null}
@@ -515,7 +537,7 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
             <Button type="button" onClick={handleDownloadPdf}>
               Download
             </Button>
-            <Button type="button" variant="secondary" onClick={() => setPreviewOpen(true)}>
+            <Button type="button" variant="secondary" onClick={() => void handlePreviewPdf()}>
               Preview PDF
             </Button>
             <Button

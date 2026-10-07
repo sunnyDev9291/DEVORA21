@@ -1,0 +1,221 @@
+# Backend Cursor Prompt — Resume template storage + authoritative Render pipeline
+
+Copy everything below to the backend agent/developer.
+
+================================================================================
+GOAL
+================================================================================
+
+Devora21 frontend no longer builds tailored DOCX/PDF files.
+
+The backend must be the single source of truth for:
+
+1. Stored resume templates (upload → templateId)
+2. Applying structured resume content onto a stored template
+3. Generating DOCX
+4. Converting DOCX → PDF
+5. Persisting DOCX + PDF + metadata relationships
+6. Serving Preview and Download from stored files
+
+Frontend responsibilities (already implemented):
+
+- Upload template via multipart profile APIs
+- Create/edit structured resume content (review UI)
+- Call POST /resume/render with content + templateId
+- Preview PDF via GET /resume/archives/{id}/pdf
+- Download DOCX/PDF via existing archive/deliver endpoints
+- One-shot still uses POST /resume/from-job (must reuse the SAME render pipeline)
+
+Frontend API base: https://api.devora21.com (or NEXT_PUBLIC_API_BASE_URL)
+Auth: session cookie and/or Bearer dv21_ key (same as other resume routes)
+
+================================================================================
+CURRENT FRONTEND CONTRACT (implemented on FE)
+================================================================================
+
+A) Template upload (existing multipart, extend response)
+
+- PATCH /auth/profile  (multipart field: resumeTemplate)
+- POST /auth/onboarding (multipart field: resumeTemplate)
+- GET /auth/profile/resume-template
+
+REQUIRED response fields (add if missing):
+
+{
+  "resumeTemplateId": "<uuid-or-stable-id>",
+  "resumeTemplateFileName": "Franco.docx"
+}
+
+GET /auth/profile/resume-template should return:
+
+{
+  "templateId": "<same id>",
+  "fileName": "Franco.docx",
+  "templateBase64": "<optional; still useful for content-prep / template preview>"
+}
+
+Store the original DOCX bytes keyed by templateId + userId.
+Do not rely on the frontend to keep the only copy.
+
+B) Render (NEW — required)
+
+POST /resume/render
+Content-Type: application/json
+Credentials: include
+
+Request body:
+
+{
+  "templateId": "tpl_...",                 // preferred
+  "templateBase64": "...",                 // transitional fallback ONLY if templateId missing
+  "templateFileName": "Franco.docx",
+  "content": {                             // GeneratedResumeContent JSON
+    "title": "...",
+    "summary": "...",
+    "skills": "...",
+    "layout": "bullets" | "projects",
+    "fileName": "optional",
+    "experiences": [
+      {
+        "company": "...",
+        "role": "...",
+        "dates": "...",
+        "location": "optional",
+        "bullets": ["..."],
+        "projects": []
+      }
+    ]
+  },
+  "jobTitle": "...",
+  "companyName": "...",
+  "jobDescription": "...",
+  "customPrompt": "optional",
+  "resumeFileBaseName": "optional",
+  "profileName": "optional",
+  "resumeId": "optional-for-re-render"
+}
+
+Success response (200):
+
+{
+  "resumeId": "res_...",
+  "archiveId": "arc_...",          // MUST be the id used by /resume/archives/{id}/pdf|docx
+  "templateId": "tpl_...",
+  "fileName": "Name-Company-Role.docx",
+  "pdfFileName": "Name-Company-Role.pdf",
+  "status": "done",
+  "pdfBase64": "optional convenience"
+}
+
+Errors: 400 validation, 401/403 auth/access, 404 missing template, 500 render failure.
+JSON body: { "error": "..." } or { "message": "..." }
+
+C) Preview / Download (existing archive file routes — keep)
+
+- GET /resume/archives/{archiveId}/pdf
+- GET /resume/archives/{archiveId}/docx
+
+These MUST return the exact files saved during /resume/render (no rebuild).
+
+Deliver / remote download endpoints that already use archive ids must keep working.
+
+D) One-click / from-job
+
+POST /resume/from-job + poll GET /resume/from-job/{jobId}
+
+When filling/rendering, call the SAME internal render pipeline used by /resume/render
+(load stored user template by templateId → fill → save DOCX → PDF → save → link ids).
+
+Do not maintain a second incompatible DOCX filler for from-job.
+
+================================================================================
+RENDER PIPELINE (single authoritative implementation)
+================================================================================
+
+function renderResume(userId, templateId|bytes, content, jobMeta):
+
+1. Authenticate user; enforce resume-builder access.
+2. Load template DOCX:
+   - if templateId: load stored original for this user
+   - else if templateBase64: decode (transitional) and optionally persist as template
+3. Validate/normalize content (title/summary/skills/experiences required).
+4. Apply content onto template DOCX (preserve contact/header/layout; rewrite content sections).
+   IMPORTANT: Port or share logic equivalent to frontend `applyContentToDocx` so
+   bold title/experience headers, skills style, project vs bullets layouts stay correct.
+5. Save generated DOCX on backend storage.
+6. Convert DOCX → PDF (LibreOffice/soffice headless or current production converter).
+7. Save generated PDF on backend storage.
+8. Persist relationship:
+   - userId
+   - templateId
+   - resumeId / archiveId
+   - jobTitle, companyName, jobDescription
+   - docx path/key + fileName
+   - pdf path/key + pdfFileName
+   - createdAt / updatedAt
+9. Return ids + file metadata (and optional pdfBase64 for first paint).
+
+Both:
+- POST /resume/render
+- /resume/from-job fill+render steps
+
+MUST call this same pipeline.
+
+================================================================================
+TEMPLATE STORAGE
+================================================================================
+
+Suggested model:
+
+resume_templates
+- id (templateId)
+- user_id
+- file_name
+- storage_key / path
+- created_at
+- updated_at
+
+On multipart upload of resumeTemplate:
+- store original bytes
+- set user's active resumeTemplateId
+- return resumeTemplateId in profile response
+
+================================================================================
+UX PARITY NOTES (do not change product behavior)
+================================================================================
+
+Step-by-step UI still shows:
+- Generate → review/edit content
+- "Apply to resume" / "Re-apply changes" → now calls POST /resume/render
+- "View PDF" → GET archives/{id}/pdf
+- "Download" → Here/Remote chooser using archiveId
+
+One-shot UI still shows progress steps including Fill DOCX / Render PDF.
+Those steps must map to the shared backend pipeline.
+
+================================================================================
+MIGRATION / COMPATIBILITY
+================================================================================
+
+- Keep POST /resume/archive working for a short time if needed, but FE Apply no longer
+  uploads a FE-built DOCX for the happy path.
+- Accept templateBase64 on /resume/render until all clients send templateId.
+- Prefer templateId whenever present.
+- Existing saved archives listing endpoints remain unchanged.
+
+================================================================================
+ACCEPTANCE CHECKLIST
+================================================================================
+
+[ ] Upload template → profile returns resumeTemplateId; GET resume-template includes templateId
+[ ] POST /resume/render with templateId + content creates stored DOCX + PDF
+[ ] GET /resume/archives/{id}/pdf returns that PDF (same bytes every time)
+[ ] GET /resume/archives/{id}/docx returns that DOCX (same bytes every time)
+[ ] Re-apply/render updates stored files for the resume (or creates a new archive version)
+[ ] /resume/from-job uses the same fill/PDF pipeline (no divergent filler)
+[ ] No dependency on Next.js /api/resume/build for production Apply/Render
+[ ] Auth + resumeBuilderEnabled gates match other resume endpoints
+
+================================================================================
+END
+================================================================================
