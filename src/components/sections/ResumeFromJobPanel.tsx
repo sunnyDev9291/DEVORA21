@@ -443,7 +443,7 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
     if (!id) return;
     try {
       const pdf = await fetchRenderedPdf(id, result?.pdfFileName);
-      const buffer = await pdf.arrayBuffer();
+      const buffer = await pdf.blob.arrayBuffer();
       const bytes = new Uint8Array(buffer);
       let binary = "";
       for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);

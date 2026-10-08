@@ -944,7 +944,7 @@ export default function ResumeGenerator({
       let nextPdfBase64 = rendered.pdfBase64 ?? "";
       try {
         const pdf = await fetchRenderedPdf(rendered.archiveId, rendered.pdfFileName);
-        const buffer = await pdf.arrayBuffer();
+        const buffer = await pdf.blob.arrayBuffer();
         const bytes = new Uint8Array(buffer);
         let binary = "";
         for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
@@ -1021,7 +1021,7 @@ export default function ResumeGenerator({
         archiveId,
         pdfFileName || fileName.replace(/\.docx$/i, ".pdf")
       );
-      const buffer = await pdf.arrayBuffer();
+      const buffer = await pdf.blob.arrayBuffer();
       const bytes = new Uint8Array(buffer);
       let binary = "";
       for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
