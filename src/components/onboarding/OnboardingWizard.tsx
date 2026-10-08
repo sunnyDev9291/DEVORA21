@@ -389,7 +389,7 @@ export default function OnboardingWizard({ user }: OnboardingWizardProps) {
 
 
     if (resumeTemplateFile) {
-      let templateId = onboardedUser?.resumeTemplateId;
+      let templateId = onboardedUser?.data.resumeTemplateId;
       if (!templateId) {
         const remote = await profileApi.fetchResumeTemplate().catch(() => null);
         templateId = remote?.templateId;
