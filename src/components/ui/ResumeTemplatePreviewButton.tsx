@@ -1,16 +1,20 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { profileApi } from "@/lib/profile-api";
 import { base64ToDocxBlob } from "@/lib/profile-file";
 import { downloadBlob } from "@/lib/saved-resumes-api";
 
 const DocxPreviewModal = dynamic(() => import("@/components/ui/DocxPreviewModal"), { ssr: false });
+const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
 
 type ResumeTemplatePreviewButtonProps = {
   fileName: string;
   templateBase64?: string | null;
   templateFile?: File | null;
+  /** When set, preview uses backend DOCX→PDF for near-Word fidelity. */
+  templateId?: string | null;
   className?: string;
   size?: "sm" | "md";
 };
@@ -25,23 +29,65 @@ export default function ResumeTemplatePreviewButton({
   fileName,
   templateBase64,
   templateFile,
+  templateId,
   className = "",
   size = "md",
 }: ResumeTemplatePreviewButtonProps) {
   const [open, setOpen] = useState(false);
+  const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
+  const [pdfFileName, setPdfFileName] = useState("resume-template.pdf");
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState("");
+  const [preferDocxFallback, setPreferDocxFallback] = useState(false);
 
-  const blob = useMemo(() => {
+  const docxBlob = useMemo(() => {
     if (templateFile) return templateFile;
     if (templateBase64?.trim()) return base64ToDocxBlob(templateBase64);
     return null;
   }, [templateFile, templateBase64]);
 
   const downloadName = resolveDownloadName(fileName);
-  const canPreview = Boolean(blob);
+  const canPreview = Boolean(docxBlob || templateId?.trim());
+  const usePdfPreview = Boolean(pdfBlob) && !preferDocxFallback;
   const sizeClass =
     size === "sm"
       ? "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs"
       : "inline-flex items-center gap-2 px-4 py-2 text-sm";
+
+  useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+    setPreferDocxFallback(false);
+    setPdfError("");
+
+    // Prefer backend PDF conversion so preview matches the real Word layout.
+    (async () => {
+      setPdfLoading(true);
+      try {
+        const pdf = await profileApi.fetchResumeTemplatePreviewPdf(templateId ?? undefined);
+        if (cancelled) return;
+        setPdfBlob(pdf.blob);
+        setPdfFileName(pdf.fileName);
+      } catch (err) {
+        if (cancelled) return;
+        setPdfBlob(null);
+        // Fall back to HTML docx-preview only when PDF endpoint is unavailable.
+        if (docxBlob) {
+          setPreferDocxFallback(true);
+          setPdfError("");
+        } else {
+          setPdfError((err as Error).message || "Could not load template preview.");
+        }
+      } finally {
+        if (!cancelled) setPdfLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, templateId, docxBlob]);
 
   return (
     <>
@@ -58,18 +104,38 @@ export default function ResumeTemplatePreviewButton({
         View template
       </button>
 
-      <DocxPreviewModal
-        open={open}
-        onClose={() => setOpen(false)}
-        title={downloadName}
-        subtitle="Your uploaded resume template"
-        blob={blob}
-        fileName={downloadName}
-        onDownload={() => {
-          if (!blob) return;
-          downloadBlob(blob, downloadName);
-        }}
-      />
+      {usePdfPreview || (open && (pdfLoading || pdfError) && !preferDocxFallback) ? (
+        <PdfPreviewModal
+          open={open}
+          onClose={() => setOpen(false)}
+          title={downloadName}
+          subtitle="Template preview · backend PDF (matches Word closely)"
+          fileName={pdfFileName}
+          blob={pdfBlob}
+          waitingForPdf={pdfLoading}
+          error={pdfError}
+          onDownload={() => {
+            if (docxBlob) {
+              downloadBlob(docxBlob, downloadName);
+              return;
+            }
+            if (pdfBlob) downloadBlob(pdfBlob, pdfFileName);
+          }}
+        />
+      ) : (
+        <DocxPreviewModal
+          open={open}
+          onClose={() => setOpen(false)}
+          title={downloadName}
+          subtitle="Your uploaded resume template · browser HTML preview (approximate)"
+          blob={docxBlob}
+          fileName={downloadName}
+          onDownload={() => {
+            if (!docxBlob) return;
+            downloadBlob(docxBlob, downloadName);
+          }}
+        />
+      )}
     </>
   );
 }

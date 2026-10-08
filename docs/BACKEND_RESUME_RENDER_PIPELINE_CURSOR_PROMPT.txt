@@ -57,6 +57,23 @@ GET /auth/profile/resume-template should return:
 Store the original DOCX bytes keyed by templateId + userId.
 Do not rely on the frontend to keep the only copy.
 
+A2) Template PDF preview (NEW — required for WYSIWYG "View template")
+
+Browser HTML docx-preview cannot match Word. Frontend now prefers a backend PDF.
+
+Implement ONE of:
+
+  GET /auth/profile/resume-template/pdf
+  GET /resume/templates/{templateId}/pdf
+
+Behavior:
+1. Load the user's stored original template DOCX
+2. Convert DOCX → PDF with the same converter used by /resume/render (LibreOffice)
+3. Return application/pdf bytes (or JSON { pdfBase64, pdfFileName })
+
+Do NOT re-fill/analyze content — convert the original template file as-is.
+Cache the PDF per templateId+updatedAt if useful.
+
 B) Render (NEW — required)
 
 POST /resume/render
@@ -208,6 +225,7 @@ ACCEPTANCE CHECKLIST
 ================================================================================
 
 [ ] Upload template → profile returns resumeTemplateId; GET resume-template includes templateId
+[ ] GET /auth/profile/resume-template/pdf (or /resume/templates/{id}/pdf) returns PDF of original template as-is
 [ ] POST /resume/render with templateId + content creates stored DOCX + PDF
 [ ] GET /resume/archives/{id}/pdf returns that PDF (same bytes every time)
 [ ] GET /resume/archives/{id}/docx returns that DOCX (same bytes every time)

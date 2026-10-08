@@ -275,4 +275,85 @@ export const profileApi = {
 
     return { fileName, templateBase64, templateId };
   },
+
+  /**
+   * WYSIWYG template preview: backend converts the stored DOCX → PDF (LibreOffice).
+   * Prefer this over in-browser docx-preview HTML, which cannot match Word 1:1.
+   *
+   * Tries:
+   *   GET /auth/profile/resume-template/pdf
+   *   GET /resume/templates/{templateId}/pdf
+   */
+  async fetchResumeTemplatePreviewPdf(templateId?: string): Promise<{
+    blob: Blob;
+    fileName: string;
+  }> {
+    const candidates = [
+      "/auth/profile/resume-template/pdf",
+      ...(templateId?.trim()
+        ? [`/resume/templates/${encodeURIComponent(templateId.trim())}/pdf`]
+        : []),
+    ];
+
+    let lastError: Error | null = null;
+    for (const path of candidates) {
+      try {
+        const res = await profileFetch(path, { method: "GET" });
+        const contentType = res.headers.get("content-type") ?? "";
+
+        if (!res.ok) {
+          if (isUnavailableStatus(res.status)) {
+            lastError = new ApiError(`Template PDF preview unavailable (${res.status}).`, res.status);
+            continue;
+          }
+          const data = await parseJson<{ message?: string; error?: string }>(res);
+          throw new ApiError(
+            data?.message || data?.error || `Template PDF preview failed (${res.status}).`,
+            res.status
+          );
+        }
+
+        if (!contentType.includes("application/pdf") && !contentType.includes("octet-stream")) {
+          // Some backends wrap JSON { pdfBase64 } — support that too.
+          if (contentType.includes("application/json")) {
+            const data = await parseJson<{
+              pdfBase64?: string;
+              fileName?: string;
+              pdfFileName?: string;
+            }>(res);
+            const b64 = String(data?.pdfBase64 ?? "").trim();
+            if (!b64) {
+              lastError = new ApiError("Template PDF preview missing pdfBase64.", 502);
+              continue;
+            }
+            const binary = atob(b64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+            return {
+              blob: new Blob([bytes], { type: "application/pdf" }),
+              fileName:
+                data?.pdfFileName ||
+                data?.fileName ||
+                "resume-template.pdf",
+            };
+          }
+          lastError = new ApiError("Template preview response was not a PDF.", 502);
+          continue;
+        }
+
+        const blob = await res.blob();
+        const disposition = res.headers.get("content-disposition") ?? "";
+        const named =
+          disposition.match(/filename="?([^"]+)"?/i)?.[1]?.trim() || "resume-template.pdf";
+        return { blob, fileName: named };
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        if (err instanceof ApiError && !isUnavailableStatus(err.status)) {
+          throw err;
+        }
+      }
+    }
+
+    throw lastError ?? new ApiError("Template PDF preview is not available yet.", 501);
+  },
 };

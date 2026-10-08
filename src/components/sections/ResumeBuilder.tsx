@@ -73,6 +73,7 @@ export default function ResumeBuilder() {
                 <ResumeTemplatePreviewButton
                   fileName={template.fileName}
                   templateBase64={template.templateBase64}
+                  templateId={template.templateId}
                   className="shrink-0 self-start"
                 />
               </div>

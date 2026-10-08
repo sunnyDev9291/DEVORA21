@@ -633,6 +633,7 @@ export default function OnboardingWizard({ user }: OnboardingWizardProps) {
                 <ResumeTemplatePreviewButton
                   fileName={resumeTemplateFile.name}
                   templateFile={resumeTemplateFile}
+                  templateId={user.resumeTemplateId}
                   size="sm"
                 />
               )}

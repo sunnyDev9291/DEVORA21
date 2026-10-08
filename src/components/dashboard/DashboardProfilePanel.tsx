@@ -446,6 +446,9 @@ export default function DashboardProfilePanel({ user, onProfileUpdated }: Dashbo
               templateBase64={
                 resumeTemplateFile ? undefined : loadStoredProfile(user.id).resumeTemplateBase64
               }
+              templateId={
+                resumeTemplateFile ? undefined : loadStoredProfile(user.id).resumeTemplateId
+              }
               size="sm"
             />
           </div>
