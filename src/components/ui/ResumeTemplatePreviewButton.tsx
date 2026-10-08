@@ -13,7 +13,7 @@ type ResumeTemplatePreviewButtonProps = {
   fileName: string;
   templateBase64?: string | null;
   templateFile?: File | null;
-  /** When set, preview uses backend DOCX→PDF for near-Word fidelity. */
+  /** When set (and no pending local file), preview uses backend DOCX→PDF. */
   templateId?: string | null;
   className?: string;
   size?: "sm" | "md";
@@ -47,8 +47,11 @@ export default function ResumeTemplatePreviewButton({
   }, [templateFile, templateBase64]);
 
   const downloadName = resolveDownloadName(fileName);
-  const canPreview = Boolean(docxBlob || templateId?.trim());
-  const usePdfPreview = Boolean(pdfBlob) && !preferDocxFallback;
+  // A freshly picked File must never be replaced by the server's previously stored template PDF.
+  const hasPendingLocalFile = Boolean(templateFile);
+  const canUseBackendPdf = Boolean(templateId?.trim()) && !hasPendingLocalFile;
+  const canPreview = Boolean(docxBlob || canUseBackendPdf);
+  const usePdfPreview = canUseBackendPdf && Boolean(pdfBlob) && !preferDocxFallback;
   const sizeClass =
     size === "sm"
       ? "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs"
@@ -60,8 +63,17 @@ export default function ResumeTemplatePreviewButton({
     let cancelled = false;
     setPreferDocxFallback(false);
     setPdfError("");
+    setPdfBlob(null);
 
-    // Prefer backend PDF conversion so preview matches the real Word layout.
+    // Pending local upload → show that DOCX only (backend still has the old template).
+    if (hasPendingLocalFile || !canUseBackendPdf) {
+      setPdfLoading(false);
+      setPreferDocxFallback(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     (async () => {
       setPdfLoading(true);
       try {
@@ -72,7 +84,6 @@ export default function ResumeTemplatePreviewButton({
       } catch (err) {
         if (cancelled) return;
         setPdfBlob(null);
-        // Fall back to HTML docx-preview only when PDF endpoint is unavailable.
         if (docxBlob) {
           setPreferDocxFallback(true);
           setPdfError("");
@@ -87,7 +98,7 @@ export default function ResumeTemplatePreviewButton({
     return () => {
       cancelled = true;
     };
-  }, [open, templateId, docxBlob]);
+  }, [open, templateId, docxBlob, hasPendingLocalFile, canUseBackendPdf]);
 
   return (
     <>
@@ -104,12 +115,12 @@ export default function ResumeTemplatePreviewButton({
         View template
       </button>
 
-      {usePdfPreview || (open && (pdfLoading || pdfError) && !preferDocxFallback) ? (
+      {usePdfPreview || (open && canUseBackendPdf && (pdfLoading || pdfError) && !preferDocxFallback) ? (
         <PdfPreviewModal
           open={open}
           onClose={() => setOpen(false)}
           title={downloadName}
-          subtitle="Template preview · backend PDF (matches Word closely)"
+          subtitle="Template preview · backend PDF (stored template)"
           fileName={pdfFileName}
           blob={pdfBlob}
           waitingForPdf={pdfLoading}
@@ -127,7 +138,11 @@ export default function ResumeTemplatePreviewButton({
           open={open}
           onClose={() => setOpen(false)}
           title={downloadName}
-          subtitle="Your uploaded resume template · browser HTML preview (approximate)"
+          subtitle={
+            hasPendingLocalFile
+              ? "Selected file preview · save profile to update the stored backend template"
+              : "Your uploaded resume template · browser HTML preview (approximate)"
+          }
           blob={docxBlob}
           fileName={downloadName}
           onDownload={() => {
