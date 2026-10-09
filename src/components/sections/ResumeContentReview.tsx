@@ -177,7 +177,8 @@ export default function ResumeContentReview({
   const projectMode = isProjectLayout(content.layout);
 
   const experienceValid = (exp: ResumeExperience) => {
-    if (!exp.company.trim() || !exp.role.trim()) return false;
+    // Backend /resume/render requires non-empty dates on every experience.
+    if (!exp.company.trim() || !exp.role.trim() || !exp.dates.trim()) return false;
     if (projectMode || exp.projects?.length) {
       return (exp.projects ?? []).some(
         (p) =>
@@ -209,8 +210,8 @@ export default function ResumeContentReview({
   if (invalidExperienceIndexes.length > 0) {
     applyBlockers.push(
       invalidExperienceIndexes.length === 1
-        ? `Fill in experience #${invalidExperienceIndexes[0]} (role + bullets or projects)`
-        : `Fill in experiences #${invalidExperienceIndexes.join(", ")} (role + bullets or projects)`
+        ? `Fill in experience #${invalidExperienceIndexes[0]} (company, role, dates, and bullets/projects)`
+        : `Fill in experiences #${invalidExperienceIndexes.join(", ")} (company, role, dates, and bullets/projects)`
     );
   }
 

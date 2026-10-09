@@ -55,13 +55,15 @@ Body:
     "education": { "degree": "…", "university": "…", "period": "…" },
     "experiences": [
       {
-        "company": "…",
-        "role": "…",
-        "dates": "…",
+        "company": "…",          // required non-empty
+        "role": "…",             // required non-empty
+        "dates": "01/2020 – 03/2023",  // required non-empty (maps to company_period)
         "location": "optional",
         "bullets": ["…"]
       }
     ]
+    // Backend validation error if dates missing/empty:
+    // { "message": "Validation failed", "errors": { "content": ["experience.dates is required", ...] } }
   },
   "jobTitle": "…",
   "companyName": "…",
