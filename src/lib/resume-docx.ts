@@ -828,14 +828,15 @@ export function parseResumeHeaderFromDocxBuffer(buffer: Buffer) {
   if (!xml) throw new Error("Invalid docx: missing document.xml");
 
   const paragraphs = xml.match(/<w:p[\s\S]*?<\/w:p>/g) || [];
+  // Style-only: SUMMARY text header is optional (visual labels vary).
   const summaryIdx = findSectionIndex(paragraphs, SECTION_HEADERS.summary);
-  if (summaryIdx === -1) throw new Error("SUMMARY section not found in template.");
+  const headerEnd = summaryIdx === -1 ? Math.min(paragraphs.length, 8) : summaryIdx;
 
   let name = "";
   let title = "";
   let titleParagraphIndex = -1;
 
-  for (let i = 0; i < summaryIdx; i += 1) {
+  for (let i = 0; i < headerEnd; i += 1) {
     const text = getParagraphText(paragraphs[i]).trim();
     if (!text || isContactLine(text)) continue;
     if (!name) {
@@ -1229,10 +1230,15 @@ export function applyContentToDocx(
   const eduIdx = findSectionIndex(paragraphs, SECTION_HEADERS.education);
 
   if (summaryIdx === -1 || skillsIdx === -1 || expIdx === -1) {
-    throw new Error("Template must contain SUMMARY, SKILLS, and EXPERIENCE sections.");
+    // Legacy local fill path only. Style-only Apply uses backend POST /resume/render.
+    throw new Error(
+      "This resume template is missing required Word styles (Name, summary, skill_cat/skill_item, company_*, exp_section)."
+    );
   }
   if (summaryIdx >= skillsIdx || skillsIdx >= expIdx) {
-    throw new Error("Template sections are out of order. Expected SUMMARY → SKILLS → EXPERIENCE.");
+    throw new Error(
+      "This resume template is missing required Word styles (Name, summary, skill_cat/skill_item, company_*, exp_section)."
+    );
   }
 
   const skillTerms = extractSkillTerms(content.skills);
@@ -1360,7 +1366,10 @@ export function parseExperiencesFromDocxBuffer(buffer: Buffer) {
   const paragraphs = getDocxParagraphs(buffer);
   const expIdx = paragraphs.findIndex((p) => SECTION_HEADERS.experience.test(p.text));
   const eduIdx = paragraphs.findIndex((p) => SECTION_HEADERS.education.test(p.text));
-  if (expIdx === -1) throw new Error("EXPERIENCE section not found in template.");
+  // Style-only: missing EXPERIENCE / Work History text header is OK — return empty.
+  if (expIdx === -1) {
+    return [] as GeneratedResumeContent["experiences"];
+  }
 
   const end = eduIdx === -1 ? paragraphs.length : eduIdx;
   const experiences: GeneratedResumeContent["experiences"] = [];

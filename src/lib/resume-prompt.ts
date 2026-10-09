@@ -13,6 +13,7 @@ const BULLETS_JSON_SHAPE = `{
   "summary": "string",
   "skills": "string",
   "fileName": "string",
+  "education": { "degree": "string", "university": "string", "period": "string" },
   "experiences": [
     { "company": "string", "role": "string", "dates": "string", "location": "string", "bullets": ["string"] }
   ]
@@ -23,11 +24,13 @@ const PROJECTS_JSON_SHAPE = `{
   "summary": "string",
   "skills": "string",
   "fileName": "string",
+  "education": { "degree": "string", "university": "string", "period": "string" },
   "experiences": [
     {
       "company": "string",
       "role": "string",
       "dates": "string",
+      "location": "string",
       "projects": [
         {
           "name": "string",
@@ -57,10 +60,10 @@ export function buildResumeSystemPrompt(regenerate = false, layout: ResumeTempla
     "",
     "Technical output rules (not content style):",
     "- Use **double asterisks** around skill category labels (e.g. **Languages:**) and tech terms so Word can render bold.",
-    "- Match the template job count, companies, dates, locations, and fixed project names from the user message.",
-    "- ABSOLUTE: Writing instructions alone control skill category count, category names/order, items per category, bullet count per job, and bullet word counts. Template samples are format-only — never treat them as limits.",
-    "- Keep each job's location/workplace line when the template provides one (e.g. \"City, Region | Remote\").",
-    "- Do not invent employers or projects.",
+    "- skills MUST be one string with lines like \"**Category:** item1, item2\" (not a JSON array).",
+    "- STYLE-ONLY TEMPLATES: company, role, dates, location, and bullets/projects MUST come from Writing instructions / career history / job fit — NOT from Word section headers.",
+    "- ABSOLUTE: Writing instructions alone control skill category count, category names/order, items per category, bullet count per job, and bullet word counts.",
+    "- Include education when Writing instructions or profile imply it.",
     "- No markdown fences or commentary.",
     ...regenerateRules,
   ].join("\n");
@@ -77,9 +80,9 @@ function formatTemplateStructureLine(
   if (isProjectLayout(layout) || e.projects?.length) {
     const projects = e.projects ?? [];
     const names = projects.map((p) => `"${p.name}"`).join(", ");
-    return `${prefix} | ${projects.length} project(s), fixed names: ${names}`;
+    return `${prefix} | ${projects.length} project(s) (names/content from Writing instructions)`;
   }
-  return `${prefix} | keep company/dates/location fixed; bullet count and bullet word count follow Writing instructions only (ignore template bullet slot count)`;
+  return `${prefix} | company/role/dates/location/bullets from Writing instructions (not frozen from DOCX)`;
 }
 
 export function buildResumeUserPrompt({
@@ -110,21 +113,29 @@ export function buildResumeUserPrompt({
   const experiences = previousContent?.experiences ?? existingExperiences;
   const isRegenerate = Boolean(previousContent);
 
-  const structureBlock = [
-    `Template layout (${experiences.length} job(s) — keep company, dates, and project names fixed):`,
-    experiences.map((e, i) => formatTemplateStructureLine(e, i, layout)).join("\n"),
-    "Content rules for bullets and skills come ONLY from Writing instructions (not from template sample counts).",
-  ].join("\n");
+  const structureBlock =
+    experiences.length > 0
+      ? [
+          `Prior experience slots (${experiences.length}) — use as a count/order hint only:`,
+          experiences.map((e, i) => formatTemplateStructureLine(e, i, layout)).join("\n"),
+          "STYLE MODE: company, role, dates, location, and bullets MUST be filled from Writing instructions / career history (not frozen from a DOCX header).",
+        ].join("\n")
+      : [
+          "STYLE MODE: Template is layout/styles only — there are no frozen employers in the DOCX.",
+          "Build experiences[] from Writing instructions / career history with real company, role, dates, location, and bullets.",
+          "Choose a sensible job count from Writing instructions (typically 2–4).",
+        ].join("\n");
 
   const previousDraftBlock =
     isRegenerate && previousContent
       ? [
-          "Previous draft JSON (revise this document; keep template layout):",
+          "Previous draft JSON (revise this document):",
           JSON.stringify({
             title: previousContent.title,
             summary: previousContent.summary,
             skills: previousContent.skills,
             fileName: previousContent.fileName,
+            education: previousContent.education,
             experiences: previousContent.experiences,
           }),
         ].join("\n")
@@ -134,11 +145,16 @@ export function buildResumeUserPrompt({
   const taskBlock = task?.trim() ? `Task:\n${task.trim()}` : "";
   const writingBlock = writingInstructions?.trim()
     ? [
-        "Writing instructions (ABSOLUTE source of truth for tone, skill categories/counts/items, bullet count, bullet word count, and formatting — follow exactly; override every template sample limit):",
+        "Writing instructions (ABSOLUTE source of truth for tone, skill categories/counts/items, bullet count, bullet word count, employers/dates, and formatting — follow exactly):",
         writingInstructions.trim(),
-        "Ignore template skill line counts, sample category labels, and template bullet slot counts whenever they conflict with these Writing instructions.",
+        "Ignore DOCX visual section labels (Work History, Technical Skills, etc.) — they are not content sources.",
       ].join("\n")
     : "";
+
+  const countRule =
+    experiences.length > 0
+      ? `Prefer about ${experiences.length} experience entries unless Writing instructions specify otherwise. Valid JSON only.`
+      : "Return a non-empty experiences array. Valid JSON only.";
 
   return [
     writingBlock,
@@ -149,7 +165,7 @@ export function buildResumeUserPrompt({
     taskBlock,
     previousDraftBlock,
     structureBlock,
-    `Return exactly ${experiences.length} experience entries. Valid JSON only.`,
+    countRule,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -278,6 +294,7 @@ type LooseResumeJson = {
   summary?: unknown;
   skills?: unknown;
   fileName?: unknown;
+  education?: unknown;
   experiences?: unknown;
   experience?: unknown;
   jobTitle?: unknown;
@@ -338,6 +355,21 @@ function coerceResumePayload(parsed: unknown): GeneratedResumeContent | null {
   const skills = String(obj.skills ?? obj.skillsets ?? "").trim();
   const fileName = String(obj.fileName ?? "").trim();
 
+  let education: GeneratedResumeContent["education"];
+  if (obj.education && typeof obj.education === "object" && !Array.isArray(obj.education)) {
+    const edu = obj.education as { degree?: unknown; university?: unknown; period?: unknown };
+    const degree = String(edu.degree ?? "").trim();
+    const university = String(edu.university ?? "").trim();
+    const period = String(edu.period ?? "").trim();
+    if (degree || university || period) {
+      education = {
+        ...(degree ? { degree } : {}),
+        ...(university ? { university } : {}),
+        ...(period ? { period } : {}),
+      };
+    }
+  }
+
   // Accept partial/truncated payloads: summary or at least one experience is enough to merge.
   if (!summary && experiences.length === 0) return null;
 
@@ -346,6 +378,7 @@ function coerceResumePayload(parsed: unknown): GeneratedResumeContent | null {
     summary,
     skills,
     ...(fileName ? { fileName } : {}),
+    ...(education ? { education } : {}),
     experiences: experiences.map((e) => ({
       company: e.company,
       role: e.role,
@@ -386,12 +419,28 @@ export function parseResumeJsonContent(
   const projectMode = isProjectLayout(layout);
 
   const fileName = parsed.fileName?.trim() ? String(parsed.fileName).trim() : undefined;
+  const educationRaw =
+    parsed.education && typeof parsed.education === "object"
+      ? (parsed.education as { degree?: string; university?: string; period?: string })
+      : undefined;
+  const education =
+    educationRaw &&
+    (educationRaw.degree?.trim() || educationRaw.university?.trim() || educationRaw.period?.trim())
+      ? {
+          ...(educationRaw.degree?.trim() ? { degree: String(educationRaw.degree).trim() } : {}),
+          ...(educationRaw.university?.trim()
+            ? { university: String(educationRaw.university).trim() }
+            : {}),
+          ...(educationRaw.period?.trim() ? { period: String(educationRaw.period).trim() } : {}),
+        }
+      : undefined;
 
   return {
     title: String(parsed.title).trim(),
     summary: String(parsed.summary).trim(),
     skills: String(parsed.skills).trim(),
     ...(fileName ? { fileName } : {}),
+    ...(education ? { education } : {}),
     layout: projectMode ? "projects" : "bullets",
     experiences: parsed.experiences.map((e) =>
       normalizeResumeExperience(
@@ -400,6 +449,7 @@ export function parseResumeJsonContent(
               company: e.company,
               role: e.role,
               dates: e.dates,
+              location: e.location,
               bullets: [],
               projects: (e.projects ?? []).map((p) => normalizeResumeProject(p)),
             }
@@ -407,6 +457,7 @@ export function parseResumeJsonContent(
               company: e.company,
               role: e.role,
               dates: e.dates,
+              location: e.location,
               bullets: (e.bullets ?? []).map((b) => String(b).trim()).filter(Boolean),
             },
         layout
@@ -487,6 +538,23 @@ export function mergeResumeWithTemplate(
   const projectMode = isProjectLayout(layout);
   const baselineTitle = baseline?.title?.trim();
 
+  // Style-only: AI JSON is the source of truth for employers/dates/location.
+  // Prior slots are only used as count/order hints when AI returns fewer rows.
+  const aiExperiences = parsed.experiences.length
+    ? parsed.experiences
+    : baseline?.experiences?.length
+      ? baseline.experiences
+      : existingExperiences;
+
+  const slotHints =
+    existingExperiences.length > 0
+      ? existingExperiences
+      : baseline?.experiences?.length
+        ? baseline.experiences
+        : aiExperiences;
+
+  const experienceCount = Math.max(aiExperiences.length, slotHints.length > 0 ? slotHints.length : 0);
+
   return {
     title: pickRegenerateText(parsed.title || fallbackTitle, baselineTitle, fallbackTitle),
     summary: pickRegenerateText(parsed.summary, baseline?.summary, ""),
@@ -496,41 +564,97 @@ export function mergeResumeWithTemplate(
       : baseline?.fileName?.trim()
         ? { fileName: baseline.fileName.trim() }
         : {}),
+    ...(parsed.education || baseline?.education
+      ? {
+          education: {
+            ...(pickRegenerateText(
+              parsed.education?.degree ?? "",
+              baseline?.education?.degree,
+              ""
+            )
+              ? {
+                  degree: pickRegenerateText(
+                    parsed.education?.degree ?? "",
+                    baseline?.education?.degree,
+                    ""
+                  ),
+                }
+              : {}),
+            ...(pickRegenerateText(
+              parsed.education?.university ?? "",
+              baseline?.education?.university,
+              ""
+            )
+              ? {
+                  university: pickRegenerateText(
+                    parsed.education?.university ?? "",
+                    baseline?.education?.university,
+                    ""
+                  ),
+                }
+              : {}),
+            ...(pickRegenerateText(
+              parsed.education?.period ?? "",
+              baseline?.education?.period,
+              ""
+            )
+              ? {
+                  period: pickRegenerateText(
+                    parsed.education?.period ?? "",
+                    baseline?.education?.period,
+                    ""
+                  ),
+                }
+              : {}),
+          },
+        }
+      : {}),
     layout: projectMode ? "projects" : "bullets",
-    experiences: existingExperiences.map((existing, i) => {
-      const generated = matchExperienceByCompany(parsed.experiences, existing, i, layout);
+    experiences: Array.from({ length: experienceCount || aiExperiences.length }, (_, i) => {
+      const hint = slotHints[i] ?? slotHints[slotHints.length - 1];
+      const generated =
+        matchExperienceByCompany(aiExperiences, hint ?? aiExperiences[i] ?? { company: "", role: "", dates: "", bullets: [] }, i, layout) ??
+        aiExperiences[i];
       const baselineExp = baseline?.experiences[i];
 
-      if (projectMode || existing.projects?.length) {
-        const projects = normalizeProjectsToCount(
-          generated?.projects,
-          existing.projects?.length ?? 0,
-          existing.projects ?? []
+      if (projectMode || generated?.projects?.length || hint?.projects?.length) {
+        const projects = (generated?.projects?.length
+          ? generated.projects
+          : baselineExp?.projects?.length
+            ? baselineExp.projects
+            : hint?.projects ?? []
         ).map((project, projectIndex) => {
-          const templateProject = existing.projects?.[projectIndex];
           const baselineProject = baselineExp?.projects?.[projectIndex];
           return {
-            name: templateProject?.name ?? project.name,
+            name: pickRegenerateText(project.name, baselineProject?.name, ""),
             businessChallenge: pickRegenerateText(
               project.businessChallenge,
               baselineProject?.businessChallenge,
-              templateProject?.businessChallenge
+              ""
             ),
             assignedResponsibility: pickRegenerateText(
               project.assignedResponsibility,
               baselineProject?.assignedResponsibility,
-              templateProject?.assignedResponsibility
+              ""
             ),
-            action: pickRegenerateText(project.action, baselineProject?.action, templateProject?.action),
-            result: pickRegenerateText(project.result, baselineProject?.result, templateProject?.result),
+            action: pickRegenerateText(project.action, baselineProject?.action, ""),
+            result: pickRegenerateText(project.result, baselineProject?.result, ""),
           };
         });
 
         return {
-          company: existing.company,
-          role: pickRegenerateText(generated?.role ?? "", baselineExp?.role, existing.role),
-          dates: existing.dates,
-          ...(existing.location?.trim() ? { location: existing.location.trim() } : {}),
+          company: pickRegenerateText(generated?.company ?? "", baselineExp?.company, hint?.company ?? ""),
+          role: pickRegenerateText(generated?.role ?? "", baselineExp?.role, hint?.role ?? ""),
+          dates: pickRegenerateText(generated?.dates ?? "", baselineExp?.dates, hint?.dates ?? ""),
+          ...(pickRegenerateText(generated?.location ?? "", baselineExp?.location, hint?.location ?? "")
+            ? {
+                location: pickRegenerateText(
+                  generated?.location ?? "",
+                  baselineExp?.location,
+                  hint?.location ?? ""
+                ),
+              }
+            : {}),
           bullets: [],
           projects,
         };
@@ -540,25 +664,24 @@ export function mergeResumeWithTemplate(
         ? generated.bullets
         : baselineExp?.bullets?.length
           ? baselineExp.bullets
-          : existing.bullets;
-      // Keep AI / Instructions bullet count. Do not slice or pad to the template slot count.
+          : hint?.bullets ?? [];
       const bullets = sourceBullets.map((bullet, bulletIndex) =>
-        pickRegenerateText(
-          bullet,
-          baselineExp?.bullets[bulletIndex],
-          existing.bullets[bulletIndex]
-        )
+        pickRegenerateText(bullet, baselineExp?.bullets?.[bulletIndex], "")
       );
 
       return {
-        company: existing.company,
-        role: pickRegenerateText(generated?.role ?? "", baselineExp?.role, existing.role),
-        dates: existing.dates,
-        ...(existing.location?.trim()
-          ? { location: existing.location.trim() }
-          : generated?.location?.trim()
-            ? { location: generated.location.trim() }
-            : {}),
+        company: pickRegenerateText(generated?.company ?? "", baselineExp?.company, hint?.company ?? ""),
+        role: pickRegenerateText(generated?.role ?? "", baselineExp?.role, hint?.role ?? ""),
+        dates: pickRegenerateText(generated?.dates ?? "", baselineExp?.dates, hint?.dates ?? ""),
+        ...(pickRegenerateText(generated?.location ?? "", baselineExp?.location, hint?.location ?? "")
+          ? {
+              location: pickRegenerateText(
+                generated?.location ?? "",
+                baselineExp?.location,
+                hint?.location ?? ""
+              ),
+            }
+          : {}),
         bullets,
       };
     }),

@@ -29,7 +29,7 @@ function mergeFreshStructure(
     return {
       layout: fresh.layout,
       experiences: base.experiences,
-      skillsSample: fresh.skillsSample,
+      skillsSample: fresh.skillsSample || base.skillsSample || "",
     };
   }
 
@@ -40,6 +40,10 @@ function mergeFreshStructure(
   };
 }
 
+/**
+ * Soft template parse for style-only backends.
+ * Never requires SUMMARY / SKILLS / EXPERIENCE text headers in the DOCX.
+ */
 export async function getCachedTemplateParse(
   templateName: string,
   buffer: Buffer
@@ -55,9 +59,12 @@ export async function getCachedTemplateParse(
   }
 
   if (cached?.experiences?.length) {
-    return mergeFreshStructure(buffer, cached);
+    const merged = mergeFreshStructure(buffer, cached);
+    await setCachedValue(key, merged);
+    return merged;
   }
 
+  // Soft resolve — empty experiences when text headers are missing (style-only OK).
   const parsed = await resolveTemplateFromDocx(buffer);
   await setCachedValue(key, parsed);
   return parsed;

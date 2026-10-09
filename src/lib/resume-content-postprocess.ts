@@ -137,7 +137,10 @@ function boldProjectFields(project: ResumeProject, skillTerms: string[]): Resume
   };
 }
 
-/** Bold skillset terms in title/summary/experience. Keep AI/Instructions bullet counts. */
+/**
+ * Bold skillset terms in title/summary/experience. Keep AI/Instructions bullet counts.
+ * Style-only: company / role / dates / location come from content JSON (AI), not DOCX headers.
+ */
 export function applyResumeContentPostProcess(
   content: GeneratedResumeContent,
   templateExperiences: GeneratedResumeContent["experiences"],
@@ -164,18 +167,19 @@ export function applyResumeContentPostProcess(
     summary: boldSkillTermsInText(content.summary, skillTerms),
     skills: skillsWithTemplateStyle,
     experiences: content.experiences.map((exp, index) => {
-      const template = templateExperiences[index];
+      // Slot hints only (legacy parse or prior draft) — never freeze employers from DOCX.
+      const hint = templateExperiences[index];
 
-      if (projectMode || template?.projects?.length) {
-        const targetCount = template?.projects?.length ?? exp.projects?.length ?? 0;
+      if (projectMode || exp.projects?.length || hint?.projects?.length) {
+        const targetCount = exp.projects?.length || hint?.projects?.length || 0;
         const projects = normalizeProjectsToCount(
           exp.projects ?? [],
           targetCount,
-          template?.projects ?? []
-        ).map((project, projectIndex) =>
+          hint?.projects ?? []
+        ).map((project) =>
           boldProjectFields(
             {
-              name: template?.projects?.[projectIndex]?.name ?? project.name,
+              name: project.name,
               businessChallenge: project.businessChallenge,
               assignedResponsibility: project.assignedResponsibility,
               action: project.action,
@@ -185,10 +189,15 @@ export function applyResumeContentPostProcess(
           )
         );
 
+        const company = exp.company?.trim() || hint?.company || "";
+        const dates = exp.dates?.trim() || hint?.dates || "";
+        const location = (exp.location?.trim() || hint?.location || "").trim();
+
         return {
-          company: template?.company ?? exp.company,
-          role: boldSkillTermsInText(exp.role, skillTerms),
-          dates: template?.dates ?? exp.dates,
+          company,
+          role: boldSkillTermsInText(exp.role || hint?.role || "", skillTerms),
+          dates,
+          ...(location ? { location } : {}),
           bullets: [],
           projects,
         };
@@ -198,13 +207,15 @@ export function applyResumeContentPostProcess(
       const kept =
         bullets.length > 0
           ? bullets
-          : (template?.bullets ?? []).map((b) => b.trim()).filter(Boolean);
-      const location = (template?.location ?? exp.location)?.trim() || "";
+          : (hint?.bullets ?? []).map((b) => b.trim()).filter(Boolean);
+      const company = exp.company?.trim() || hint?.company || "";
+      const dates = exp.dates?.trim() || hint?.dates || "";
+      const location = (exp.location?.trim() || hint?.location || "").trim();
 
       return {
-        company: template?.company ?? exp.company,
-        role: boldSkillTermsInText(exp.role, skillTerms),
-        dates: template?.dates ?? exp.dates,
+        company,
+        role: boldSkillTermsInText(exp.role || hint?.role || "", skillTerms),
+        dates,
         ...(location ? { location } : {}),
         bullets: kept.map((bullet) => boldSkillTermsInText(bullet, skillTerms)),
       };

@@ -1,6 +1,6 @@
 import { API_BASE_URL } from "@/lib/api-base-url";
 import { apiAuthFetch } from "@/lib/api-auth";
-import { ApiError } from "@/lib/auth-api";
+import { ApiError, getApiErrorMessage } from "@/lib/auth-api";
 import {
   RESUME_BUILDER_ACCESS_MESSAGE,
   isResumeBuilderAccessDenied,
@@ -16,6 +16,71 @@ import type { GeneratedResumeContent } from "@/lib/resume-types";
  * POST /resume/render
  * → load stored template → fill DOCX → save → PDF → save → return ids/metadata
  */
+
+/** User-facing copy when backend rejects a template missing Word style slots. */
+export const MISSING_STYLED_SLOTS_MESSAGE =
+  "This resume template is missing required Word styles (Name, summary, skill_cat/skill_item, company_*, exp_section).";
+
+export function isMissingStyledSlotsError(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return false;
+  if (error.status !== 422 && error.status !== 400) return false;
+  const message = `${error.message} ${typeof error.data?.message === "string" ? error.data.message : ""}`.toLowerCase();
+  return (
+    /style|slot|skill_cat|skill_item|exp_section|company_role|company_period|header_name|resume_title/.test(
+      message
+    ) || /missing.*(style|slot|name|summary)/.test(message)
+  );
+}
+
+/** Prefer styled-slots / access messages over raw backend text. */
+export function resumeRenderErrorMessage(error: unknown): string {
+  if (isMissingStyledSlotsError(error)) return MISSING_STYLED_SLOTS_MESSAGE;
+  if (isResumeBuilderAccessDenied(error)) return RESUME_BUILDER_ACCESS_MESSAGE;
+  if (error instanceof ApiError && error.status === 403) {
+    return resumeBuilderAccessDeniedMessage(error);
+  }
+  return getApiErrorMessage(error, "Failed to render resume.");
+}
+
+/** Shape content for POST /resume/render (skills string + experience fields backend maps to styles). */
+export function toResumeRenderContent(content: GeneratedResumeContent): Record<string, unknown> {
+  const skills =
+    typeof content.skills === "string"
+      ? content.skills
+      : Array.isArray(content.skills)
+        ? (content.skills as string[]).join("\n")
+        : String(content.skills ?? "");
+
+  return {
+    title: content.title ?? "",
+    summary: content.summary ?? "",
+    skills,
+    ...(content.fileName?.trim() ? { fileName: content.fileName.trim() } : {}),
+    ...(content.education
+      ? {
+          education: {
+            ...(content.education.degree?.trim()
+              ? { degree: content.education.degree.trim() }
+              : {}),
+            ...(content.education.university?.trim()
+              ? { university: content.education.university.trim() }
+              : {}),
+            ...(content.education.period?.trim()
+              ? { period: content.education.period.trim() }
+              : {}),
+          },
+        }
+      : {}),
+    experiences: (content.experiences ?? []).map((exp) => ({
+      company: exp.company ?? "",
+      role: exp.role ?? "",
+      dates: exp.dates ?? "",
+      ...(exp.location?.trim() ? { location: exp.location.trim() } : {}),
+      bullets: Array.isArray(exp.bullets) ? exp.bullets : [],
+      ...(exp.projects?.length ? { projects: exp.projects } : {}),
+    })),
+  };
+}
 
 export type ResumeRenderRequest = {
   /** Preferred: stored template id from upload/profile. */
@@ -69,6 +134,13 @@ function throwAuthAware(res: Response, data: Record<string, unknown>): never {
       throw new ApiError(RESUME_BUILDER_ACCESS_MESSAGE, 403, { message });
     }
     throw new ApiError(resumeBuilderAccessDeniedMessage(err), 403, { message });
+  }
+  if (res.status === 422) {
+    const err = new ApiError(message, 422, { message });
+    if (isMissingStyledSlotsError(err)) {
+      throw new ApiError(MISSING_STYLED_SLOTS_MESSAGE, 422, { message });
+    }
+    throw err;
   }
   throw new ApiError(message, res.status, { message });
 }
@@ -137,7 +209,7 @@ export async function renderResumeOnBackend(
       templateBase64: templateId ? undefined : templateBase64,
       templateFileName: input.templateFileName?.trim() || undefined,
       templateName: input.templateFileName?.trim() || undefined,
-      content: input.content,
+      content: toResumeRenderContent(input.content),
       jobTitle: input.jobTitle.trim(),
       companyName: input.companyName.trim(),
       jobDescription: input.jobDescription?.trim() || "",

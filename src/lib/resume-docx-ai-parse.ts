@@ -146,16 +146,37 @@ function parseStructural(
   return parseExperiencesFromDocxBuffer(buffer);
 }
 
-/** Fast structural parse from the current DOCX bytes — always use for build/apply. */
+/**
+ * Soft structural parse for style-only templates.
+ * Missing SUMMARY / SKILLS / EXPERIENCE text headers is OK — returns empty experiences.
+ * Never throws "EXPERIENCE section not found" (visual labels like "Work History" are not required).
+ */
 export function parseTemplateStructureSync(buffer: Buffer): TemplateParseResult & { valid: boolean } {
   const layout = detectResumeTemplateLayout(buffer);
-  const skillsSample = parseTemplateContentSamples(buffer).skills;
-  const experiences = parseStructural(buffer, layout);
+  let skillsSample = "";
+  try {
+    skillsSample = parseTemplateContentSamples(buffer).skills;
+  } catch {
+    skillsSample = "";
+  }
+
+  let experiences: GeneratedResumeContent["experiences"] = [];
+  try {
+    experiences = parseStructural(buffer, layout);
+  } catch {
+    // Style-only DOCX: section text headers may be absent or renamed (e.g. Work History).
+    experiences = [];
+  }
+
   const valid = validateByLayout(layout, experiences).ok;
   return { layout, experiences, skillsSample, valid };
 }
 
-/** Structural Word parse first; AI fallback when validation fails. */
+/**
+ * Soft template resolve for style-only mode.
+ * Prefer structural parse; if text headers are missing, return empty experiences
+ * (content comes from profile + AI JSON, not the DOCX body).
+ */
 export async function resolveTemplateFromDocx(buffer: Buffer): Promise<TemplateParseResult> {
   const structural = parseTemplateStructureSync(buffer);
   if (structural.valid) {
@@ -166,24 +187,35 @@ export async function resolveTemplateFromDocx(buffer: Buffer): Promise<TemplateP
     };
   }
 
-  const structuralCheck = validateByLayout(structural.layout, structural.experiences);
-
+  // Soft: do not fail generate/apply when EXPERIENCE/SUMMARY text headers are missing.
+  // Optional AI parse only when an experience section text exists.
   try {
+    const sectionText = extractExperienceSectionPlainText(buffer);
+    if (!sectionText.trim()) {
+      return {
+        layout: structural.layout,
+        experiences: [],
+        skillsSample: structural.skillsSample,
+      };
+    }
     const aiParsed = await parseExperiencesWithAI(buffer, structural.layout);
     const aiCheck = validateByLayout(structural.layout, aiParsed);
     if (aiCheck.ok) {
-      return { layout: structural.layout, experiences: aiParsed, skillsSample: structural.skillsSample };
+      return {
+        layout: structural.layout,
+        experiences: aiParsed,
+        skillsSample: structural.skillsSample,
+      };
     }
-    throw new Error(aiCheck.errors.join(" "));
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : "AI parse failed";
-    const structuralErrors = !structuralCheck.ok ? structuralCheck.errors : [];
-    throw new Error(
-      structuralErrors.length
-        ? `Template parse failed (${structuralErrors.join("; ")}). ${detail}`
-        : detail
-    );
+  } catch {
+    // Ignore — style templates do not require FE experience extraction.
   }
+
+  return {
+    layout: structural.layout,
+    experiences: structural.experiences,
+    skillsSample: structural.skillsSample,
+  };
 }
 
 /** @deprecated Use resolveTemplateFromDocx — experiences only. */

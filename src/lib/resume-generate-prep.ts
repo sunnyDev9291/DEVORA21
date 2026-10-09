@@ -1,5 +1,3 @@
-import { parseResumeHeaderFromDocxBuffer } from "@/lib/resume-docx";
-import { getCachedTemplateParse } from "@/lib/resume-template-cache";
 import { resolveTemplateBuffer } from "@/lib/resume-template-resolve";
 import {
   buildResumeSystemPrompt,
@@ -23,6 +21,8 @@ export interface ResumeGenerateRequest {
   customPrompt?: string;
   templateName?: string;
   templateBase64?: string;
+  /** Backend-stored style template id (preferred; DOCX body text is not required). */
+  templateId?: string;
   /** Logged-in user id — forwarded to the AI backend for profile prompt. */
   userId?: string;
   /** Extra task for this click only (e.g. improve one score item). Not the profile prompt. */
@@ -91,6 +91,11 @@ export type ResumeJobRecord =
       dedupeKey: string;
     };
 
+/**
+ * Style-only templates: DOCX section headers (SUMMARY / SKILLS / EXPERIENCE / Work History)
+ * are visual only. Content comes from profile writing instructions + AI JSON.
+ * Never fail generate because a text header is missing in the Word file.
+ */
 export async function prepareResumeGeneration(
   body: ResumeGenerateRequest
 ): Promise<ResumeGeneratePrep> {
@@ -102,25 +107,57 @@ export async function prepareResumeGeneration(
   if (!jobTitle) throw new Error("Job title is required.");
   if (!companyName) throw new Error("Company name is required.");
 
-  const hasTemplate = Boolean(body.templateBase64?.trim() || body.templateName?.trim());
+  const hasTemplate = Boolean(
+    body.templateBase64?.trim() || body.templateName?.trim() || body.templateId?.trim()
+  );
   if (!hasTemplate) {
     throw new Error("Upload a resume template in your profile first.");
   }
 
-  const { buffer: templateBuffer, templateName } = await resolveTemplateBuffer({
-    templateName: body.templateName,
-    templateBase64: body.templateBase64,
-  });
+  let templateName =
+    body.templateName?.trim().replace(/\.docx$/i, "") ||
+    body.templateId?.trim() ||
+    "resume";
+  let existingExperiences: ResumeExperience[] = [];
+  let templateLayout: ResumeTemplateLayout = "bullets";
+  let skillsSample = "";
+  let headerTitle = jobTitle;
 
-  const { experiences: existingExperiences, layout: templateLayout, skillsSample } =
-    await getCachedTemplateParse(templateName, templateBuffer);
-  const header = parseResumeHeaderFromDocxBuffer(templateBuffer);
+  // Optional soft parse for skills sample / layout hint only — never require text headers.
+  if (body.templateBase64?.trim() || body.templateName?.trim()) {
+    try {
+      const resolved = await resolveTemplateBuffer({
+        templateName: body.templateName,
+        templateBase64: body.templateBase64,
+      });
+      templateName = resolved.templateName;
 
-  if (existingExperiences.length === 0) {
-    throw new Error("No experience sections found in template.");
+      try {
+        const { getCachedTemplateParse } = await import("@/lib/resume-template-cache");
+        const parsed = await getCachedTemplateParse(templateName, resolved.buffer);
+        templateLayout = parsed.layout ?? "bullets";
+        skillsSample = parsed.skillsSample ?? "";
+        // Style mode: do NOT freeze employers from DOCX parse; ignore experiences for merge locks.
+      } catch {
+        // Styled templates without SUMMARY/EXPERIENCE text headers are expected.
+      }
+
+      try {
+        const { parseResumeHeaderFromDocxBuffer } = await import("@/lib/resume-docx");
+        const header = parseResumeHeaderFromDocxBuffer(resolved.buffer);
+        if (header.title?.trim()) headerTitle = header.title.trim();
+      } catch {
+        // Header title optional for style-only templates.
+      }
+    } catch {
+      // Missing local template bytes is OK when templateId alone was provided.
+    }
   }
 
   const isRegenerate = Boolean(body.previousContent);
+  if (isRegenerate && body.previousContent?.experiences?.length) {
+    existingExperiences = body.previousContent.experiences;
+  }
 
   const userPrompt = buildResumeUserPrompt({
     jobTitle,
@@ -142,7 +179,7 @@ export async function prepareResumeGeneration(
     ],
     existingExperiences,
     templateLayout,
-    headerTitle: header.title,
+    headerTitle,
     customPrompt,
     profileName: body.profileName?.trim() || undefined,
     skillsSample,

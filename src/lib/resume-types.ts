@@ -24,14 +24,23 @@ export type ResumeExperience = {
   projects?: ResumeProject[];
 };
 
+export type ResumeEducation = {
+  degree?: string;
+  university?: string;
+  period?: string;
+};
+
 export type GeneratedResumeContent = {
   title: string;
   summary: string;
+  /** One string — category lines like "Frontend: React, Next.js" (not an array). */
   skills: string;
   /** AI-resolved resume file base name (no .docx) — frozen after generation. */
   fileName?: string;
   layout?: ResumeTemplateLayout;
   experiences: ResumeExperience[];
+  /** Optional education block for style-slot backends (degree / university / period). */
+  education?: ResumeEducation;
 };
 
 export type ResumeGenerateResponse = {

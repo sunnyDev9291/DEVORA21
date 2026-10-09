@@ -289,7 +289,10 @@ export function parseProjectExperiencesFromDocxBuffer(buffer: Buffer): {
   const paragraphs = getDocxParagraphs(buffer);
   const expIdx = paragraphs.findIndex((p) => SECTION_HEADERS.experience.test(p.text));
   const eduIdx = paragraphs.findIndex((p) => SECTION_HEADERS.education.test(p.text));
-  if (expIdx === -1) throw new Error("EXPERIENCE section not found in template.");
+  // Style-only: missing EXPERIENCE text header is OK — return empty (labels are visual only).
+  if (expIdx === -1) {
+    return { experiences: [], jobTemplates: [] };
+  }
 
   const end = eduIdx === -1 ? paragraphs.length : eduIdx;
   const experiences: ResumeExperience[] = [];

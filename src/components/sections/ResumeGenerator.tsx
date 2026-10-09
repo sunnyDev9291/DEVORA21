@@ -17,6 +17,7 @@ import JobCheckBoard from "@/components/ui/JobCheckBoard";
 import {
   fetchRenderedPdf,
   renderResumeOnBackend,
+  resumeRenderErrorMessage,
 } from "@/lib/resume-render-api";
 import { formatElapsedMs } from "@/lib/format-elapsed";
 import {
@@ -689,17 +690,17 @@ export default function ResumeGenerator({
       setFileName("");
       setStep("review");
 
-      // Content prep still needs template bytes until backend owns Create content end-to-end.
-      if (!templateForRequest.templateBase64?.trim()) {
+      // Style-only: templateId is enough. Optional base64 is only for soft skills-sample parse.
+      if (!templateForRequest.templateId?.trim() && !templateForRequest.templateBase64?.trim()) {
         const remote = await profileApi.fetchResumeTemplate();
         templateForRequest = {
           fileName: remote.fileName || templateForRequest.fileName,
           templateBase64: remote.templateBase64,
           templateId: remote.templateId || templateForRequest.templateId,
         };
-        if (!templateForRequest.templateBase64?.trim()) {
+        if (!templateForRequest.templateId?.trim() && !templateForRequest.templateBase64?.trim()) {
           throw new Error(
-            "Resume template bytes are unavailable. Re-upload your template on the dashboard."
+            "Resume template is unavailable. Re-upload your template on the dashboard."
           );
         }
       }
@@ -716,6 +717,7 @@ export default function ResumeGenerator({
           ...form,
           customPrompt: freshPrompt,
           templateName: templateForRequest.fileName,
+          templateId: templateForRequest.templateId,
           templateBase64: templateForRequest.templateBase64,
           profileName: chatProfile?.fullName,
           userId: user?.id,
@@ -802,6 +804,7 @@ export default function ResumeGenerator({
           customPrompt: freshPrompt,
           task: targetedInstruction,
           templateName: templateForRequest.fileName,
+          templateId: templateForRequest.templateId,
           templateBase64: templateForRequest.templateBase64,
           profileName: chatProfile?.fullName,
           userId: user?.id,
@@ -871,7 +874,7 @@ export default function ResumeGenerator({
     try {
       await applyDraftToResume(content);
     } catch (err) {
-      setArchiveError(resumeBuilderAccessDeniedMessage(err));
+      setArchiveError(resumeRenderErrorMessage(err));
     }
   }
 
@@ -976,8 +979,9 @@ export default function ResumeGenerator({
         archiveId: rendered.archiveId,
       };
     } catch (err) {
-      setArchiveError(resumeBuilderAccessDeniedMessage(err));
-      throw err;
+      const message = resumeRenderErrorMessage(err);
+      setArchiveError(message);
+      throw new Error(message);
     } finally {
       setArchiving(false);
       setApplying(false);
@@ -989,7 +993,7 @@ export default function ResumeGenerator({
     try {
       await applyDraftToResume(content);
     } catch (err) {
-      setError((err as Error).message || "Failed to update resume.");
+      setError(resumeRenderErrorMessage(err) || "Failed to update resume.");
     }
   }
 
