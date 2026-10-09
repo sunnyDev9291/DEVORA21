@@ -1,0 +1,171 @@
+# Backend Cursor Prompt — Resume template upload, replace-on-save, correct PDF preview
+
+Copy everything below to the backend agent/developer.
+
+================================================================================
+GOAL
+================================================================================
+
+Fix backend resume-template storage so Devora21 "View template" and Save Profile
+behave correctly.
+
+Frontend contract (already shipped):
+
+1) User picks a new .docx locally
+   → Preview shows the LOCAL file only (does not call backend PDF yet)
+
+2) User has NOT picked a new file
+   → Preview calls backend PDF for the STORED active template
+
+3) User clicks Save with a chosen file
+   → Frontend uploads multipart field `resumeTemplate`
+   → Backend MUST replace the user's stored template and return a new/updated
+     `resumeTemplateId` / `templateId`
+   → After save, frontend clears the local pick and next preview uses backend
+
+Bug seen in production:
+- After upload/save (or when previewing stored template), backend PDF preview
+  kept showing an OLD template (e.g. Diego Castillo / "franco resume me.docx")
+  instead of the newly stored file.
+
+Backend must store the latest uploaded DOCX per user and convert THAT file for PDF preview.
+
+API base: https://api.devora21.com
+Auth: session cookie and/or Bearer dv21_ (same as other /auth and /resume routes)
+
+================================================================================
+ENDPOINTS TO IMPLEMENT / FIX
+================================================================================
+
+A) Upload / replace template (existing multipart — FIX behavior)
+
+  PATCH /auth/profile
+  POST  /auth/onboarding
+
+Multipart field name (exact):
+  resumeTemplate  = File (.docx)
+
+On receiving resumeTemplate:
+
+1. Validate:
+   - present file
+   - .docx (OOXML) content type / magic
+   - size limit (e.g. 10 MB)
+
+2. Store ORIGINAL bytes for this user as the ACTIVE template.
+   - Replace previous active template (do not keep serving the old one)
+   - Generate a new templateId (UUID) OR bump version and invalidate caches
+   - Persist: user_id, templateId, fileName, storage path/key, updatedAt
+
+3. Response MUST include (on User / profile JSON):
+   {
+     "resumeTemplateId": "<new-id>",
+     "resumeTemplateFileName": "<original-filename.docx>"
+   }
+
+Aliases accepted by FE normalizeAuthUser:
+  resumeTemplateId | templateId
+  resumeTemplateFileName | resumeTemplateName
+
+Do NOT ignore the multipart file and keep the previous template.
+Do NOT return success without actually writing the new bytes.
+
+--------------------------------------------------------------------------------
+
+B) Get stored template metadata / bytes
+
+  GET /auth/profile/resume-template
+
+Return JSON:
+
+{
+  "templateId": "<active-id>",
+  "fileName": "Name.docx",
+  "templateBase64": "<optional base64 of CURRENT active template>"
+}
+
+Aliases FE accepts:
+  templateId | resumeTemplateId | id
+  fileName | resumeTemplateFileName
+
+404 if user has no template.
+
+Must be the CURRENT active template (last successful upload), never a stale one.
+
+--------------------------------------------------------------------------------
+
+C) Template PDF preview (FIX / implement)
+
+Frontend calls (try in order):
+
+  GET /auth/profile/resume-template/pdf
+  GET /resume/templates/{templateId}/pdf
+
+Behavior:
+
+1. Resolve ACTIVE template for the authenticated user
+   - For /resume/templates/{templateId}/pdf: verify templateId belongs to this user
+     and is their active (or allowed) template
+2. Load the STORED ORIGINAL DOCX bytes for that templateId
+3. Convert DOCX → PDF with the SAME converter used by resume render (LibreOffice)
+4. Return:
+   - Content-Type: application/pdf
+     OR JSON { "pdfBase64": "...", "pdfFileName": "Name.pdf" }
+
+CRITICAL RULES:
+
+- Convert the stored template AS-IS (no content fill, no AI, no rewrite)
+- Preview PDF MUST match the latest uploaded template bytes
+- If template was replaced, old PDF cache MUST NOT be returned
+- Cache key MUST include templateId AND updatedAt (or content hash)
+- After replace upload: delete/invalidate previous PDF cache for that user
+
+404 if no template. 401/403 same as other auth routes.
+
+================================================================================
+STORAGE MODEL (suggested)
+================================================================================
+
+resume_templates
+- id              (templateId)
+- user_id
+- file_name
+- storage_key / path
+- content_hash    (optional)
+- created_at
+- updated_at
+- is_active       (true for current)
+
+users.active_resume_template_id → points to current row
+
+On new upload:
+- mark previous is_active=false (or delete)
+- insert new row is_active=true
+- set users.active_resume_template_id = new id
+- invalidate PDF cache for old + new ids
+
+================================================================================
+ACCEPTANCE CHECKLIST
+================================================================================
+
+[ ] Upload template A, Save → GET resume-template returns A (correct fileName + templateId)
+[ ] GET resume-template/pdf shows PDF of A (not some other user's/old file)
+[ ] Upload template B, Save → GET resume-template returns B with NEW templateId
+[ ] GET resume-template/pdf shows PDF of B (never A again)
+[ ] PDF cache does not serve A after B is saved
+[ ] Profile response includes resumeTemplateId after multipart save
+[ ] Auth required; users cannot fetch another user's templateId PDF
+[ ] from-job /resume/render load the ACTIVE stored template for that user
+
+================================================================================
+FRONTEND BEHAVIOR (do not change FE for this bug — backend must match)
+================================================================================
+
+- Pending local file selected → FE previews local DOCX only
+- No pending file → FE calls GET .../resume-template/pdf
+- Save with file → FE PATCH/POST multipart resumeTemplate, then caches
+  resumeTemplateId from response (or GET resume-template)
+
+================================================================================
+END
+================================================================================

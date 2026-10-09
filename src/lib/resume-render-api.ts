@@ -182,6 +182,20 @@ function normalizeRenderResponse(data: Record<string, unknown>): ResumeRenderRes
   };
 }
 
+/** Client abort if backend fill+PDF never returns (avoids infinite "Building…" spinner). */
+export const RESUME_RENDER_TIMEOUT_MS = 90_000;
+
+function withTimeoutSignal(ms: number): { signal: AbortSignal; clear: () => void } {
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, ms);
+  return {
+    signal: controller.signal,
+    clear: () => clearTimeout(timer),
+  };
+}
+
 /** Authoritative backend render: template + content → stored DOCX + PDF. */
 export async function renderResumeOnBackend(
   input: ResumeRenderRequest
@@ -198,27 +212,48 @@ export async function renderResumeOnBackend(
     throw new ApiError("Job title and company name are required to render.", 400);
   }
 
-  const res = await apiAuthFetch(`${API_BASE_URL}/resume/render`, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      templateId: templateId || undefined,
-      templateBase64: templateId ? undefined : templateBase64,
-      templateFileName: input.templateFileName?.trim() || undefined,
-      templateName: input.templateFileName?.trim() || undefined,
-      content: toResumeRenderContent(input.content),
-      jobTitle: input.jobTitle.trim(),
-      companyName: input.companyName.trim(),
-      jobDescription: input.jobDescription?.trim() || "",
-      customPrompt: input.customPrompt?.trim() || undefined,
-      resumeFileBaseName: input.resumeFileBaseName?.trim() || undefined,
-      profileName: input.profileName?.trim() || undefined,
-      resumeId: input.resumeId?.trim() || undefined,
-    }),
-  });
+  const timeout = withTimeoutSignal(RESUME_RENDER_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await apiAuthFetch(`${API_BASE_URL}/resume/render`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      signal: timeout.signal,
+      body: JSON.stringify({
+        templateId: templateId || undefined,
+        templateBase64: templateId ? undefined : templateBase64,
+        templateFileName: input.templateFileName?.trim() || undefined,
+        templateName: input.templateFileName?.trim() || undefined,
+        content: toResumeRenderContent(input.content),
+        jobTitle: input.jobTitle.trim(),
+        companyName: input.companyName.trim(),
+        jobDescription: input.jobDescription?.trim() || "",
+        customPrompt: input.customPrompt?.trim() || undefined,
+        resumeFileBaseName: input.resumeFileBaseName?.trim() || undefined,
+        profileName: input.profileName?.trim() || undefined,
+        resumeId: input.resumeId?.trim() || undefined,
+      }),
+    });
+  } catch (err) {
+    timeout.clear();
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new ApiError(
+        `Resume render timed out after ${Math.round(RESUME_RENDER_TIMEOUT_MS / 1000)}s. The server is still building DOCX/PDF — check POST /resume/render on the backend.`,
+        504
+      );
+    }
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new ApiError(
+        `Resume render timed out after ${Math.round(RESUME_RENDER_TIMEOUT_MS / 1000)}s. The server is still building DOCX/PDF — check POST /resume/render on the backend.`,
+        504
+      );
+    }
+    throw err;
+  }
+  timeout.clear();
 
   const data = await readJson(res);
   if (!res.ok) throwAuthAware(res, data);

@@ -1,0 +1,179 @@
+# Backend Cursor Prompt — Fix hanging POST /resume/render ("Rendering on server…")
+
+Copy everything below to the backend agent/developer.
+
+================================================================================
+GOAL
+================================================================================
+
+Frontend Apply shows a long spinner ("Building your .docx…" / "Rendering on server…")
+with no update. That spinner stays up while waiting for:
+
+  POST https://api.devora21.com/resume/render
+
+Frontend does NOT build DOCX locally anymore. Backend must fill the stored style
+template, convert to PDF, persist archive, and return archiveId quickly (or fail
+fast with JSON error).
+
+Auth: session cookie and/or Bearer dv21_
+API base: https://api.devora21.com
+
+================================================================================
+SYMPTOMS
+================================================================================
+
+- User already has a structured draft (Generate finished)
+- User clicks Apply / Re-apply
+- UI spinner forever (or until FE 90s client timeout)
+- Network: POST /resume/render pending with no response body
+- Preview never opens; no archiveId
+
+This is NOT the Claude AI stream hang (that is /ai/chat/completions/stream).
+This is the RENDER pipeline hang after content already exists.
+
+================================================================================
+FRONTEND CONTRACT (implemented)
+================================================================================
+
+POST /resume/render
+Content-Type: application/json
+Accept: application/json
+credentials: include
+Authorization: Bearer dv21_… (optional)
+
+Body:
+
+{
+  "templateId": "tpl_…",              // preferred
+  "templateBase64": "…",              // only if templateId missing
+  "templateFileName": "Diego….docx",
+  "content": {
+    "title": "…",
+    "summary": "…",
+    "skills": "Category: a, b\\n…",   // ONE string
+    "fileName": "optional",
+    "education": { "degree": "…", "university": "…", "period": "…" },
+    "experiences": [
+      {
+        "company": "…",
+        "role": "…",
+        "dates": "…",
+        "location": "optional",
+        "bullets": ["…"]
+      }
+    ]
+  },
+  "jobTitle": "…",
+  "companyName": "…",
+  "jobDescription": "…",
+  "customPrompt": "optional",
+  "resumeFileBaseName": "optional",
+  "profileName": "optional",
+  "resumeId": "optional"
+}
+
+Success 200 (REQUIRED fields):
+
+{
+  "resumeId": "res_…",
+  "archiveId": "arc_…",          // MUST work with GET /resume/archives/{id}/pdf|docx
+  "templateId": "tpl_…",
+  "fileName": "….docx",
+  "pdfFileName": "….pdf",
+  "status": "done"
+  // optional: "pdfBase64", "docxBase64" for first paint
+}
+
+Errors (JSON, do not hang):
+  400 validation
+  401/403 auth / resume builder access
+  404 template not found
+  422 missing Word style slots
+  500/502/504 render/PDF failure
+
+422 message FE maps to:
+  "This resume template is missing required Word styles (Name, summary, skill_cat/skill_item, company_*, exp_section)."
+
+After success FE calls:
+  GET /resume/archives/{archiveId}/pdf
+
+================================================================================
+STYLE-ONLY FILL (critical)
+================================================================================
+
+Template DOCX = Word STYLES / slots only. Do NOT parse text headers
+SUMMARY / SKILLS / EXPERIENCE / Work History.
+
+Map content JSON → styles:
+
+  profile name     → Name, header_name
+  profile email    → email
+  content.title    → resume_title, header_title
+  content.summary  → summary
+  content.skills   → skill_cat + skill_item  (split "Cat: items" lines)
+  experiences[].company   → Company Name (or company_name)
+  experiences[].role      → company_role
+  experiences[].dates     → company_period
+  experiences[].location  → company_location
+  experiences[].bullets[] → exp_section
+  education.*      → degree / university_name / university_period
+
+If required styles are missing → 422 immediately (do not hang in LibreOffice).
+
+================================================================================
+REQUIRED FIXES FOR THE HANG
+================================================================================
+
+1) Endpoint must exist and respond
+   If /resume/render is missing, unimplemented, or routes to a noop that never
+   ends → implement the full pipeline and return 200/4xx/5xx.
+
+2) Fail fast on missing templateId / template bytes
+   404 JSON within seconds — do not wait on LibreOffice.
+
+3) LibreOffice / soffice must not block forever
+   - Use a hard subprocess timeout (e.g. 45–60s)
+   - On timeout → kill process → 504 JSON { "error": "PDF conversion timed out" }
+   - Log duration of: load template, fill DOCX, soffice convert, save storage
+
+4) Do not buffer forever waiting for storage
+   If S3/disk upload hangs, timeout and return 502.
+
+5) Return archiveId only after BOTH docx + pdf are stored and readable
+   OR return status:"rendering" + jobId with a poll endpoint — but FE currently
+   expects status:"done" + archiveId in one shot. Prefer one-shot done response
+   under ~60s. If you need async, document poll contract and FE will adapt.
+
+6) Proxy timeouts
+   Caddy/nginx/cloud load balancer in front of api.devora21.com must allow
+   long enough for render (e.g. 90–120s) OR the API must fail before proxy cuts
+   the connection silently.
+
+7) Logging per render
+   userId, templateId, stages + ms, archiveId, error stack.
+   Do not log full content JSON in production if sensitive.
+
+================================================================================
+ACCEPTANCE
+================================================================================
+
+[ ] Authenticated POST /resume/render with real templateId + content returns
+    200 + archiveId in under ~60s typically
+[ ] GET /resume/archives/{archiveId}/pdf returns application/pdf
+[ ] GET /resume/archives/{archiveId}/docx returns application/vnd...docx
+[ ] Missing/invalid templateId → 404 JSON fast
+[ ] Template missing styled slots → 422 JSON fast
+[ ] soffice hang → 504 JSON within timeout (no infinite pending)
+[ ] FE Apply: spinner clears; PDF preview opens (or clear error within 90s)
+
+================================================================================
+OUT OF SCOPE
+================================================================================
+
+- Do not require FE to build DOCX
+- Do not require EXPERIENCE/SUMMARY text headers in the DOCX
+- AI stream (/ai/chat/completions/stream) is a separate issue — do not conflate
+
+================================================================================
+END
+================================================================================

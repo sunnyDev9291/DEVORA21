@@ -1,0 +1,197 @@
+# Backend Cursor Prompt — Fix empty / hanging resume AI stream
+
+Copy everything below to the backend agent/developer.
+
+================================================================================
+GOAL
+================================================================================
+
+Frontend Generate is stuck on "Claude · generating… / Live" with typing dots and
+NO streamed text. Network shows:
+
+1) POST /api/resume/generate/start  → 200 OK (FE prepare works)
+2) OPTIONS + POST https://api.devora21.com/ai/chat/completions/stream?jobTitle=...
+   → Response body empty / DevTools "Failed to load response data"
+   → UI never receives first token
+
+Backend must make POST /ai/chat/completions/stream return a real text stream
+(first bytes quickly) for resume Generate, with correct auth + CORS + job context.
+
+Frontend API base: https://api.devora21.com
+Auth: session cookie and/or Bearer (dv21_ user key OR AI_INTERNAL_API_KEY from FE prepare)
+
+================================================================================
+SYMPTOMS (production)
+================================================================================
+
+- FE shows Step 3 "Receiving AI draft" forever with "..."
+- /api/resume/generate/start succeeds with:
+  mode: "direct-stream"
+  templateName, messages[], mergeContext, streamAuthToken
+- Browser then calls:
+  POST /ai/chat/completions/stream?jobTitle=...&jobDescription=...
+  Authorization: Bearer <streamAuthToken or dv21_…>
+  credentials: include
+  Accept: text/plain
+  Content-Type: application/json
+- OPTIONS preflight returns 204 (OK) — empty body on OPTIONS is EXPECTED
+- The POST stream response has no visible body / never flushes tokens
+- Later finalize never runs because there is no modelText
+
+This is NOT a FE mergeContext / existingExperiences bug (already fixed).
+This is the AI stream endpoint hanging or not flushing.
+
+================================================================================
+FRONTEND CONTRACT (do not change without FE update)
+================================================================================
+
+Endpoint:
+  POST /ai/chat/completions/stream
+  Optional query (backup when gateways strip body fields):
+    ?jobTitle=...&job_title=...&jobDescription=...&job_description=...
+
+Headers:
+  Authorization: Bearer <token>
+  Accept: text/plain
+  Content-Type: application/json
+  Cookie: session (credentials: include) — optional if Bearer present
+  Origin: https://devora21.com (and localhost for local)
+
+Body (JSON) — FE sends ALL of these when present:
+
+{
+  "jobTitle": "string",
+  "jobDescription": "string",
+  "job_title": "string",          // snake aliases
+  "job_description": "string",
+  "messages": [
+    { "role": "system" | "user" | "assistant", "content": "string" }
+  ],
+  "maxTokens": 16384,             // resume generation uses large budget
+  "jsonObject": true,             // resume wants a single JSON object
+  "userId": "<optional; required when using internal key>",
+  "customPrompt": "<optional writing instructions>",
+  "profilePrompt": "<same>",
+  "promptContent": "<same>",
+  "skipEnglishTeamGate": true,
+  "skip_english_team_gate": true
+}
+
+Expected SUCCESS response:
+  HTTP 200
+  Content-Type: text/plain; charset=utf-8  (or text/event-stream if you document SSE)
+  Transfer-Encoding: chunked (or equivalent streaming)
+  Access-Control-Allow-Origin: <request Origin> (NOT *) when credentials used
+  Access-Control-Allow-Credentials: true
+  Access-Control-Expose-Headers: <as needed>
+
+Body = PLAIN TEXT deltas of the model output, flushed as they arrive.
+Frontend reads response.body.getReader() and concatenates UTF-8 chunks.
+It does NOT parse SSE "data:" frames today — send raw text chunks of the JSON.
+
+On error BEFORE streaming starts:
+  HTTP 4xx/5xx
+  Content-Type: application/json
+  { "error": "...", "message": "..." }
+  (English-team gate may also send code / workWithEnglishTeam)
+
+Mid-stream errors (if unavoidable):
+  Append a line like: [error] <message>
+  Frontend aborts when it sees that pattern.
+
+================================================================================
+REQUIRED FIXES
+================================================================================
+
+1) Flush first token ASAP
+   - Do not buffer the entire Claude/provider response then write once.
+   - Disable proxy buffering if Caddy/nginx sits in front:
+     e.g. Caddy flush / nginx X-Accel-Buffering: no
+   - Write + flush as each provider delta arrives.
+   - Target: first byte < ~3–5s after accepted request (TTFB).
+
+2) Auth that FE already uses
+   Accept ANY of:
+   - Bearer dv21_… (user API key)
+   - Bearer AI_INTERNAL_API_KEY (issued by FE prepare for cookie sessions)
+   - Valid session cookie with credentials: include
+   When Authorization is the internal key, require userId in JSON for profile prompt lookup.
+   Do NOT hang on auth — fail fast with 401 JSON.
+
+3) CORS for browser → api.devora21.com
+   OPTIONS must return 204 with:
+     Access-Control-Allow-Origin: https://devora21.com (echo Origin if allowlisted)
+     Access-Control-Allow-Credentials: true
+     Access-Control-Allow-Headers: authorization, content-type, accept
+     Access-Control-Allow-Methods: POST, OPTIONS
+   POST must include the same ACAO + credentials headers on the STREAM response
+   (not only on the OPTIONS response). Missing CORS on the streamed response
+   causes browsers to hide the body ("Failed to load response data").
+
+4) jobTitle / jobDescription gate
+   Resume streams send jsonObject:true + jobTitle/jobDescription in body AND query.
+   If English-team / job-context validation fails, return 422/400 JSON immediately —
+   do not open an empty stream and hang.
+   When skipEnglishTeamGate / skip_english_team_gate is true, skip that block.
+
+5) jsonObject:true behavior
+   Still STREAM the JSON text as it is generated (character/token chunks).
+   Do not wait for a complete JSON object before sending the first byte.
+   FE finalizes/parses after the stream ends.
+
+6) maxTokens
+   Honor maxTokens up to at least 16384 for resume.
+   Do not silently clamp to a tiny limit that causes empty/truncated streams
+   without an error.
+
+7) Timeouts
+   Provider connect timeout: fail with 502/504 JSON if upstream never starts.
+   Idle-between-chunks: if no byte for N seconds after headers sent, end stream
+   with [error] upstream timeout — do not leave the TCP connection open forever.
+
+8) Logging (temporary while fixing)
+   Log per request: auth mode (userKey|internal|cookie), userId present?,
+   jobTitle present?, jsonObject, maxTokens, TTFB ms, bytes streamed, end reason.
+   Do NOT log full Authorization tokens or full writing prompts in plain logs.
+
+================================================================================
+ACCEPTANCE TESTS
+================================================================================
+
+[ ] curl (authenticated) POST /ai/chat/completions/stream with a tiny messages[]
+    and jsonObject:false → receives plain text chunks within a few seconds
+[ ] Same with jsonObject:true + jobTitle + jobDescription + skipEnglishTeamGate
+    → streamed JSON characters appear before the full object is done
+[ ] Browser from https://devora21.com: Generate resume → Claude box shows raw
+    JSON text within ~5–15s (not permanent "...")
+[ ] Network tab POST stream Status 200, Type xhr/fetch (not only preflight),
+    Response eventually shows text (or EventStream)
+[ ] Unauthorized → 401 JSON fast (not hang)
+[ ] Missing jobTitle+jobDescription with jsonObject:true → 400/422 JSON fast
+[ ] OPTIONS preflight still 204 (empty body OK)
+[ ] Cookie session without dv21_ key still works via AI_INTERNAL_API_KEY + userId
+
+================================================================================
+OUT OF SCOPE / DO NOT BREAK
+================================================================================
+
+- Do NOT change FE to rebuild DOCX locally
+- Do NOT require SUMMARY/SKILLS/EXPERIENCE text headers in templates
+- Do NOT change /resume/render contract for Apply
+- Do NOT require FE to parse SSE unless you also update FE Accept + parser
+  (current FE expects plain text chunks)
+
+================================================================================
+SUGGESTED DEBUG ORDER
+================================================================================
+
+1. Reproduce with curl + Bearer AI_INTERNAL_API_KEY (bypass browser CORS)
+2. Confirm upstream Claude/provider call starts and yields deltas
+3. Confirm Express/Fastify res.write + flush (or equivalent) per delta
+4. Confirm reverse proxy is not buffering the stream
+5. Confirm CORS headers on the POST stream response itself
+6. Confirm jsonObject path is not waiting for full JSON before write
+
+================================================================================
+END
+================================================================================
