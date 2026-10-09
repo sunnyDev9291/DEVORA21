@@ -1,7 +1,11 @@
 import { applyResumeContentPostProcess } from "@/lib/resume-content-postprocess";
 import { buildTemplateSkillsPromptBlock } from "@/lib/resume-skills-style";
 import { isProjectLayout, normalizeResumeExperience, normalizeResumeProject } from "@/lib/resume-experience-utils";
-import type { GeneratedResumeContent, ResumeProject, ResumeTemplateLayout } from "@/lib/resume-types";
+import type {
+  GeneratedResumeContent,
+  ResumeProject,
+  ResumeTemplateLayout,
+} from "@/lib/resume-types";
 
 export const RESUME_AI_MODEL = "claude-sonnet-4-6";
 
@@ -69,27 +73,10 @@ export function buildResumeSystemPrompt(regenerate = false, layout: ResumeTempla
   ].join("\n");
 }
 
-function formatTemplateStructureLine(
-  e: GeneratedResumeContent["experiences"][number],
-  index: number,
-  layout: ResumeTemplateLayout
-): string {
-  const prefix = `${index + 1}. company="${e.company}" | dates="${e.dates}"${
-    e.location?.trim() ? ` | location="${e.location.trim()}"` : ""
-  }`;
-  if (isProjectLayout(layout) || e.projects?.length) {
-    const projects = e.projects ?? [];
-    const names = projects.map((p) => `"${p.name}"`).join(", ");
-    return `${prefix} | ${projects.length} project(s) (names/content from Writing instructions)`;
-  }
-  return `${prefix} | company/role/dates/location/bullets from Writing instructions (not frozen from DOCX)`;
-}
-
 export function buildResumeUserPrompt({
   jobTitle,
   companyName,
   jobDescription,
-  existingExperiences,
   templateLayout = "bullets",
   previousContent,
   templateSkillsSample,
@@ -99,37 +86,20 @@ export function buildResumeUserPrompt({
   jobTitle: string;
   companyName?: string;
   jobDescription: string;
-  existingExperiences: GeneratedResumeContent["experiences"];
   templateLayout?: ResumeTemplateLayout;
   previousContent?: GeneratedResumeContent;
-  /** Skillsets section from the user's template DOCX (layout only). */
+  /** Optional skills sample from DOCX (category label style only). */
   templateSkillsSample?: string;
-  /** Extra task for this click only (e.g. improve one score item). Not the profile prompt. */
   task?: string;
-  /** Verified profile writing prompt — must drive content/style for this generation. */
   writingInstructions?: string;
 }): string {
   const layout = previousContent?.layout ?? templateLayout;
-  const experiences = previousContent?.experiences ?? existingExperiences;
   const isRegenerate = Boolean(previousContent);
-
-  const structureBlock =
-    experiences.length > 0
-      ? [
-          `Prior experience slots (${experiences.length}) — use as a count/order hint only:`,
-          experiences.map((e, i) => formatTemplateStructureLine(e, i, layout)).join("\n"),
-          "STYLE MODE: company, role, dates, location, and bullets MUST be filled from Writing instructions / career history (not frozen from a DOCX header).",
-        ].join("\n")
-      : [
-          "STYLE MODE: Template is layout/styles only — there are no frozen employers in the DOCX.",
-          "Build experiences[] from Writing instructions / career history with real company, role, dates, location, and bullets.",
-          "Choose a sensible job count from Writing instructions (typically 2–4).",
-        ].join("\n");
 
   const previousDraftBlock =
     isRegenerate && previousContent
       ? [
-          "Previous draft JSON (revise this document):",
+          "Previous draft JSON (revise this document; keep unchanged fields verbatim):",
           JSON.stringify({
             title: previousContent.title,
             summary: previousContent.summary,
@@ -138,8 +108,13 @@ export function buildResumeUserPrompt({
             education: previousContent.education,
             experiences: previousContent.experiences,
           }),
+          `Prefer about ${Math.max(previousContent.experiences.length, 1)} experience entries unless Writing instructions say otherwise.`,
         ].join("\n")
-      : "";
+      : [
+          "STYLE MODE: Template is Word styles/slots only — not a content source.",
+          "Build experiences[] from Writing instructions / career history with company, role, dates, location, and bullets.",
+          "Choose a sensible job count from Writing instructions (typically 2–4).",
+        ].join("\n");
 
   const templateSkillsBlock = buildTemplateSkillsPromptBlock(templateSkillsSample ?? "", layout);
   const taskBlock = task?.trim() ? `Task:\n${task.trim()}` : "";
@@ -151,11 +126,6 @@ export function buildResumeUserPrompt({
       ].join("\n")
     : "";
 
-  const countRule =
-    experiences.length > 0
-      ? `Prefer about ${experiences.length} experience entries unless Writing instructions specify otherwise. Valid JSON only.`
-      : "Return a non-empty experiences array. Valid JSON only.";
-
   return [
     writingBlock,
     jobTitle && `Job title:\n${jobTitle}`,
@@ -164,8 +134,7 @@ export function buildResumeUserPrompt({
     templateSkillsBlock,
     taskBlock,
     previousDraftBlock,
-    structureBlock,
-    countRule,
+    "Return a non-empty experiences array. Valid JSON only.",
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -466,238 +435,143 @@ export function parseResumeJsonContent(
   };
 }
 
-function matchExperienceByCompany(
-  parsedExperiences: GeneratedResumeContent["experiences"],
-  existing: GeneratedResumeContent["experiences"][number],
-  index: number,
-  layout: ResumeTemplateLayout
-) {
-  const byIndex = parsedExperiences[index];
-  const projectMode = isProjectLayout(layout) || (existing.projects?.length ?? 0) > 0;
-  if (projectMode ? byIndex?.projects?.length : byIndex?.bullets?.length) return byIndex;
-
-  const key = existing.company.toLowerCase();
-  return parsedExperiences.find(
-    (e) =>
-      e.company.toLowerCase().includes(key) ||
-      key.includes(e.company.toLowerCase()) ||
-      e.role.toLowerCase().includes(key)
-  );
-}
-
-function normalizeProjectsToCount(
-  projects: GeneratedResumeContent["experiences"][number]["projects"],
-  targetCount: number,
-  fallback: NonNullable<GeneratedResumeContent["experiences"][number]["projects"]>
-) {
-  const normalized = (projects ?? []).map((p) => normalizeResumeProject(p));
-  if (targetCount <= 0) return [];
-  if (normalized.length === targetCount) return normalized;
-  if (normalized.length > targetCount) return normalized.slice(0, targetCount);
-  const out = [...normalized];
-  while (out.length < targetCount) {
-    out.push(normalizeResumeProject(fallback[out.length] ?? fallback[fallback.length - 1]));
-  }
-  return out;
-}
-
 function normalizeCompareText(text: string): string {
   return text.replace(/\*\*/g, "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-/** During regenerate, prefer the previous draft unless AI clearly changed a field. */
-export function pickRegenerateText(
-  aiText: string,
-  baselineText: string | undefined,
-  templateText: string | undefined
-): string {
+/** Prefer AI text; if empty or identical to previous draft, keep previous wording. */
+export function pickRegenerateText(aiText: string, previousText?: string): string {
   const ai = aiText.trim();
-  const baseline = (baselineText ?? "").trim();
-  const template = (templateText ?? "").trim();
-
-  if (!ai) return baseline || template;
-  if (baseline && normalizeCompareText(ai) === normalizeCompareText(baseline)) return baseline;
-  if (
-    baseline &&
-    template &&
-    normalizeCompareText(ai) === normalizeCompareText(template) &&
-    normalizeCompareText(baseline) !== normalizeCompareText(template)
-  ) {
-    return baseline;
-  }
+  const previous = (previousText ?? "").trim();
+  if (!ai) return previous;
+  if (previous && normalizeCompareText(ai) === normalizeCompareText(previous)) return previous;
   return ai;
 }
 
-export function mergeResumeWithTemplate(
+function pickEducation(
+  parsed: GeneratedResumeContent["education"],
+  previous: GeneratedResumeContent["education"]
+): GeneratedResumeContent["education"] | undefined {
+  if (!parsed && !previous) return undefined;
+  const degree = pickRegenerateText(parsed?.degree ?? "", previous?.degree);
+  const university = pickRegenerateText(parsed?.university ?? "", previous?.university);
+  const period = pickRegenerateText(parsed?.period ?? "", previous?.period);
+  if (!degree && !university && !period) return undefined;
+  return {
+    ...(degree ? { degree } : {}),
+    ...(university ? { university } : {}),
+    ...(period ? { period } : {}),
+  };
+}
+
+/**
+ * Style-only merge: AI JSON is the source of truth.
+ * `previousContent` is only used on improve/regenerate to preserve unchanged wording.
+ * DOCX-parsed employers are never used.
+ */
+export function mergeResumeContent(
   parsed: GeneratedResumeContent,
-  existingExperiences: GeneratedResumeContent["experiences"],
   fallbackTitle: string,
   layout: ResumeTemplateLayout = "bullets",
-  baseline?: GeneratedResumeContent | null
+  previous?: GeneratedResumeContent | null
 ): GeneratedResumeContent {
   const projectMode = isProjectLayout(layout);
-  const baselineTitle = baseline?.title?.trim();
-
-  // Style-only: AI JSON is the source of truth for employers/dates/location.
-  // Prior slots are only used as count/order hints when AI returns fewer rows.
-  const aiExperiences = parsed.experiences.length
+  const experiences = parsed.experiences.length
     ? parsed.experiences
-    : baseline?.experiences?.length
-      ? baseline.experiences
-      : existingExperiences;
+    : previous?.experiences ?? [];
 
-  const slotHints =
-    existingExperiences.length > 0
-      ? existingExperiences
-      : baseline?.experiences?.length
-        ? baseline.experiences
-        : aiExperiences;
-
-  const experienceCount = Math.max(aiExperiences.length, slotHints.length > 0 ? slotHints.length : 0);
+  const education = pickEducation(parsed.education, previous?.education);
 
   return {
-    title: pickRegenerateText(parsed.title || fallbackTitle, baselineTitle, fallbackTitle),
-    summary: pickRegenerateText(parsed.summary, baseline?.summary, ""),
-    skills: pickRegenerateText(parsed.skills, baseline?.skills, ""),
+    title: pickRegenerateText(parsed.title || fallbackTitle, previous?.title) || fallbackTitle,
+    summary: pickRegenerateText(parsed.summary, previous?.summary),
+    skills: pickRegenerateText(parsed.skills, previous?.skills),
     ...(parsed.fileName?.trim()
       ? { fileName: parsed.fileName.trim() }
-      : baseline?.fileName?.trim()
-        ? { fileName: baseline.fileName.trim() }
+      : previous?.fileName?.trim()
+        ? { fileName: previous.fileName.trim() }
         : {}),
-    ...(parsed.education || baseline?.education
-      ? {
-          education: {
-            ...(pickRegenerateText(
-              parsed.education?.degree ?? "",
-              baseline?.education?.degree,
-              ""
-            )
-              ? {
-                  degree: pickRegenerateText(
-                    parsed.education?.degree ?? "",
-                    baseline?.education?.degree,
-                    ""
-                  ),
-                }
-              : {}),
-            ...(pickRegenerateText(
-              parsed.education?.university ?? "",
-              baseline?.education?.university,
-              ""
-            )
-              ? {
-                  university: pickRegenerateText(
-                    parsed.education?.university ?? "",
-                    baseline?.education?.university,
-                    ""
-                  ),
-                }
-              : {}),
-            ...(pickRegenerateText(
-              parsed.education?.period ?? "",
-              baseline?.education?.period,
-              ""
-            )
-              ? {
-                  period: pickRegenerateText(
-                    parsed.education?.period ?? "",
-                    baseline?.education?.period,
-                    ""
-                  ),
-                }
-              : {}),
-          },
-        }
-      : {}),
+    ...(education ? { education } : {}),
     layout: projectMode ? "projects" : "bullets",
-    experiences: Array.from({ length: experienceCount || aiExperiences.length }, (_, i) => {
-      const hint = slotHints[i] ?? slotHints[slotHints.length - 1];
-      const generated =
-        matchExperienceByCompany(aiExperiences, hint ?? aiExperiences[i] ?? { company: "", role: "", dates: "", bullets: [] }, i, layout) ??
-        aiExperiences[i];
-      const baselineExp = baseline?.experiences[i];
+    experiences: experiences.map((exp, index) => {
+      const prev = previous?.experiences[index];
 
-      if (projectMode || generated?.projects?.length || hint?.projects?.length) {
-        const projects = (generated?.projects?.length
-          ? generated.projects
-          : baselineExp?.projects?.length
-            ? baselineExp.projects
-            : hint?.projects ?? []
-        ).map((project, projectIndex) => {
-          const baselineProject = baselineExp?.projects?.[projectIndex];
-          return {
-            name: pickRegenerateText(project.name, baselineProject?.name, ""),
-            businessChallenge: pickRegenerateText(
-              project.businessChallenge,
-              baselineProject?.businessChallenge,
-              ""
-            ),
-            assignedResponsibility: pickRegenerateText(
-              project.assignedResponsibility,
-              baselineProject?.assignedResponsibility,
-              ""
-            ),
-            action: pickRegenerateText(project.action, baselineProject?.action, ""),
-            result: pickRegenerateText(project.result, baselineProject?.result, ""),
-          };
-        });
-
+      if (projectMode || exp.projects?.length || prev?.projects?.length) {
+        const projects = (exp.projects?.length ? exp.projects : prev?.projects ?? []).map(
+          (project, projectIndex) => {
+            const prevProject = prev?.projects?.[projectIndex];
+            return {
+              name: pickRegenerateText(project.name, prevProject?.name),
+              businessChallenge: pickRegenerateText(
+                project.businessChallenge,
+                prevProject?.businessChallenge
+              ),
+              assignedResponsibility: pickRegenerateText(
+                project.assignedResponsibility,
+                prevProject?.assignedResponsibility
+              ),
+              action: pickRegenerateText(project.action, prevProject?.action),
+              result: pickRegenerateText(project.result, prevProject?.result),
+            };
+          }
+        );
+        const location = pickRegenerateText(exp.location ?? "", prev?.location);
         return {
-          company: pickRegenerateText(generated?.company ?? "", baselineExp?.company, hint?.company ?? ""),
-          role: pickRegenerateText(generated?.role ?? "", baselineExp?.role, hint?.role ?? ""),
-          dates: pickRegenerateText(generated?.dates ?? "", baselineExp?.dates, hint?.dates ?? ""),
-          ...(pickRegenerateText(generated?.location ?? "", baselineExp?.location, hint?.location ?? "")
-            ? {
-                location: pickRegenerateText(
-                  generated?.location ?? "",
-                  baselineExp?.location,
-                  hint?.location ?? ""
-                ),
-              }
-            : {}),
+          company: pickRegenerateText(exp.company, prev?.company),
+          role: pickRegenerateText(exp.role, prev?.role),
+          dates: pickRegenerateText(exp.dates, prev?.dates),
+          ...(location ? { location } : {}),
           bullets: [],
           projects,
         };
       }
 
-      const sourceBullets = generated?.bullets?.length
-        ? generated.bullets
-        : baselineExp?.bullets?.length
-          ? baselineExp.bullets
-          : hint?.bullets ?? [];
-      const bullets = sourceBullets.map((bullet, bulletIndex) =>
-        pickRegenerateText(bullet, baselineExp?.bullets?.[bulletIndex], "")
+      const bullets = (exp.bullets?.length ? exp.bullets : prev?.bullets ?? []).map(
+        (bullet, bulletIndex) => pickRegenerateText(bullet, prev?.bullets?.[bulletIndex])
       );
-
+      const location = pickRegenerateText(exp.location ?? "", prev?.location);
       return {
-        company: pickRegenerateText(generated?.company ?? "", baselineExp?.company, hint?.company ?? ""),
-        role: pickRegenerateText(generated?.role ?? "", baselineExp?.role, hint?.role ?? ""),
-        dates: pickRegenerateText(generated?.dates ?? "", baselineExp?.dates, hint?.dates ?? ""),
-        ...(pickRegenerateText(generated?.location ?? "", baselineExp?.location, hint?.location ?? "")
-          ? {
-              location: pickRegenerateText(
-                generated?.location ?? "",
-                baselineExp?.location,
-                hint?.location ?? ""
-              ),
-            }
-          : {}),
+        company: pickRegenerateText(exp.company, prev?.company),
+        role: pickRegenerateText(exp.role, prev?.role),
+        dates: pickRegenerateText(exp.dates, prev?.dates),
+        ...(location ? { location } : {}),
         bullets,
       };
     }),
   };
 }
 
-export function finalizeResumeContent(
-  modelText: string,
-  existingExperiences: GeneratedResumeContent["experiences"],
+/** @deprecated Use mergeResumeContent — name kept for older call sites. */
+export function mergeResumeWithTemplate(
+  parsed: GeneratedResumeContent,
+  _unusedExperiences: GeneratedResumeContent["experiences"],
   fallbackTitle: string,
   layout: ResumeTemplateLayout = "bullets",
   baseline?: GeneratedResumeContent | null
 ): GeneratedResumeContent {
+  return mergeResumeContent(parsed, fallbackTitle, layout, baseline);
+}
+
+export type FinalizeResumeOptions = {
+  fallbackTitle: string;
+  layout?: ResumeTemplateLayout;
+  previousContent?: GeneratedResumeContent | null;
+  skillsSample?: string;
+};
+
+export function finalizeResumeContent(
+  modelText: string,
+  options: FinalizeResumeOptions
+): GeneratedResumeContent {
+  const layout = options.layout ?? "bullets";
   const parsed = parseResumeJsonContent(modelText, layout);
-  const merged = mergeResumeWithTemplate(parsed, existingExperiences, fallbackTitle, layout, baseline);
-  return applyResumeContentPostProcess(merged, existingExperiences, layout);
+  const merged = mergeResumeContent(
+    parsed,
+    options.fallbackTitle,
+    layout,
+    options.previousContent
+  );
+  return applyResumeContentPostProcess(merged, layout, options.skillsSample);
 }
 
 export type ResumeGenerationPhase =

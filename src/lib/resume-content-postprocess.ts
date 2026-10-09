@@ -36,7 +36,6 @@ function shouldKeepSkillTerm(token: string): boolean {
 /**
  * Collect tech terms from the skills block for auto-bold in title/summary/experience.
  * Split items ONLY on commas/semicolons — never on "/" or "|" (keeps "A/B Testing").
- * Drops 1-letter junk; allows short tech C, R, Go.
  */
 export function collectSkillTermsFromSkillsBlock(skills: string): string[] {
   const plain = skills.replace(/\*\*/g, "");
@@ -102,31 +101,6 @@ export function boldSkillCategoryLabels(skills: string): string {
     .join("\n");
 }
 
-function normalizeProjectsToCount(
-  projects: ResumeProject[],
-  targetCount: number,
-  fallback: ResumeProject[]
-): ResumeProject[] {
-  if (targetCount <= 0) return [];
-  if (projects.length === targetCount) return projects;
-  if (projects.length > targetCount) return projects.slice(0, targetCount);
-
-  const out = [...projects];
-  while (out.length < targetCount) {
-    out.push(
-      fallback[out.length] ??
-        fallback[fallback.length - 1] ?? {
-          name: "",
-          businessChallenge: "",
-          assignedResponsibility: "",
-          action: "",
-          result: "",
-        }
-    );
-  }
-  return out;
-}
-
 function boldProjectFields(project: ResumeProject, skillTerms: string[]): ResumeProject {
   return {
     name: boldSkillTermsInText(project.name, skillTerms),
@@ -138,22 +112,21 @@ function boldProjectFields(project: ResumeProject, skillTerms: string[]): Resume
 }
 
 /**
- * Bold skillset terms in title/summary/experience. Keep AI/Instructions bullet counts.
- * Style-only: company / role / dates / location come from content JSON (AI), not DOCX headers.
+ * Style formatting only: bold skill terms / category labels.
+ * Does not overwrite company, dates, location, or bullets from any template parse.
  */
 export function applyResumeContentPostProcess(
   content: GeneratedResumeContent,
-  templateExperiences: GeneratedResumeContent["experiences"],
   layout: ResumeTemplateLayout = content.layout ?? "bullets",
-  templateSkillsSample?: string
+  skillsSample?: string
 ): GeneratedResumeContent {
   const skillTerms = collectSkillTermsFromSkillsBlock(content.skills);
   const projectMode = isProjectLayout(layout);
-  const alignedSkills = templateSkillsSample?.trim()
-    ? formatSkillsWithTemplateStyle(content.skills, templateSkillsSample, layout)
+  const alignedSkills = skillsSample?.trim()
+    ? formatSkillsWithTemplateStyle(content.skills, skillsSample, layout)
     : content.skills;
-  const templateHasCategoryLabels = templateSkillsSample?.trim()
-    ? parseTemplateSkillLines(templateSkillsSample).some((line) => Boolean(line.label))
+  const templateHasCategoryLabels = skillsSample?.trim()
+    ? parseTemplateSkillLines(skillsSample).some((line) => Boolean(line.label))
     : false;
   const skillsWithTemplateStyle =
     projectMode || templateHasCategoryLabels
@@ -166,58 +139,27 @@ export function applyResumeContentPostProcess(
     title: boldSkillTermsInText(content.title, skillTerms),
     summary: boldSkillTermsInText(content.summary, skillTerms),
     skills: skillsWithTemplateStyle,
-    experiences: content.experiences.map((exp, index) => {
-      // Slot hints only (legacy parse or prior draft) — never freeze employers from DOCX.
-      const hint = templateExperiences[index];
-
-      if (projectMode || exp.projects?.length || hint?.projects?.length) {
-        const targetCount = exp.projects?.length || hint?.projects?.length || 0;
-        const projects = normalizeProjectsToCount(
-          exp.projects ?? [],
-          targetCount,
-          hint?.projects ?? []
-        ).map((project) =>
-          boldProjectFields(
-            {
-              name: project.name,
-              businessChallenge: project.businessChallenge,
-              assignedResponsibility: project.assignedResponsibility,
-              action: project.action,
-              result: project.result,
-            },
-            skillTerms
-          )
-        );
-
-        const company = exp.company?.trim() || hint?.company || "";
-        const dates = exp.dates?.trim() || hint?.dates || "";
-        const location = (exp.location?.trim() || hint?.location || "").trim();
-
+    experiences: content.experiences.map((exp) => {
+      if (projectMode || exp.projects?.length) {
         return {
-          company,
-          role: boldSkillTermsInText(exp.role || hint?.role || "", skillTerms),
-          dates,
-          ...(location ? { location } : {}),
+          company: exp.company,
+          role: boldSkillTermsInText(exp.role, skillTerms),
+          dates: exp.dates,
+          ...(exp.location?.trim() ? { location: exp.location.trim() } : {}),
           bullets: [],
-          projects,
+          projects: (exp.projects ?? []).map((project) => boldProjectFields(project, skillTerms)),
         };
       }
 
-      const bullets = (exp.bullets ?? []).map((b) => b.trim()).filter(Boolean);
-      const kept =
-        bullets.length > 0
-          ? bullets
-          : (hint?.bullets ?? []).map((b) => b.trim()).filter(Boolean);
-      const company = exp.company?.trim() || hint?.company || "";
-      const dates = exp.dates?.trim() || hint?.dates || "";
-      const location = (exp.location?.trim() || hint?.location || "").trim();
-
       return {
-        company,
-        role: boldSkillTermsInText(exp.role || hint?.role || "", skillTerms),
-        dates,
-        ...(location ? { location } : {}),
-        bullets: kept.map((bullet) => boldSkillTermsInText(bullet, skillTerms)),
+        company: exp.company,
+        role: boldSkillTermsInText(exp.role, skillTerms),
+        dates: exp.dates,
+        ...(exp.location?.trim() ? { location: exp.location.trim() } : {}),
+        bullets: (exp.bullets ?? [])
+          .map((b) => b.trim())
+          .filter(Boolean)
+          .map((bullet) => boldSkillTermsInText(bullet, skillTerms)),
       };
     }),
   };

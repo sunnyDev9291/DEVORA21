@@ -5,8 +5,12 @@ type PendingJob = {
   status: "pending";
   templateName: string;
   mergeContext: {
-    existingExperiences: unknown[];
-    headerTitle: string;
+    layout?: string;
+    fallbackTitle?: string;
+    skillsSample?: string;
+    customPrompt?: string;
+    profileName?: string;
+    previousContent?: unknown;
   };
   messages: Array<{ role: "system" | "user"; content: string }>;
   createdAt: number;
@@ -20,10 +24,7 @@ type ResumeJobRecord =
   | {
       status: "done";
       templateName: string;
-      mergeContext: {
-        existingExperiences: unknown[];
-        headerTitle: string;
-      };
+      mergeContext: PendingJob["mergeContext"];
       text: string;
       createdAt: number;
       expiresAt: number;
@@ -32,10 +33,7 @@ type ResumeJobRecord =
   | {
       status: "error";
       templateName: string;
-      mergeContext: {
-        existingExperiences: unknown[];
-        headerTitle: string;
-      };
+      mergeContext: PendingJob["mergeContext"];
       message: string;
       createdAt: number;
       expiresAt: number;

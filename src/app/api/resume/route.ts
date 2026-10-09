@@ -8,10 +8,7 @@ import { RESUME_MAX_TOKENS } from "@/lib/resume-prompt";
 
 export const runtime = "nodejs";
 
-/**
- * Legacy sync generate endpoint.
- * Style-only: does not require SUMMARY / SKILLS / EXPERIENCE text headers in the DOCX.
- */
+/** Legacy sync generate — same style-only prepare → AI → finalize path. */
 export async function POST(req: Request) {
   let body: ResumeGenerateRequest;
   try {
@@ -25,17 +22,11 @@ export async function POST(req: Request) {
     const aiRaw = await completeDeepSeek(prep.messages, RESUME_MAX_TOKENS, {
       jsonObject: true,
     });
-
-    const content = finalizeResumeContentFromModel(aiRaw, {
-      existingExperiences: prep.existingExperiences,
-      templateLayout: prep.templateLayout,
-      headerTitle: prep.headerTitle,
-      customPrompt: prep.customPrompt,
-      profileName: prep.profileName,
-      skillsSample: prep.skillsSample,
-      regenerateBaseline: prep.regenerateBaseline,
-    }, prep.templateName);
-
+    const content = finalizeResumeContentFromModel(
+      aiRaw,
+      prep.mergeContext,
+      prep.templateName
+    );
     return Response.json({ content, templateName: prep.templateName });
   } catch (err) {
     const message =

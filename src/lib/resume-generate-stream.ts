@@ -1,13 +1,14 @@
 import { completeDeepSeek, iterateDeepSeekStream } from "@/lib/deepseek-stream";
 import {
   detectResumeGenerationPhase,
-  finalizeResumeContent,
   pickResumeModelText,
   RESUME_MAX_TOKENS,
   type ResumeGenerationPhase,
 } from "@/lib/resume-prompt";
-import { ensureResumeContentFileName } from "@/lib/resume-filename";
-import { applyTemplateSkillsStyle, type ResumeGeneratePrep } from "@/lib/resume-generate-prep";
+import {
+  finalizeResumeContentFromModel,
+  type ResumeGeneratePrep,
+} from "@/lib/resume-generate-prep";
 
 function ndjson(data: Record<string, unknown>): string {
   return `${JSON.stringify(data)}\n`;
@@ -23,9 +24,7 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
       };
 
       try {
-        const { messages, existingExperiences, headerTitle, templateName, templateLayout, customPrompt, profileName, skillsSample, regenerateBaseline } =
-          prep;
-
+        const { messages, templateName, mergeContext } = prep;
         let thinking = "";
         let output = "";
         let phase: ResumeGenerationPhase = "starting";
@@ -34,7 +33,7 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
         for await (const delta of iterateDeepSeekStream(messages, RESUME_MAX_TOKENS, {
           jsonObject: true,
           userId: prep.userId,
-          customPrompt: customPrompt || undefined,
+          customPrompt: mergeContext.customPrompt,
         })) {
           if (delta.reasoning) {
             thinking += delta.reasoning;
@@ -66,41 +65,15 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
 
         let content;
         try {
-          content = ensureResumeContentFileName(
-            applyTemplateSkillsStyle(
-              finalizeResumeContent(
-                modelText,
-                existingExperiences,
-                headerTitle,
-                templateLayout,
-                regenerateBaseline
-              ),
-              skillsSample,
-              templateLayout
-            ),
-            { templateName, customPrompt, profileName }
-          );
+          content = finalizeResumeContentFromModel(modelText, mergeContext, templateName);
         } catch {
           enqueue({ type: "phase", phase: "finalizing" });
           modelText = await completeDeepSeek(messages, RESUME_MAX_TOKENS, {
             jsonObject: true,
             userId: prep.userId,
-            customPrompt: customPrompt || undefined,
+            customPrompt: mergeContext.customPrompt,
           });
-          content = ensureResumeContentFileName(
-            applyTemplateSkillsStyle(
-              finalizeResumeContent(
-                modelText,
-                existingExperiences,
-                headerTitle,
-                templateLayout,
-                regenerateBaseline
-              ),
-              skillsSample,
-              templateLayout
-            ),
-            { templateName, customPrompt, profileName }
-          );
+          content = finalizeResumeContentFromModel(modelText, mergeContext, templateName);
         }
         enqueue({ type: "done", content, templateName });
         controller.close();

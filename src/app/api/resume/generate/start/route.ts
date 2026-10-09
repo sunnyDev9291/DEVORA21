@@ -1,14 +1,13 @@
 import {
   prepareResumeGeneration,
   type ResumeGenerateRequest,
-  type ResumeMergeContext,
 } from "@/lib/resume-generate-prep";
 
 export const runtime = "nodejs";
 
 /**
  * Prepare resume prompts + merge context only.
- * The browser streams Claude directly from api.devora21.com (no Netlify AI proxy).
+ * Browser streams Claude from api.devora21.com; finalize parses AI JSON.
  */
 export async function POST(req: Request) {
   let body: ResumeGenerateRequest;
@@ -20,22 +19,11 @@ export async function POST(req: Request) {
 
   try {
     const prep = await prepareResumeGeneration(body);
-    const mergeContext: ResumeMergeContext = {
-      existingExperiences: prep.existingExperiences,
-      templateLayout: prep.templateLayout,
-      headerTitle: prep.headerTitle,
-      customPrompt: prep.customPrompt,
-      profileName: prep.profileName,
-      skillsSample: prep.skillsSample,
-      regenerateBaseline: prep.regenerateBaseline,
-    };
-
     return Response.json({
       mode: "direct-stream",
       templateName: prep.templateName,
       messages: prep.messages,
-      mergeContext,
-      // Runtime auth for browser → api.devora21.com stream (not NEXT_PUBLIC_*).
+      mergeContext: prep.mergeContext,
       streamAuthToken: process.env.AI_INTERNAL_API_KEY?.trim() || "",
     });
   } catch (err) {

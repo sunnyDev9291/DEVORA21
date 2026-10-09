@@ -11,7 +11,7 @@ interface FinalizeRequest {
   mergeContext?: ResumeMergeContext;
 }
 
-/** Parse/merge streamed model JSON into structured resume content (no AI call). */
+/** Parse streamed AI JSON into structured resume content (no AI call). */
 export async function POST(req: Request) {
   let body: FinalizeRequest;
   try {
@@ -30,8 +30,11 @@ export async function POST(req: Request) {
   if (!templateName) {
     return Response.json({ error: "templateName is required." }, { status: 400 });
   }
-  if (!mergeContext?.existingExperiences?.length) {
+  if (!mergeContext || typeof mergeContext !== "object") {
     return Response.json({ error: "mergeContext is required." }, { status: 400 });
+  }
+  if (!mergeContext.fallbackTitle?.trim()) {
+    return Response.json({ error: "mergeContext.fallbackTitle is required." }, { status: 400 });
   }
 
   try {
@@ -39,12 +42,9 @@ export async function POST(req: Request) {
     return Response.json({ content, templateName });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to finalize resume content.";
-    const preview =
-      modelText.length <= 800 ? modelText : `${modelText.slice(0, 800)}…`;
+    const preview = modelText.length <= 800 ? modelText : `${modelText.slice(0, 800)}…`;
     return Response.json(
-      {
-        error: `${message} Raw AI text (preview): ${preview}`,
-      },
+      { error: `${message} Raw AI text (preview): ${preview}` },
       { status: 500 }
     );
   }
