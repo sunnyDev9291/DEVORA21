@@ -12,6 +12,7 @@ import type { GeneratedResumeContent } from "@/lib/resume-types";
 import type { ResumeGenerationPhase } from "@/lib/resume-prompt";
 import type { FeedbackResolution, ResumeFieldChange } from "@/lib/resume-content-diff";
 import type { ResumeImproveTarget } from "@/lib/resume-improve-target";
+import type { ResumeTemplateStructureJob } from "@/lib/resume-template-structure";
 
 interface ResumeAtsScoreModalProps extends ResumeScorePanelProps {
   open: boolean;
@@ -27,6 +28,7 @@ interface ResumeAtsScoreModalProps extends ResumeScorePanelProps {
   generateError?: string;
   regenerateNotice?: string;
   templateName?: string;
+  templateJobs?: ResumeTemplateStructureJob[];
   customPrompt?: string;
   resumeFileBaseName?: string;
   suggestedResumeBaseName?: string;
@@ -63,6 +65,7 @@ export default function ResumeAtsScoreModal({
   generateError = "",
   regenerateNotice = "",
   templateName = "",
+  templateJobs = [],
   customPrompt = "",
   resumeFileBaseName = "",
   suggestedResumeBaseName = "",
@@ -205,6 +208,7 @@ export default function ResumeAtsScoreModal({
                     applying={applying}
                     generating={generating}
                     templateName={templateName}
+                    templateJobs={templateJobs}
                     resumeFileBaseName={resumeFileBaseName}
                     suggestedResumeBaseName={suggestedResumeBaseName}
                     onResumeFileBaseNameChange={onResumeFileBaseNameChange ?? (() => {})}

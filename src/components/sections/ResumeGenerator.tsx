@@ -19,6 +19,11 @@ import {
   renderResumeOnBackend,
   resumeRenderErrorMessage,
 } from "@/lib/resume-render-api";
+import {
+  alignContentWithTemplateStructure,
+  fetchResumeTemplateStructure,
+  type ResumeTemplateStructure,
+} from "@/lib/resume-template-structure";
 import { formatElapsedMs } from "@/lib/format-elapsed";
 import {
   clearResumeGenerateTimer,
@@ -184,6 +189,7 @@ export default function ResumeGenerator({
   const [improvingTargetId, setImprovingTargetId] = useState("");
   const [improvingTargetLabel, setImprovingTargetLabel] = useState("");
   const [atsModalOpen, setAtsModalOpen] = useState(false);
+  const [templateStructure, setTemplateStructure] = useState<ResumeTemplateStructure | null>(null);
   const [resumeChatOpen, setResumeChatOpen] = useState(false);
   const [jobCheckOpen, setJobCheckOpen] = useState(false);
   const [jobChecking, setJobChecking] = useState(false);
@@ -244,7 +250,50 @@ export default function ResumeGenerator({
     setResumeFileBaseName("");
     setResumeNameTouched(false);
     keywordsCacheKeyRef.current = null;
-  }, [activeTemplate?.fileName, activeTemplate?.templateBase64]);
+    setTemplateStructure(null);
+  }, [activeTemplate?.fileName, activeTemplate?.templateBase64, activeTemplate?.templateId]);
+
+  // Backend Mode-1 structure: bullet slot counts + company_period (not FE DOCX parse).
+  useEffect(() => {
+    const templateId = activeTemplate?.templateId?.trim();
+    if (!templateId && !activeTemplate?.fileName) {
+      setTemplateStructure(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const structure = await fetchResumeTemplateStructure(templateId);
+        if (!cancelled) setTemplateStructure(structure);
+      } catch {
+        if (!cancelled) setTemplateStructure(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTemplate?.templateId, activeTemplate?.fileName]);
+
+  // Align draft jobs to template slots when structure loads or a new draft is ready.
+  useEffect(() => {
+    if (!templateStructure?.jobs.length) return;
+    setContent((prev) => {
+      if (!prev) return prev;
+      const aligned = alignContentWithTemplateStructure(prev, templateStructure);
+      const same =
+        aligned.experiences.length === prev.experiences.length &&
+        aligned.experiences.every((exp, i) => {
+          const cur = prev.experiences[i];
+          return (
+            exp.company === cur.company &&
+            exp.role === cur.role &&
+            exp.dates === cur.dates &&
+            exp.bullets.length === cur.bullets.length
+          );
+        });
+      return same ? prev : aligned;
+    });
+  }, [templateStructure, generationKey]);
 
   useEffect(() => {
     keywordsCacheKeyRef.current = null;
@@ -740,7 +789,7 @@ export default function ResumeGenerator({
       const durationMs = endedAt - startedAt;
       setLastGenerateDurationMs(durationMs);
       publishResumeGenerateTimer({ active: true, elapsedMs: durationMs });
-      setContent(data.content);
+      setContent(alignContentWithTemplateStructure(data.content, templateStructure));
       setGenerationKey((k) => k + 1);
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
@@ -841,7 +890,7 @@ export default function ResumeGenerator({
       });
 
       if (generationRunRef.current !== runId) return;
-      setContent(draft.content);
+      setContent(alignContentWithTemplateStructure(draft.content, templateStructure));
       setGenerationKey((k) => k + 1);
       if (nextScore) {
         setResumeScore(nextScore);
@@ -1520,6 +1569,7 @@ export default function ResumeGenerator({
               applying={applying}
               generating={generating}
               templateName={activeTemplate?.fileName ?? ""}
+              templateJobs={templateStructure?.jobs}
               resumeFileBaseName={resumeFileBaseName}
               suggestedResumeBaseName={suggestedResumeBaseName}
               onResumeFileBaseNameChange={(value, options) => {
@@ -1578,6 +1628,7 @@ export default function ResumeGenerator({
           generateError={error}
           regenerateNotice={regenerateNotice}
           templateName={userTemplate?.fileName ?? ""}
+          templateJobs={templateStructure?.jobs}
           customPrompt={form.customPrompt}
           resumeFileBaseName={resumeFileBaseName}
           suggestedResumeBaseName={suggestedResumeBaseName}

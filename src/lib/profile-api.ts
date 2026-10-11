@@ -5,12 +5,17 @@ import { compactListingUrls } from "@/lib/builtin-crawl-types";
 import { dataUrlToBlob } from "@/lib/profile-file";
 import type { ProfileListingUrls, User } from "@/types/auth";
 
+import type { ResumeTemplateStructure } from "@/lib/resume-template-structure";
+import { normalizeTemplateStructure } from "@/lib/resume-template-structure";
+
 export type UserResumeTemplateAsset = {
   fileName: string;
   /** Optional local/cache bytes for template preview + transitional content prep. */
   templateBase64?: string;
   /** Backend-stored template id — required for authoritative render. */
   templateId?: string;
+  /** Backend Mode-1 structure when included on GET resume-template. */
+  structure?: ResumeTemplateStructure;
 };
 
 export type UserPromptAsset = {
@@ -262,6 +267,8 @@ export const profileApi = {
       templateId?: string;
       resumeTemplateId?: string;
       id?: string;
+      structure?: Record<string, unknown>;
+      jobs?: unknown[];
     }>("/auth/profile/resume-template");
 
     const fileName = data.fileName || data.resumeTemplateFileName || "resume.docx";
@@ -273,7 +280,9 @@ export const profileApi = {
       throw new ApiError("Resume template data missing.", 404);
     }
 
-    return { fileName, templateBase64, templateId };
+    const structure = normalizeTemplateStructure(data as Record<string, unknown>) ?? undefined;
+
+    return { fileName, templateBase64, templateId, structure };
   },
 
   /**

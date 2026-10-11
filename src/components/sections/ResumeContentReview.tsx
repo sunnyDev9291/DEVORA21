@@ -9,6 +9,10 @@ import {
   applyResumeTitleHeadlineChange,
   replaceRoleInResumeFileBaseName,
 } from "@/lib/resume-title-sync";
+import {
+  templateJobBulletSlotCount,
+  type ResumeTemplateStructureJob,
+} from "@/lib/resume-template-structure";
 import MarkdownBoldTextarea from "@/components/ui/MarkdownBoldTextarea";
 import ResumeRegenerateDiffPanel from "@/components/ui/ResumeRegenerateDiffPanel";
 import type { FeedbackResolution, ResumeFieldChange } from "@/lib/resume-content-diff";
@@ -20,6 +24,8 @@ interface ResumeContentReviewProps {
   applying: boolean;
   generating?: boolean;
   templateName: string;
+  /** Backend Mode-1 template jobs (bullet slots / company_period). Not AI draft length. */
+  templateJobs?: ResumeTemplateStructureJob[];
   resumeFileBaseName: string;
   suggestedResumeBaseName: string;
   onResumeFileBaseNameChange: (value: string, options?: { markTouched?: boolean }) => void;
@@ -78,6 +84,7 @@ export default function ResumeContentReview({
   applying,
   generating = false,
   templateName,
+  templateJobs = [],
   resumeFileBaseName,
   suggestedResumeBaseName,
   onResumeFileBaseNameChange,
@@ -161,8 +168,11 @@ export default function ResumeContentReview({
   }
 
   function updateBullet(expIndex: number, bulletIndex: number, value: string) {
-    const bullets = content.experiences[expIndex].bullets.map((b, i) =>
-      i === bulletIndex ? value : b
+    const current = content.experiences[expIndex].bullets ?? [];
+    const slotCount = templateJobBulletSlotCount(templateJobs, expIndex, current.length);
+    const nextLen = Math.max(current.length, slotCount, bulletIndex + 1);
+    const bullets = Array.from({ length: nextLen }, (_, i) =>
+      i === bulletIndex ? value : current[i] ?? ""
     );
     updateExperience(expIndex, { bullets });
   }
@@ -372,6 +382,23 @@ export default function ResumeContentReview({
         <div className="space-y-2">
           {content.experiences.map((exp, index) => {
             const open = expandedExp === index;
+            const templateJob = templateJobs[index];
+            const displayCompany = templateJob?.company?.trim() || exp.company;
+            const displayRole = templateJob?.role?.trim() || exp.role;
+            const displayDates = templateJob?.dates?.trim() || exp.dates;
+            const slotCount = templateJobBulletSlotCount(
+              templateJobs,
+              index,
+              exp.bullets.length
+            );
+            const filledBullets = exp.bullets.filter((b) => b.trim()).length;
+            const bulletEditors =
+              slotCount > exp.bullets.length
+                ? [
+                    ...exp.bullets,
+                    ...Array.from({ length: slotCount - exp.bullets.length }, () => ""),
+                  ]
+                : exp.bullets;
             return (
               <div key={`exp-${index}`} className="rounded-2xl border border-slate-200 dark:border-white/[0.08] overflow-hidden bg-white dark:bg-white/[0.02] [overflow-anchor:none]">
                 <button
@@ -382,16 +409,18 @@ export default function ResumeContentReview({
                 >
                   <div className="min-w-0">
                     <p className="font-semibold text-slate-900 dark:text-white truncate">
-                      {exp.role && exp.company
-                        ? exp.dates
-                          ? `${exp.role}, ${exp.company}, ${exp.dates}`
-                          : `${exp.role}, ${exp.company}`
-                        : exp.company || "Company"}
+                      {displayRole && displayCompany
+                        ? displayDates
+                          ? `${displayRole}, ${displayCompany}, ${displayDates}`
+                          : `${displayRole}, ${displayCompany}`
+                        : displayCompany || "Company"}
                     </p>
                     <p className="text-xs text-slate-500 mt-0.5 truncate">
                       {projectMode || exp.projects?.length
                         ? `${exp.projects?.length ?? 0} project${(exp.projects?.length ?? 0) === 1 ? "" : "s"}`
-                        : `${exp.bullets.length} bullet${exp.bullets.length === 1 ? "" : "s"}`}
+                        : templateJob
+                          ? `${filledBullets} / ${slotCount} template bullet slot${slotCount === 1 ? "" : "s"}`
+                          : `${exp.bullets.length} bullet${exp.bullets.length === 1 ? "" : "s"}`}
                     </p>
                   </div>
                   <svg className={`w-5 h-5 text-slate-400 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -403,7 +432,7 @@ export default function ResumeContentReview({
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-4">
                       <div className="sm:col-span-2">
                         <p className="text-xs font-medium text-slate-500 mb-1">Company</p>
-                        <p className="text-sm font-semibold text-slate-900 dark:text-white px-1">{exp.company}</p>
+                        <p className="text-sm font-semibold text-slate-900 dark:text-white px-1">{displayCompany}</p>
                       </div>
                       <div>
                         <p className="text-xs font-medium text-slate-500 mb-1">
@@ -416,12 +445,12 @@ export default function ResumeContentReview({
                           className={`${fieldClass} ${changedRing(`exp-${index}-role`)}`}
                           rows={1}
                           placeholder="Senior Java Engineer | Spring Boot"
-                          aria-label={`Role for ${exp.company}`}
+                          aria-label={`Role for ${displayCompany}`}
                         />
                       </div>
                       <div>
                         <p className="text-xs font-medium text-slate-500 mb-1">Dates</p>
-                        <p className="text-sm text-slate-800 dark:text-slate-200 px-1">{exp.dates}</p>
+                        <p className="text-sm text-slate-800 dark:text-slate-200 px-1">{displayDates}</p>
                       </div>
                     </div>
                     {projectMode || exp.projects?.length ? (
@@ -450,7 +479,7 @@ export default function ResumeContentReview({
                                   className={`${fieldClass} min-h-[72px] resize-y leading-relaxed ${changedRing(`exp-${index}-proj-${projectIndex}-${key}`)}`}
                                   rows={2}
                                   placeholder={label}
-                                  aria-label={`${label} for project ${projectIndex + 1} at ${exp.company}`}
+                                  aria-label={`${label} for project ${projectIndex + 1} at ${displayCompany}`}
                                 />
                               </div>
                             ))}
@@ -460,10 +489,13 @@ export default function ResumeContentReview({
                     ) : (
                       <div>
                         <p className="text-xs font-medium text-slate-500 mb-2">
-                          Achievement bullets <span className="font-normal text-slate-400">({exp.bullets.length})</span>
+                          Achievement bullets{" "}
+                          <span className="font-normal text-slate-400">
+                            ({templateJob ? `${filledBullets} filled / ${slotCount} slots` : exp.bullets.length})
+                          </span>
                         </p>
                         <div className="space-y-3">
-                          {exp.bullets.map((bullet, bulletIndex) => (
+                          {bulletEditors.map((bullet, bulletIndex) => (
                             <div
                               key={`exp-${index}-bullet-${bulletIndex}`}
                               className="flex gap-3 items-start rounded-xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/80 dark:bg-white/[0.02] p-3"
