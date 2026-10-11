@@ -969,13 +969,15 @@ export default function ResumeGenerator({
     setDocxBase64("");
 
     try {
+      // Ensure frozen template slots (company/role/dates/bulletCount) are applied before render.
+      const renderDraft = alignContentWithTemplateStructure(draft, templateStructure);
       const rendered = await renderResumeOnBackend({
         templateId: templateForRequest.templateId,
         templateBase64: templateForRequest.templateId
           ? undefined
           : templateForRequest.templateBase64,
         templateFileName: templateForRequest.fileName,
-        content: draft,
+        content: renderDraft,
         jobTitle: extractResumeTitleHeadline(draft.title) || jobTitle,
         companyName,
         jobDescription,
@@ -1570,6 +1572,7 @@ export default function ResumeGenerator({
               generating={generating}
               templateName={activeTemplate?.fileName ?? ""}
               templateJobs={templateStructure?.jobs}
+              templateSkillsSample={templateStructure?.skillsSample}
               resumeFileBaseName={resumeFileBaseName}
               suggestedResumeBaseName={suggestedResumeBaseName}
               onResumeFileBaseNameChange={(value, options) => {
@@ -1629,6 +1632,7 @@ export default function ResumeGenerator({
           regenerateNotice={regenerateNotice}
           templateName={userTemplate?.fileName ?? ""}
           templateJobs={templateStructure?.jobs}
+          templateSkillsSample={templateStructure?.skillsSample}
           customPrompt={form.customPrompt}
           resumeFileBaseName={resumeFileBaseName}
           suggestedResumeBaseName={suggestedResumeBaseName}

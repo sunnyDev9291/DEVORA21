@@ -34,6 +34,11 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
           jsonObject: true,
           userId: prep.userId,
           customPrompt: mergeContext.customPrompt,
+          jobTitle: prep.jobTitle,
+          jobDescription: prep.jobDescription,
+          templateId: prep.templateId || mergeContext.templateId,
+          task: prep.task,
+          skipEnglishTeamGate: true,
         })) {
           if (delta.reasoning) {
             thinking += delta.reasoning;
@@ -72,6 +77,11 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
             jsonObject: true,
             userId: prep.userId,
             customPrompt: mergeContext.customPrompt,
+            jobTitle: prep.jobTitle,
+            jobDescription: prep.jobDescription,
+            templateId: prep.templateId || mergeContext.templateId,
+            task: prep.task,
+            skipEnglishTeamGate: true,
           });
           content = finalizeResumeContentFromModel(modelText, mergeContext, templateName);
         }
@@ -98,6 +108,13 @@ export function resumeNdjsonResponse(stream: ReadableStream<Uint8Array>): Respon
 export async function runResumeGenerationSync(prep: ResumeGeneratePrep): Promise<string> {
   const modelText = await completeDeepSeek(prep.messages, RESUME_MAX_TOKENS, {
     jsonObject: true,
+    userId: prep.userId,
+    customPrompt: prep.mergeContext.customPrompt,
+    jobTitle: prep.jobTitle,
+    jobDescription: prep.jobDescription,
+    templateId: prep.templateId || prep.mergeContext.templateId,
+    task: prep.task,
+    skipEnglishTeamGate: true,
   });
   if (!modelText.trim()) {
     throw new Error("AI returned no content. Check AI backend configuration and try again.");

@@ -1,9 +1,4 @@
-import { resolveTemplateBuffer } from "@/lib/resume-template-resolve";
-import {
-  buildResumeSystemPrompt,
-  buildResumeUserPrompt,
-  finalizeResumeContent,
-} from "@/lib/resume-prompt";
+import { finalizeResumeContent } from "@/lib/resume-prompt";
 import { ensureResumeContentFileName } from "@/lib/resume-filename";
 import { formatSkillsWithTemplateStyle } from "@/lib/resume-skills-style";
 import type {
@@ -23,18 +18,19 @@ export interface ResumeGenerateRequest {
   /** Backend-stored style template id (preferred). */
   templateId?: string;
   userId?: string;
-  /** One-shot task (e.g. improve one score item). */
+  /** One-shot task (e.g. improve one score item) — forwarded; backend owns prompt. */
   task?: string;
   atsFeedback?: AtsScoreResult;
   ruleKeepFeedback?: RuleKeepScoreResult;
-  /** Prior draft — only used for improve/regenerate. */
+  /** Prior draft — FE finalize only (backend builds the AI prompt). */
   previousContent?: GeneratedResumeContent;
   profileName?: string;
 }
 
 /**
  * Context carried from prepare → browser stream → finalize.
- * Style-only: no DOCX-parsed employers. Content comes from AI JSON (+ optional previous draft).
+ * Backend owns the Claude prompt from stored template structure.
+ * FE only displays/signals + parses the streamed JSON.
  */
 export interface ResumeMergeContext {
   layout: ResumeTemplateLayout;
@@ -43,13 +39,19 @@ export interface ResumeMergeContext {
   customPrompt?: string;
   profileName?: string;
   previousContent?: GeneratedResumeContent;
+  templateId?: string;
 }
 
 export interface ResumeGeneratePrep {
   templateName: string;
+  templateId?: string;
+  jobTitle: string;
+  jobDescription: string;
+  /** Always empty in resume mode — backend ignores FE messages and builds the prompt. */
   messages: Array<{ role: "system" | "user"; content: string }>;
   mergeContext: ResumeMergeContext;
   userId?: string;
+  task?: string;
 }
 
 export type ResumeJobRecord =
@@ -83,8 +85,9 @@ export type ResumeJobRecord =
     };
 
 /**
- * Build prompts for Claude. Template DOCX is styles/slots only —
- * never require SUMMARY / SKILLS / EXPERIENCE text headers.
+ * Prepare merge/finalize context only.
+ * Do NOT invent Claude system/user prompts or parse DOCX for bullet counts —
+ * backend builds the prompt from the stored template structure.
  */
 export async function prepareResumeGeneration(
   body: ResumeGenerateRequest
@@ -94,89 +97,46 @@ export async function prepareResumeGeneration(
   const jobDescription = body.jobDescription?.trim() ?? "";
   const customPrompt = body.customPrompt?.trim() ?? "";
   const previousContent = body.previousContent;
-  const isRegenerate = Boolean(previousContent);
+  const templateId = body.templateId?.trim() || undefined;
 
   if (!jobTitle) throw new Error("Job title is required.");
   if (!companyName) throw new Error("Company name is required.");
+  if (!jobTitle && !jobDescription) {
+    throw new Error("Job title or job description is required.");
+  }
 
   const hasTemplate = Boolean(
-    body.templateBase64?.trim() || body.templateName?.trim() || body.templateId?.trim()
+    templateId || body.templateBase64?.trim() || body.templateName?.trim()
   );
   if (!hasTemplate) {
     throw new Error("Upload a resume template in your profile first.");
   }
 
-  let templateName =
-    body.templateName?.trim().replace(/\.docx$/i, "") ||
-    body.templateId?.trim() ||
-    "resume";
-  let layout: ResumeTemplateLayout = previousContent?.layout ?? "bullets";
-  let skillsSample = "";
-  let fallbackTitle = jobTitle;
-
-  // Optional soft hints from local DOCX bytes (skills sample / layout). Never required.
-  if (body.templateBase64?.trim() || body.templateName?.trim()) {
-    try {
-      const resolved = await resolveTemplateBuffer({
-        templateName: body.templateName,
-        templateBase64: body.templateBase64,
-      });
-      templateName = resolved.templateName;
-
-      try {
-        const { getCachedTemplateParse } = await import("@/lib/resume-template-cache");
-        const parsed = await getCachedTemplateParse(templateName, resolved.buffer);
-        if (!previousContent?.layout) layout = parsed.layout ?? "bullets";
-        skillsSample = parsed.skillsSample ?? "";
-      } catch {
-        // Style templates without text section headers are expected.
-      }
-
-      try {
-        const { parseResumeHeaderFromDocxBuffer } = await import("@/lib/resume-docx");
-        const header = parseResumeHeaderFromDocxBuffer(resolved.buffer);
-        if (header.title?.trim()) fallbackTitle = header.title.trim();
-      } catch {
-        // Header title optional.
-      }
-    } catch {
-      // templateId-only is fine when bytes are not on the FE.
-    }
-  }
+  const templateName =
+    body.templateName?.trim().replace(/\.docx$/i, "") || templateId || "resume";
 
   const mergeContext: ResumeMergeContext = {
-    layout,
-    fallbackTitle,
-    skillsSample: skillsSample || undefined,
+    layout: previousContent?.layout ?? "bullets",
+    fallbackTitle: jobTitle,
     customPrompt: customPrompt || undefined,
     profileName: body.profileName?.trim() || undefined,
-    previousContent: isRegenerate ? previousContent : undefined,
+    previousContent: previousContent || undefined,
+    templateId,
   };
 
   return {
     templateName,
-    messages: [
-      { role: "system", content: buildResumeSystemPrompt(isRegenerate, layout) },
-      {
-        role: "user",
-        content: buildResumeUserPrompt({
-          jobTitle,
-          companyName,
-          jobDescription,
-          templateLayout: layout,
-          previousContent: isRegenerate ? previousContent : undefined,
-          templateSkillsSample: skillsSample,
-          task: body.task?.trim() || undefined,
-          writingInstructions: customPrompt,
-        }),
-      },
-    ],
+    templateId,
+    jobTitle,
+    jobDescription,
+    messages: [],
     mergeContext,
     userId: body.userId?.trim() || undefined,
+    task: body.task?.trim() || undefined,
   };
 }
 
-/** Parse AI JSON → structured content (style-only merge). */
+/** Parse AI JSON → structured content (display/finalize only). */
 export function finalizeResumeContentFromModel(
   modelText: string,
   mergeContext: ResumeMergeContext,

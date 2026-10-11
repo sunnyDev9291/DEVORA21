@@ -179,17 +179,18 @@ export function alignContentWithTemplateStructure(
 
     const slotCount = Math.max(0, job.bulletCount || 0);
     const existing = Array.isArray(base.bullets) ? base.bullets.map((b) => String(b)) : [];
+    // Pad/clip to exact template bulletCount for editing UX (empty slots OK).
     const bullets =
       slotCount > 0
         ? [
-            ...existing.slice(0, Math.max(slotCount, existing.length)),
+            ...existing.slice(0, slotCount),
             ...Array.from({ length: Math.max(0, slotCount - existing.length) }, () => ""),
-          ].slice(0, Math.max(slotCount, existing.length))
+          ]
         : existing;
 
     return {
       ...base,
-      // Template structure is authoritative for slot headers (Mode 1).
+      // Frozen from template structure (never treat as AI-editable headers).
       company: job.company.trim() || base.company,
       role: job.role.trim() || base.role,
       dates: job.dates.trim() || base.dates,
@@ -217,4 +218,10 @@ export function templateJobBulletSlotCount(
   const count = jobs?.[index]?.bulletCount;
   if (typeof count === "number" && count > 0) return count;
   return fallback;
+}
+
+/** Category line count from structure.skillsSample (not AI skills length). */
+export function countTemplateSkillCategories(skillsSample?: string): number {
+  if (!skillsSample?.trim()) return 0;
+  return skillsSample.split(/\n+/).map((l) => l.trim()).filter(Boolean).length;
 }

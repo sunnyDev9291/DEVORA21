@@ -10,6 +10,7 @@ import {
   replaceRoleInResumeFileBaseName,
 } from "@/lib/resume-title-sync";
 import {
+  countTemplateSkillCategories,
   templateJobBulletSlotCount,
   type ResumeTemplateStructureJob,
 } from "@/lib/resume-template-structure";
@@ -26,6 +27,8 @@ interface ResumeContentReviewProps {
   templateName: string;
   /** Backend Mode-1 template jobs (bullet slots / company_period). Not AI draft length. */
   templateJobs?: ResumeTemplateStructureJob[];
+  /** Backend skillsSample — category slot count for the review label. */
+  templateSkillsSample?: string;
   resumeFileBaseName: string;
   suggestedResumeBaseName: string;
   onResumeFileBaseNameChange: (value: string, options?: { markTouched?: boolean }) => void;
@@ -85,6 +88,7 @@ export default function ResumeContentReview({
   generating = false,
   templateName,
   templateJobs = [],
+  templateSkillsSample = "",
   resumeFileBaseName,
   suggestedResumeBaseName,
   onResumeFileBaseNameChange,
@@ -237,6 +241,7 @@ export default function ResumeContentReview({
       ? "ring-2 ring-amber-400/50 border-amber-400/40"
       : "";
   const skillLineCount = content.skills.split(/\n+/).filter((line) => line.trim()).length;
+  const templateSkillSlots = countTemplateSkillCategories(templateSkillsSample);
   const summaryWordCount = content.summary.split(/\s+/).filter(Boolean).length;
 
   const applyBarInner = (
@@ -332,7 +337,11 @@ export default function ResumeContentReview({
             Skillsets
           </label>
           <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-            <span>{skillLineCount} categor{skillLineCount === 1 ? "y" : "ies"}</span>
+            <span>
+              {templateSkillSlots > 0
+                ? `${skillLineCount} / ${templateSkillSlots} template categor${templateSkillSlots === 1 ? "y" : "ies"}`
+                : `${skillLineCount} categor${skillLineCount === 1 ? "y" : "ies"}`}
+            </span>
             <span>One category per line works best</span>
             <span>Use Ctrl/Cmd+B for bold</span>
           </div>
@@ -438,15 +447,19 @@ export default function ResumeContentReview({
                         <p className="text-xs font-medium text-slate-500 mb-1">
                           Role / title
                         </p>
-                        <MarkdownBoldTextarea
-                          id={`exp-${index}-role`}
-                          value={exp.role}
-                          onChange={(role) => updateExperience(index, { role })}
-                          className={`${fieldClass} ${changedRing(`exp-${index}-role`)}`}
-                          rows={1}
-                          placeholder="Senior Java Engineer | Spring Boot"
-                          aria-label={`Role for ${displayCompany}`}
-                        />
+                        {templateJob ? (
+                          <p className="text-sm text-slate-800 dark:text-slate-200 px-1">{displayRole}</p>
+                        ) : (
+                          <MarkdownBoldTextarea
+                            id={`exp-${index}-role`}
+                            value={exp.role}
+                            onChange={(role) => updateExperience(index, { role })}
+                            className={`${fieldClass} ${changedRing(`exp-${index}-role`)}`}
+                            rows={1}
+                            placeholder="Senior Java Engineer | Spring Boot"
+                            aria-label={`Role for ${displayCompany}`}
+                          />
+                        )}
                       </div>
                       <div>
                         <p className="text-xs font-medium text-slate-500 mb-1">Dates</p>

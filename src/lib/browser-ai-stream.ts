@@ -33,6 +33,10 @@ export type BrowserAiStreamOptions = {
   /** Required by backend English-team gate (always send; at least one non-empty). */
   jobTitle?: string;
   jobDescription?: string;
+  /** Active resume template — backend builds prompt from stored DOCX structure. */
+  templateId?: string;
+  /** Optional one-shot improve task; backend may fold into its prompt. */
+  task?: string;
   /** When true, ask the backend to skip the English-team block and generate anyway. */
   skipEnglishTeamGate?: boolean;
 };
@@ -124,7 +128,11 @@ function buildAiStreamBody(
   const userId = options.userId?.trim() || "";
   const { jobTitle, jobDescription } = resolveJobContext(options);
   const customPrompt = options.customPrompt?.trim() || "";
+  const templateId = options.templateId?.trim() || "";
+  const task = options.task?.trim() || "";
 
+  // Resume mode: backend owns the Claude prompt from template structure.
+  // FE may send messages:[] — do not invent fake bullet-count system prompts.
   const body: Record<string, unknown> = {
     jobTitle,
     jobDescription,
@@ -137,10 +145,17 @@ function buildAiStreamBody(
   if (userId) {
     body.userId = userId;
   }
+  if (templateId) {
+    body.templateId = templateId;
+    body.template_id = templateId;
+  }
   if (customPrompt) {
     body.customPrompt = customPrompt;
     body.profilePrompt = customPrompt;
     body.promptContent = customPrompt;
+  }
+  if (task) {
+    body.task = task;
   }
   if (options.skipEnglishTeamGate) {
     body.skipEnglishTeamGate = true;
@@ -294,6 +309,8 @@ export async function* iterateBrowserAiStream(
     userId,
     jobTitle,
     jobDescription,
+    templateId: options.templateId?.trim() || undefined,
+    task: options.task?.trim() || undefined,
   };
 
   let response: Response;

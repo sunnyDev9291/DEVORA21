@@ -17,6 +17,10 @@ export type AiCompletionOptions = {
   /** Required by backend English-team gate on resume (jsonObject) generations. */
   jobTitle?: string;
   jobDescription?: string;
+  /** Active template — backend builds resume prompt from stored DOCX structure. */
+  templateId?: string;
+  /** Optional improve task for resume regenerate. */
+  task?: string;
   /** Bypass English-team gate when the user confirms Continue creating. */
   skipEnglishTeamGate?: boolean;
 };
@@ -79,6 +83,15 @@ function buildAiBody(
     body.customPrompt = customPrompt;
     body.profilePrompt = customPrompt;
     body.promptContent = customPrompt;
+  }
+  const templateId = options?.templateId?.trim();
+  if (templateId) {
+    body.templateId = templateId;
+    body.template_id = templateId;
+  }
+  const task = options?.task?.trim();
+  if (task) {
+    body.task = task;
   }
   if (options?.skipEnglishTeamGate) {
     body.skipEnglishTeamGate = true;

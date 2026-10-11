@@ -21,10 +21,12 @@ export interface ResumeGenerateResult {
 interface PrepareResponse {
   mode?: string;
   templateName?: string;
+  templateId?: string;
   messages?: Array<{ role: "system" | "user" | "assistant"; content: string }>;
   mergeContext?: ResumeMergeContext;
   /** Server AI_INTERNAL_API_KEY for browser → api.devora21.com stream auth. */
   streamAuthToken?: string;
+  task?: string;
   error?: string;
   message?: string;
   code?: string;
@@ -39,9 +41,11 @@ function previewRawText(text: string, max = 800): string {
 }
 
 /**
- * Prepare on Next.js, then stream Claude directly from the browser → api.devora21.com.
- * Sends userId for profile lookup and customPrompt in messages + stream body so a
- * newly saved writing prompt is applied even if the backend userId cache is stale.
+ * Resume Web UI generate:
+ * 1) Lightweight Next prepare (auth token + mergeContext only — no FE-built Claude prompt)
+ * 2) Browser streams api.devora21.com with jsonObject + templateId + JD
+ *    Backend builds the prompt from stored DOCX structure (messages may be [])
+ * 3) Finalize parses streamed JSON for the review UI
  */
 export async function generateResume(
   body: Record<string, unknown>,
@@ -61,6 +65,9 @@ export async function generateResume(
     typeof body.jobDescription === "string" ? body.jobDescription.trim() : "";
   const customPrompt =
     typeof body.customPrompt === "string" ? body.customPrompt.trim() : "";
+  const templateId =
+    typeof body.templateId === "string" ? body.templateId.trim() : "";
+  const task = typeof body.task === "string" ? body.task.trim() : "";
   const userApiKey = getUserApiKey();
   const usingUserApiKey = Boolean(userApiKey && isUserApiKey(userApiKey));
 
@@ -87,7 +94,7 @@ export async function generateResume(
     if (gated) throw gated;
     throw new Error(prep.error || prep.message || `Prepare failed (${prepRes.status}).`);
   }
-  if (!prep.messages?.length || !prep.templateName || !prep.mergeContext) {
+  if (!prep.templateName || !prep.mergeContext) {
     throw new Error(
       `Unexpected prepare response from resume generator: ${JSON.stringify(prep).slice(0, 400)}`
     );
@@ -102,9 +109,13 @@ export async function generateResume(
 
   handlers.onPhase?.("analyzing");
 
+  // Backend-owned resume prompt: empty messages + templateId + JD / writing prompt.
+  const messages = Array.isArray(prep.messages) ? prep.messages : [];
+  const resolvedTemplateId = templateId || prep.templateId || prep.mergeContext.templateId;
+
   let output = "";
   try {
-    for await (const delta of iterateBrowserAiStream(prep.messages, RESUME_MAX_TOKENS, {
+    for await (const delta of iterateBrowserAiStream(messages, RESUME_MAX_TOKENS, {
       jsonObject: true,
       signal: handlers.signal,
       authToken: streamAuthToken,
@@ -112,6 +123,8 @@ export async function generateResume(
       customPrompt: customPrompt || undefined,
       jobTitle,
       jobDescription,
+      templateId: resolvedTemplateId || undefined,
+      task: task || prep.task || undefined,
       skipEnglishTeamGate: handlers.skipEnglishTeamGate !== false,
     })) {
       if (!delta.content) continue;

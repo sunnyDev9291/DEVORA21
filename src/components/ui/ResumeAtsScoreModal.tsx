@@ -29,6 +29,7 @@ interface ResumeAtsScoreModalProps extends ResumeScorePanelProps {
   regenerateNotice?: string;
   templateName?: string;
   templateJobs?: ResumeTemplateStructureJob[];
+  templateSkillsSample?: string;
   customPrompt?: string;
   resumeFileBaseName?: string;
   suggestedResumeBaseName?: string;
@@ -66,6 +67,7 @@ export default function ResumeAtsScoreModal({
   regenerateNotice = "",
   templateName = "",
   templateJobs = [],
+  templateSkillsSample = "",
   customPrompt = "",
   resumeFileBaseName = "",
   suggestedResumeBaseName = "",
@@ -209,6 +211,7 @@ export default function ResumeAtsScoreModal({
                     generating={generating}
                     templateName={templateName}
                     templateJobs={templateJobs}
+                    templateSkillsSample={templateSkillsSample}
                     resumeFileBaseName={resumeFileBaseName}
                     suggestedResumeBaseName={suggestedResumeBaseName}
                     onResumeFileBaseNameChange={onResumeFileBaseNameChange ?? (() => {})}

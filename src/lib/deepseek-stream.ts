@@ -25,6 +25,8 @@ export async function completeDeepSeek(
     userAuthorization: options?.userAuthorization,
     jobTitle: options?.jobTitle,
     jobDescription: options?.jobDescription,
+    templateId: options?.templateId,
+    task: options?.task,
     skipEnglishTeamGate: options?.skipEnglishTeamGate,
   });
 }
@@ -42,6 +44,8 @@ export async function* iterateDeepSeekStream(
     userAuthorization: options?.userAuthorization,
     jobTitle: options?.jobTitle,
     jobDescription: options?.jobDescription,
+    templateId: options?.templateId,
+    task: options?.task,
     skipEnglishTeamGate: options?.skipEnglishTeamGate,
   });
 }

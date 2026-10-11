@@ -8,7 +8,10 @@ import { RESUME_MAX_TOKENS } from "@/lib/resume-prompt";
 
 export const runtime = "nodejs";
 
-/** Legacy sync generate — same style-only prepare → AI → finalize path. */
+/**
+ * Legacy sync generate.
+ * Backend owns the Claude prompt from template structure (empty messages + templateId).
+ */
 export async function POST(req: Request) {
   let body: ResumeGenerateRequest;
   try {
@@ -21,6 +24,13 @@ export async function POST(req: Request) {
     const prep = await prepareResumeGeneration(body);
     const aiRaw = await completeDeepSeek(prep.messages, RESUME_MAX_TOKENS, {
       jsonObject: true,
+      userId: prep.userId,
+      customPrompt: prep.mergeContext.customPrompt,
+      jobTitle: prep.jobTitle,
+      jobDescription: prep.jobDescription,
+      templateId: prep.templateId,
+      task: prep.task,
+      skipEnglishTeamGate: true,
     });
     const content = finalizeResumeContentFromModel(
       aiRaw,

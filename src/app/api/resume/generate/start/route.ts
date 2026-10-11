@@ -6,8 +6,9 @@ import {
 export const runtime = "nodejs";
 
 /**
- * Prepare resume prompts + merge context only.
- * Browser streams Claude from api.devora21.com; finalize parses AI JSON.
+ * Lightweight prepare for Web UI generate.
+ * Returns stream auth + mergeContext only — does NOT invent Claude prompts.
+ * Backend /ai/chat/completions/stream builds the prompt from stored template structure.
  */
 export async function POST(req: Request) {
   let body: ResumeGenerateRequest;
@@ -20,10 +21,13 @@ export async function POST(req: Request) {
   try {
     const prep = await prepareResumeGeneration(body);
     return Response.json({
-      mode: "direct-stream",
+      mode: "backend-prompt",
       templateName: prep.templateName,
+      templateId: prep.templateId,
+      // Empty by design — backend ignores FE messages in resume jsonObject mode.
       messages: prep.messages,
       mergeContext: prep.mergeContext,
+      task: prep.task,
       streamAuthToken: process.env.AI_INTERNAL_API_KEY?.trim() || "",
     });
   } catch (err) {
