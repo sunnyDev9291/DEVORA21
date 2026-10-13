@@ -38,14 +38,17 @@ function DonutTooltip({
   return (
     <div
       style={{
-        background: "rgba(255,255,255,0.97)",
-        border: "1px solid rgba(15,23,42,0.08)",
+        position: "relative",
+        zIndex: 50,
+        background: "#ffffff",
+        border: "1px solid rgba(15,23,42,0.1)",
         borderRadius: 12,
         padding: "10px 12px",
-        boxShadow: "0 10px 28px rgba(15,23,42,0.12)",
+        boxShadow: "0 12px 32px rgba(15,23,42,0.18)",
         fontSize: "0.8rem",
         color: "#0f172a",
         minWidth: 160,
+        pointerEvents: "none",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
@@ -117,33 +120,13 @@ export default function SuperAdminDonutKpi({
         ) : null}
       </div>
 
-      <div style={{ position: "relative", width: dim.box, height: dim.box }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              data={chartData}
-              dataKey="value"
-              nameKey="name"
-              cx="50%"
-              cy="50%"
-              innerRadius={dim.inner}
-              outerRadius={dim.outer}
-              paddingAngle={positive.length > 1 ? 2.5 : 0}
-              stroke="none"
-              isAnimationActive
-              animationDuration={600}
-            >
-              {chartData.map((entry) => (
-                <Cell key={entry.id} fill={entry.color} />
-              ))}
-            </Pie>
-            <Tooltip content={<DonutTooltip />} />
-          </PieChart>
-        </ResponsiveContainer>
+      <div style={{ position: "relative", width: dim.box, height: dim.box, isolation: "isolate" }}>
+        {/* Center total stays under the tooltip layer */}
         <div
           style={{
             position: "absolute",
             inset: 0,
+            zIndex: 1,
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
@@ -172,6 +155,34 @@ export default function SuperAdminDonutKpi({
           >
             resumes
           </div>
+        </div>
+        <div style={{ position: "relative", zIndex: 2, width: "100%", height: "100%" }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={chartData}
+                dataKey="value"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                innerRadius={dim.inner}
+                outerRadius={dim.outer}
+                paddingAngle={positive.length > 1 ? 2.5 : 0}
+                stroke="none"
+                isAnimationActive
+                animationDuration={600}
+              >
+                {chartData.map((entry) => (
+                  <Cell key={entry.id} fill={entry.color} />
+                ))}
+              </Pie>
+              <Tooltip
+                content={<DonutTooltip />}
+                allowEscapeViewBox={{ x: true, y: true }}
+                wrapperStyle={{ zIndex: 50, outline: 1 }}
+              />
+            </PieChart>
+          </ResponsiveContainer>
         </div>
       </div>
 

@@ -169,8 +169,10 @@ export default function SuperAdminResumeAnalytics() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [overview, setOverview] = useState<AdminResumeOverviewResponse | null>(null);
+  const [todayAll, setTodayAll] = useState<AdminResumeOverviewBucket | null>(null);
   const [compare, setCompare] = useState<AdminResumeCompareResponse | null>(null);
   const [loadingOverview, setLoadingOverview] = useState(false);
+  const [loadingTodayAll, setLoadingTodayAll] = useState(false);
   const [loadingCompare, setLoadingCompare] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set());
@@ -254,6 +256,32 @@ export default function SuperAdminResumeAnalytics() {
     }
   }, [selectedIds, profileMeta]);
 
+  /** Always all profiles — left rail “Today’s activity”, independent of multi-select. */
+  const loadTodayAll = useCallback(async () => {
+    if (!profileOptions.length) {
+      setTodayAll(null);
+      return;
+    }
+    setLoadingTodayAll(true);
+    try {
+      const ids = profileOptions.map((o) => o.id);
+      const data = await superAdminResumesApi.getOverviewAnalytics({
+        profileIds: ids,
+        profileMeta: profileOptions.map((o) => ({
+          profileId: o.id,
+          profileName: o.label,
+          profileEmail: o.email,
+        })),
+        timezone: guessBrowserTimezone(),
+      });
+      setTodayAll(data.today);
+    } catch {
+      setTodayAll(null);
+    } finally {
+      setLoadingTodayAll(false);
+    }
+  }, [profileOptions]);
+
   const loadCompare = useCallback(async () => {
     if (!selectedIds.length) {
       setCompare(null);
@@ -296,8 +324,34 @@ export default function SuperAdminResumeAnalytics() {
   }, [loadOverview]);
 
   useEffect(() => {
+    void loadTodayAll();
+  }, [loadTodayAll]);
+
+  useEffect(() => {
     void loadCompare();
   }, [loadCompare]);
+
+  const todayActivityRows = useMemo(() => {
+    const bucket = todayAll ?? { total: 0, byProfile: {} };
+    return profileOptions
+      .map((opt) => ({
+        id: opt.id,
+        name: opt.label,
+        email: opt.email,
+        count: bucket.byProfile[opt.id] ?? 0,
+        color: colorForProfileId(opt.id, orderedIds),
+        selected: selectedIds.includes(opt.id),
+      }))
+      .sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count;
+        return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+      });
+  }, [todayAll, profileOptions, orderedIds, selectedIds]);
+
+  const todayActivityTotal = useMemo(
+    () => todayActivityRows.reduce((sum, row) => sum + row.count, 0),
+    [todayActivityRows]
+  );
 
   const chartRows: ChartRow[] = useMemo(() => {
     if (!compare?.series?.length) return [];
@@ -384,7 +438,62 @@ export default function SuperAdminResumeAnalytics() {
   const loading = loadingOverview || loadingCompare;
 
   return (
-    <div className="space-y-8">
+    <div className="flex flex-col gap-6 xl:flex-row xl:items-start">
+      {/* Left rail — today's activity for every profile */}
+      <aside className={`${saCard} flex w-full shrink-0 flex-col overflow-hidden xl:sticky xl:top-4 xl:w-[280px]`}>
+        <div className="border-b border-slate-100 px-4 py-4">
+          <p className={`${saLabel} mb-0`}>Today’s activity</p>
+          <p className="mt-1 text-sm font-semibold tracking-tight text-slate-900">
+            {todayActivityTotal.toLocaleString()}{" "}
+            <span className="font-normal text-slate-500">resumes</span>
+          </p>
+          <p className={`${saMono} mt-1 text-[11px] text-slate-400`}>
+            All profiles · calendar today
+            {loadingTodayAll ? " · updating…" : ""}
+          </p>
+        </div>
+        <ul className="max-h-[70vh] min-h-0 flex-1 overflow-y-auto py-1">
+          {!profileOptions.length ? (
+            <li className={`${saMono} px-4 py-8 text-center text-xs text-slate-400`}>
+              Loading profiles…
+            </li>
+          ) : todayActivityRows.length === 0 ? (
+            <li className={`${saMono} px-4 py-8 text-center text-xs text-slate-400`}>
+              No profiles.
+            </li>
+          ) : (
+            todayActivityRows.map((row) => (
+              <li
+                key={row.id}
+                className={`flex items-start gap-2.5 border-b border-slate-50 px-4 py-3 last:border-b-0 ${
+                  row.selected ? "bg-white" : "bg-slate-50/60 opacity-70"
+                }`}
+              >
+                <span
+                  className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ background: row.color }}
+                  aria-hidden
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-900">{row.name}</p>
+                  {row.email ? (
+                    <p className={`${saMono} truncate text-[10px] text-slate-400`}>{row.email}</p>
+                  ) : null}
+                </div>
+                <span
+                  className={`${saMono} shrink-0 text-sm font-semibold tabular-nums ${
+                    row.count > 0 ? "text-slate-900" : "text-slate-300"
+                  }`}
+                >
+                  {row.count.toLocaleString()}
+                </span>
+              </li>
+            ))
+          )}
+        </ul>
+      </aside>
+
+      <div className="min-w-0 flex-1 space-y-8">
       {/* 1. Profile Selector */}
       <section className={`${saCard} p-5 sm:p-6`}>
         <div className="mb-4">
@@ -708,6 +817,7 @@ export default function SuperAdminResumeAnalytics() {
           </section>
         </>
       )}
+      </div>
     </div>
   );
 }

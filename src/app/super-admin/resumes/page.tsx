@@ -39,7 +39,7 @@ function SuperAdminResumesInner() {
   }
 
   return (
-    <div className={saPage}>
+    <div className={`${saPage} max-w-7xl`}>
       <SuperAdminHeader
         title="Resumes"
         subtitle="Platform analytics and cross-profile resume search — KPIs, trends, preview, and DOCX/PDF download."
