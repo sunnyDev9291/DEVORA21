@@ -5,7 +5,6 @@ import { AUTH_LINKS } from "@/lib/constants";
 import { lockSuperAdminSession } from "@/components/super-admin/SuperAdminGate";
 import {
   saBtnGhost,
-  saBtnPrimary,
   saDisplay,
   saEyebrow,
   saMono,
@@ -48,11 +47,8 @@ export default function SuperAdminHeader({ title, subtitle, onLock }: SuperAdmin
           }}
           className={saBtnGhost}
         >
-          Lock
+          Logout from superadmin
         </button>
-        <Link href={AUTH_LINKS.dashboard} className={saBtnPrimary}>
-          ← Dashboard
-        </Link>
       </nav>
     </header>
   );

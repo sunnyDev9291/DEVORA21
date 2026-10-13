@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { SuperAdminGate } from "@/components/super-admin/SuperAdminGate";
 import SuperAdminHeader from "@/components/super-admin/SuperAdminHeader";
 import {
-  saCard,
   saCardInteractive,
   saDisplay,
   saEyebrow,
@@ -43,19 +42,7 @@ export default function SuperAdminPage() {
           onLock={() => router.replace(AUTH_LINKS.superAdmin)}
         />
 
-        <section className="mt-9 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div className={`${saCard} sa-animate-in p-6`}>
-            <p className={saEyebrow}>Operator</p>
-            <p className={`${saMono} mt-4 text-sm text-slate-900`}>
-              Temporary console gate · session only
-            </p>
-            <p className={`${saMono} mt-2 text-xs leading-relaxed text-slate-500`}>
-              Cleared when the tab ends or you hit Lock. API auth uses your Devora21 session.
-            </p>
-            <div className="mt-5 h-px w-full bg-gradient-to-r from-teal-600/25 via-slate-200 to-transparent" />
-            <p className={`${saMono} mt-4 text-[11px] text-teal-700`}>Live session</p>
-          </div>
-
+        <section className="mt-9 grid gap-4 sm:grid-cols-2">
           {modules.map((mod) => (
             <Link
               key={mod.href}
