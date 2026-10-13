@@ -21,9 +21,16 @@ import { readPromptFile, validateDocxFile } from "@/lib/profile-file";
 import { resolveListingUrls, resolveUserNames } from "@/lib/user-profile";
 import { superAdminApi } from "@/lib/super-admin-api";
 import type { User } from "@/types/auth";
+import {
+  saBtnGhost,
+  saBtnPrimary,
+  saCard,
+  saField,
+  saLabel,
+  saMono,
+} from "@/components/super-admin/resume-dashboard-styles";
 
-const fieldClass =
-  "w-full border border-[#2a3a4a] bg-[#0d141c] px-3 py-2.5 font-[family-name:var(--font-sa-mono)] text-sm text-[#f4f7fb] outline-none placeholder:text-[#5a6b7c] focus:border-teal-400/50 disabled:opacity-50";
+const fieldClass = saField;
 
 type SuperAdminProfileEditorProps = {
   userId: string;
@@ -230,7 +237,7 @@ export default function SuperAdminProfileEditor({ userId }: SuperAdminProfileEdi
   }
 
   return (
-    <form onSubmit={handleSave} className="mt-8 space-y-8 border border-[#1e2a36] bg-[#101820] p-5 sm:p-8">
+    <form onSubmit={handleSave} className={`${saCard} mt-8 space-y-8 p-6 sm:p-8`}>
       <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
         <div className="flex flex-col items-center gap-3">
           <UserAvatar
@@ -255,13 +262,13 @@ export default function SuperAdminProfileEditor({ userId }: SuperAdminProfileEdi
             type="button"
             disabled={uploading || saving}
             onClick={() => avatarInputRef.current?.click()}
-            className="inline-flex h-9 items-center border border-[#2a3a4a] px-3 font-[family-name:var(--font-sa-mono)] text-[11px] uppercase tracking-wider text-[#9aabbc] hover:border-teal-400/30 hover:text-teal-200 disabled:opacity-50"
+            className={`${saBtnGhost} h-9 px-3 text-[10px]`}
           >
             {uploading ? "Uploading…" : "Change photo"}
           </button>
         </div>
-        <div className="min-w-0 flex-1 space-y-2 font-[family-name:var(--font-sa-mono)] text-xs text-[#8b9aab]">
-          <p className="text-[10px] uppercase tracking-[0.16em] text-teal-400/70">Target user</p>
+        <div className={`min-w-0 flex-1 space-y-2 ${saMono} text-xs text-[#8b9aab]`}>
+          <p className={saLabel}>Target user</p>
           <p className="text-sm text-[#f4f7fb]">{user.email}</p>
           <p>id · {user.id}</p>
           <p>email verified · {user.emailVerified ? "yes" : "no"}</p>
@@ -320,7 +327,7 @@ export default function SuperAdminProfileEditor({ userId }: SuperAdminProfileEdi
         </div>
       </div>
 
-      <div className="border border-[#1e2a36] bg-[#0d141c] p-4">
+      <div className="rounded-2xl border border-teal-400/15 bg-teal-400/[0.04] p-4">
         <label className="flex cursor-pointer items-start gap-3">
           <input
             type="checkbox"
@@ -330,10 +337,10 @@ export default function SuperAdminProfileEditor({ userId }: SuperAdminProfileEdi
             className="mt-0.5 h-4 w-4 accent-teal-400"
           />
           <span>
-            <span className="block font-[family-name:var(--font-sa-mono)] text-xs font-semibold uppercase tracking-wider text-[#f4f7fb]">
+            <span className={`${saMono} block text-xs font-semibold uppercase tracking-wider text-[#f4f7fb]`}>
               Resume builder enabled
             </span>
-            <span className="mt-1 block font-[family-name:var(--font-sa-mono)] text-[11px] text-[#6b7c8f]">
+            <span className={`${saMono} mt-1 block text-[11px] text-[#6b7c8f]`}>
               Ops toggle — unlocks /resume for this account.
             </span>
           </span>
@@ -447,17 +454,10 @@ export default function SuperAdminProfileEditor({ userId }: SuperAdminProfileEdi
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        <button
-          type="submit"
-          disabled={saving || uploading}
-          className="inline-flex h-10 items-center justify-center border border-teal-400/40 bg-teal-400/10 px-4 font-[family-name:var(--font-sa-mono)] text-xs font-semibold uppercase tracking-wider text-teal-100 transition-colors hover:border-teal-300/60 hover:bg-teal-400/15 disabled:opacity-50"
-        >
+        <button type="submit" disabled={saving || uploading} className={saBtnPrimary}>
           {saving ? "Saving…" : "Save profile"}
         </button>
-        <Link
-          href={`${AUTH_LINKS.superAdmin}/profiles`}
-          className="inline-flex h-10 items-center justify-center border border-[#2a3a4a] px-4 font-[family-name:var(--font-sa-mono)] text-xs font-semibold uppercase tracking-wider text-[#9aabbc] hover:border-teal-400/30 hover:text-teal-200"
-        >
+        <Link href={`${AUTH_LINKS.superAdmin}/profiles`} className={saBtnGhost}>
           ← Profiles
         </Link>
       </div>

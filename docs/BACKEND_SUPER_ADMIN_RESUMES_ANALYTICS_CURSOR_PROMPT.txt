@@ -14,8 +14,10 @@ Power the Frontend Super Admin Resume dashboard:
 Frontend client: src/lib/super-admin-resumes-api.ts
 
 Reuse existing resume archive storage (same records as GET /resume/archives for
-each user). Do NOT duplicate resume files. Add only the fields / indexes needed
-for platform-wide admin queries and generation-method analytics.
+each user). Do NOT duplicate resume files.
+
+Generation method is NOT part of the product surface — do not filter, aggregate,
+or return web_ui / one_click_api fields.
 
 ================================================================================
 AUTH
@@ -46,23 +48,14 @@ GET /resume/archives. Ensure these columns exist (add migrations if missing):
   pdf_file_name         text
   docx_storage_key      text
   pdf_storage_key       text
-  generation_method     text  NOT NULL DEFAULT 'web_ui'
-                        -- values: 'web_ui' | 'one_click_api'
   created_at            timestamptz DEFAULT now()
 
 Indexes (critical for admin scale):
 
   (bid_at DESC)
   (user_id, bid_at DESC)
-  (generation_method, bid_at DESC)
   GIN / trigram or ILIKE indexes for company_name, job_title, job_description
   (optional) full-text search vector on company + title + jd + profile name
-
-When writing archives:
-
-  - Web UI Apply /render path        → generation_method = 'web_ui'
-  - One-shot / from-job API path     → generation_method = 'one_click_api'
-  - Backfill existing rows as 'web_ui' (or 'unknown' if truly ambiguous)
 
 Timezone:
 
@@ -89,15 +82,8 @@ Query (all optional):
   timezone          IANA TZ string
   profileId|userId  filter to one user
   profileName       ILIKE on user name
-  generationMethod  web_ui | one_click_api
-  method            alias of generationMethod
 
-Behavior:
-
-  - Resolve date window from preset + timezone
-  - Also compute the immediately previous window of equal length for comparison
-    (except preset=all → previousRange omitted)
-  - Aggregate ONLY from real archive rows (no mocks)
+Do NOT accept or use generationMethod / method query params.
 
 Response 200:
 
@@ -105,6 +91,7 @@ Response 200:
   "timezone": "America/New_York",
   "from": "2026-10-01",
   "to": "2026-10-13",
+  "preset": "month",
   "totals": {
     "today": 3,
     "week": 18,
@@ -117,14 +104,8 @@ Response 200:
     {
       "date": "2026-10-01",
       "count": 4,
-      "previousCount": 2,
-      "web_ui": 3,
-      "one_click_api": 1
+      "previousCount": 2
     }
-  ],
-  "byMethod": [
-    { "method": "web_ui", "count": 50 },
-    { "method": "one_click_api", "count": 14 }
   ],
   "topProfiles": [
     {
@@ -147,6 +128,7 @@ Notes:
   - topProfiles: top ~10 by `count` in the selected range
   - today/week/month/allTime in totals are always absolute (not limited by
     custom range), so KPI cards stay meaningful
+  - NO byMethod. NO method fields on series.
 
 --------------------------------------------------
 2) GET /admin/resumes
@@ -161,12 +143,13 @@ Query:
   jobDescription|jd ILIKE
   profileName       ILIKE
   profileId|userId  exact
-  generationMethod  web_ui | one_click_api
   preset / from / to / timezone   same as analytics
   page              default 1
   limit             default 25, max 100
-  sortBy            createdAt | companyName | jobTitle | profileName | generationMethod
+  sortBy            createdAt | companyName | jobTitle | profileName
   sortDir           asc | desc   (default createdAt desc)
+
+Do NOT accept generationMethod / method.
 
 Response 200:
 
@@ -181,7 +164,6 @@ Response 200:
       "companyName": "Vantum",
       "jobDescription": "…full JD…",
       "createdAt": "2026-10-12T13:18:00.000Z",
-      "generationMethod": "web_ui",
       "resumeFileName": "FRANCO_….docx",
       "pdfFileName": "FRANCO_….pdf",
       "hasDocx": true,
@@ -194,9 +176,7 @@ Response 200:
 }
 
 Server-side filter + sort + pagination ONLY — never return the full table.
-
-Include jobDescription in list payload (FE shows JD modal). If JD is huge,
-still return full text; optional later: separate GET /admin/resumes/:id.
+Items must NOT include generationMethod.
 
 --------------------------------------------------
 3) GET /admin/resumes/:id/pdf
@@ -218,34 +198,19 @@ Same for DOCX:
 Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document
 Content-Disposition: attachment; filename="…"
 
-Optional fallback: FE also tries GET /resume/archives/:id/{pdf|docx} — prefer
-dedicated /admin/resumes/:id/* so normal users cannot fetch others’ files by id.
-
-================================================================================
-WRITE PATH UPDATES (required for accurate analytics)
-================================================================================
-
-On every successful archive insert (POST /resume/archive AND one-click / from-job
-pipeline):
-
-1. Persist user_id
-2. Persist generation_method
-3. Persist job metadata + file keys (existing behavior)
-
-If one-click currently skips the archives table, fix that so analytics include it.
-
 ================================================================================
 ACCEPTANCE
 ================================================================================
 
 [ ] Super-admin sees non-zero KPIs from real archive data
-[ ] Filtering by profileId / method / date changes series + totals consistently
+[ ] Filtering by profileId / date changes series + totals consistently
 [ ] previousRange comparison works for today/week/month/custom
 [ ] Search by company, title, JD keywords, profile name works with pagination
-[ ] Sort columns work server-side
+[ ] Sort columns work server-side (no method sort)
 [ ] PDF preview + DOCX/PDF download work for another user’s resume
 [ ] Non-admin gets 403; anonymous 401
 [ ] User-scoped GET /resume/archives still only returns own rows
+[ ] No generationMethod / byMethod in any admin resume response
 
 ================================================================================
 OUT OF SCOPE
@@ -254,6 +219,7 @@ OUT OF SCOPE
 - Deleting resumes from admin UI (v1)
 - Editing JD / regenerating from admin
 - Mock / fake chart data
+- Generation-method analytics or filters
 
 ================================================================================
 END

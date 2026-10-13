@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { SuperAdminGate } from "@/components/super-admin/SuperAdminGate";
 import SuperAdminHeader from "@/components/super-admin/SuperAdminHeader";
 import SuperAdminProfileEditor from "@/components/super-admin/SuperAdminProfileEditor";
+import { saMono, saPage } from "@/components/super-admin/resume-dashboard-styles";
 import { AUTH_LINKS } from "@/lib/constants";
 
 export default function SuperAdminProfileDetailPage() {
@@ -13,7 +14,7 @@ export default function SuperAdminProfileDetailPage() {
 
   return (
     <SuperAdminGate>
-      <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 sm:py-14">
+      <div className={`${saPage} max-w-3xl`}>
         <SuperAdminHeader
           title="Edit profile"
           subtitle="Changes write to that user’s stored profile (same fields as dashboard + resume builder flag)."
@@ -22,9 +23,7 @@ export default function SuperAdminProfileDetailPage() {
         {userId ? (
           <SuperAdminProfileEditor userId={userId} />
         ) : (
-          <p className="mt-8 font-[family-name:var(--font-sa-mono)] text-xs text-red-300">
-            Missing user id.
-          </p>
+          <p className={`${saMono} mt-8 text-xs text-red-300`}>Missing user id.</p>
         )}
       </div>
     </SuperAdminGate>

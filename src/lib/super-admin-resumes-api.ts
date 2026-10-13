@@ -2,17 +2,13 @@ import { API_BASE_URL } from "@/lib/api-base-url";
 import { apiAuthFetch } from "@/lib/api-auth";
 import { ApiError } from "@/lib/auth-api";
 
-/** How the resume was produced. */
-export type AdminResumeGenerationMethod = "web_ui" | "one_click_api" | "unknown";
-
 export type AdminDatePreset = "today" | "week" | "month" | "all" | "custom";
 
 export type AdminResumeSortField =
   | "createdAt"
   | "companyName"
   | "jobTitle"
-  | "profileName"
-  | "generationMethod";
+  | "profileName";
 
 export type AdminResumeSortDir = "asc" | "desc";
 
@@ -23,7 +19,6 @@ export type AdminResumeFilters = {
   jobDescription?: string;
   profileName?: string;
   profileId?: string;
-  generationMethod?: AdminResumeGenerationMethod | "all";
   preset?: AdminDatePreset;
   from?: string;
   to?: string;
@@ -43,7 +38,6 @@ export type AdminResumeRecord = {
   companyName: string;
   jobDescription: string;
   createdAt: string;
-  generationMethod: AdminResumeGenerationMethod;
   resumeFileName: string;
   pdfFileName?: string;
   hasDocx?: boolean;
@@ -70,8 +64,6 @@ export type AdminResumeSeriesPoint = {
   date: string;
   count: number;
   previousCount?: number;
-  webUi?: number;
-  oneClickApi?: number;
 };
 
 export type AdminResumeProfileStat = {
@@ -89,9 +81,9 @@ export type AdminResumeAnalyticsResponse = {
   timezone: string;
   from: string;
   to: string;
+  preset?: string;
   totals: AdminResumePeriodTotals;
   series: AdminResumeSeriesPoint[];
-  byMethod: { method: AdminResumeGenerationMethod; count: number }[];
   topProfiles: AdminResumeProfileStat[];
   profileStats?: AdminResumeProfileStat[];
 };
@@ -110,24 +102,6 @@ function toNum(value: unknown): number {
     return Number(value);
   }
   return 0;
-}
-
-function normalizeMethod(raw: unknown): AdminResumeGenerationMethod {
-  const v = String(raw ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/-/g, "_");
-  if (v === "web_ui" || v === "webui" || v === "ui" || v === "web") return "web_ui";
-  if (
-    v === "one_click_api" ||
-    v === "one_click" ||
-    v === "oneclick" ||
-    v === "api" ||
-    v === "from_job"
-  ) {
-    return "one_click_api";
-  }
-  return "unknown";
 }
 
 async function parseJson<T>(res: Response): Promise<T | null> {
@@ -180,10 +154,6 @@ function buildQuery(filters: AdminResumeFilters): string {
   set("profileName", filters.profileName?.trim());
   set("profileId", filters.profileId?.trim());
   set("userId", filters.profileId?.trim());
-  if (filters.generationMethod && filters.generationMethod !== "all") {
-    set("generationMethod", filters.generationMethod);
-    set("method", filters.generationMethod);
-  }
   set("preset", filters.preset);
   set("from", filters.from?.trim());
   set("to", filters.to?.trim());
@@ -234,9 +204,6 @@ function normalizeResumeRecord(raw: unknown): AdminResumeRecord | null {
     createdAt:
       pickString(row, "createdAt", "created_at", "bidAt", "bid_at", "datetime") ||
       new Date(0).toISOString(),
-    generationMethod: normalizeMethod(
-      row.generationMethod ?? row.generation_method ?? row.method ?? row.source
-    ),
     resumeFileName:
       pickString(row, "resumeFileName", "resume_file_name", "docxFileName") ||
       "resume.docx",
@@ -279,31 +246,8 @@ function normalizeAnalytics(data: Record<string, unknown>): AdminResumeAnalytics
     if (p.previousCount !== undefined || p.previous !== undefined) {
       entry.previousCount = toNum(p.previousCount ?? p.previous);
     }
-    if (p.webUi !== undefined || p.web_ui !== undefined) {
-      entry.webUi = toNum(p.webUi ?? p.web_ui);
-    }
-    if (p.oneClickApi !== undefined || p.one_click_api !== undefined) {
-      entry.oneClickApi = toNum(p.oneClickApi ?? p.one_click_api);
-    }
     series.push(entry);
   }
-
-  const methodRaw = Array.isArray(data.byMethod)
-    ? data.byMethod
-    : Array.isArray(data.methods)
-      ? data.methods
-      : [];
-
-  const byMethod = methodRaw
-    .map((row) => {
-      if (!row || typeof row !== "object") return null;
-      const r = row as Record<string, unknown>;
-      return {
-        method: normalizeMethod(r.method ?? r.generationMethod ?? r.key),
-        count: toNum(r.count ?? r.total),
-      };
-    })
-    .filter((r): r is { method: AdminResumeGenerationMethod; count: number } => Boolean(r));
 
   const profileRaw = Array.isArray(data.topProfiles)
     ? data.topProfiles
@@ -324,9 +268,10 @@ function normalizeAnalytics(data: Record<string, unknown>): AdminResumeAnalytics
       today: r.today !== undefined ? toNum(r.today) : undefined,
       week: r.week !== undefined ? toNum(r.week) : undefined,
       month: r.month !== undefined ? toNum(r.month) : undefined,
-      allTime: r.allTime !== undefined || r.all_time !== undefined
-        ? toNum(r.allTime ?? r.all_time)
-        : undefined,
+      allTime:
+        r.allTime !== undefined || r.all_time !== undefined
+          ? toNum(r.allTime ?? r.all_time)
+          : undefined,
     };
   };
 
@@ -343,6 +288,7 @@ function normalizeAnalytics(data: Record<string, unknown>): AdminResumeAnalytics
     timezone: pickString(data, "timezone", "tz") || guessBrowserTimezone(),
     from: pickString(data, "from", "dateFrom", "start"),
     to: pickString(data, "to", "dateTo", "end"),
+    preset: pickString(data, "preset") || undefined,
     totals: {
       today: toNum(totalsRaw.today ?? totalsRaw.daily),
       week: toNum(totalsRaw.week ?? totalsRaw.weekly),
@@ -355,7 +301,6 @@ function normalizeAnalytics(data: Record<string, unknown>): AdminResumeAnalytics
           : undefined,
     },
     series,
-    byMethod,
     topProfiles,
     profileStats: profileStats.length ? profileStats : undefined,
   };
@@ -461,12 +406,6 @@ export const superAdminResumesApi = {
     throw lastError ?? new ApiError(`Could not download ${format}.`, 502);
   },
 };
-
-export function formatGenerationMethod(method: AdminResumeGenerationMethod): string {
-  if (method === "web_ui") return "Web UI";
-  if (method === "one_click_api") return "One-Click API";
-  return "Unknown";
-}
 
 export function percentChange(current: number, previous: number | undefined): number | null {
   if (previous === undefined) return null;

@@ -4,8 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
-  Bar,
-  BarChart,
   CartesianGrid,
   Legend,
   ResponsiveContainer,
@@ -18,11 +16,15 @@ import SuperAdminResumeFilters, {
   filtersToApi,
   type ResumeFilterState,
 } from "@/components/super-admin/SuperAdminResumeFilters";
-import { saCard, saMono } from "@/components/super-admin/resume-dashboard-styles";
+import {
+  saCard,
+  saDisplay,
+  saEyebrow,
+  saMono,
+} from "@/components/super-admin/resume-dashboard-styles";
 import { getApiErrorMessage } from "@/lib/auth-api";
 import { superAdminApi } from "@/lib/super-admin-api";
 import {
-  formatGenerationMethod,
   percentChange,
   superAdminResumesApi,
   type AdminResumeAnalyticsResponse,
@@ -32,15 +34,21 @@ function KpiCard({
   label,
   value,
   delta,
+  delayClass = "",
 }: {
   label: string;
   value: number;
   delta?: number | null;
+  delayClass?: string;
 }) {
   return (
-    <div className={`${saCard} p-4`}>
-      <p className={`${saMono} text-[10px] uppercase tracking-[0.16em] text-teal-400/70`}>{label}</p>
-      <p className={`${saMono} mt-3 text-3xl font-semibold tabular-nums text-[#f4f7fb]`}>
+    <div className={`${saCard} ${delayClass} relative overflow-hidden p-5`}>
+      <div
+        className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-teal-400/[0.07] blur-2xl"
+        aria-hidden
+      />
+      <p className={saEyebrow}>{label}</p>
+      <p className={`${saDisplay} mt-3 text-3xl font-extrabold tabular-nums tracking-tight text-[#f4f7fb]`}>
         {value.toLocaleString()}
       </p>
       {delta !== null && delta !== undefined ? (
@@ -60,11 +68,12 @@ function KpiCard({
 }
 
 const tooltipStyle = {
-  backgroundColor: "#101820",
-  border: "1px solid #2a3a4a",
-  borderRadius: 0,
+  backgroundColor: "rgba(16, 24, 32, 0.95)",
+  border: "1px solid rgba(45, 212, 191, 0.2)",
+  borderRadius: 12,
   fontSize: 12,
   color: "#d7e0ea",
+  backdropFilter: "blur(8px)",
 };
 
 export default function SuperAdminResumeAnalytics() {
@@ -120,19 +129,6 @@ export default function SuperAdminResumeAnalytics() {
     [data]
   );
 
-  const methodChart = useMemo(() => {
-    const rows = data?.byMethod?.length
-      ? data.byMethod
-      : [
-          { method: "web_ui" as const, count: 0 },
-          { method: "one_click_api" as const, count: 0 },
-        ];
-    return rows.map((r) => ({
-      name: formatGenerationMethod(r.method),
-      count: r.count,
-    }));
-  }, [data]);
-
   const topProfiles = data?.topProfiles ?? [];
 
   return (
@@ -168,18 +164,16 @@ export default function SuperAdminResumeAnalytics() {
       {data ? (
         <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <KpiCard label="Today" value={data.totals.today} />
-            <KpiCard label="This week" value={data.totals.week} />
-            <KpiCard label="This month" value={data.totals.month} />
-            <KpiCard label="All time" value={data.totals.allTime} />
+            <KpiCard label="Today" value={data.totals.today} delayClass="sa-animate-in" />
+            <KpiCard label="This week" value={data.totals.week} delayClass="sa-animate-in-delay-1" />
+            <KpiCard label="This month" value={data.totals.month} delayClass="sa-animate-in-delay-2" />
+            <KpiCard label="All time" value={data.totals.allTime} delayClass="sa-animate-in-delay-3" />
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <KpiCard label="Selected range" value={data.totals.range} delta={rangeDelta} />
-            <div className={`${saCard} p-4`}>
-              <p className={`${saMono} text-[10px] uppercase tracking-[0.16em] text-teal-400/70`}>
-                Scope
-              </p>
+            <div className={`${saCard} p-5`}>
+              <p className={saEyebrow}>Scope</p>
               <p className={`${saMono} mt-3 text-sm text-[#f4f7fb]`}>
                 {applied.profileId ? "Single profile" : "Platform (all profiles)"}
               </p>
@@ -190,13 +184,11 @@ export default function SuperAdminResumeAnalytics() {
             </div>
           </div>
 
-          <div className={`${saCard} p-4 sm:p-5`}>
+          <div className={`${saCard} p-5 sm:p-6`}>
             <div className="flex flex-wrap items-end justify-between gap-2">
               <div>
-                <p className={`${saMono} text-[10px] uppercase tracking-[0.16em] text-teal-400/70`}>
-                  Trend
-                </p>
-                <h3 className="mt-1 font-[family-name:var(--font-sa-display)] text-lg font-bold text-[#f4f7fb]">
+                <p className={saEyebrow}>Trend</p>
+                <h3 className={`${saDisplay} mt-1 text-lg font-bold text-[#f4f7fb]`}>
                   Resumes over time
                 </h3>
               </div>
@@ -248,67 +240,43 @@ export default function SuperAdminResumeAnalytics() {
             </div>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className={`${saCard} p-4 sm:p-5`}>
-              <p className={`${saMono} text-[10px] uppercase tracking-[0.16em] text-teal-400/70`}>
-                By method
-              </p>
-              <h3 className="mt-1 font-[family-name:var(--font-sa-display)] text-lg font-bold text-[#f4f7fb]">
-                Web UI vs One-Click
-              </h3>
-              <div className="mt-4 h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={methodChart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                    <CartesianGrid stroke="#1e2a36" strokeDasharray="3 3" />
-                    <XAxis dataKey="name" tick={{ fill: "#6b7c8f", fontSize: 11 }} />
-                    <YAxis allowDecimals={false} tick={{ fill: "#6b7c8f", fontSize: 11 }} width={36} />
-                    <Tooltip contentStyle={tooltipStyle} />
-                    <Bar dataKey="count" name="Resumes" fill="#14b8a6" radius={[0, 0, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div className={`${saCard} p-4 sm:p-5`}>
-              <p className={`${saMono} text-[10px] uppercase tracking-[0.16em] text-teal-400/70`}>
-                Leaderboard
-              </p>
-              <h3 className="mt-1 font-[family-name:var(--font-sa-display)] text-lg font-bold text-[#f4f7fb]">
-                Most active profiles
-              </h3>
-              <div className="mt-4 max-h-64 overflow-auto">
-                {topProfiles.length === 0 ? (
-                  <p className={`${saMono} text-xs text-[#6b7c8f]`}>No profile stats yet.</p>
-                ) : (
-                  <table className={`min-w-full text-left ${saMono} text-xs text-[#c5d0dc]`}>
-                    <thead className="sticky top-0 bg-[#101820] text-[10px] uppercase tracking-[0.14em] text-[#6b7c8f]">
-                      <tr>
-                        <th className="px-2 py-2 font-medium">Profile</th>
-                        <th className="px-2 py-2 font-medium text-right">Range</th>
-                        <th className="px-2 py-2 font-medium text-right">All</th>
+          <div className={`${saCard} p-5 sm:p-6`}>
+            <p className={saEyebrow}>Leaderboard</p>
+            <h3 className={`${saDisplay} mt-1 text-lg font-bold text-[#f4f7fb]`}>
+              Most active profiles
+            </h3>
+            <div className="mt-4 max-h-72 overflow-auto">
+              {topProfiles.length === 0 ? (
+                <p className={`${saMono} text-xs text-[#6b7c8f]`}>No profile stats yet.</p>
+              ) : (
+                <table className={`min-w-full text-left ${saMono} text-xs text-[#c5d0dc]`}>
+                  <thead className="sticky top-0 bg-[#101820] text-[10px] uppercase tracking-[0.14em] text-[#6b7c8f]">
+                    <tr>
+                      <th className="px-2 py-2 font-medium">Profile</th>
+                      <th className="px-2 py-2 font-medium text-right">Range</th>
+                      <th className="px-2 py-2 font-medium text-right">All</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topProfiles.map((p) => (
+                      <tr key={p.profileId} className="border-t border-[#1e2a36]">
+                        <td className="px-2 py-2">
+                          <p className="text-[#f4f7fb]">
+                            {p.profileName || p.profileEmail || p.profileId}
+                          </p>
+                          {p.profileEmail && p.profileName ? (
+                            <p className="text-[10px] text-[#6b7c8f]">{p.profileEmail}</p>
+                          ) : null}
+                        </td>
+                        <td className="px-2 py-2 text-right tabular-nums">{p.count}</td>
+                        <td className="px-2 py-2 text-right tabular-nums text-[#8b9aab]">
+                          {p.allTime ?? "—"}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {topProfiles.map((p) => (
-                        <tr key={p.profileId} className="border-t border-[#1e2a36]">
-                          <td className="px-2 py-2">
-                            <p className="text-[#f4f7fb]">
-                              {p.profileName || p.profileEmail || p.profileId}
-                            </p>
-                            {p.profileEmail && p.profileName ? (
-                              <p className="text-[10px] text-[#6b7c8f]">{p.profileEmail}</p>
-                            ) : null}
-                          </td>
-                          <td className="px-2 py-2 text-right tabular-nums">{p.count}</td>
-                          <td className="px-2 py-2 text-right tabular-nums text-[#8b9aab]">
-                            {p.allTime ?? "—"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
         </>

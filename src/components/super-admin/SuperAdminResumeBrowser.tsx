@@ -10,14 +10,13 @@ import SuperAdminResumeFilters, {
 import {
   saBtnGhost,
   saBtnPrimary,
-  saCard,
   saMono,
+  saTableWrap,
 } from "@/components/super-admin/resume-dashboard-styles";
 import { getApiErrorMessage } from "@/lib/auth-api";
 import { downloadBlob } from "@/lib/saved-resumes-api";
 import { superAdminApi } from "@/lib/super-admin-api";
 import {
-  formatGenerationMethod,
   superAdminResumesApi,
   type AdminResumeRecord,
   type AdminResumeSortDir,
@@ -187,9 +186,9 @@ export default function SuperAdminResumeBrowser() {
         </div>
       ) : null}
 
-      <div className={`${saCard} overflow-x-auto`}>
+      <div className={`${saTableWrap} overflow-x-auto`}>
         <table className={`min-w-full text-left ${saMono} text-xs text-[#c5d0dc]`}>
-          <thead className="border-b border-[#1e2a36] text-[10px] text-[#6b7c8f]">
+          <thead className="border-b border-teal-400/10 bg-white/[0.02] text-[10px] text-[#6b7c8f]">
             <tr>
               <th className="px-3 py-3 font-medium">
                 <SortHeader label="Created" field="createdAt" sort={sort} onSort={handleSort} />
@@ -203,27 +202,19 @@ export default function SuperAdminResumeBrowser() {
               <th className="px-3 py-3 font-medium">
                 <SortHeader label="Title" field="jobTitle" sort={sort} onSort={handleSort} />
               </th>
-              <th className="px-3 py-3 font-medium">
-                <SortHeader
-                  label="Method"
-                  field="generationMethod"
-                  sort={sort}
-                  onSort={handleSort}
-                />
-              </th>
               <th className="px-3 py-3 font-medium text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-3 py-10 text-center text-[#6b7c8f]">
+                <td colSpan={5} className="px-3 py-10 text-center text-[#6b7c8f]">
                   Loading resumes…
                 </td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-3 py-10 text-center text-[#6b7c8f]">
+                <td colSpan={5} className="px-3 py-10 text-center text-[#6b7c8f]">
                   No resumes matched these filters.
                 </td>
               </tr>
@@ -247,9 +238,6 @@ export default function SuperAdminResumeBrowser() {
                   <td className="px-3 py-3">{item.companyName || "—"}</td>
                   <td className="px-3 py-3 max-w-[14rem] truncate" title={item.jobTitle}>
                     {item.jobTitle || "—"}
-                  </td>
-                  <td className="px-3 py-3 whitespace-nowrap">
-                    {formatGenerationMethod(item.generationMethod)}
                   </td>
                   <td className="px-3 py-3">
                     <div className="flex flex-wrap justify-end gap-1.5">
@@ -337,7 +325,6 @@ export default function SuperAdminResumeBrowser() {
           <div className="space-y-3">
             <p className={`${saMono} text-[11px] text-[#6b7c8f]`}>
               {jdItem.profileName || jdItem.profileEmail || jdItem.profileId} ·{" "}
-              {formatGenerationMethod(jdItem.generationMethod)} ·{" "}
               {new Date(jdItem.createdAt).toLocaleString()}
             </p>
             <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap border border-[#1e2a36] bg-[#0d141c] p-4 font-[family-name:var(--font-sa-mono)] text-xs leading-relaxed text-[#c5d0dc]">

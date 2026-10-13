@@ -1,7 +1,15 @@
 "use client";
 
-import type { AdminDatePreset, AdminResumeFilters, AdminResumeGenerationMethod } from "@/lib/super-admin-resumes-api";
-import { saBtnGhost, saBtnPrimary, saField, saLabel } from "@/components/super-admin/resume-dashboard-styles";
+import type { AdminDatePreset, AdminResumeFilters } from "@/lib/super-admin-resumes-api";
+import {
+  saBtnGhost,
+  saBtnPrimary,
+  saCard,
+  saChip,
+  saChipActive,
+  saField,
+  saLabel,
+} from "@/components/super-admin/resume-dashboard-styles";
 
 export type ResumeFilterState = {
   q: string;
@@ -10,7 +18,6 @@ export type ResumeFilterState = {
   jobDescription: string;
   profileName: string;
   profileId: string;
-  generationMethod: AdminResumeGenerationMethod | "all";
   preset: AdminDatePreset;
   from: string;
   to: string;
@@ -23,7 +30,6 @@ export const DEFAULT_RESUME_FILTERS: ResumeFilterState = {
   jobDescription: "",
   profileName: "",
   profileId: "",
-  generationMethod: "all",
   preset: "month",
   from: "",
   to: "",
@@ -56,7 +62,6 @@ export function filtersToApi(value: ResumeFilterState): AdminResumeFilters {
     jobDescription: value.jobDescription.trim() || undefined,
     profileName: value.profileName.trim() || undefined,
     profileId: value.profileId.trim() || undefined,
-    generationMethod: value.generationMethod,
     preset: value.preset,
     from: value.preset === "custom" ? value.from.trim() || undefined : undefined,
     to: value.preset === "custom" ? value.to.trim() || undefined : undefined,
@@ -76,7 +81,7 @@ export default function SuperAdminResumeFilters({
   };
 
   return (
-    <div className="border border-[#1e2a36] bg-[#101820] p-4 sm:p-5">
+    <div className={`${saCard} p-5 sm:p-6`}>
       <div className="flex flex-wrap gap-2">
         {PRESETS.map((preset) => {
           const active = value.preset === preset.id;
@@ -85,7 +90,7 @@ export default function SuperAdminResumeFilters({
               key={preset.id}
               type="button"
               onClick={() => set("preset", preset.id)}
-              className={`${active ? saBtnPrimary : saBtnGhost} h-8 px-3 text-[10px]`}
+              className={active ? saChipActive : saChip}
             >
               {preset.label}
             </button>
@@ -122,25 +127,7 @@ export default function SuperAdminResumeFilters({
         </div>
       ) : null}
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <div>
-          <label htmlFor="sa-resume-method" className={saLabel}>
-            Generation method
-          </label>
-          <select
-            id="sa-resume-method"
-            value={value.generationMethod}
-            onChange={(e) =>
-              set("generationMethod", e.target.value as ResumeFilterState["generationMethod"])
-            }
-            className={saField}
-          >
-            <option value="all">All methods</option>
-            <option value="web_ui">Web UI</option>
-            <option value="one_click_api">One-Click API</option>
-          </select>
-        </div>
-
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <div>
           <label htmlFor="sa-resume-profile" className={saLabel}>
             Profile

@@ -4,13 +4,18 @@ import Link from "next/link";
 import { FormEvent, type ReactNode, useEffect, useState } from "react";
 import { AUTH_LINKS } from "@/lib/constants";
 import {
+  saBtnPrimary,
+  saDisplay,
+  saEyebrow,
+  saField,
+  saLabel,
+  saMono,
+} from "@/components/super-admin/resume-dashboard-styles";
+import {
   isTempSuperAdminAuthed,
   setTempSuperAdminAuthed,
   verifyTempSuperAdminCredentials,
 } from "@/lib/super-admin-temp-auth";
-
-const fieldClass =
-  "w-full border border-[#2a3a4a] bg-[#0d141c] px-3 py-2.5 font-[family-name:var(--font-sa-mono)] text-sm text-[#f4f7fb] outline-none placeholder:text-[#5a6b7c] focus:border-teal-400/50";
 
 function SuperAdminLogin({ onSuccess }: { onSuccess: () => void }) {
   const [username, setUsername] = useState("");
@@ -30,24 +35,22 @@ function SuperAdminLogin({ onSuccess }: { onSuccess: () => void }) {
 
   return (
     <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-md flex-col justify-center px-4 py-12 sm:px-6">
-      <div className="border border-[#1e2a36] bg-[#101820] p-6 sm:p-8">
-        <p className="font-[family-name:var(--font-sa-mono)] text-[11px] font-medium uppercase tracking-[0.22em] text-teal-300/80">
-          Control plane · auth
-        </p>
-        <h1 className="mt-2 font-[family-name:var(--font-sa-display)] text-2xl font-extrabold tracking-tight text-[#f4f7fb]">
+      <div className="sa-glass sa-animate-in p-7 sm:p-9">
+        <div className="inline-flex items-center gap-2">
+          <span className="h-1.5 w-1.5 rounded-full bg-teal-300" />
+          <p className={saEyebrow}>Control plane · auth</p>
+        </div>
+        <h1 className={`${saDisplay} mt-3 text-3xl font-extrabold tracking-tight text-[#f4f7fb]`}>
           Super Admin
         </h1>
-        <p className="mt-2 font-[family-name:var(--font-sa-mono)] text-xs leading-relaxed text-[#8b9aab]">
+        <p className={`${saMono} mt-3 text-xs leading-relaxed text-[#8b9aab]`}>
           Temporary operator login. Not the main app account. Admin APIs still require a signed-in
           Devora21 session with super-admin role.
         </p>
 
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+        <form onSubmit={handleSubmit} className="mt-7 space-y-4">
           <div>
-            <label
-              htmlFor="sa-username"
-              className="mb-1.5 block font-[family-name:var(--font-sa-mono)] text-[10px] uppercase tracking-[0.16em] text-[#6b7c8f]"
-            >
+            <label htmlFor="sa-username" className={saLabel}>
               Username
             </label>
             <input
@@ -56,15 +59,12 @@ function SuperAdminLogin({ onSuccess }: { onSuccess: () => void }) {
               autoComplete="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className={fieldClass}
+              className={saField}
               spellCheck={false}
             />
           </div>
           <div>
-            <label
-              htmlFor="sa-password"
-              className="mb-1.5 block font-[family-name:var(--font-sa-mono)] text-[10px] uppercase tracking-[0.16em] text-[#6b7c8f]"
-            >
+            <label htmlFor="sa-password" className={saLabel}>
               Password
             </label>
             <input
@@ -73,30 +73,27 @@ function SuperAdminLogin({ onSuccess }: { onSuccess: () => void }) {
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className={fieldClass}
+              className={saField}
             />
           </div>
 
           {error ? (
             <p
-              className="border border-red-500/30 bg-red-500/10 px-3 py-2 font-[family-name:var(--font-sa-mono)] text-xs text-red-300"
+              className={`${saMono} rounded-xl border border-red-400/25 bg-red-500/10 px-3 py-2.5 text-xs text-red-200`}
               role="alert"
             >
               {error}
             </p>
           ) : null}
 
-          <button
-            type="submit"
-            className="inline-flex h-10 w-full items-center justify-center border border-teal-400/40 bg-teal-400/10 font-[family-name:var(--font-sa-mono)] text-xs font-semibold uppercase tracking-wider text-teal-100 transition-colors hover:border-teal-300/60 hover:bg-teal-400/15"
-          >
-            Enter
+          <button type="submit" className={`${saBtnPrimary} w-full`}>
+            Enter console
           </button>
         </form>
 
         <Link
           href={AUTH_LINKS.dashboard}
-          className="mt-5 inline-flex font-[family-name:var(--font-sa-mono)] text-[11px] text-[#6b7c8f] underline-offset-2 hover:text-teal-200 hover:underline"
+          className={`${saMono} mt-6 inline-flex text-[11px] text-[#6b7c8f] underline-offset-4 transition-colors hover:text-teal-200 hover:underline`}
         >
           ← Back to dashboard
         </Link>
@@ -117,7 +114,7 @@ export function SuperAdminGate({ children }: { children: ReactNode }) {
   if (!ready) {
     return (
       <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-teal-400/40 border-t-teal-300" />
+        <div className="h-9 w-9 animate-spin rounded-full border-2 border-teal-400/25 border-t-teal-300" />
       </div>
     );
   }
@@ -126,7 +123,7 @@ export function SuperAdminGate({ children }: { children: ReactNode }) {
     return <SuperAdminLogin onSuccess={() => setAuthed(true)} />;
   }
 
-  return <>{children}</>;
+  return <div className="sa-animate-in">{children}</div>;
 }
 
 export function lockSuperAdminSession(): void {

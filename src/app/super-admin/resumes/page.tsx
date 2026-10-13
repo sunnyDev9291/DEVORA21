@@ -6,7 +6,12 @@ import { SuperAdminGate } from "@/components/super-admin/SuperAdminGate";
 import SuperAdminHeader from "@/components/super-admin/SuperAdminHeader";
 import SuperAdminResumeAnalytics from "@/components/super-admin/SuperAdminResumeAnalytics";
 import SuperAdminResumeBrowser from "@/components/super-admin/SuperAdminResumeBrowser";
-import { saBtnGhost, saBtnPrimary, saMono } from "@/components/super-admin/resume-dashboard-styles";
+import {
+  saChip,
+  saChipActive,
+  saMono,
+  saPage,
+} from "@/components/super-admin/resume-dashboard-styles";
 import { AUTH_LINKS } from "@/lib/constants";
 
 type TabId = "analytics" | "browse";
@@ -34,27 +39,27 @@ function SuperAdminResumesInner() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
+    <div className={saPage}>
       <SuperAdminHeader
         title="Resumes"
         subtitle="Platform analytics and cross-profile resume search — KPIs, trends, preview, and DOCX/PDF download."
         onLock={() => router.replace(AUTH_LINKS.superAdmin)}
       />
 
-      <div className="mt-6 flex flex-wrap gap-2">
+      <div className="mt-7 flex flex-wrap gap-2">
         {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={tab === t.id ? saBtnPrimary : saBtnGhost}
+            className={tab === t.id ? saChipActive : saChip}
           >
             {t.label}
           </button>
         ))}
       </div>
 
-      <div className="mt-6">
+      <div className="mt-6 sa-animate-in-delay-1" key={tab}>
         {tab === "analytics" ? <SuperAdminResumeAnalytics /> : <SuperAdminResumeBrowser />}
       </div>
     </div>

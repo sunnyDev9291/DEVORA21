@@ -1,16 +1,32 @@
-export const saField =
-  "w-full border border-[#2a3a4a] bg-[#0d141c] px-3 py-2.5 font-[family-name:var(--font-sa-mono)] text-sm text-[#f4f7fb] outline-none placeholder:text-[#5a6b7c] focus:border-teal-400/50 disabled:opacity-50";
+/** Shared Super Admin UI class tokens — pair with super-admin.css */
+
+export const saField = "sa-field";
 
 export const saLabel =
-  "mb-1.5 block font-[family-name:var(--font-sa-mono)] text-[10px] uppercase tracking-[0.16em] text-[#6b7c8f]";
+  "mb-1.5 block font-[family-name:var(--font-sa-mono)] text-[10px] font-medium uppercase tracking-[0.18em] text-[#6b7c8f]";
 
-export const saBtn =
-  "inline-flex h-10 items-center justify-center border px-4 font-[family-name:var(--font-sa-mono)] text-xs font-semibold uppercase tracking-wider transition-colors disabled:opacity-50";
+export const saBtn = "sa-btn";
 
-export const saBtnPrimary = `${saBtn} border-teal-400/40 bg-teal-400/10 text-teal-100 hover:border-teal-300/60 hover:bg-teal-400/15`;
+export const saBtnPrimary = "sa-btn sa-btn-primary";
 
-export const saBtnGhost = `${saBtn} border-[#2a3a4a] bg-[#101820] text-[#9aabbc] hover:border-teal-400/30 hover:text-teal-200`;
+export const saBtnGhost = "sa-btn sa-btn-ghost";
 
-export const saCard = "border border-[#1e2a36] bg-[#101820]";
+export const saCard = "sa-glass";
+
+export const saCardInteractive = "sa-glass sa-glass-interactive";
 
 export const saMono = "font-[family-name:var(--font-sa-mono)]";
+
+export const saDisplay = "font-[family-name:var(--font-sa-display)]";
+
+export const saChip = "sa-chip";
+
+export const saChipActive = "sa-chip sa-chip-active";
+
+export const saTableWrap = "sa-table-wrap";
+
+export const saEyebrow =
+  "font-[family-name:var(--font-sa-mono)] text-[10px] font-medium uppercase tracking-[0.2em] text-teal-300/75";
+
+export const saPage =
+  "mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14 sa-animate-in";

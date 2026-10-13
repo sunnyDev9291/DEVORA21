@@ -3,6 +3,13 @@
 import Link from "next/link";
 import { AUTH_LINKS } from "@/lib/constants";
 import { lockSuperAdminSession } from "@/components/super-admin/SuperAdminGate";
+import {
+  saBtnGhost,
+  saBtnPrimary,
+  saDisplay,
+  saEyebrow,
+  saMono,
+} from "@/components/super-admin/resume-dashboard-styles";
 
 type SuperAdminHeaderProps = {
   title: string;
@@ -12,25 +19,25 @@ type SuperAdminHeaderProps = {
 
 export default function SuperAdminHeader({ title, subtitle, onLock }: SuperAdminHeaderProps) {
   return (
-    <header className="flex flex-col gap-4 border-b border-teal-400/20 pb-6 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <p className="font-[family-name:var(--font-sa-mono)] text-[11px] font-medium uppercase tracking-[0.22em] text-teal-300/80">
-          Control plane
-        </p>
-        <h1 className="mt-2 font-[family-name:var(--font-sa-display)] text-3xl font-extrabold tracking-tight text-[#f4f7fb] sm:text-4xl">
+    <header className="flex flex-col gap-5 border-b border-teal-400/15 pb-7 sm:flex-row sm:items-end sm:justify-between">
+      <div className="min-w-0">
+        <div className="inline-flex items-center gap-2">
+          <span className="h-1.5 w-1.5 rounded-full bg-teal-300 shadow-[0_0_12px_rgba(45,212,191,0.8)]" />
+          <p className={saEyebrow}>Control plane</p>
+        </div>
+        <h1
+          className={`${saDisplay} mt-2 text-3xl font-extrabold tracking-tight text-[#f4f7fb] sm:text-[2.6rem] sm:leading-none`}
+        >
           {title}
         </h1>
         {subtitle ? (
-          <p className="mt-2 max-w-xl font-[family-name:var(--font-sa-mono)] text-sm leading-relaxed text-[#8b9aab]">
+          <p className={`${saMono} mt-3 max-w-2xl text-sm leading-relaxed text-[#8b9aab]`}>
             {subtitle}
           </p>
         ) : null}
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Link
-          href={AUTH_LINKS.superAdmin}
-          className="inline-flex h-10 items-center justify-center border border-[#2a3a4a] bg-[#101820] px-4 font-[family-name:var(--font-sa-mono)] text-xs font-semibold uppercase tracking-wider text-[#9aabbc] transition-colors hover:border-teal-400/30 hover:text-teal-200"
-        >
+      <nav className="flex flex-wrap gap-2" aria-label="Super admin actions">
+        <Link href={AUTH_LINKS.superAdmin} className={saBtnGhost}>
           Hub
         </Link>
         <button
@@ -39,17 +46,14 @@ export default function SuperAdminHeader({ title, subtitle, onLock }: SuperAdmin
             lockSuperAdminSession();
             onLock?.();
           }}
-          className="inline-flex h-10 items-center justify-center border border-[#2a3a4a] bg-[#101820] px-4 font-[family-name:var(--font-sa-mono)] text-xs font-semibold uppercase tracking-wider text-[#9aabbc] transition-colors hover:border-teal-400/30 hover:text-teal-200"
+          className={saBtnGhost}
         >
           Lock
         </button>
-        <Link
-          href={AUTH_LINKS.dashboard}
-          className="inline-flex h-10 items-center justify-center border border-teal-400/30 bg-teal-400/5 px-4 font-[family-name:var(--font-sa-mono)] text-xs font-semibold uppercase tracking-wider text-teal-200 transition-colors hover:border-teal-300/50 hover:bg-teal-400/10"
-        >
+        <Link href={AUTH_LINKS.dashboard} className={saBtnPrimary}>
           ← Dashboard
         </Link>
-      </div>
+      </nav>
     </header>
   );
 }
