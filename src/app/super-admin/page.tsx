@@ -18,7 +18,7 @@ const modules = [
     href: `${AUTH_LINKS.superAdmin}/profiles`,
     eyebrow: "Module 01",
     title: "Profile management",
-    body: "List every account, open a profile, edit identity, crawl URLs, template, prompt, and resume builder access.",
+    body: "Browse accounts in a sidebar, select a profile, and edit identity, crawl URLs, template, prompt, and resume builder access.",
     delay: "sa-animate-in-delay-1",
   },
   {

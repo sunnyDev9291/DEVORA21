@@ -12,10 +12,10 @@ export default function SuperAdminProfilesPage() {
 
   return (
     <SuperAdminGate>
-      <div className={`${saPage} max-w-5xl`}>
+      <div className={`${saPage} max-w-7xl`}>
         <SuperAdminHeader
           title="Profiles"
-          subtitle="List every account, open a profile, and edit name, assets, crawl URLs, and resume-builder access."
+          subtitle="Select a profile on the left to view and edit identity, crawl URLs, template, prompt, and resume-builder access."
           onLock={() => router.replace(AUTH_LINKS.superAdmin)}
         />
         <SuperAdminProfilesList />

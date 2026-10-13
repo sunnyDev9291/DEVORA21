@@ -34,9 +34,14 @@ const fieldClass = saField;
 
 type SuperAdminProfileEditorProps = {
   userId: string;
+  /** When true, hide page-level back links (used in split-pane profiles UI). */
+  embedded?: boolean;
 };
 
-export default function SuperAdminProfileEditor({ userId }: SuperAdminProfileEditorProps) {
+export default function SuperAdminProfileEditor({
+  userId,
+  embedded = false,
+}: SuperAdminProfileEditorProps) {
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -211,7 +216,7 @@ export default function SuperAdminProfileEditor({ userId }: SuperAdminProfileEdi
 
   if (loading) {
     return (
-      <div className="mt-10 flex justify-center">
+      <div className={`${embedded ? "mt-6" : "mt-10"} flex justify-center py-16`}>
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-teal-300 border-t-teal-600" />
       </div>
     );
@@ -219,25 +224,30 @@ export default function SuperAdminProfileEditor({ userId }: SuperAdminProfileEdi
 
   if (!user) {
     return (
-      <div className="mt-8 space-y-4">
+      <div className={`${embedded ? "mt-0" : "mt-8"} space-y-4`}>
         <div
           className="sa-alert px-4 py-3 font-[family-name:var(--font-sa-mono)] text-xs"
           role="alert"
         >
           {error || "User not found."}
         </div>
-        <Link
-          href={`${AUTH_LINKS.superAdmin}/profiles`}
-          className="inline-flex font-[family-name:var(--font-sa-mono)] text-xs text-teal-700 underline-offset-2 hover:underline"
-        >
-          ← Back to profiles
-        </Link>
+        {!embedded ? (
+          <Link
+            href={`${AUTH_LINKS.superAdmin}/profiles`}
+            className="inline-flex font-[family-name:var(--font-sa-mono)] text-xs text-teal-700 underline-offset-2 hover:underline"
+          >
+            ← Back to profiles
+          </Link>
+        ) : null}
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSave} className={`${saCard} mt-8 space-y-8 p-6 sm:p-8`}>
+    <form
+      onSubmit={handleSave}
+      className={`${saCard} ${embedded ? "mt-0" : "mt-8"} space-y-8 p-6 sm:p-8`}
+    >
       <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
         <div className="flex flex-col items-center gap-3">
           <UserAvatar
@@ -457,9 +467,11 @@ export default function SuperAdminProfileEditor({ userId }: SuperAdminProfileEdi
         <button type="submit" disabled={saving || uploading} className={saBtnPrimary}>
           {saving ? "Saving…" : "Save profile"}
         </button>
-        <Link href={`${AUTH_LINKS.superAdmin}/profiles`} className={saBtnGhost}>
-          ← Profiles
-        </Link>
+        {!embedded ? (
+          <Link href={`${AUTH_LINKS.superAdmin}/profiles`} className={saBtnGhost}>
+            ← Profiles
+          </Link>
+        ) : null}
       </div>
     </form>
   );
