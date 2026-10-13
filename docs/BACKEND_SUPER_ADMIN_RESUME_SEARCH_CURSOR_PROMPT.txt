@@ -1,0 +1,155 @@
+# Backend Cursor Prompt — Super Admin Integrated Resume Search
+
+Copy everything below to the backend agent/developer.
+
+================================================================================
+GOAL
+================================================================================
+
+Power the Super Admin **Search** tab:
+
+  FE: /super-admin/resumes?tab=search
+  Client: src/lib/super-admin-resumes-api.ts → listResumes()
+
+UI behavior (already implemented on FE):
+
+  - Profile multi-select (default: all profiles)
+  - Single search input + Search button
+  - No pre-list: FE only calls the API after the user submits a non-empty query
+  - Search button disabled when q is blank
+
+Need efficient integrated text search across selected profiles.
+
+================================================================================
+AUTH
+================================================================================
+
+Same as other /admin/resumes* routes:
+
+1. Authenticated session
+2. role/capability = super_admin
+3. 401 anonymous / 403 non-admin
+
+================================================================================
+ENDPOINT
+================================================================================
+
+GET /admin/resumes
+
+Query (FE sends):
+
+  q              required for Search tab — non-empty string
+  profileIds     comma-separated user ids (also accept repeated profileId=)
+  preset         all   (FE currently sends all — search is not date-scoped)
+  timezone       IANA TZ (optional; unused when not date-filtering)
+  page           int ≥ 1 (default 1)
+  limit          int 1–100 (default 25)
+  sortBy         createdAt | companyName | jobTitle | profileName
+  sortDir        asc | desc
+
+--------------------------------------------------------------------------------
+Integrated `q` matching (REQUIRED)
+--------------------------------------------------------------------------------
+
+Treat `q` as a single integrated keyword (case-insensitive).
+
+A resume MATCHES when `q` appears in ANY of:
+
+  1. company_name / companyName
+  2. job_title / jobTitle
+  3. job_description / jobDescription
+  4. resume_file_name / resumeFileName
+  5. pdf_file_name / pdfFileName   (optional but recommended)
+
+Also acceptable: profile display name / email as extra fields.
+
+Matching rules:
+
+  - Prefer ILIKE '%q%' or trigram / full-text search
+  - Multi-word q: either
+      (a) entire string as one phrase, OR
+      (b) AND of tokens across the same field union
+    Document choice; phrase match is fine for v1
+  - Escape LIKE wildcards in user input (% _)
+  - Empty q → FE will not call; if called, return 400 or empty list
+    (do NOT return unfiltered “all resumes” for blank q)
+
+Profile scope:
+
+  - Restrict to profileIds / user_id IN (...)
+  - If profileIds omitted → all profiles (admin only)
+  - If profileIds empty list → empty result (not 500)
+
+--------------------------------------------------------------------------------
+Response 200
+--------------------------------------------------------------------------------
+
+{
+  "items": [
+    {
+      "id": "archive-uuid",
+      "profileId": "user-uuid",
+      "profileName": "Franco Torrez",
+      "profileEmail": "franco@example.com",
+      "jobTitle": "Senior Engineer",
+      "companyName": "Acme",
+      "jobDescription": "…",
+      "createdAt": "2026-10-13T18:00:00.000Z",
+      "resumeFileName": "Franco_Acme_Senior.docx",
+      "pdfFileName": "Franco_Acme_Senior.pdf",
+      "hasDocx": true,
+      "hasPdf": true
+    }
+  ],
+  "total": 42,
+  "page": 1,
+  "limit": 25
+}
+
+Aliases accepted by FE normalizer: resumes / data for items; totalCount / count for total.
+
+--------------------------------------------------------------------------------
+Downloads (unchanged)
+--------------------------------------------------------------------------------
+
+  GET /admin/resumes/:id/docx
+  GET /admin/resumes/:id/pdf
+
+================================================================================
+PERFORMANCE
+================================================================================
+
+Add indexes for search scale:
+
+  -- Postgres example
+  CREATE INDEX IF NOT EXISTS resume_archives_company_trgm
+    ON resume_archives USING gin (company_name gin_trgm_ops);
+  CREATE INDEX IF NOT EXISTS resume_archives_title_trgm
+    ON resume_archives USING gin (job_title gin_trgm_ops);
+  CREATE INDEX IF NOT EXISTS resume_archives_filename_trgm
+    ON resume_archives USING gin (resume_file_name gin_trgm_ops);
+  -- job_description: trigram OR generated tsvector column
+
+Always filter by user_id IN (:profileIds) first when provided.
+
+================================================================================
+ACCEPTANCE CHECKLIST
+================================================================================
+
+[ ] q="Acme" finds resumes where company OR title OR JD OR filename contains Acme
+[ ] q with profileIds only returns those profiles’ archives
+[ ] Blank q does not dump entire archive (400 or empty)
+[ ] Pagination + sortBy/sortDir work with q filter
+[ ] Non-admin → 403
+[ ] Existing analytics endpoints unchanged
+
+================================================================================
+OUT OF SCOPE
+================================================================================
+
+- Separate company / title / JD filter fields on this tab (removed from FE)
+- Date presets on Search tab (use Analytics for period views)
+
+================================================================================
+END
+================================================================================

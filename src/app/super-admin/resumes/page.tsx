@@ -14,26 +14,28 @@ import {
 } from "@/components/super-admin/resume-dashboard-styles";
 import { AUTH_LINKS } from "@/lib/constants";
 
-type TabId = "analytics" | "browse";
+type TabId = "analytics" | "search";
 
 function SuperAdminResumesInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const tab: TabId = searchParams.get("tab") === "browse" ? "browse" : "analytics";
+  const rawTab = searchParams.get("tab");
+  const tab: TabId =
+    rawTab === "search" || rawTab === "browse" ? "search" : "analytics";
 
   const tabs = useMemo(
     () =>
       [
         { id: "analytics" as const, label: "Analytics" },
-        { id: "browse" as const, label: "Search & manage" },
+        { id: "search" as const, label: "Search" },
       ] as const,
     []
   );
 
   function setTab(next: TabId) {
     const url =
-      next === "browse"
-        ? `${AUTH_LINKS.superAdmin}/resumes?tab=browse`
+      next === "search"
+        ? `${AUTH_LINKS.superAdmin}/resumes?tab=search`
         : `${AUTH_LINKS.superAdmin}/resumes`;
     router.replace(url);
   }
@@ -60,7 +62,11 @@ function SuperAdminResumesInner() {
       </div>
 
       <div className="mt-6 sa-animate-in-delay-1" key={tab}>
-        {tab === "analytics" ? <SuperAdminResumeAnalytics /> : <SuperAdminResumeBrowser />}
+        {tab === "analytics" ? (
+          <SuperAdminResumeAnalytics />
+        ) : (
+          <SuperAdminResumeBrowser />
+        )}
       </div>
     </div>
   );
