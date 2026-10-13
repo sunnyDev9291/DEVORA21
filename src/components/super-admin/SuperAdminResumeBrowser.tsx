@@ -47,7 +47,7 @@ function SortHeader({
       className="inline-flex items-center gap-1 uppercase tracking-[0.14em] hover:text-teal-200"
     >
       {label}
-      <span className="text-teal-400/80">{active ? (sort.sortDir === "asc" ? "↑" : "↓") : ""}</span>
+      <span className="text-teal-700">{active ? (sort.sortDir === "asc" ? "↑" : "↓") : ""}</span>
     </button>
   );
 }
@@ -175,20 +175,20 @@ export default function SuperAdminResumeBrowser() {
 
       {error ? (
         <div
-          className="border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs text-red-300"
+          className="sa-alert px-4 py-3 text-xs"
           role="alert"
         >
           <p className={saMono}>{error}</p>
-          <p className={`${saMono} mt-2 text-[#8b9aab]`}>
-            Backend must expose <code className="text-teal-200/80">GET /admin/resumes</code> with
+          <p className={`${saMono} mt-2 text-slate-500`}>
+            Backend must expose <code className="text-teal-700">GET /admin/resumes</code> with
             search, pagination, and file downloads.
           </p>
         </div>
       ) : null}
 
       <div className={`${saTableWrap} overflow-x-auto`}>
-        <table className={`min-w-full text-left ${saMono} text-xs text-[#c5d0dc]`}>
-          <thead className="border-b border-teal-400/10 bg-white/[0.02] text-[10px] text-[#6b7c8f]">
+        <table className={`min-w-full text-left ${saMono} text-xs text-slate-600`}>
+          <thead className="border-b border-slate-200 bg-slate-50 text-[10px] text-slate-500">
             <tr>
               <th className="px-3 py-3 font-medium">
                 <SortHeader label="Created" field="createdAt" sort={sort} onSort={handleSort} />
@@ -208,31 +208,31 @@ export default function SuperAdminResumeBrowser() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={5} className="px-3 py-10 text-center text-[#6b7c8f]">
+                <td colSpan={5} className="px-3 py-10 text-center text-slate-500">
                   Loading resumes…
                 </td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-3 py-10 text-center text-[#6b7c8f]">
+                <td colSpan={5} className="px-3 py-10 text-center text-slate-500">
                   No resumes matched these filters.
                 </td>
               </tr>
             ) : (
               items.map((item) => (
-                <tr key={item.id} className="border-t border-[#1e2a36] hover:bg-[#0d141c]/60">
-                  <td className="px-3 py-3 whitespace-nowrap text-[#f4f7fb]">
+                <tr key={item.id} className="border-t border-slate-200 hover:bg-slate-50">
+                  <td className="px-3 py-3 whitespace-nowrap text-slate-900">
                     {new Date(item.createdAt).toLocaleString(undefined, {
                       dateStyle: "medium",
                       timeStyle: "short",
                     })}
                   </td>
                   <td className="px-3 py-3">
-                    <p className="text-[#f4f7fb]">
+                    <p className="text-slate-900">
                       {item.profileName || item.profileEmail || item.profileId || "—"}
                     </p>
                     {item.profileEmail && item.profileName ? (
-                      <p className="text-[10px] text-[#6b7c8f]">{item.profileEmail}</p>
+                      <p className="text-[10px] text-slate-500">{item.profileEmail}</p>
                     ) : null}
                   </td>
                   <td className="px-3 py-3">{item.companyName || "—"}</td>
@@ -281,7 +281,7 @@ export default function SuperAdminResumeBrowser() {
         </table>
       </div>
 
-      <div className={`flex flex-wrap items-center justify-between gap-3 ${saMono} text-[11px] text-[#6b7c8f]`}>
+      <div className={`flex flex-wrap items-center justify-between gap-3 ${saMono} text-[11px] text-slate-500`}>
         <p>
           {total.toLocaleString()} resume{total === 1 ? "" : "s"} · page {page} / {totalPages}
         </p>
@@ -323,11 +323,11 @@ export default function SuperAdminResumeBrowser() {
           title={`${jdItem.companyName || "Job"} · ${jdItem.jobTitle || "Description"}`}
         >
           <div className="space-y-3">
-            <p className={`${saMono} text-[11px] text-[#6b7c8f]`}>
+            <p className={`${saMono} text-[11px] text-slate-500`}>
               {jdItem.profileName || jdItem.profileEmail || jdItem.profileId} ·{" "}
               {new Date(jdItem.createdAt).toLocaleString()}
             </p>
-            <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap border border-[#1e2a36] bg-[#0d141c] p-4 font-[family-name:var(--font-sa-mono)] text-xs leading-relaxed text-[#c5d0dc]">
+            <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap border border-slate-200 bg-slate-50 p-4 font-[family-name:var(--font-sa-mono)] text-xs leading-relaxed text-slate-600">
               {jdItem.jobDescription?.trim() || "No job description stored for this resume."}
             </pre>
           </div>

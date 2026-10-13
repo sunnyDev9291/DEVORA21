@@ -15,22 +15,23 @@ export function niceCeil(value: number): number {
   return Math.round(nice * factor);
 }
 
+/** Readable on light dashboard surfaces */
 export const PROFILE_CHART_COLORS = [
-  "#2dd4bf",
-  "#38bdf8",
-  "#a78bfa",
-  "#f472b6",
-  "#fbbf24",
-  "#34d399",
-  "#fb7185",
-  "#22d3ee",
-  "#c084fc",
-  "#4ade80",
-  "#f59e0b",
-  "#60a5fa",
+  "#0d9488",
+  "#0284c7",
+  "#7c3aed",
+  "#db2777",
+  "#d97706",
+  "#059669",
+  "#e11d48",
+  "#0891b2",
+  "#6d28d9",
+  "#16a34a",
+  "#ea580c",
+  "#2563eb",
 ] as const;
 
-export const TOTAL_SERIES_COLOR = "#f8fafc";
+export const TOTAL_SERIES_COLOR = "#334155";
 export const TOTAL_SERIES_KEY = "__total__";
 
 export function colorForProfileIndex(index: number): string {

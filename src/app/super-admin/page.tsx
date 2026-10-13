@@ -26,7 +26,7 @@ const modules = [
     href: `${AUTH_LINKS.superAdmin}/resumes`,
     eyebrow: "Module 02",
     title: "Resume analytics",
-    body: "Platform KPIs, trends, search every archived resume, preview PDF, download DOCX/PDF, open job descriptions.",
+    body: "Compare profiles, inspect any date range, toggle bars and lines, and browse every archived resume.",
     delay: "sa-animate-in-delay-2",
   },
 ] as const;
@@ -39,21 +39,21 @@ export default function SuperAdminPage() {
       <div className={saPage}>
         <SuperAdminHeader
           title="Super Admin"
-          subtitle="Separate ops surface — not the product UI. Sign in to Devora21 with a super-admin account before using modules that call /admin APIs."
+          subtitle="Quiet ops workspace for profiles and resume analytics. Sign in to Devora21 with a super-admin account before calling /admin APIs."
           onLock={() => router.replace(AUTH_LINKS.superAdmin)}
         />
 
         <section className="mt-9 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div className={`${saCard} sa-animate-in p-6`}>
             <p className={saEyebrow}>Operator</p>
-            <p className={`${saMono} mt-4 text-sm text-[#f4f7fb]`}>
+            <p className={`${saMono} mt-4 text-sm text-slate-900`}>
               Temporary console gate · session only
             </p>
-            <p className={`${saMono} mt-2 text-xs leading-relaxed text-[#6b7c8f]`}>
-              Cleared when the tab session ends or you hit Lock. API auth uses your Devora21 JWT.
+            <p className={`${saMono} mt-2 text-xs leading-relaxed text-slate-500`}>
+              Cleared when the tab ends or you hit Lock. API auth uses your Devora21 session.
             </p>
-            <div className="mt-5 h-px w-full bg-gradient-to-r from-teal-400/30 via-teal-400/10 to-transparent" />
-            <p className={`${saMono} mt-4 text-[11px] text-teal-200/70`}>Live session</p>
+            <div className="mt-5 h-px w-full bg-gradient-to-r from-teal-600/25 via-slate-200 to-transparent" />
+            <p className={`${saMono} mt-4 text-[11px] text-teal-700`}>Live session</p>
           </div>
 
           {modules.map((mod) => (
@@ -64,13 +64,13 @@ export default function SuperAdminPage() {
             >
               <p className={saEyebrow}>{mod.eyebrow}</p>
               <p
-                className={`${saDisplay} mt-4 text-xl font-bold tracking-tight text-[#f4f7fb] transition-colors group-hover:text-teal-100`}
+                className={`${saDisplay} mt-4 text-xl font-bold tracking-tight text-slate-900 transition-colors group-hover:text-teal-800`}
               >
                 {mod.title}
               </p>
-              <p className={`${saMono} mt-2 text-xs leading-relaxed text-[#6b7c8f]`}>{mod.body}</p>
+              <p className={`${saMono} mt-2 text-xs leading-relaxed text-slate-500`}>{mod.body}</p>
               <span
-                className={`${saMono} mt-5 inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-teal-300/80 transition-all group-hover:gap-3 group-hover:text-teal-200`}
+                className={`${saMono} mt-5 inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-teal-700 transition-all group-hover:gap-3`}
               >
                 Open <span aria-hidden>→</span>
               </span>

@@ -98,20 +98,20 @@ export default function SuperAdminProfilesList() {
 
       {error ? (
         <div
-          className={`${saMono} rounded-2xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-xs text-red-200`}
+          className={`${saMono} sa-alert px-4 py-3 text-xs`}
           role="alert"
         >
           {error}
-          <p className="mt-2 text-[#8b9aab]">
+          <p className="mt-2 text-slate-500">
             Sign in to Devora21 with a super-admin account if you see 401/403. Backend must expose{" "}
-            <code className="text-teal-200/80">GET /admin/users</code>.
+            <code className="text-teal-700">GET /admin/users</code>.
           </p>
         </div>
       ) : null}
 
       <div className={`${saTableWrap} overflow-x-auto`}>
-        <table className={`min-w-full text-left ${saMono} text-xs text-[#c5d0dc]`}>
-          <thead className="border-b border-teal-400/10 bg-white/[0.02] text-[10px] uppercase tracking-[0.14em] text-[#6b7c8f]">
+        <table className={`min-w-full text-left ${saMono} text-xs text-slate-600`}>
+          <thead className="border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-[0.14em] text-slate-500">
             <tr>
               <th className="px-4 py-3.5 font-medium">Email</th>
               <th className="px-4 py-3.5 font-medium">Name</th>
@@ -124,20 +124,20 @@ export default function SuperAdminProfilesList() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-[#6b7c8f]">
+                <td colSpan={6} className="px-4 py-10 text-center text-slate-500">
                   Loading users…
                 </td>
               </tr>
             ) : users.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-[#6b7c8f]">
+                <td colSpan={6} className="px-4 py-10 text-center text-slate-500">
                   No users found{q ? ` for “${q}”` : ""}.
                 </td>
               </tr>
             ) : (
               users.map((user) => (
-                <tr key={user.id} className="border-t border-[#1e2a36]/80">
-                  <td className="px-4 py-3.5 text-[#f4f7fb]">{user.email || "—"}</td>
+                <tr key={user.id} className="border-t border-slate-200">
+                  <td className="px-4 py-3.5 text-slate-900">{user.email || "—"}</td>
                   <td className="px-4 py-3.5">{displayName(user)}</td>
                   <td className="px-4 py-3.5">{flagLabel(user.onboardingCompleted)}</td>
                   <td className="px-4 py-3.5">{flagLabel(user.resumeBuilderEnabled)}</td>
@@ -152,7 +152,7 @@ export default function SuperAdminProfilesList() {
                   <td className="px-4 py-3.5 text-right">
                     <Link
                       href={`${AUTH_LINKS.superAdmin}/profiles/${encodeURIComponent(user.id)}`}
-                      className="text-teal-300 underline-offset-4 transition-colors hover:text-teal-100 hover:underline"
+                      className="text-teal-700 underline-offset-4 transition-colors hover:text-teal-800 hover:underline"
                     >
                       Open
                     </Link>
@@ -164,7 +164,7 @@ export default function SuperAdminProfilesList() {
         </table>
       </div>
 
-      <div className={`flex flex-wrap items-center justify-between gap-3 ${saMono} text-[11px] text-[#6b7c8f]`}>
+      <div className={`flex flex-wrap items-center justify-between gap-3 ${saMono} text-[11px] text-slate-500`}>
         <p>
           {total} user{total === 1 ? "" : "s"} · page {page} / {totalPages}
         </p>

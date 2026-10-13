@@ -212,7 +212,7 @@ export default function SuperAdminProfileEditor({ userId }: SuperAdminProfileEdi
   if (loading) {
     return (
       <div className="mt-10 flex justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-teal-400/40 border-t-teal-300" />
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-teal-300 border-t-teal-600" />
       </div>
     );
   }
@@ -221,14 +221,14 @@ export default function SuperAdminProfileEditor({ userId }: SuperAdminProfileEdi
     return (
       <div className="mt-8 space-y-4">
         <div
-          className="border border-red-500/30 bg-red-500/10 px-4 py-3 font-[family-name:var(--font-sa-mono)] text-xs text-red-300"
+          className="sa-alert px-4 py-3 font-[family-name:var(--font-sa-mono)] text-xs"
           role="alert"
         >
           {error || "User not found."}
         </div>
         <Link
           href={`${AUTH_LINKS.superAdmin}/profiles`}
-          className="inline-flex font-[family-name:var(--font-sa-mono)] text-xs text-teal-300 underline-offset-2 hover:underline"
+          className="inline-flex font-[family-name:var(--font-sa-mono)] text-xs text-teal-700 underline-offset-2 hover:underline"
         >
           ← Back to profiles
         </Link>
@@ -267,9 +267,9 @@ export default function SuperAdminProfileEditor({ userId }: SuperAdminProfileEdi
             {uploading ? "Uploading…" : "Change photo"}
           </button>
         </div>
-        <div className={`min-w-0 flex-1 space-y-2 ${saMono} text-xs text-[#8b9aab]`}>
+        <div className={`min-w-0 flex-1 space-y-2 ${saMono} text-xs text-slate-500`}>
           <p className={saLabel}>Target user</p>
-          <p className="text-sm text-[#f4f7fb]">{user.email}</p>
+          <p className="text-sm text-slate-900">{user.email}</p>
           <p>id · {user.id}</p>
           <p>email verified · {user.emailVerified ? "yes" : "no"}</p>
           <p>onboarding · {user.onboardingCompleted ? "complete" : "incomplete"}</p>
@@ -289,7 +289,7 @@ export default function SuperAdminProfileEditor({ userId }: SuperAdminProfileEdi
         <div>
           <label
             htmlFor="sa-first-name"
-            className="mb-1.5 block font-[family-name:var(--font-sa-mono)] text-[10px] uppercase tracking-[0.16em] text-[#6b7c8f]"
+            className="mb-1.5 block font-[family-name:var(--font-sa-mono)] text-[10px] uppercase tracking-[0.16em] text-slate-500"
           >
             First name
           </label>
@@ -304,7 +304,7 @@ export default function SuperAdminProfileEditor({ userId }: SuperAdminProfileEdi
         <div>
           <label
             htmlFor="sa-last-name"
-            className="mb-1.5 block font-[family-name:var(--font-sa-mono)] text-[10px] uppercase tracking-[0.16em] text-[#6b7c8f]"
+            className="mb-1.5 block font-[family-name:var(--font-sa-mono)] text-[10px] uppercase tracking-[0.16em] text-slate-500"
           >
             Last name
           </label>
@@ -319,7 +319,7 @@ export default function SuperAdminProfileEditor({ userId }: SuperAdminProfileEdi
         <div className="sm:col-span-2">
           <label
             htmlFor="sa-email"
-            className="mb-1.5 block font-[family-name:var(--font-sa-mono)] text-[10px] uppercase tracking-[0.16em] text-[#6b7c8f]"
+            className="mb-1.5 block font-[family-name:var(--font-sa-mono)] text-[10px] uppercase tracking-[0.16em] text-slate-500"
           >
             Email (read-only)
           </label>
@@ -327,20 +327,20 @@ export default function SuperAdminProfileEditor({ userId }: SuperAdminProfileEdi
         </div>
       </div>
 
-      <div className="rounded-2xl border border-teal-400/15 bg-teal-400/[0.04] p-4">
+      <div className="rounded-2xl border border-teal-200 bg-teal-50 p-4">
         <label className="flex cursor-pointer items-start gap-3">
           <input
             type="checkbox"
             checked={resumeBuilderEnabled}
             onChange={(e) => setResumeBuilderEnabled(e.target.checked)}
             disabled={saving}
-            className="mt-0.5 h-4 w-4 accent-teal-400"
+            className="mt-0.5 h-4 w-4 accent-teal-700"
           />
           <span>
-            <span className={`${saMono} block text-xs font-semibold uppercase tracking-wider text-[#f4f7fb]`}>
+            <span className={`${saMono} block text-xs font-semibold uppercase tracking-wider text-slate-900`}>
               Resume builder enabled
             </span>
-            <span className={`${saMono} mt-1 block text-[11px] text-[#6b7c8f]`}>
+            <span className={`${saMono} mt-1 block text-[11px] text-slate-500`}>
               Ops toggle — unlocks /resume for this account.
             </span>
           </span>
@@ -348,7 +348,7 @@ export default function SuperAdminProfileEditor({ userId }: SuperAdminProfileEdi
       </div>
 
       <div>
-        <h3 className="font-[family-name:var(--font-sa-mono)] text-[10px] uppercase tracking-[0.16em] text-teal-400/70">
+        <h3 className="font-[family-name:var(--font-sa-mono)] text-[10px] uppercase tracking-[0.16em] text-teal-700/80">
           Job crawl settings
         </h3>
         <div className="mt-4 space-y-4">
@@ -358,7 +358,7 @@ export default function SuperAdminProfileEditor({ userId }: SuperAdminProfileEdi
               <div key={platform}>
                 <label
                   htmlFor={`sa-listing-${platform}`}
-                  className="mb-1.5 block font-[family-name:var(--font-sa-mono)] text-[10px] uppercase tracking-[0.16em] text-[#6b7c8f]"
+                  className="mb-1.5 block font-[family-name:var(--font-sa-mono)] text-[10px] uppercase tracking-[0.16em] text-slate-500"
                 >
                   {JOB_CRAWL_PLATFORM_LABEL[platform]}
                   {countryOnly ? " country" : ""}
@@ -375,7 +375,7 @@ export default function SuperAdminProfileEditor({ userId }: SuperAdminProfileEdi
                   disabled={saving}
                   spellCheck={false}
                 />
-                <p className="mt-1.5 font-[family-name:var(--font-sa-mono)] text-[11px] text-[#6b7c8f]">
+                <p className="mt-1.5 font-[family-name:var(--font-sa-mono)] text-[11px] text-slate-500">
                   {JOB_CRAWL_PLATFORM_HINT[platform]}
                 </p>
               </div>
@@ -385,11 +385,11 @@ export default function SuperAdminProfileEditor({ userId }: SuperAdminProfileEdi
       </div>
 
       <div>
-        <h3 className="font-[family-name:var(--font-sa-mono)] text-[10px] uppercase tracking-[0.16em] text-teal-400/70">
+        <h3 className="font-[family-name:var(--font-sa-mono)] text-[10px] uppercase tracking-[0.16em] text-teal-700/80">
           Resume template
         </h3>
         {resumeTemplateFileName ? (
-          <p className="mt-2 font-[family-name:var(--font-sa-mono)] text-xs text-emerald-300/90">
+          <p className="mt-2 font-[family-name:var(--font-sa-mono)] text-xs text-emerald-700/90">
             Current: {resumeTemplateFileName}
           </p>
         ) : null}
@@ -408,7 +408,7 @@ export default function SuperAdminProfileEditor({ userId }: SuperAdminProfileEdi
       </div>
 
       <div>
-        <h3 className="font-[family-name:var(--font-sa-mono)] text-[10px] uppercase tracking-[0.16em] text-teal-400/70">
+        <h3 className="font-[family-name:var(--font-sa-mono)] text-[10px] uppercase tracking-[0.16em] text-teal-700/80">
           Writing prompt
         </h3>
         <div className="mt-3">
@@ -423,7 +423,7 @@ export default function SuperAdminProfileEditor({ userId }: SuperAdminProfileEdi
             onFile={handlePromptFile}
           />
         </div>
-        <p className="mt-2 font-[family-name:var(--font-sa-mono)] text-[11px] text-[#6b7c8f]">
+        <p className="mt-2 font-[family-name:var(--font-sa-mono)] text-[11px] text-slate-500">
           {promptFileName ? `Stored prompt · ${promptFileName}` : "No prompt file name on profile."}
         </p>
         {customPrompt.trim() ? (
@@ -431,14 +431,14 @@ export default function SuperAdminProfileEditor({ userId }: SuperAdminProfileEdi
             readOnly
             value={customPrompt}
             rows={10}
-            className="mt-3 w-full resize-y border border-[#2a3a4a] bg-[#0d141c] px-3 py-2.5 font-[family-name:var(--font-sa-mono)] text-[11px] leading-relaxed text-[#c5d0dc] outline-none"
+            className="mt-3 w-full resize-y border border-[#2a3a4a] bg-slate-50 px-3 py-2.5 font-[family-name:var(--font-sa-mono)] text-[11px] leading-relaxed text-slate-600 outline-none"
           />
         ) : null}
       </div>
 
       {error ? (
         <div
-          className="border border-red-500/30 bg-red-500/10 px-4 py-3 font-[family-name:var(--font-sa-mono)] text-xs text-red-300"
+          className="sa-alert px-4 py-3 font-[family-name:var(--font-sa-mono)] text-xs"
           role="alert"
         >
           {error}
@@ -446,7 +446,7 @@ export default function SuperAdminProfileEditor({ userId }: SuperAdminProfileEdi
       ) : null}
       {message ? (
         <div
-          className="border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 font-[family-name:var(--font-sa-mono)] text-xs text-emerald-200"
+          className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 font-[family-name:var(--font-sa-mono)] text-xs text-emerald-800"
           role="status"
         >
           {message}

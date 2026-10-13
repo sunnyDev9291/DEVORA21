@@ -76,14 +76,14 @@ export default function SuperAdminProfileMultiSelect({
         className={`${saField} flex items-center justify-between text-left`}
       >
         <span className="truncate">{summary}</span>
-        <span className="ml-2 text-[#6b7c8f]" aria-hidden>
+        <span className="ml-2 text-slate-500" aria-hidden>
           {open ? "▴" : "▾"}
         </span>
       </button>
 
       {open ? (
-        <div className="absolute z-30 mt-2 w-full overflow-hidden rounded-2xl border border-teal-400/20 bg-[#0d141c]/98 shadow-2xl shadow-black/40 backdrop-blur-xl">
-          <div className="border-b border-teal-400/10 p-3">
+        <div className="absolute z-30 mt-2 w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-200/80">
+          <div className="border-b border-slate-100 p-3">
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -111,23 +111,23 @@ export default function SuperAdminProfileMultiSelect({
           </div>
           <ul className="max-h-64 overflow-auto py-1">
             {filtered.length === 0 ? (
-              <li className={`${saMono} px-4 py-3 text-xs text-[#6b7c8f]`}>No matches.</li>
+              <li className={`${saMono} px-4 py-3 text-xs text-slate-500`}>No matches.</li>
             ) : (
               filtered.map((opt) => {
                 const checked = selectedSet.has(opt.id);
                 return (
                   <li key={opt.id}>
-                    <label className="flex cursor-pointer items-start gap-3 px-4 py-2.5 transition-colors hover:bg-teal-400/[0.06]">
+                    <label className="flex cursor-pointer items-start gap-3 px-4 py-2.5 transition-colors hover:bg-teal-50">
                       <input
                         type="checkbox"
                         checked={checked}
                         onChange={() => toggle(opt.id)}
-                        className="mt-0.5 h-4 w-4 accent-teal-400"
+                        className="mt-0.5 h-4 w-4 accent-teal-700"
                       />
                       <span className="min-w-0">
-                        <span className={`${saMono} block text-xs text-[#f4f7fb]`}>{opt.label}</span>
+                        <span className={`${saMono} block text-xs text-slate-900`}>{opt.label}</span>
                         {opt.email ? (
-                          <span className={`${saMono} block text-[10px] text-[#6b7c8f]`}>
+                          <span className={`${saMono} block text-[10px] text-slate-500`}>
                             {opt.email}
                           </span>
                         ) : null}

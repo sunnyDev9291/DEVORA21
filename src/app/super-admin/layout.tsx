@@ -21,32 +21,28 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-/** Ops console shell — intentionally unlike the warm marketing / dashboard UI. */
+/** Light ops analytics shell — quiet, airy, distinct from marketing UI. */
 export default function SuperAdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <div
       className={`${syne.variable} ${plexMono.variable} sa-console relative isolate min-h-[calc(100vh-5rem)] overflow-hidden bg-[var(--sa-bg)] text-[var(--sa-text)]`}
     >
       <div
-        className="pointer-events-none absolute inset-0 opacity-[0.4]"
+        className="pointer-events-none absolute inset-0"
         style={{
           backgroundImage:
-            "radial-gradient(rgba(45,212,191,0.07) 1px, transparent 1px)",
-          backgroundSize: "22px 22px",
-          maskImage: "radial-gradient(ellipse at center, black 20%, transparent 75%)",
+            "radial-gradient(rgba(15, 23, 42, 0.035) 1px, transparent 1px)",
+          backgroundSize: "20px 20px",
+          maskImage: "radial-gradient(ellipse at top, black 15%, transparent 70%)",
         }}
         aria-hidden
       />
       <div
-        className="pointer-events-none absolute -left-24 top-[-10%] h-[28rem] w-[28rem] rounded-full bg-teal-400/[0.07] blur-3xl"
+        className="pointer-events-none absolute -left-20 top-[-8%] h-[22rem] w-[22rem] rounded-full bg-teal-200/30 blur-3xl"
         aria-hidden
       />
       <div
-        className="pointer-events-none absolute -right-16 bottom-[-8%] h-[24rem] w-[24rem] rounded-full bg-cyan-500/[0.05] blur-3xl"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-56 bg-[radial-gradient(ellipse_at_top,_rgba(45,212,191,0.14),_transparent_65%)]"
+        className="pointer-events-none absolute -right-16 top-[20%] h-[18rem] w-[18rem] rounded-full bg-sky-100/50 blur-3xl"
         aria-hidden
       />
       <div className="relative z-10">{children}</div>

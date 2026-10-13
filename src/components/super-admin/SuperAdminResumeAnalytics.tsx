@@ -67,17 +67,17 @@ function KpiCard({
   return (
     <div className={`${saCard} relative overflow-hidden p-5`}>
       <div
-        className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-teal-400/[0.07] blur-2xl"
+        className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-teal-50 blur-2xl"
         aria-hidden
       />
       <p className={saEyebrow}>{label}</p>
-      <p className={`${saDisplay} mt-3 text-3xl font-extrabold tabular-nums tracking-tight text-[#f4f7fb]`}>
+      <p className={`${saDisplay} mt-3 text-3xl font-extrabold tabular-nums tracking-tight text-slate-900`}>
         {value.toLocaleString()}
       </p>
       {delta !== null && delta !== undefined ? (
         <p
           className={`${saMono} mt-2 text-[11px] ${
-            delta > 0 ? "text-emerald-300" : delta < 0 ? "text-rose-300" : "text-[#6b7c8f]"
+            delta > 0 ? "text-emerald-700" : delta < 0 ? "text-rose-700" : "text-slate-500"
           }`}
         >
           {delta > 0 ? "+" : ""}
@@ -338,12 +338,12 @@ export default function SuperAdminResumeAnalytics() {
 
       {error ? (
         <div
-          className="rounded-2xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-xs text-red-200"
+          className="sa-alert px-4 py-3 text-xs"
           role="alert"
         >
           <p className={saMono}>{error}</p>
-          <p className={`${saMono} mt-2 text-[#8b9aab]`}>
-            Prefer <code className="text-teal-200/80">GET /admin/resumes/analytics/compare</code>. FE
+          <p className={`${saMono} mt-2 text-slate-500`}>
+            Prefer <code className="text-teal-700">GET /admin/resumes/analytics/compare</code>. FE
             can fall back to per-profile analytics when that route is missing.
           </p>
         </div>
@@ -366,10 +366,10 @@ export default function SuperAdminResumeAnalytics() {
         />
         <div className={`${saCard} p-5`}>
           <p className={saEyebrow}>Scope</p>
-          <p className={`${saMono} mt-3 text-sm text-[#f4f7fb]`}>
+          <p className={`${saMono} mt-3 text-sm text-slate-900`}>
             {selectedIds.length} profile{selectedIds.length === 1 ? "" : "s"}
           </p>
-          <p className={`${saMono} mt-2 text-[11px] text-[#6b7c8f]`}>
+          <p className={`${saMono} mt-2 text-[11px] text-slate-500`}>
             TZ {data?.timezone || guessBrowserTimezone()}
             {data?.from && data?.to ? ` · ${data.from} → ${data.to}` : ""}
           </p>
@@ -380,11 +380,11 @@ export default function SuperAdminResumeAnalytics() {
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className={saEyebrow}>Daily activity</p>
-            <h3 className={`${saDisplay} mt-1 text-lg font-bold text-[#f4f7fb]`}>
+            <h3 className={`${saDisplay} mt-1 text-lg font-bold text-slate-900`}>
               Profiles · bars + smooth totals
             </h3>
           </div>
-          <p className={`${saMono} text-[11px] text-[#6b7c8f]`}>
+          <p className={`${saMono} text-[11px] text-slate-500`}>
             Y max {yMax} · headroom ~30%
           </p>
         </div>
@@ -392,36 +392,37 @@ export default function SuperAdminResumeAnalytics() {
         <div className="mt-4 h-[26rem] w-full overflow-x-auto">
           {loading && !chartRows.length ? (
             <div className="flex h-full items-center justify-center">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-teal-400/40 border-t-teal-300" />
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-teal-300 border-t-teal-600" />
             </div>
           ) : chartRows.length === 0 ? (
-            <div className={`flex h-full items-center justify-center ${saMono} text-xs text-[#6b7c8f]`}>
+            <div className={`flex h-full items-center justify-center ${saMono} text-xs text-slate-500`}>
               {selectedIds.length ? "No resume activity in this range." : "Select at least one profile."}
             </div>
           ) : (
             <div className="h-full min-w-[640px]">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={chartRows} margin={{ top: 12, right: 12, left: 0, bottom: 8 }}>
-                  <CartesianGrid stroke="#1e2a36" strokeDasharray="3 3" vertical={false} />
+                  <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
                   <XAxis
                     dataKey="date"
-                    tick={{ fill: "#6b7c8f", fontSize: 11 }}
+                    tick={{ fill: "#64748b", fontSize: 11 }}
                     minTickGap={18}
                     interval={xInterval}
                   />
                   <YAxis
                     domain={[0, yMax]}
                     allowDecimals={false}
-                    tick={{ fill: "#6b7c8f", fontSize: 11 }}
+                    tick={{ fill: "#64748b", fontSize: 11 }}
                     width={40}
                   />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: "rgba(16, 24, 32, 0.96)",
-                      border: "1px solid rgba(45, 212, 191, 0.22)",
+                      backgroundColor: "rgba(255, 255, 255, 0.98)",
+                      border: "1px solid rgba(15, 23, 42, 0.1)",
                       borderRadius: 12,
                       fontSize: 12,
-                      color: "#d7e0ea",
+                      color: "#0f172a",
+                      boxShadow: "0 12px 28px -18px rgba(15,23,42,0.35)",
                     }}
                     formatter={(value: number, name: string) => {
                       const label =
@@ -431,7 +432,7 @@ export default function SuperAdminResumeAnalytics() {
                     labelFormatter={(label) => `Date · ${label}`}
                   />
                   <Legend
-                    wrapperStyle={{ fontSize: 12, color: "#8b9aab" }}
+                    wrapperStyle={{ fontSize: 12, color: "#64748b" }}
                     formatter={(value) =>
                       value === TOTAL_SERIES_KEY ? "Total SUM" : labelFor(String(value))
                     }
@@ -442,9 +443,9 @@ export default function SuperAdminResumeAnalytics() {
                       dataKey={TOTAL_SERIES_KEY}
                       name={TOTAL_SERIES_KEY}
                       fill={TOTAL_SERIES_COLOR}
-                      fillOpacity={0.22}
+                      fillOpacity={0.14}
                       stroke={TOTAL_SERIES_COLOR}
-                      strokeOpacity={0.55}
+                      strokeOpacity={0.45}
                       radius={[4, 4, 0, 0]}
                       maxBarSize={28}
                       isAnimationActive
@@ -504,14 +505,14 @@ export default function SuperAdminResumeAnalytics() {
             {selectedIds.map((id) => (
               <div
                 key={`vis-${id}`}
-                className="flex items-center justify-between gap-2 rounded-xl border border-[#1e2a36] bg-[#0d141c]/60 px-3 py-2"
+                className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
               >
                 <div className="flex min-w-0 items-center gap-2">
                   <span
                     className="h-2.5 w-2.5 shrink-0 rounded-full"
                     style={{ background: colorByProfile.get(id) }}
                   />
-                  <span className={`${saMono} truncate text-[11px] text-[#c5d0dc]`}>
+                  <span className={`${saMono} truncate text-[11px] text-slate-600`}>
                     {labelFor(id)}
                   </span>
                 </div>
@@ -519,7 +520,7 @@ export default function SuperAdminResumeAnalytics() {
                   <button
                     type="button"
                     className={`${saBtnGhost} h-7 px-2 text-[9px] ${
-                      !hiddenProfileBars.has(id) ? "border-teal-400/40 text-teal-100" : ""
+                      !hiddenProfileBars.has(id) ? "border-teal-300 text-teal-800" : ""
                     }`}
                     onClick={() => toggleSet(setHiddenProfileBars, id)}
                   >
@@ -528,7 +529,7 @@ export default function SuperAdminResumeAnalytics() {
                   <button
                     type="button"
                     className={`${saBtnGhost} h-7 px-2 text-[9px] ${
-                      !hiddenProfileLines.has(id) ? "border-teal-400/40 text-teal-100" : ""
+                      !hiddenProfileLines.has(id) ? "border-teal-300 text-teal-800" : ""
                     }`}
                     onClick={() => toggleSet(setHiddenProfileLines, id)}
                   >
@@ -543,19 +544,19 @@ export default function SuperAdminResumeAnalytics() {
 
       <div className={`${saCard} p-5 sm:p-6`}>
         <p className={saEyebrow}>Ranking</p>
-        <h3 className={`${saDisplay} mt-1 text-lg font-bold text-[#f4f7fb]`}>
+        <h3 className={`${saDisplay} mt-1 text-lg font-bold text-slate-900`}>
           Selected profiles · range totals
         </h3>
-        <p className={`${saMono} mt-2 text-xs text-[#6b7c8f]`}>
+        <p className={`${saMono} mt-2 text-xs text-slate-500`}>
           Grand total { (data?.grandTotal ?? 0).toLocaleString() } · visibility toggles do not change
           rankings
         </p>
         <div className="mt-4 overflow-auto">
           {!data?.rankings.length ? (
-            <p className={`${saMono} text-xs text-[#6b7c8f]`}>No ranking data yet.</p>
+            <p className={`${saMono} text-xs text-slate-500`}>No ranking data yet.</p>
           ) : (
-            <table className={`min-w-full text-left ${saMono} text-xs text-[#c5d0dc]`}>
-              <thead className="border-b border-teal-400/10 text-[10px] uppercase tracking-[0.14em] text-[#6b7c8f]">
+            <table className={`min-w-full text-left ${saMono} text-xs text-slate-600`}>
+              <thead className="border-b border-slate-200 text-[10px] uppercase tracking-[0.14em] text-slate-500">
                 <tr>
                   <th className="px-2 py-2 font-medium">#</th>
                   <th className="px-2 py-2 font-medium">Profile</th>
@@ -565,8 +566,8 @@ export default function SuperAdminResumeAnalytics() {
               </thead>
               <tbody>
                 {data.rankings.map((row, index) => (
-                  <tr key={row.profileId} className="border-t border-[#1e2a36]/80">
-                    <td className="px-2 py-2.5 text-[#6b7c8f]">{index + 1}</td>
+                  <tr key={row.profileId} className="border-t border-slate-200">
+                    <td className="px-2 py-2.5 text-slate-500">{index + 1}</td>
                     <td className="px-2 py-2.5">
                       <div className="flex items-center gap-2">
                         <span
@@ -574,29 +575,29 @@ export default function SuperAdminResumeAnalytics() {
                           style={{ background: colorByProfile.get(row.profileId) || "#64748b" }}
                         />
                         <div>
-                          <p className="text-[#f4f7fb]">
+                          <p className="text-slate-900">
                             {row.profileName || row.profileEmail || row.profileId}
                           </p>
                           {row.profileEmail && row.profileName ? (
-                            <p className="text-[10px] text-[#6b7c8f]">{row.profileEmail}</p>
+                            <p className="text-[10px] text-slate-500">{row.profileEmail}</p>
                           ) : null}
                         </div>
                       </div>
                     </td>
                     <td className="px-2 py-2.5 text-right tabular-nums">{row.count.toLocaleString()}</td>
-                    <td className="px-2 py-2.5 text-right tabular-nums text-[#8b9aab]">
+                    <td className="px-2 py-2.5 text-right tabular-nums text-slate-500">
                       {row.percent.toFixed(1)}%
                     </td>
                   </tr>
                 ))}
-                <tr className="border-t border-teal-400/20 bg-teal-400/[0.04]">
+                <tr className="border-t border-teal-200 bg-teal-50">
                   <td className="px-2 py-3" colSpan={2}>
-                    <span className="font-semibold text-[#f4f7fb]">Grand Total SUM</span>
+                    <span className="font-semibold text-slate-900">Grand Total SUM</span>
                   </td>
-                  <td className="px-2 py-3 text-right tabular-nums font-semibold text-[#f4f7fb]">
+                  <td className="px-2 py-3 text-right tabular-nums font-semibold text-slate-900">
                     {(data.grandTotal ?? 0).toLocaleString()}
                   </td>
-                  <td className="px-2 py-3 text-right tabular-nums text-teal-200/80">100%</td>
+                  <td className="px-2 py-3 text-right tabular-nums text-teal-700">100%</td>
                 </tr>
               </tbody>
             </table>
