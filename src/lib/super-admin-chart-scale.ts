@@ -45,8 +45,17 @@ export function formatLocalDateInput(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+export type AnalyticsDatePreset =
+  | "today"
+  | "last7"
+  | "last30"
+  | "last90"
+  | "month"
+  | "all"
+  | "custom";
+
 export function resolveDateRange(
-  preset: "today" | "last7" | "last30" | "month" | "all" | "custom",
+  preset: AnalyticsDatePreset,
   from: string,
   to: string
 ): { preset: string; from?: string; to?: string } {
@@ -78,6 +87,15 @@ export function resolveDateRange(
       to: formatLocalDateInput(today),
     };
   }
+  if (preset === "last90") {
+    const start = new Date(today);
+    start.setDate(start.getDate() - 89);
+    return {
+      preset: "custom",
+      from: formatLocalDateInput(start),
+      to: formatLocalDateInput(today),
+    };
+  }
   if (preset === "month") {
     const start = new Date(today.getFullYear(), today.getMonth(), 1);
     return {
@@ -87,4 +105,10 @@ export function resolveDateRange(
     };
   }
   return { preset: "all" };
+}
+
+/** Stable color by id position in the full profile catalog (not selection order). */
+export function colorForProfileId(profileId: string, orderedIds: string[]): string {
+  const index = orderedIds.indexOf(profileId);
+  return colorForProfileIndex(index >= 0 ? index : 0);
 }

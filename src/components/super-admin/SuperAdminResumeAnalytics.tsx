@@ -1,17 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Bar,
   CartesianGrid,
-  ComposedChart,
   Legend,
   Line,
+  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import SuperAdminDonutKpi, {
+  type DonutSegment,
+} from "@/components/super-admin/SuperAdminDonutKpi";
 import SuperAdminProfileMultiSelect, {
   type ProfileOption,
 } from "@/components/super-admin/SuperAdminProfileMultiSelect";
@@ -21,8 +23,6 @@ import {
   saCard,
   saChip,
   saChipActive,
-  saDisplay,
-  saEyebrow,
   saField,
   saLabel,
   saMono,
@@ -31,101 +31,201 @@ import { getApiErrorMessage } from "@/lib/auth-api";
 import {
   TOTAL_SERIES_COLOR,
   TOTAL_SERIES_KEY,
-  colorForProfileIndex,
+  colorForProfileId,
   computeYAxisMax,
   resolveDateRange,
+  type AnalyticsDatePreset,
 } from "@/lib/super-admin-chart-scale";
 import { superAdminApi } from "@/lib/super-admin-api";
 import {
   guessBrowserTimezone,
-  percentChange,
   superAdminResumesApi,
-  type AdminDatePreset,
   type AdminResumeCompareResponse,
+  type AdminResumeOverviewBucket,
+  type AdminResumeOverviewResponse,
 } from "@/lib/super-admin-resumes-api";
 
-type QuickPreset = "today" | "last7" | "last30" | "month" | "all" | "custom";
+type QuickPreset = AnalyticsDatePreset;
 
 const QUICK_PRESETS: { id: QuickPreset; label: string }[] = [
-  { id: "today", label: "Today" },
   { id: "last7", label: "Last 7 days" },
   { id: "last30", label: "Last 30 days" },
   { id: "month", label: "This month" },
+  { id: "last90", label: "Last 90 days" },
   { id: "all", label: "All time" },
   { id: "custom", label: "Custom" },
 ];
 
-function KpiCard({
+type ChartRow = Record<string, string | number>;
+
+function profileLabel(opt: ProfileOption | undefined, id: string): string {
+  return opt?.label || id;
+}
+
+function bucketToSegments(
+  bucket: AdminResumeOverviewBucket,
+  selectedIds: string[],
+  orderedIds: string[],
+  optionsById: Map<string, ProfileOption>
+): DonutSegment[] {
+  return selectedIds.map((id) => ({
+    id,
+    name: profileLabel(optionsById.get(id), id),
+    value: bucket.byProfile[id] ?? 0,
+    color: colorForProfileId(id, orderedIds),
+  }));
+}
+
+function LineTooltip({
+  active,
   label,
-  value,
-  delta,
+  payload,
+  optionsById,
 }: {
-  label: string;
-  value: number;
-  delta?: number | null;
+  active?: boolean;
+  label?: string;
+  payload?: Array<{ dataKey?: string | number; value?: number; color?: string; name?: string }>;
+  optionsById: Map<string, ProfileOption>;
 }) {
+  if (!active || !payload?.length) return null;
+  const dateLabel = label
+    ? new Date(`${label}T12:00:00`).toLocaleDateString(undefined, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "";
+
+  const rows = [...payload].sort((a, b) => {
+    const aSum = String(a.dataKey) === TOTAL_SERIES_KEY ? 1 : 0;
+    const bSum = String(b.dataKey) === TOTAL_SERIES_KEY ? 1 : 0;
+    if (aSum !== bSum) return bSum - aSum;
+    return (b.value ?? 0) - (a.value ?? 0);
+  });
+
   return (
-    <div className={`${saCard} relative overflow-hidden p-5`}>
-      <div
-        className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-teal-50 blur-2xl"
-        aria-hidden
-      />
-      <p className={saEyebrow}>{label}</p>
-      <p className={`${saDisplay} mt-3 text-3xl font-extrabold tabular-nums tracking-tight text-slate-900`}>
-        {value.toLocaleString()}
-      </p>
-      {delta !== null && delta !== undefined ? (
-        <p
-          className={`${saMono} mt-2 text-[11px] ${
-            delta > 0 ? "text-emerald-700" : delta < 0 ? "text-rose-700" : "text-slate-500"
-          }`}
-        >
-          {delta > 0 ? "+" : ""}
-          {delta}% vs prior period
-        </p>
-      ) : null}
+    <div
+      style={{
+        background: "rgba(255,255,255,0.98)",
+        border: "1px solid rgba(15,23,42,0.08)",
+        borderRadius: 14,
+        padding: "12px 14px",
+        boxShadow: "0 12px 32px rgba(15,23,42,0.12)",
+        minWidth: 200,
+      }}
+    >
+      <div style={{ fontSize: "0.78rem", fontWeight: 650, color: "#0f172a", marginBottom: 8 }}>
+        {dateLabel}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {rows.map((row) => {
+          const key = String(row.dataKey ?? "");
+          const isSum = key === TOTAL_SERIES_KEY;
+          const name = isSum
+            ? "SUM"
+            : profileLabel(optionsById.get(key), key);
+          return (
+            <div
+              key={key}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 16,
+                fontSize: "0.78rem",
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 8, color: "#475569" }}>
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 99,
+                    background: row.color || TOTAL_SERIES_COLOR,
+                  }}
+                />
+                <span style={{ fontWeight: isSum ? 650 : 500 }}>{name}</span>
+              </span>
+              <span
+                className={saMono}
+                style={{ color: "#0f172a", fontWeight: isSum ? 650 : 500 }}
+              >
+                {(row.value ?? 0).toLocaleString()}
+              </span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
-
-type ChartRow = Record<string, string | number>;
 
 export default function SuperAdminResumeAnalytics() {
   const [profileOptions, setProfileOptions] = useState<ProfileOption[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [initializedSelection, setInitializedSelection] = useState(false);
-  const [preset, setPreset] = useState<QuickPreset>("month");
+  const [preset, setPreset] = useState<QuickPreset>("last30");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [data, setData] = useState<AdminResumeCompareResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [overview, setOverview] = useState<AdminResumeOverviewResponse | null>(null);
+  const [compare, setCompare] = useState<AdminResumeCompareResponse | null>(null);
+  const [loadingOverview, setLoadingOverview] = useState(false);
+  const [loadingCompare, setLoadingCompare] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set());
 
-  const [showBars, setShowBars] = useState(true);
-  const [showLines, setShowLines] = useState(true);
-  const [showTotalBars, setShowTotalBars] = useState(true);
-  const [showTotalLines, setShowTotalLines] = useState(true);
-  const [hiddenProfileBars, setHiddenProfileBars] = useState<Set<string>>(new Set());
-  const [hiddenProfileLines, setHiddenProfileLines] = useState<Set<string>>(new Set());
+  const optionsById = useMemo(() => {
+    const map = new Map<string, ProfileOption>();
+    for (const o of profileOptions) map.set(o.id, o);
+    return map;
+  }, [profileOptions]);
+
+  const orderedIds = useMemo(() => profileOptions.map((o) => o.id), [profileOptions]);
+
+  const profileMeta = useMemo(
+    () =>
+      selectedIds.map((id) => {
+        const opt = optionsById.get(id);
+        return {
+          profileId: id,
+          profileName: opt?.label,
+          profileEmail: opt?.email,
+        };
+      }),
+    [selectedIds, optionsById]
+  );
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
+    (async () => {
       try {
-        const list = await superAdminApi.listUsers({ page: 1, limit: 100 });
+        const opts: ProfileOption[] = [];
+        let page = 1;
+        let total = Infinity;
+        while (opts.length < total) {
+          const res = await superAdminApi.listUsers({ limit: 100, page });
+          if (cancelled) return;
+          total = res.total;
+          for (const u of res.users) {
+            opts.push({
+              id: u.id,
+              label: u.name?.trim() || u.email || u.id,
+              email: u.email,
+            });
+          }
+          if (!res.users.length) break;
+          page += 1;
+          if (page > 50) break;
+        }
         if (cancelled) return;
-        const opts = list.users.map((u) => ({
-          id: u.id,
-          label: u.name?.trim() || u.email || u.id,
-          email: u.email,
-        }));
         setProfileOptions(opts);
         if (!initializedSelection) {
           setSelectedIds(opts.map((o) => o.id));
           setInitializedSelection(true);
         }
-      } catch {
-        if (!cancelled) setError("Could not load profiles for analytics.");
+      } catch (err) {
+        if (!cancelled) setError(getApiErrorMessage(err, "Could not load profiles."));
       }
     })();
     return () => {
@@ -133,67 +233,75 @@ export default function SuperAdminResumeAnalytics() {
     };
   }, [initializedSelection]);
 
-  const load = useCallback(async () => {
+  const loadOverview = useCallback(async () => {
     if (!selectedIds.length) {
-      setData({
-        timezone: guessBrowserTimezone(),
-        from: "",
-        to: "",
-        profiles: [],
-        series: [],
-        rankings: [],
-        grandTotal: 0,
-      });
-      setLoading(false);
+      setOverview(null);
       return;
     }
-
-    setLoading(true);
-    setError("");
+    setLoadingOverview(true);
     try {
-      const range = resolveDateRange(preset, from, to);
-      const meta = profileOptions
-        .filter((o) => selectedIds.includes(o.id))
-        .map((o) => ({
-          profileId: o.id,
-          profileName: o.label,
-          profileEmail: o.email,
-        }));
-
-      const compare = await superAdminResumesApi.getCompareAnalytics({
+      const data = await superAdminResumesApi.getOverviewAnalytics({
         profileIds: selectedIds,
-        profileMeta: meta,
-        preset: range.preset as AdminDatePreset,
-        from: range.from,
-        to: range.to,
+        profileMeta,
         timezone: guessBrowserTimezone(),
       });
-      setData(compare);
+      setOverview(data);
+      setError(null);
     } catch (err) {
-      setData(null);
-      setError(getApiErrorMessage(err, "Could not load resume analytics."));
+      setError(getApiErrorMessage(err, "Could not load overview KPIs."));
     } finally {
-      setLoading(false);
+      setLoadingOverview(false);
     }
-  }, [selectedIds, preset, from, to, profileOptions]);
+  }, [selectedIds, profileMeta]);
+
+  const loadCompare = useCallback(async () => {
+    if (!selectedIds.length) {
+      setCompare(null);
+      return;
+    }
+    const range = resolveDateRange(preset, from, to);
+    if (preset === "custom" && (!from || !to)) {
+      setCompare(null);
+      return;
+    }
+    setLoadingCompare(true);
+    try {
+      const data = await superAdminResumesApi.getCompareAnalytics({
+        profileIds: selectedIds,
+        profileMeta,
+        timezone: guessBrowserTimezone(),
+        preset: range.preset as
+          | "today"
+          | "week"
+          | "last7"
+          | "last30"
+          | "last90"
+          | "month"
+          | "all"
+          | "custom",
+        from: range.from,
+        to: range.to,
+      });
+      setCompare(data);
+      setError(null);
+    } catch (err) {
+      setError(getApiErrorMessage(err, "Could not load period analytics."));
+    } finally {
+      setLoadingCompare(false);
+    }
+  }, [selectedIds, profileMeta, preset, from, to]);
 
   useEffect(() => {
-    if (!initializedSelection) return;
-    const timer = window.setTimeout(() => {
-      void load();
-    }, 180);
-    return () => window.clearTimeout(timer);
-  }, [load, initializedSelection]);
+    void loadOverview();
+  }, [loadOverview]);
 
-  const colorByProfile = useMemo(() => {
-    const map = new Map<string, string>();
-    selectedIds.forEach((id, index) => map.set(id, colorForProfileIndex(index)));
-    return map;
-  }, [selectedIds]);
+  useEffect(() => {
+    void loadCompare();
+  }, [loadCompare]);
 
   const chartRows: ChartRow[] = useMemo(() => {
-    if (!data?.series.length) return [];
-    return data.series.map((point) => {
+    if (!compare?.series?.length) return [];
+    return compare.series.map((point) => {
       const row: ChartRow = {
         date: point.date,
         [TOTAL_SERIES_KEY]: point.total,
@@ -203,407 +311,403 @@ export default function SuperAdminResumeAnalytics() {
       }
       return row;
     });
-  }, [data, selectedIds]);
+  }, [compare, selectedIds]);
 
   const yMax = useMemo(() => {
     let highest = 0;
     for (const row of chartRows) {
-      if (showTotalBars || showTotalLines) {
-        highest = Math.max(highest, Number(row[TOTAL_SERIES_KEY] ?? 0));
+      if (!hiddenKeys.has(TOTAL_SERIES_KEY)) {
+        highest = Math.max(highest, Number(row[TOTAL_SERIES_KEY]) || 0);
       }
       for (const id of selectedIds) {
-        const barVisible = showBars && !hiddenProfileBars.has(id);
-        const lineVisible = showLines && !hiddenProfileLines.has(id);
-        if (barVisible || lineVisible) {
-          highest = Math.max(highest, Number(row[id] ?? 0));
-        }
+        if (hiddenKeys.has(id)) continue;
+        highest = Math.max(highest, Number(row[id]) || 0);
       }
     }
     return computeYAxisMax(highest);
-  }, [
-    chartRows,
-    selectedIds,
-    showBars,
-    showLines,
-    showTotalBars,
-    showTotalLines,
-    hiddenProfileBars,
-    hiddenProfileLines,
-  ]);
+  }, [chartRows, hiddenKeys, selectedIds]);
 
-  const rangeDelta = percentChange(data?.totals?.range ?? data?.grandTotal ?? 0, data?.totals?.previousRange);
+  const periodSegments = useMemo(() => {
+    if (!compare) return [] as DonutSegment[];
+    return selectedIds.map((id) => {
+      const rank = compare.rankings.find((r) => r.profileId === id);
+      return {
+        id,
+        name: profileLabel(optionsById.get(id), id),
+        value: rank?.count ?? 0,
+        color: colorForProfileId(id, orderedIds),
+      };
+    });
+  }, [compare, selectedIds, optionsById, orderedIds]);
 
-  const labelFor = (id: string) =>
-    profileOptions.find((o) => o.id === id)?.label ||
-    data?.profiles.find((p) => p.profileId === id)?.profileName ||
-    id;
+  const periodRankings = useMemo(() => {
+    return [...periodSegments].sort((a, b) => b.value - a.value);
+  }, [periodSegments]);
 
-  function toggleSet(setter: Dispatch<SetStateAction<Set<string>>>, id: string) {
-    setter((prev) => {
+  const periodTotal = compare?.grandTotal ?? 0;
+
+  const overviewCards = useMemo(() => {
+    const empty = { total: 0, byProfile: {} as Record<string, number> };
+    const o = overview;
+    return [
+      { key: "today", title: "Today", bucket: o?.today ?? empty },
+      { key: "week", title: "This Week", bucket: o?.week ?? empty },
+      { key: "month", title: "This Month", bucket: o?.month ?? empty },
+      { key: "allTime", title: "All Time", bucket: o?.allTime ?? empty },
+    ] as const;
+  }, [overview]);
+
+  function toggleLine(key: string) {
+    setHiddenKeys((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }
 
-  const xInterval = chartRows.length > 45 ? Math.ceil(chartRows.length / 14) : chartRows.length > 20 ? 1 : 0;
+  function showAllLines() {
+    setHiddenKeys(new Set());
+  }
+
+  function hideAllLines() {
+    setHiddenKeys(new Set([TOTAL_SERIES_KEY, ...selectedIds]));
+  }
+
+  const rangeLabel =
+    compare?.from && compare?.to
+      ? `${compare.from} → ${compare.to}`
+      : preset === "custom" && from && to
+        ? `${from} → ${to}`
+        : QUICK_PRESETS.find((p) => p.id === preset)?.label ?? "Selected period";
+
+  const loading = loadingOverview || loadingCompare;
 
   return (
-    <div className="space-y-6">
-      <div className={`${saCard} space-y-5 p-5 sm:p-6`}>
-        <div className="flex flex-wrap gap-2">
-          {QUICK_PRESETS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setPreset(item.id)}
-              className={preset === item.id ? saChipActive : saChip}
-            >
-              {item.label}
-            </button>
-          ))}
+    <div className="space-y-8">
+      {/* 1. Profile Selector */}
+      <section className={`${saCard} p-5 sm:p-6`}>
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold tracking-tight text-slate-900">Profiles</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Choose which profiles feed every KPI and chart below. All profiles are selected by
+            default.
+          </p>
         </div>
-
-        {preset === "custom" ? (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label htmlFor="sa-adv-from" className={saLabel}>
-                From
-              </label>
-              <input
-                id="sa-adv-from"
-                type="date"
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-                className={saField}
-              />
-            </div>
-            <div>
-              <label htmlFor="sa-adv-to" className={saLabel}>
-                To
-              </label>
-              <input
-                id="sa-adv-to"
-                type="date"
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-                className={saField}
-              />
-            </div>
-          </div>
-        ) : null}
-
         <SuperAdminProfileMultiSelect
           options={profileOptions}
           selectedIds={selectedIds}
           onChange={setSelectedIds}
-          disabled={loading && !profileOptions.length}
+          disabled={!profileOptions.length}
         />
-
-        <div className="flex flex-wrap gap-2">
-          <button type="button" className={saBtnPrimary} onClick={() => void load()} disabled={loading}>
-            {loading ? "Refreshing…" : "Refresh chart"}
-          </button>
-          <button
-            type="button"
-            className={showBars ? saChipActive : saChip}
-            onClick={() => setShowBars((v) => !v)}
-          >
-            {showBars ? "Hide bars" : "Show bars"}
-          </button>
-          <button
-            type="button"
-            className={showLines ? saChipActive : saChip}
-            onClick={() => setShowLines((v) => !v)}
-          >
-            {showLines ? "Hide lines" : "Show lines"}
-          </button>
-          <button
-            type="button"
-            className={showTotalBars ? saChipActive : saChip}
-            onClick={() => setShowTotalBars((v) => !v)}
-          >
-            {showTotalBars ? "Hide total bars" : "Show total bars"}
-          </button>
-          <button
-            type="button"
-            className={showTotalLines ? saChipActive : saChip}
-            onClick={() => setShowTotalLines((v) => !v)}
-          >
-            {showTotalLines ? "Hide total line" : "Show total line"}
-          </button>
-        </div>
-      </div>
+      </section>
 
       {error ? (
-        <div
-          className="sa-alert px-4 py-3 text-xs"
-          role="alert"
-        >
-          <p className={saMono}>{error}</p>
-          <p className={`${saMono} mt-2 text-slate-500`}>
-            Prefer <code className="text-teal-700">GET /admin/resumes/analytics/compare</code>. FE
-            can fall back to per-profile analytics when that route is missing.
-          </p>
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          {error}
         </div>
       ) : null}
 
-      {data?.totals ? (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <KpiCard label="Today" value={data.totals.today} />
-          <KpiCard label="This week" value={data.totals.week} />
-          <KpiCard label="This month" value={data.totals.month} />
-          <KpiCard label="All time" value={data.totals.allTime} />
+      {!selectedIds.length ? (
+        <div className={`${saCard} px-5 py-10 text-center text-sm text-slate-500`}>
+          Select at least one profile to view analytics.
         </div>
-      ) : null}
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <KpiCard
-          label="Selected range total"
-          value={data?.grandTotal ?? 0}
-          delta={rangeDelta}
-        />
-        <div className={`${saCard} p-5`}>
-          <p className={saEyebrow}>Scope</p>
-          <p className={`${saMono} mt-3 text-sm text-slate-900`}>
-            {selectedIds.length} profile{selectedIds.length === 1 ? "" : "s"}
-          </p>
-          <p className={`${saMono} mt-2 text-[11px] text-slate-500`}>
-            TZ {data?.timezone || guessBrowserTimezone()}
-            {data?.from && data?.to ? ` · ${data.from} → ${data.to}` : ""}
-          </p>
-        </div>
-      </div>
-
-      <div className={`${saCard} p-5 sm:p-6`}>
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className={saEyebrow}>Daily activity</p>
-            <h3 className={`${saDisplay} mt-1 text-lg font-bold text-slate-900`}>
-              Profiles · bars + smooth totals
-            </h3>
-          </div>
-          <p className={`${saMono} text-[11px] text-slate-500`}>
-            Y max {yMax} · headroom ~30%
-          </p>
-        </div>
-
-        <div className="mt-4 h-[26rem] w-full overflow-x-auto">
-          {loading && !chartRows.length ? (
-            <div className="flex h-full items-center justify-center">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-teal-300 border-t-teal-600" />
+      ) : (
+        <>
+          {/* 2. Analytics Overview — Circular KPI Cards */}
+          <section>
+            <div className="mb-4 flex items-end justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold tracking-tight text-slate-900">Overview</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Fixed calendar periods — independent of the date range below.
+                </p>
+              </div>
+              {loadingOverview ? (
+                <span className={`${saMono} text-[11px] text-slate-400`}>Updating…</span>
+              ) : null}
             </div>
-          ) : chartRows.length === 0 ? (
-            <div className={`flex h-full items-center justify-center ${saMono} text-xs text-slate-500`}>
-              {selectedIds.length ? "No resume activity in this range." : "Select at least one profile."}
-            </div>
-          ) : (
-            <div className="h-full min-w-[640px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chartRows} margin={{ top: 12, right: 12, left: 0, bottom: 8 }}>
-                  <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
-                  <XAxis
-                    dataKey="date"
-                    tick={{ fill: "#64748b", fontSize: 11 }}
-                    minTickGap={18}
-                    interval={xInterval}
-                  />
-                  <YAxis
-                    domain={[0, yMax]}
-                    allowDecimals={false}
-                    tick={{ fill: "#64748b", fontSize: 11 }}
-                    width={40}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "rgba(255, 255, 255, 0.98)",
-                      border: "1px solid rgba(15, 23, 42, 0.1)",
-                      borderRadius: 12,
-                      fontSize: 12,
-                      color: "#0f172a",
-                      boxShadow: "0 12px 28px -18px rgba(15,23,42,0.35)",
-                    }}
-                    formatter={(value: number, name: string) => {
-                      const label =
-                        name === TOTAL_SERIES_KEY ? "Total SUM" : labelFor(name);
-                      return [value, label];
-                    }}
-                    labelFormatter={(label) => `Date · ${label}`}
-                  />
-                  <Legend
-                    wrapperStyle={{ fontSize: 12, color: "#64748b" }}
-                    formatter={(value) =>
-                      value === TOTAL_SERIES_KEY ? "Total SUM" : labelFor(String(value))
-                    }
-                  />
-
-                  {showTotalBars ? (
-                    <Bar
-                      dataKey={TOTAL_SERIES_KEY}
-                      name={TOTAL_SERIES_KEY}
-                      fill={TOTAL_SERIES_COLOR}
-                      fillOpacity={0.14}
-                      stroke={TOTAL_SERIES_COLOR}
-                      strokeOpacity={0.45}
-                      radius={[4, 4, 0, 0]}
-                      maxBarSize={28}
-                      isAnimationActive
-                    />
-                  ) : null}
-
-                  {selectedIds.map((id) =>
-                    showBars && !hiddenProfileBars.has(id) ? (
-                      <Bar
-                        key={`bar-${id}`}
-                        dataKey={id}
-                        name={id}
-                        fill={colorByProfile.get(id)}
-                        radius={[4, 4, 0, 0]}
-                        maxBarSize={22}
-                        isAnimationActive
-                      />
-                    ) : null
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {overviewCards.map((card) => (
+                <SuperAdminDonutKpi
+                  key={card.key}
+                  title={card.title}
+                  total={card.bucket.total}
+                  segments={bucketToSegments(
+                    card.bucket,
+                    selectedIds,
+                    orderedIds,
+                    optionsById
                   )}
-
-                  {showTotalLines ? (
-                    <Line
-                      type="monotone"
-                      dataKey={TOTAL_SERIES_KEY}
-                      name={TOTAL_SERIES_KEY}
-                      stroke={TOTAL_SERIES_COLOR}
-                      strokeWidth={2.5}
-                      dot={false}
-                      activeDot={{ r: 4 }}
-                      isAnimationActive
-                    />
-                  ) : null}
-
-                  {selectedIds.map((id) =>
-                    showLines && !hiddenProfileLines.has(id) ? (
-                      <Line
-                        key={`line-${id}`}
-                        type="monotone"
-                        dataKey={id}
-                        name={id}
-                        stroke={colorByProfile.get(id)}
-                        strokeWidth={2}
-                        dot={false}
-                        activeDot={{ r: 3 }}
-                        isAnimationActive
-                      />
-                    ) : null
-                  )}
-                </ComposedChart>
-              </ResponsiveContainer>
+                  size="md"
+                />
+              ))}
             </div>
-          )}
-        </div>
+          </section>
 
-        {selectedIds.length ? (
-          <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {selectedIds.map((id) => (
-              <div
-                key={`vis-${id}`}
-                className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
-              >
-                <div className="flex min-w-0 items-center gap-2">
-                  <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ background: colorByProfile.get(id) }}
+          {/* 3. Date Range Selector */}
+          <section className={`${saCard} p-5 sm:p-6`}>
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold tracking-tight text-slate-900">Date range</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Controls the trend chart and the selected-period summary. Does not change Overview
+                KPIs.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {QUICK_PRESETS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={preset === p.id ? saChipActive : saChip}
+                  onClick={() => setPreset(p.id)}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            {preset === "custom" ? (
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className={saLabel} htmlFor="analytics-from">
+                    Start
+                  </label>
+                  <input
+                    id="analytics-from"
+                    type="date"
+                    className={saField}
+                    value={from}
+                    onChange={(e) => setFrom(e.target.value)}
                   />
-                  <span className={`${saMono} truncate text-[11px] text-slate-600`}>
-                    {labelFor(id)}
-                  </span>
                 </div>
-                <div className="flex shrink-0 gap-1">
-                  <button
-                    type="button"
-                    className={`${saBtnGhost} h-7 px-2 text-[9px] ${
-                      !hiddenProfileBars.has(id) ? "border-teal-300 text-teal-800" : ""
-                    }`}
-                    onClick={() => toggleSet(setHiddenProfileBars, id)}
-                  >
-                    Bar
-                  </button>
-                  <button
-                    type="button"
-                    className={`${saBtnGhost} h-7 px-2 text-[9px] ${
-                      !hiddenProfileLines.has(id) ? "border-teal-300 text-teal-800" : ""
-                    }`}
-                    onClick={() => toggleSet(setHiddenProfileLines, id)}
-                  >
-                    Line
-                  </button>
+                <div>
+                  <label className={saLabel} htmlFor="analytics-to">
+                    End
+                  </label>
+                  <input
+                    id="analytics-to"
+                    type="date"
+                    className={saField}
+                    value={to}
+                    onChange={(e) => setTo(e.target.value)}
+                  />
                 </div>
               </div>
-            ))}
-          </div>
-        ) : null}
-      </div>
+            ) : null}
+            <p className={`${saMono} mt-3 text-[11px] text-slate-400`}>{rangeLabel}</p>
+          </section>
 
-      <div className={`${saCard} p-5 sm:p-6`}>
-        <p className={saEyebrow}>Ranking</p>
-        <h3 className={`${saDisplay} mt-1 text-lg font-bold text-slate-900`}>
-          Selected profiles · range totals
-        </h3>
-        <p className={`${saMono} mt-2 text-xs text-slate-500`}>
-          Grand total { (data?.grandTotal ?? 0).toLocaleString() } · visibility toggles do not change
-          rankings
-        </p>
-        <div className="mt-4 overflow-auto">
-          {!data?.rankings.length ? (
-            <p className={`${saMono} text-xs text-slate-500`}>No ranking data yet.</p>
-          ) : (
-            <table className={`min-w-full text-left ${saMono} text-xs text-slate-600`}>
-              <thead className="border-b border-slate-200 text-[10px] uppercase tracking-[0.14em] text-slate-500">
-                <tr>
-                  <th className="px-2 py-2 font-medium">#</th>
-                  <th className="px-2 py-2 font-medium">Profile</th>
-                  <th className="px-2 py-2 font-medium text-right">Resumes</th>
-                  <th className="px-2 py-2 font-medium text-right">Share</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.rankings.map((row, index) => (
-                  <tr key={row.profileId} className="border-t border-slate-200">
-                    <td className="px-2 py-2.5 text-slate-500">{index + 1}</td>
-                    <td className="px-2 py-2.5">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="h-2 w-2 rounded-full"
-                          style={{ background: colorByProfile.get(row.profileId) || "#64748b" }}
+          {/* 4. Interactive Multi-Series Line Chart */}
+          <section className={`${saCard} p-5 sm:p-6`}>
+            <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold tracking-tight text-slate-900">
+                  Daily trend
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Dotted lines per profile · solid SUM · hover any day for a shared breakdown.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" className={`${saBtnGhost} h-8 px-3 text-[10px]`} onClick={showAllLines}>
+                  Show all
+                </button>
+                <button type="button" className={`${saBtnGhost} h-8 px-3 text-[10px]`} onClick={hideAllLines}>
+                  Hide all
+                </button>
+                <button
+                  type="button"
+                  className={`${saBtnPrimary} h-8 px-3 text-[10px]`}
+                  onClick={() => void loadCompare()}
+                  disabled={loadingCompare}
+                >
+                  Refresh
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-5 lg:flex-row">
+              <div className="min-w-0 flex-1" style={{ height: 360 }}>
+                {loadingCompare && !compare ? (
+                  <div className="flex h-full items-center justify-center text-sm text-slate-400">
+                    Loading chart…
+                  </div>
+                ) : chartRows.length === 0 ? (
+                  <div className="flex h-full items-center justify-center text-sm text-slate-400">
+                    No daily data for this range.
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartRows} margin={{ top: 12, right: 12, left: 0, bottom: 4 }}>
+                      <CartesianGrid strokeDasharray="3 6" stroke="rgba(148,163,184,0.35)" vertical={false} />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fill: "#94a3b8", fontSize: 11 }}
+                        tickLine={false}
+                        axisLine={{ stroke: "rgba(148,163,184,0.4)" }}
+                        minTickGap={28}
+                        tickFormatter={(v: string) => {
+                          const d = new Date(`${v}T12:00:00`);
+                          return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                        }}
+                      />
+                      <YAxis
+                        domain={[0, yMax]}
+                        allowDecimals={false}
+                        tick={{ fill: "#94a3b8", fontSize: 11 }}
+                        tickLine={false}
+                        axisLine={false}
+                        width={40}
+                      />
+                      <Tooltip
+                        content={<LineTooltip optionsById={optionsById} />}
+                        cursor={{ stroke: "rgba(15,23,42,0.18)", strokeWidth: 1 }}
+                      />
+                      <Legend content={() => null} />
+                      {selectedIds.map((id) => (
+                        <Line
+                          key={id}
+                          type="monotone"
+                          dataKey={id}
+                          name={profileLabel(optionsById.get(id), id)}
+                          stroke={colorForProfileId(id, orderedIds)}
+                          strokeWidth={1.75}
+                          strokeDasharray="5 4"
+                          dot={{ r: 2.5, strokeWidth: 0 }}
+                          activeDot={{ r: 4.5 }}
+                          hide={hiddenKeys.has(id)}
+                          isAnimationActive
+                          animationDuration={500}
+                          connectNulls
                         />
-                        <div>
-                          <p className="text-slate-900">
-                            {row.profileName || row.profileEmail || row.profileId}
-                          </p>
-                          {row.profileEmail && row.profileName ? (
-                            <p className="text-[10px] text-slate-500">{row.profileEmail}</p>
-                          ) : null}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-2 py-2.5 text-right tabular-nums">{row.count.toLocaleString()}</td>
-                    <td className="px-2 py-2.5 text-right tabular-nums text-slate-500">
-                      {row.percent.toFixed(1)}%
-                    </td>
-                  </tr>
-                ))}
-                <tr className="border-t border-teal-200 bg-teal-50">
-                  <td className="px-2 py-3" colSpan={2}>
-                    <span className="font-semibold text-slate-900">Grand Total SUM</span>
-                  </td>
-                  <td className="px-2 py-3 text-right tabular-nums font-semibold text-slate-900">
-                    {(data.grandTotal ?? 0).toLocaleString()}
-                  </td>
-                  <td className="px-2 py-3 text-right tabular-nums text-teal-700">100%</td>
-                </tr>
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
+                      ))}
+                      <Line
+                        type="monotone"
+                        dataKey={TOTAL_SERIES_KEY}
+                        name="SUM"
+                        stroke={TOTAL_SERIES_COLOR}
+                        strokeWidth={3}
+                        dot={{ r: 3, strokeWidth: 0, fill: TOTAL_SERIES_COLOR }}
+                        activeDot={{ r: 5.5 }}
+                        hide={hiddenKeys.has(TOTAL_SERIES_KEY)}
+                        isAnimationActive
+                        animationDuration={500}
+                        connectNulls
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+
+              {/* Line visibility legend */}
+              <aside className="w-full shrink-0 lg:w-56">
+                <p className={`${saLabel} mb-2`}>Visible lines</p>
+                <div className="flex flex-col gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => toggleLine(TOTAL_SERIES_KEY)}
+                    className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm transition ${
+                      hiddenKeys.has(TOTAL_SERIES_KEY)
+                        ? "bg-slate-50 text-slate-400"
+                        : "bg-slate-100/80 text-slate-900"
+                    }`}
+                  >
+                    <span
+                      className="h-0.5 w-5 rounded-full"
+                      style={{ background: TOTAL_SERIES_COLOR, height: 3 }}
+                    />
+                    <span className="font-semibold">SUM</span>
+                  </button>
+                  {selectedIds.map((id) => {
+                    const hidden = hiddenKeys.has(id);
+                    const color = colorForProfileId(id, orderedIds);
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => toggleLine(id)}
+                        className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm transition ${
+                          hidden ? "bg-slate-50 text-slate-400" : "hover:bg-slate-50 text-slate-800"
+                        }`}
+                      >
+                        <span
+                          className="inline-block w-5 border-t-2 border-dashed"
+                          style={{ borderColor: color }}
+                        />
+                        <span className="truncate">
+                          {profileLabel(optionsById.get(id), id)}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </aside>
+            </div>
+          </section>
+
+          {/* 5. Selected Period Summary — Circular KPI */}
+          <section className={`${saCard} p-5 sm:p-6`}>
+            <div className="mb-5">
+              <h2 className="text-lg font-semibold tracking-tight text-slate-900">
+                Selected period
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Grand total for {rangeLabel}
+                {loading ? " · updating…" : ""}.
+              </p>
+            </div>
+            <div className="flex flex-col items-center gap-8 lg:flex-row lg:items-start lg:justify-center lg:gap-14">
+              <SuperAdminDonutKpi
+                title="Period total"
+                subtitle={rangeLabel}
+                total={periodTotal}
+                segments={periodSegments}
+                size="lg"
+              />
+              <div className="w-full max-w-md min-w-0 flex-1">
+                <p className={`${saLabel} mb-3`}>Breakdown</p>
+                {periodRankings.length === 0 ? (
+                  <p className="text-sm text-slate-400">No profiles in range.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {periodRankings.map((row, index) => {
+                      const pct =
+                        periodTotal > 0
+                          ? Math.round((row.value / periodTotal) * 1000) / 10
+                          : 0;
+                      return (
+                        <li
+                          key={row.id}
+                          className="flex items-center gap-3 rounded-2xl bg-slate-50/80 px-3 py-2.5"
+                        >
+                          <span
+                            className={`${saMono} w-5 shrink-0 text-[11px] text-slate-400`}
+                          >
+                            {index + 1}
+                          </span>
+                          <span
+                            className="h-2.5 w-2.5 shrink-0 rounded-full"
+                            style={{ background: row.color }}
+                          />
+                          <span className="min-w-0 flex-1 truncate text-sm text-slate-800">
+                            {row.name}
+                          </span>
+                          <span className={`${saMono} text-sm font-semibold text-slate-900`}>
+                            {row.value.toLocaleString()}
+                          </span>
+                          <span className={`${saMono} w-12 text-right text-[11px] text-slate-400`}>
+                            {pct}%
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </section>
+        </>
+      )}
     </div>
   );
 }

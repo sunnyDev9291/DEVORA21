@@ -1,0 +1,261 @@
+# Backend Cursor Prompt — Resume Analytics Overview + Compare (Circular KPIs + Line Chart)
+
+Copy everything below to the backend agent/developer.
+
+================================================================================
+GOAL
+================================================================================
+
+Power the redesigned Super Admin Resume Analytics dashboard:
+
+  FE: /super-admin/resumes (Analytics tab)
+  Client: src/lib/super-admin-resumes-api.ts
+    - getOverviewAnalytics()  → Section 2 circular KPIs (Today / Week / Month / All Time)
+    - getCompareAnalytics()   → Section 4 line chart + Section 5 period summary donut
+
+Need efficient server-side aggregation by profile with:
+  - Fixed calendar-period KPI buckets (independent of chart date range)
+  - Daily multi-profile series for a selectable date range
+  - Rankings + grand total for the selected period
+
+FE falls back when endpoints are missing (404/501):
+  - overview → four parallel compare calls (today / week / month / all)
+  - compare  → N parallel GET /admin/resumes/analytics?profileId=…
+
+Implement the batch routes for production performance.
+
+================================================================================
+AUTH
+================================================================================
+
+Same as other /admin/resumes* routes:
+
+1. Authenticated session
+2. role/capability = super_admin
+3. 401 anonymous / 403 non-admin
+
+================================================================================
+SHARED RULES (both endpoints)
+================================================================================
+
+Query common params:
+
+  profileIds     comma-separated user ids (also accept repeated profileId= / userId=)
+  timezone       IANA TZ (default UTC) — used for day / week / month boundaries
+
+Counting:
+
+  - Count resume generation / archive records once each (no duplicates)
+  - Filter to selected profileIds only; empty selection → empty totals
+  - Do NOT invent generation-method dimensions
+  - Store timestamps in UTC; bucket into calendar units in `timezone`
+
+SUM integrity:
+
+  - For any period or day: SUM(selected profiles) === total / grandTotal / series[].total
+  - Include zero-activity profiles in byProfile with 0 (or omit; FE treats missing as 0)
+  - Include zero-activity calendar days in series (count 0)
+
+================================================================================
+ENDPOINT A — Overview KPIs (Section 2)
+================================================================================
+
+GET /admin/resumes/analytics/overview
+
+Query:
+
+  profileIds   required for useful KPIs
+  timezone     IANA TZ
+
+Period definitions (all in `timezone`, inclusive):
+
+  today     calendar day of "now"
+  week      start of current week (use Monday start unless product already uses Sunday —
+            document which) through today
+  month     first day of current calendar month through today
+  allTime   earliest resume for selected profiles (or platform start) through today
+
+Each bucket must return:
+  - total (SUM of selected profiles)
+  - byProfile map: profileId → count for that period
+
+--------------------------------------------------------------------------------
+Response 200
+--------------------------------------------------------------------------------
+
+{
+  "timezone": "America/New_York",
+  "today": {
+    "total": 12,
+    "byProfile": { "u1": 5, "u2": 7 }
+  },
+  "week": {
+    "total": 40,
+    "byProfile": { "u1": 18, "u2": 22 }
+  },
+  "month": {
+    "total": 110,
+    "byProfile": { "u1": 50, "u2": 60 }
+  },
+  "allTime": {
+    "total": 900,
+    "byProfile": { "u1": 400, "u2": 500 }
+  },
+  "profiles": [
+    {
+      "profileId": "u1",
+      "profileName": "Franco Torrez",
+      "profileEmail": "franco@example.com"
+    }
+  ]
+}
+
+Notes:
+
+  - Snake_case aliases (this_week, all_time, by_profile) are accepted by FE normalizers
+    but prefer camelCase.
+  - Overview MUST ignore any chart `from`/`to` from the client — periods are fixed.
+
+================================================================================
+ENDPOINT B — Compare series (Sections 4–5)
+================================================================================
+
+GET /admin/resumes/analytics/compare
+
+Query:
+
+  profileIds     required
+  preset         today | week | last7 | last30 | last90 | month | all | custom
+  from           YYYY-MM-DD (required when preset=custom; FE also sends for last7/30/90)
+  to             YYYY-MM-DD
+  timezone       IANA TZ
+
+Preset resolution (in `timezone`):
+
+  today     from=to=today
+  week      start of current week → today
+  last7     today-6 → today (7 days inclusive)
+  last30    today-29 → today (30 days inclusive)   ← FE default
+  last90    today-89 → today (90 days inclusive)
+  month     month start → today
+  all       earliest activity → today
+  custom    use from/to inclusive
+
+Daily series:
+
+  - One point per calendar day in [from, to], including zeros
+  - byProfile[profileId] = count that day
+  - total = sum of byProfile for selected profiles that day
+
+Rankings (selected period):
+
+  - Per profile: count = sum of daily counts in range
+  - percent = round(count / grandTotal * 1000) / 10  (one decimal)
+  - Sort descending by count
+  - grandTotal = sum of ranking counts (= sum of series[].total)
+
+--------------------------------------------------------------------------------
+Response 200
+--------------------------------------------------------------------------------
+
+{
+  "timezone": "America/New_York",
+  "from": "2026-09-13",
+  "to": "2026-10-12",
+  "preset": "last30",
+  "profiles": [
+    {
+      "profileId": "u1",
+      "profileName": "Franco Torrez",
+      "profileEmail": "franco@example.com"
+    }
+  ],
+  "series": [
+    {
+      "date": "2026-09-13",
+      "total": 3,
+      "byProfile": { "u1": 1, "u2": 2 }
+    }
+  ],
+  "rankings": [
+    {
+      "profileId": "u2",
+      "profileName": "Alex",
+      "profileEmail": "alex@example.com",
+      "count": 55,
+      "percent": 61.1
+    },
+    {
+      "profileId": "u1",
+      "profileName": "Franco Torrez",
+      "profileEmail": "franco@example.com",
+      "count": 35,
+      "percent": 38.9
+    }
+  ],
+  "grandTotal": 90,
+  "totals": {
+    "today": 12,
+    "week": 40,
+    "month": 110,
+    "allTime": 900,
+    "range": 90
+  }
+}
+
+`totals` is optional (FE Section 2 prefers /overview). If present, keep consistent
+with overview definitions for the same profileIds + timezone.
+
+================================================================================
+ERRORS
+================================================================================
+
+  400  invalid dates / empty timezone / malformed profileIds
+  401  not authenticated
+  403  not super_admin
+  500  unexpected
+
+================================================================================
+PERFORMANCE
+================================================================================
+
+Prefer a single SQL/aggregation pass:
+
+  SELECT profile_id, date_trunc('day', created_at AT TIME ZONE :tz)::date AS day, COUNT(*)
+  FROM resume_archives  -- (or your table)
+  WHERE profile_id = ANY(:ids)
+    AND created_at >= :fromUtc AND created_at < :toExclusiveUtc
+  GROUP BY 1, 2
+
+Then fill gaps for missing days / profiles in application code.
+
+For /overview, either one query covering allTime then fold into buckets, or four
+bounded range queries — both OK if indexed on (profile_id, created_at).
+
+================================================================================
+FE BEHAVIOR (do not break)
+================================================================================
+
+Dashboard section order:
+
+  1. Profile multi-select (default: all)
+  2. Four donut KPIs from /overview (Today / Week / Month / All Time)
+  3. Date range (default Last 30 Days) — does NOT affect Section 2
+  4. Multi-series LINE chart from /compare (dotted per profile + solid SUM)
+  5. Period donut + ranking breakdown from /compare rankings + grandTotal
+
+Profile colors are assigned on the FE; backend only needs stable profileId keys.
+
+================================================================================
+ACCEPTANCE CHECKLIST
+================================================================================
+
+[ ] GET /admin/resumes/analytics/overview returns four buckets with byProfile
+[ ] Overview periods use timezone day/week/month boundaries
+[ ] GET /admin/resumes/analytics/compare supports last30 / last90 / custom
+[ ] series includes every day in range (zeros filled)
+[ ] series[].total === sum(byProfile) for selected ids
+[ ] rankings + grandTotal match series sums
+[ ] Empty profileIds → empty payloads (not 500)
+[ ] Non-admin → 403
+[ ] Existing single-profile GET /admin/resumes/analytics still works (FE fallback)

@@ -7,6 +7,7 @@ export type AdminDatePreset =
   | "week"
   | "last7"
   | "last30"
+  | "last90"
   | "month"
   | "all"
   | "custom";
@@ -125,6 +126,22 @@ export type AdminResumeCompareResponse = {
   rankings: AdminResumeCompareRanking[];
   grandTotal: number;
   totals?: AdminResumePeriodTotals;
+};
+
+/** One KPI period with per-profile contribution (for donut segments). */
+export type AdminResumeOverviewBucket = {
+  total: number;
+  byProfile: Record<string, number>;
+};
+
+/** Fixed calendar periods for Section 2 circular KPIs (independent of chart date range). */
+export type AdminResumeOverviewResponse = {
+  timezone: string;
+  today: AdminResumeOverviewBucket;
+  week: AdminResumeOverviewBucket;
+  month: AdminResumeOverviewBucket;
+  allTime: AdminResumeOverviewBucket;
+  profiles?: AdminResumeCompareProfile[];
 };
 
 function pickString(data: Record<string, unknown>, ...keys: string[]): string {
@@ -574,6 +591,63 @@ function mergePerProfileAnalytics(
   };
 }
 
+function emptyOverviewBucket(): AdminResumeOverviewBucket {
+  return { total: 0, byProfile: {} };
+}
+
+function normalizeOverviewBucket(raw: unknown): AdminResumeOverviewBucket {
+  if (!raw || typeof raw !== "object") return emptyOverviewBucket();
+  const o = raw as Record<string, unknown>;
+  const byProfile: Record<string, number> = {};
+  const rawBy = o.byProfile ?? o.by_profile;
+  if (rawBy && typeof rawBy === "object" && !Array.isArray(rawBy)) {
+    for (const [k, v] of Object.entries(rawBy as Record<string, unknown>)) {
+      byProfile[k] = toNum(v);
+    }
+  }
+  let total = toNum(o.total ?? o.count);
+  if (!total && Object.keys(byProfile).length) {
+    total = Object.values(byProfile).reduce((a, b) => a + b, 0);
+  }
+  return { total, byProfile };
+}
+
+function normalizeOverview(raw: Record<string, unknown>): AdminResumeOverviewResponse {
+  return {
+    timezone: String(raw.timezone || guessBrowserTimezone()),
+    today: normalizeOverviewBucket(raw.today),
+    week: normalizeOverviewBucket(raw.week ?? raw.thisWeek ?? raw.this_week),
+    month: normalizeOverviewBucket(raw.month ?? raw.thisMonth ?? raw.this_month),
+    allTime: normalizeOverviewBucket(raw.allTime ?? raw.all_time ?? raw.all),
+    profiles: Array.isArray(raw.profiles)
+      ? (raw.profiles as unknown[])
+          .map((p): AdminResumeCompareProfile | null => {
+            if (!p || typeof p !== "object") return null;
+            const o = p as Record<string, unknown>;
+            const profileId = String(o.profileId ?? o.profile_id ?? o.id ?? "").trim();
+            if (!profileId) return null;
+            const profile: AdminResumeCompareProfile = { profileId };
+            const name = o.profileName ?? o.profile_name ?? o.name;
+            const email = o.profileEmail ?? o.profile_email ?? o.email;
+            if (name) profile.profileName = String(name);
+            if (email) profile.profileEmail = String(email);
+            return profile;
+          })
+          .filter((p): p is AdminResumeCompareProfile => p !== null)
+      : undefined,
+  };
+}
+
+function overviewFromCompare(
+  compare: AdminResumeCompareResponse
+): AdminResumeOverviewBucket {
+  const byProfile: Record<string, number> = {};
+  for (const r of compare.rankings) {
+    byProfile[r.profileId] = r.count;
+  }
+  return { total: compare.grandTotal, byProfile };
+}
+
 export const superAdminResumesApi = {
   async getAnalytics(filters: AdminResumeFilters = {}): Promise<AdminResumeAnalyticsResponse> {
     const qs = buildQuery(filters);
@@ -581,6 +655,63 @@ export const superAdminResumesApi = {
       `/admin/resumes/analytics${qs ? `?${qs}` : ""}`
     );
     return normalizeAnalytics(data);
+  },
+
+  /**
+   * Fixed-period KPI buckets (today / week / month / all-time) with per-profile breakdown.
+   * Prefers GET /admin/resumes/analytics/overview; falls back to four compare calls.
+   */
+  async getOverviewAnalytics(
+    filters: AdminResumeFilters & { profileIds: string[]; profileMeta?: AdminResumeCompareProfile[] }
+  ): Promise<AdminResumeOverviewResponse> {
+    const ids = filters.profileIds.map((id) => id.trim()).filter(Boolean);
+    const tz = filters.timezone || guessBrowserTimezone();
+    if (!ids.length) {
+      return {
+        timezone: tz,
+        today: emptyOverviewBucket(),
+        week: emptyOverviewBucket(),
+        month: emptyOverviewBucket(),
+        allTime: emptyOverviewBucket(),
+        profiles: filters.profileMeta,
+      };
+    }
+
+    const qs = buildQuery({
+      profileIds: ids,
+      timezone: tz,
+    });
+    try {
+      const data = await adminJson<Record<string, unknown>>(
+        `/admin/resumes/analytics/overview${qs ? `?${qs}` : ""}`
+      );
+      return normalizeOverview(data);
+    } catch (err) {
+      if (!(err instanceof ApiError) || (err.status !== 404 && err.status !== 501)) {
+        throw err;
+      }
+    }
+
+    const base = {
+      profileIds: ids,
+      profileMeta: filters.profileMeta,
+      timezone: tz,
+    };
+    const [today, week, month, allTime] = await Promise.all([
+      this.getCompareAnalytics({ ...base, preset: "today" }),
+      this.getCompareAnalytics({ ...base, preset: "week" }),
+      this.getCompareAnalytics({ ...base, preset: "month" }),
+      this.getCompareAnalytics({ ...base, preset: "all" }),
+    ]);
+
+    return {
+      timezone: today.timezone || tz,
+      today: overviewFromCompare(today),
+      week: overviewFromCompare(week),
+      month: overviewFromCompare(month),
+      allTime: overviewFromCompare(allTime),
+      profiles: filters.profileMeta,
+    };
   },
 
   /**
