@@ -39,6 +39,15 @@ const fieldClass = saField;
 
 type SectionKey = "identity" | "access" | "crawl" | "template" | "prompt" | "danger";
 
+const PROFILE_TABS: { id: SectionKey; label: string }[] = [
+  { id: "identity", label: "Identity" },
+  { id: "access", label: "Access" },
+  { id: "crawl", label: "Job crawl" },
+  { id: "template", label: "Template" },
+  { id: "prompt", label: "Prompt" },
+  { id: "danger", label: "Delete" },
+];
+
 type SuperAdminProfileEditorProps = {
   userId: string;
   /** When true, hide page-level back links (used in split-pane profiles UI). */
@@ -47,7 +56,7 @@ type SuperAdminProfileEditorProps = {
   onDeleted?: (userId: string) => void;
 };
 
-function Section({
+function TabPanel({
   title,
   description,
   children,
@@ -110,6 +119,7 @@ export default function SuperAdminProfileEditor({
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [activeTab, setActiveTab] = useState<SectionKey>("identity");
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -179,6 +189,12 @@ export default function SuperAdminProfileEditor({
       // keep profile filename / id
     }
   }
+
+  useEffect(() => {
+    setActiveTab("identity");
+    setDeleteConfirm("");
+    clearFlash();
+  }, [userId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -433,258 +449,304 @@ export default function SuperAdminProfileEditor({
         </div>
       ) : null}
 
-      {/* Identity */}
-      <Section title="Identity" description="Name and avatar for this account.">
-        <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
-          <div className="flex flex-col items-center gap-3">
-            <UserAvatar
-              firstName={firstName}
-              lastName={lastName}
-              email={user.email}
-              avatarUrl={avatarPreviewUrl || user.avatar}
-              size="lg"
-            />
-            <input
-              ref={avatarInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
-              className="sr-only"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) void handleAvatarFile(file);
-                e.target.value = "";
-              }}
-            />
+      <div
+        className="flex flex-wrap gap-1 rounded-2xl border border-slate-200/80 bg-white/80 p-1.5 shadow-sm shadow-slate-200/40"
+        role="tablist"
+        aria-label="Profile sections"
+      >
+        {PROFILE_TABS.map((tab) => {
+          const active = activeTab === tab.id;
+          return (
             <button
+              key={tab.id}
               type="button"
-              disabled={busy}
-              onClick={() => avatarInputRef.current?.click()}
-              className={`${saBtnGhost} h-9 px-3 text-[10px]`}
+              role="tab"
+              aria-selected={active}
+              onClick={() => {
+                setActiveTab(tab.id);
+                clearFlash();
+              }}
+              className={`rounded-xl px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.1em] transition ${
+                active
+                  ? tab.id === "danger"
+                    ? "bg-rose-600 text-white shadow-sm"
+                    : "bg-teal-700 text-white shadow-sm"
+                  : tab.id === "danger"
+                    ? "text-rose-700 hover:bg-rose-50"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+              }`}
             >
-              {uploading ? "Processing…" : "Change photo"}
+              {tab.label}
             </button>
-          </div>
-          <div className={`min-w-0 flex-1 space-y-2 ${saMono} text-xs text-slate-500`}>
-            <p className={saLabel}>Target user</p>
-            <p className="text-sm text-slate-900">{user.email}</p>
-            <p>id · {user.id}</p>
-            <p>email verified · {user.emailVerified ? "yes" : "no"}</p>
-            <p>onboarding · {user.onboardingCompleted ? "complete" : "incomplete"}</p>
-          </div>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label htmlFor="sa-first-name" className={saLabel}>
-              First name
-            </label>
-            <input
-              id="sa-first-name"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              className={fieldClass}
-              disabled={busy}
-            />
-          </div>
-          <div>
-            <label htmlFor="sa-last-name" className={saLabel}>
-              Last name
-            </label>
-            <input
-              id="sa-last-name"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              className={fieldClass}
-              disabled={busy}
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <label htmlFor="sa-email" className={saLabel}>
-              Email (read-only)
-            </label>
-            <input id="sa-email" value={user.email} readOnly className={`${fieldClass} opacity-70`} />
-          </div>
-        </div>
-        <SectionFooter
-          busy={savingSection === "identity"}
-          label="Save identity"
-          onSave={() => void saveIdentity()}
-        />
-      </Section>
+          );
+        })}
+      </div>
 
-      {/* Access */}
-      <Section title="Resume builder access" description="Ops toggle for /resume.">
-        <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-teal-200 bg-teal-50 p-4">
-          <input
-            type="checkbox"
-            checked={resumeBuilderEnabled}
-            onChange={(e) => setResumeBuilderEnabled(e.target.checked)}
-            disabled={busy}
-            className="mt-0.5 h-4 w-4 accent-teal-700"
-          />
-          <span>
-            <span className={`${saMono} block text-xs font-semibold uppercase tracking-wider text-slate-900`}>
-              Resume builder enabled
-            </span>
-            <span className={`${saMono} mt-1 block text-[11px] text-slate-500`}>
-              Unlocks resume generation for this account.
-            </span>
-          </span>
-        </label>
-        <SectionFooter
-          busy={savingSection === "access"}
-          label="Save access"
-          onSave={() => void saveAccess()}
-        />
-      </Section>
-
-      {/* Crawl */}
-      <Section title="Job crawl settings" description="Listing URLs and country filters.">
-        <div className="space-y-4">
-          {ALL_JOB_CRAWL_PLATFORMS.map((platform) => {
-            const countryOnly = !isJobCrawlUrlPlatform(platform);
-            return (
-              <div key={platform}>
-                <label htmlFor={`sa-listing-${platform}`} className={saLabel}>
-                  {JOB_CRAWL_PLATFORM_LABEL[platform]}
-                  {countryOnly ? " country" : ""}
-                </label>
-                <input
-                  id={`sa-listing-${platform}`}
-                  type={countryOnly ? "text" : "url"}
-                  value={listingUrls[platform]}
-                  onChange={(e) =>
-                    setListingUrls((current) => ({ ...current, [platform]: e.target.value }))
-                  }
-                  placeholder={JOB_CRAWL_PLATFORM_PLACEHOLDER[platform]}
-                  className={fieldClass}
-                  disabled={busy}
-                  spellCheck={false}
-                />
-                <p className={`${saMono} mt-1.5 text-[11px] text-slate-500`}>
-                  {JOB_CRAWL_PLATFORM_HINT[platform]}
-                </p>
-              </div>
-            );
-          })}
-        </div>
-        <SectionFooter
-          busy={savingSection === "crawl"}
-          label="Save crawl settings"
-          onSave={() => void saveCrawl()}
-        />
-      </Section>
-
-      {/* Template */}
-      <Section
-        title="Resume template"
-        description="Upload a .docx template and preview the stored file."
-      >
-        {resumeTemplateFileName ? (
-          <div className="flex flex-wrap items-center gap-3">
-            <p className={`${saMono} text-xs text-emerald-700`}>
-              Current: {resumeTemplateFileName}
-            </p>
-            {canPreviewTemplate ? (
-              <ResumeTemplatePreviewButton
-                fileName={resumeTemplateFile?.name || resumeTemplateFileName}
-                templateFile={resumeTemplateFile}
-                templateBase64={resumeTemplateFile ? undefined : templateBase64}
-                templateId={resumeTemplateFile ? undefined : templateId}
-                fetchPdf={
-                  resumeTemplateFile
-                    ? undefined
-                    : () => fetchAdminTemplatePdf()
-                }
-                size="sm"
+      {activeTab === "identity" ? (
+        <TabPanel title="Identity" description="Name and avatar for this account.">
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
+            <div className="flex flex-col items-center gap-3">
+              <UserAvatar
+                firstName={firstName}
+                lastName={lastName}
+                email={user.email}
+                avatarUrl={avatarPreviewUrl || user.avatar}
+                size="lg"
               />
-            ) : null}
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                className="sr-only"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleAvatarFile(file);
+                  e.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => avatarInputRef.current?.click()}
+                className={`${saBtnGhost} h-9 px-3 text-[10px]`}
+              >
+                {uploading ? "Processing…" : "Change photo"}
+              </button>
+            </div>
+            <div className={`min-w-0 flex-1 space-y-2 ${saMono} text-xs text-slate-500`}>
+              <p className={saLabel}>Target user</p>
+              <p className="text-sm text-slate-900">{user.email}</p>
+              <p>id · {user.id}</p>
+              <p>email verified · {user.emailVerified ? "yes" : "no"}</p>
+              <p>onboarding · {user.onboardingCompleted ? "complete" : "incomplete"}</p>
+            </div>
           </div>
-        ) : (
-          <p className={`${saMono} text-[11px] text-slate-400`}>No template on file yet.</p>
-        )}
-        <ProfileFileUpload
-          id="sa-resume-template"
-          accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-          label="Upload resume template"
-          hint=".docx only · max 10 MB · save this section after selecting a file"
-          fileName={resumeTemplateFile?.name}
-          uploading={uploading}
-          disabled={busy}
-          onFile={handleResumeTemplateFile}
-        />
-        <SectionFooter
-          busy={savingSection === "template"}
-          label="Save template"
-          onSave={() => void saveTemplate()}
-        />
-      </Section>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label htmlFor="sa-first-name" className={saLabel}>
+                First name
+              </label>
+              <input
+                id="sa-first-name"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                className={fieldClass}
+                disabled={busy}
+              />
+            </div>
+            <div>
+              <label htmlFor="sa-last-name" className={saLabel}>
+                Last name
+              </label>
+              <input
+                id="sa-last-name"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                className={fieldClass}
+                disabled={busy}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label htmlFor="sa-email" className={saLabel}>
+                Email (read-only)
+              </label>
+              <input
+                id="sa-email"
+                value={user.email}
+                readOnly
+                className={`${fieldClass} opacity-70`}
+              />
+            </div>
+          </div>
+          <SectionFooter
+            busy={savingSection === "identity"}
+            label="Save identity"
+            onSave={() => void saveIdentity()}
+          />
+        </TabPanel>
+      ) : null}
 
-      {/* Prompt */}
-      <Section
-        title="Writing prompt"
-        description="Edit the prompt text directly, or replace it with a file upload."
-      >
-        <ProfileFileUpload
-          id="sa-prompt-file"
-          accept=".txt,.md,.json,text/plain,text/markdown,application/json"
-          label="Replace prompt file"
-          hint=".txt, .md, or .json · uploads immediately"
-          fileName={pendingPromptName || undefined}
-          uploading={uploading}
-          disabled={busy}
-          onFile={handlePromptFile}
-        />
-        <p className={`${saMono} text-[11px] text-slate-500`}>
-          {promptFileName ? `Stored prompt · ${promptFileName}` : "No prompt file name on profile."}
-        </p>
-        <div>
-          <label htmlFor="sa-prompt-text" className={saLabel}>
-            Prompt text
+      {activeTab === "access" ? (
+        <TabPanel title="Resume builder access" description="Ops toggle for /resume.">
+          <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-teal-200 bg-teal-50 p-4">
+            <input
+              type="checkbox"
+              checked={resumeBuilderEnabled}
+              onChange={(e) => setResumeBuilderEnabled(e.target.checked)}
+              disabled={busy}
+              className="mt-0.5 h-4 w-4 accent-teal-700"
+            />
+            <span>
+              <span
+                className={`${saMono} block text-xs font-semibold uppercase tracking-wider text-slate-900`}
+              >
+                Resume builder enabled
+              </span>
+              <span className={`${saMono} mt-1 block text-[11px] text-slate-500`}>
+                Unlocks resume generation for this account.
+              </span>
+            </span>
           </label>
-          <textarea
-            id="sa-prompt-text"
-            value={customPrompt}
-            onChange={(e) => setCustomPrompt(e.target.value)}
-            rows={14}
+          <SectionFooter
+            busy={savingSection === "access"}
+            label="Save access"
+            onSave={() => void saveAccess()}
+          />
+        </TabPanel>
+      ) : null}
+
+      {activeTab === "crawl" ? (
+        <TabPanel title="Job crawl settings" description="Listing URLs and country filters.">
+          <div className="space-y-4">
+            {ALL_JOB_CRAWL_PLATFORMS.map((platform) => {
+              const countryOnly = !isJobCrawlUrlPlatform(platform);
+              return (
+                <div key={platform}>
+                  <label htmlFor={`sa-listing-${platform}`} className={saLabel}>
+                    {JOB_CRAWL_PLATFORM_LABEL[platform]}
+                    {countryOnly ? " country" : ""}
+                  </label>
+                  <input
+                    id={`sa-listing-${platform}`}
+                    type={countryOnly ? "text" : "url"}
+                    value={listingUrls[platform]}
+                    onChange={(e) =>
+                      setListingUrls((current) => ({ ...current, [platform]: e.target.value }))
+                    }
+                    placeholder={JOB_CRAWL_PLATFORM_PLACEHOLDER[platform]}
+                    className={fieldClass}
+                    disabled={busy}
+                    spellCheck={false}
+                  />
+                  <p className={`${saMono} mt-1.5 text-[11px] text-slate-500`}>
+                    {JOB_CRAWL_PLATFORM_HINT[platform]}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+          <SectionFooter
+            busy={savingSection === "crawl"}
+            label="Save crawl settings"
+            onSave={() => void saveCrawl()}
+          />
+        </TabPanel>
+      ) : null}
+
+      {activeTab === "template" ? (
+        <TabPanel
+          title="Resume template"
+          description="Upload a .docx template and preview the stored file."
+        >
+          {resumeTemplateFileName ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <p className={`${saMono} text-xs text-emerald-700`}>
+                Current: {resumeTemplateFileName}
+              </p>
+              {canPreviewTemplate ? (
+                <ResumeTemplatePreviewButton
+                  fileName={resumeTemplateFile?.name || resumeTemplateFileName}
+                  templateFile={resumeTemplateFile}
+                  templateBase64={resumeTemplateFile ? undefined : templateBase64}
+                  templateId={resumeTemplateFile ? undefined : templateId}
+                  fetchPdf={
+                    resumeTemplateFile ? undefined : () => fetchAdminTemplatePdf()
+                  }
+                  size="sm"
+                />
+              ) : null}
+            </div>
+          ) : (
+            <p className={`${saMono} text-[11px] text-slate-400`}>No template on file yet.</p>
+          )}
+          <ProfileFileUpload
+            id="sa-resume-template"
+            accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            label="Upload resume template"
+            hint=".docx only · max 10 MB · save this section after selecting a file"
+            fileName={resumeTemplateFile?.name}
+            uploading={uploading}
+            disabled={busy}
+            onFile={handleResumeTemplateFile}
+          />
+          <SectionFooter
+            busy={savingSection === "template"}
+            label="Save template"
+            onSave={() => void saveTemplate()}
+          />
+        </TabPanel>
+      ) : null}
+
+      {activeTab === "prompt" ? (
+        <TabPanel
+          title="Writing prompt"
+          description="Edit the prompt text directly, or replace it with a file upload."
+        >
+          <ProfileFileUpload
+            id="sa-prompt-file"
+            accept=".txt,.md,.json,text/plain,text/markdown,application/json"
+            label="Replace prompt file"
+            hint=".txt, .md, or .json · uploads immediately"
+            fileName={pendingPromptName || undefined}
+            uploading={uploading}
+            disabled={busy}
+            onFile={handlePromptFile}
+          />
+          <p className={`${saMono} text-[11px] text-slate-500`}>
+            {promptFileName
+              ? `Stored prompt · ${promptFileName}`
+              : "No prompt file name on profile."}
+          </p>
+          <div>
+            <label htmlFor="sa-prompt-text" className={saLabel}>
+              Prompt text
+            </label>
+            <textarea
+              id="sa-prompt-text"
+              value={customPrompt}
+              onChange={(e) => setCustomPrompt(e.target.value)}
+              rows={14}
+              disabled={busy}
+              spellCheck={false}
+              className={`${fieldClass} mt-1 min-h-[220px] resize-y font-[family-name:var(--font-sa-mono)] text-[12px] leading-relaxed`}
+              placeholder="Writing prompt used for resume generation…"
+            />
+          </div>
+          <SectionFooter
+            busy={savingSection === "prompt"}
+            label="Save prompt"
+            onSave={() => void savePrompt()}
+          />
+        </TabPanel>
+      ) : null}
+
+      {activeTab === "danger" ? (
+        <TabPanel
+          title="Delete profile"
+          description="Permanently removes this account and its stored profile assets. This cannot be undone."
+        >
+          <label htmlFor="sa-delete-confirm" className={saLabel}>
+            Type the account email to confirm
+          </label>
+          <input
+            id="sa-delete-confirm"
+            value={deleteConfirm}
+            onChange={(e) => setDeleteConfirm(e.target.value)}
+            className={fieldClass}
+            placeholder={user.email}
             disabled={busy}
             spellCheck={false}
-            className={`${fieldClass} mt-1 min-h-[220px] resize-y font-[family-name:var(--font-sa-mono)] text-[12px] leading-relaxed`}
-            placeholder="Writing prompt used for resume generation…"
+            autoComplete="off"
           />
-        </div>
-        <SectionFooter
-          busy={savingSection === "prompt"}
-          label="Save prompt"
-          onSave={() => void savePrompt()}
-        />
-      </Section>
-
-      {/* Danger */}
-      <Section
-        title="Delete profile"
-        description="Permanently removes this account and its stored profile assets. This cannot be undone."
-      >
-        <label htmlFor="sa-delete-confirm" className={saLabel}>
-          Type the account email to confirm
-        </label>
-        <input
-          id="sa-delete-confirm"
-          value={deleteConfirm}
-          onChange={(e) => setDeleteConfirm(e.target.value)}
-          className={fieldClass}
-          placeholder={user.email}
-          disabled={busy}
-          spellCheck={false}
-          autoComplete="off"
-        />
-        <SectionFooter
-          busy={savingSection === "danger"}
-          label="Delete profile"
-          busyLabel="Deleting…"
-          onSave={() => void deleteProfile()}
-          tone="danger"
-        />
-      </Section>
+          <SectionFooter
+            busy={savingSection === "danger"}
+            label="Delete profile"
+            busyLabel="Deleting…"
+            onSave={() => void deleteProfile()}
+            tone="danger"
+          />
+        </TabPanel>
+      ) : null}
 
       {!embedded ? (
         <div>
