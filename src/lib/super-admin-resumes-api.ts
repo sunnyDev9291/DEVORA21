@@ -2,7 +2,14 @@ import { API_BASE_URL } from "@/lib/api-base-url";
 import { apiAuthFetch } from "@/lib/api-auth";
 import { ApiError } from "@/lib/auth-api";
 
-export type AdminDatePreset = "today" | "week" | "month" | "all" | "custom";
+export type AdminDatePreset =
+  | "today"
+  | "week"
+  | "last7"
+  | "last30"
+  | "month"
+  | "all"
+  | "custom";
 
 export type AdminResumeSortField =
   | "createdAt"
@@ -19,6 +26,8 @@ export type AdminResumeFilters = {
   jobDescription?: string;
   profileName?: string;
   profileId?: string;
+  /** Comma-joined or repeated profile ids for multi-profile analytics. */
+  profileIds?: string[];
   preset?: AdminDatePreset;
   from?: string;
   to?: string;
@@ -88,6 +97,36 @@ export type AdminResumeAnalyticsResponse = {
   profileStats?: AdminResumeProfileStat[];
 };
 
+export type AdminResumeCompareProfile = {
+  profileId: string;
+  profileName?: string;
+  profileEmail?: string;
+};
+
+export type AdminResumeCompareSeriesPoint = {
+  date: string;
+  total: number;
+  /** Daily counts keyed by profileId */
+  byProfile: Record<string, number>;
+};
+
+export type AdminResumeCompareRanking = AdminResumeCompareProfile & {
+  count: number;
+  percent: number;
+};
+
+export type AdminResumeCompareResponse = {
+  timezone: string;
+  from: string;
+  to: string;
+  preset?: string;
+  profiles: AdminResumeCompareProfile[];
+  series: AdminResumeCompareSeriesPoint[];
+  rankings: AdminResumeCompareRanking[];
+  grandTotal: number;
+  totals?: AdminResumePeriodTotals;
+};
+
 function pickString(data: Record<string, unknown>, ...keys: string[]): string {
   for (const key of keys) {
     const value = data[key];
@@ -154,6 +193,13 @@ function buildQuery(filters: AdminResumeFilters): string {
   set("profileName", filters.profileName?.trim());
   set("profileId", filters.profileId?.trim());
   set("userId", filters.profileId?.trim());
+  if (filters.profileIds?.length) {
+    const ids = filters.profileIds.map((id) => id.trim()).filter(Boolean);
+    if (ids.length) {
+      params.set("profileIds", ids.join(","));
+      for (const id of ids) params.append("profileId", id);
+    }
+  }
   set("preset", filters.preset);
   set("from", filters.from?.trim());
   set("to", filters.to?.trim());
@@ -329,6 +375,205 @@ function parseFileName(res: Response, fallback: string): string {
   return fallback;
 }
 
+function normalizeCompare(data: Record<string, unknown>): AdminResumeCompareResponse {
+  const profileRaw = Array.isArray(data.profiles) ? data.profiles : [];
+  const profiles: AdminResumeCompareProfile[] = [];
+  for (const row of profileRaw) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const profileId = pickString(r, "profileId", "userId", "id");
+    if (!profileId) continue;
+    profiles.push({
+      profileId,
+      profileName: pickString(r, "profileName", "name", "fullName") || undefined,
+      profileEmail: pickString(r, "profileEmail", "email") || undefined,
+    });
+  }
+
+  const seriesRaw = Array.isArray(data.series) ? data.series : [];
+  const series: AdminResumeCompareSeriesPoint[] = [];
+  for (const point of seriesRaw) {
+    if (!point || typeof point !== "object") continue;
+    const p = point as Record<string, unknown>;
+    const date = pickString(p, "date", "day", "bucket");
+    if (!date) continue;
+
+    const byProfile: Record<string, number> = {};
+    const nested =
+      p.byProfile && typeof p.byProfile === "object"
+        ? (p.byProfile as Record<string, unknown>)
+        : p.profiles && typeof p.profiles === "object"
+          ? (p.profiles as Record<string, unknown>)
+          : null;
+
+    if (nested) {
+      for (const [key, value] of Object.entries(nested)) {
+        byProfile[key] = toNum(value);
+      }
+    } else {
+      for (const [key, value] of Object.entries(p)) {
+        if (
+          key === "date" ||
+          key === "day" ||
+          key === "bucket" ||
+          key === "total" ||
+          key === "count" ||
+          key === "previousCount"
+        ) {
+          continue;
+        }
+        if (typeof value === "number" || typeof value === "string") {
+          byProfile[key] = toNum(value);
+        }
+      }
+    }
+
+    const total =
+      p.total !== undefined || p.count !== undefined
+        ? toNum(p.total ?? p.count)
+        : Object.values(byProfile).reduce((sum, n) => sum + n, 0);
+
+    series.push({ date, total, byProfile });
+  }
+
+  const rankingRaw = Array.isArray(data.rankings)
+    ? data.rankings
+    : Array.isArray(data.topProfiles)
+      ? data.topProfiles
+      : [];
+
+  let rankings: AdminResumeCompareRanking[] = [];
+  for (const row of rankingRaw) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const profileId = pickString(r, "profileId", "userId", "id");
+    if (!profileId) continue;
+    rankings.push({
+      profileId,
+      profileName: pickString(r, "profileName", "name", "fullName") || undefined,
+      profileEmail: pickString(r, "profileEmail", "email") || undefined,
+      count: toNum(r.count ?? r.total ?? r.range),
+      percent: toNum(r.percent ?? r.percentage),
+    });
+  }
+
+  let grandTotal = toNum(data.grandTotal ?? data.grand_total);
+  if (!grandTotal && rankings.length) {
+    grandTotal = rankings.reduce((sum, r) => sum + r.count, 0);
+  }
+  if (!rankings.length && series.length && profiles.length) {
+    const counts = new Map<string, number>();
+    for (const point of series) {
+      for (const [id, n] of Object.entries(point.byProfile)) {
+        counts.set(id, (counts.get(id) ?? 0) + n);
+      }
+    }
+    grandTotal = [...counts.values()].reduce((a, b) => a + b, 0);
+    rankings = profiles
+      .map((p) => {
+        const count = counts.get(p.profileId) ?? 0;
+        return {
+          ...p,
+          count,
+          percent: grandTotal > 0 ? Math.round((count / grandTotal) * 1000) / 10 : 0,
+        };
+      })
+      .sort((a, b) => b.count - a.count);
+  } else if (rankings.some((r) => r.percent === 0) && grandTotal > 0) {
+    rankings = rankings.map((r) => ({
+      ...r,
+      percent: Math.round((r.count / grandTotal) * 1000) / 10,
+    }));
+  }
+
+  const totalsRaw =
+    data.totals && typeof data.totals === "object"
+      ? (data.totals as Record<string, unknown>)
+      : null;
+
+  return {
+    timezone: pickString(data, "timezone", "tz") || guessBrowserTimezone(),
+    from: pickString(data, "from", "dateFrom", "start"),
+    to: pickString(data, "to", "dateTo", "end"),
+    preset: pickString(data, "preset") || undefined,
+    profiles,
+    series,
+    rankings,
+    grandTotal,
+    totals: totalsRaw
+      ? {
+          today: toNum(totalsRaw.today),
+          week: toNum(totalsRaw.week),
+          month: toNum(totalsRaw.month),
+          allTime: toNum(totalsRaw.allTime ?? totalsRaw.all_time),
+          range: toNum(totalsRaw.range ?? grandTotal),
+          previousRange:
+            totalsRaw.previousRange !== undefined
+              ? toNum(totalsRaw.previousRange)
+              : undefined,
+        }
+      : undefined,
+  };
+}
+
+function mergePerProfileAnalytics(
+  profileMeta: AdminResumeCompareProfile[],
+  perProfile: { profileId: string; analytics: AdminResumeAnalyticsResponse }[],
+  timezone: string
+): AdminResumeCompareResponse {
+  const dateSet = new Set<string>();
+  for (const row of perProfile) {
+    for (const point of row.analytics.series) dateSet.add(point.date);
+  }
+  const dates = [...dateSet].sort();
+  const series: AdminResumeCompareSeriesPoint[] = dates.map((date) => {
+    const byProfile: Record<string, number> = {};
+    let total = 0;
+    for (const row of perProfile) {
+      const count = row.analytics.series.find((p) => p.date === date)?.count ?? 0;
+      byProfile[row.profileId] = count;
+      total += count;
+    }
+    return { date, total, byProfile };
+  });
+
+  const counts = new Map<string, number>();
+  for (const point of series) {
+    for (const [id, n] of Object.entries(point.byProfile)) {
+      counts.set(id, (counts.get(id) ?? 0) + n);
+    }
+  }
+  const grandTotal = [...counts.values()].reduce((a, b) => a + b, 0);
+  const rankings: AdminResumeCompareRanking[] = profileMeta
+    .map((p) => {
+      const count = counts.get(p.profileId) ?? 0;
+      return {
+        ...p,
+        count,
+        percent: grandTotal > 0 ? Math.round((count / grandTotal) * 1000) / 10 : 0,
+      };
+    })
+    .sort((a, b) => b.count - a.count);
+
+  const first = perProfile[0]?.analytics;
+  return {
+    timezone: first?.timezone || timezone,
+    from: first?.from || dates[0] || "",
+    to: first?.to || dates[dates.length - 1] || "",
+    preset: first?.preset,
+    profiles: profileMeta,
+    series,
+    rankings,
+    grandTotal,
+    totals: first?.totals
+      ? {
+          ...first.totals,
+          range: grandTotal,
+        }
+      : undefined,
+  };
+}
+
 export const superAdminResumesApi = {
   async getAnalytics(filters: AdminResumeFilters = {}): Promise<AdminResumeAnalyticsResponse> {
     const qs = buildQuery(filters);
@@ -336,6 +581,58 @@ export const superAdminResumesApi = {
       `/admin/resumes/analytics${qs ? `?${qs}` : ""}`
     );
     return normalizeAnalytics(data);
+  },
+
+  /**
+   * Multi-profile daily series for the advanced compare chart.
+   * Prefers GET /admin/resumes/analytics/compare; falls back to parallel per-profile analytics.
+   */
+  async getCompareAnalytics(
+    filters: AdminResumeFilters & { profileIds: string[]; profileMeta?: AdminResumeCompareProfile[] }
+  ): Promise<AdminResumeCompareResponse> {
+    const ids = filters.profileIds.map((id) => id.trim()).filter(Boolean);
+    if (!ids.length) {
+      return {
+        timezone: guessBrowserTimezone(),
+        from: filters.from || "",
+        to: filters.to || "",
+        preset: filters.preset,
+        profiles: [],
+        series: [],
+        rankings: [],
+        grandTotal: 0,
+      };
+    }
+
+    const qs = buildQuery({ ...filters, profileIds: ids, profileId: undefined });
+    try {
+      const data = await adminJson<Record<string, unknown>>(
+        `/admin/resumes/analytics/compare${qs ? `?${qs}` : ""}`
+      );
+      return normalizeCompare(data);
+    } catch (err) {
+      // Prefer batch endpoint; fall back to parallel single-profile analytics when missing.
+      if (!(err instanceof ApiError) || (err.status !== 404 && err.status !== 501)) {
+        throw err;
+      }
+    }
+
+    const meta =
+      filters.profileMeta?.filter((p) => ids.includes(p.profileId)) ??
+      ids.map((profileId) => ({ profileId }));
+
+    const perProfile = await Promise.all(
+      ids.map(async (profileId) => {
+        const analytics = await this.getAnalytics({
+          ...filters,
+          profileId,
+          profileIds: undefined,
+        });
+        return { profileId, analytics };
+      })
+    );
+
+    return mergePerProfileAnalytics(meta, perProfile, guessBrowserTimezone());
   },
 
   async listResumes(filters: AdminResumeFilters = {}): Promise<AdminResumeListResponse> {

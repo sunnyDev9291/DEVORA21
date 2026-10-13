@@ -1,0 +1,155 @@
+# Backend Cursor Prompt — Multi-profile Resume Compare Analytics
+
+Copy everything below to the backend agent/developer.
+
+================================================================================
+GOAL
+================================================================================
+
+Power the Super Admin advanced analytics chart:
+
+  FE: /super-admin/resumes (Analytics tab)
+  Client: src/lib/super-admin-resumes-api.ts → getCompareAnalytics()
+
+Need efficient server-side daily counts per profile for a selected set of
+profiles + date range, plus rankings / grand total.
+
+FE already falls back to N parallel GET /admin/resumes/analytics?profileId=
+calls when this endpoint is missing (404/501). Implement the batch route for
+production performance.
+
+================================================================================
+AUTH
+================================================================================
+
+Same as other /admin/resumes* routes:
+
+1. Authenticated session
+2. role/capability = super_admin
+3. 401 anonymous / 403 non-admin
+
+================================================================================
+ENDPOINT
+================================================================================
+
+GET /admin/resumes/analytics/compare
+
+Query:
+
+  profileIds     required for useful charts — comma-separated user ids
+                 (also accept repeated profileId= / userId=)
+  preset         today | week | last7 | last30 | month | all | custom
+  from           YYYY-MM-DD (custom / last7 / last30 often send these)
+  to             YYYY-MM-DD
+  timezone       IANA TZ (default UTC)
+
+Date bucketing:
+
+  - Store archive timestamps in UTC
+  - Bucket to calendar days in `timezone`
+  - Include EVERY day in [from, to] even when count is 0
+  - For preset=all: from = earliest archive day (or account start), to = today
+    in that timezone
+
+Aggregation:
+
+  - COUNT resumes GROUP BY profile_id, day
+  - total[day] = SUM of selected profiles’ counts that day
+  - Do NOT invent generation-method dimensions
+
+--------------------------------------------------------------------------------
+Response 200
+--------------------------------------------------------------------------------
+
+{
+  "timezone": "America/New_York",
+  "from": "2026-10-01",
+  "to": "2026-10-13",
+  "preset": "month",
+  "profiles": [
+    {
+      "profileId": "u1",
+      "profileName": "Franco Torrez",
+      "profileEmail": "franco@example.com"
+    }
+  ],
+  "series": [
+    {
+      "date": "2026-10-01",
+      "total": 5,
+      "byProfile": {
+        "u1": 2,
+        "u2": 3
+      }
+    }
+  ],
+  "rankings": [
+    {
+      "profileId": "u2",
+      "profileName": "…",
+      "profileEmail": "…",
+      "count": 40,
+      "percent": 62.5
+    }
+  ],
+  "grandTotal": 64,
+  "totals": {
+    "today": 3,
+    "week": 18,
+    "month": 64,
+    "allTime": 912,
+    "range": 64,
+    "previousRange": 51
+  }
+}
+
+Rules:
+
+  - `series[].total` MUST equal sum(byProfile values) for the selected ids
+  - `rankings` sorted by count DESC for the selected range only
+  - `percent` = count / grandTotal * 100 (1 decimal ok)
+  - `grandTotal` = sum of ranking counts (do not double-count)
+  - `totals` optional but recommended:
+      today/week/month/allTime = platform or selected-set KPIs (document which)
+      range = grandTotal for the selected window
+      previousRange = same-length prior window for selected profiles
+  - Empty profileIds → empty series/rankings, grandTotal 0
+  - Unknown ids ignored (or 400 if all invalid — pick one, stay consistent)
+
+================================================================================
+INDEXES / PERF
+================================================================================
+
+Reuse archive table (user_id, bid_at/created_at).
+
+Recommended:
+
+  INDEX (user_id, bid_at)
+  or partial covering index for analytics scans
+
+Avoid loading full JD blobs for this endpoint — COUNT only.
+
+Cap: if profileIds > 50, return 400 with clear message (FE multi-select is
+usually smaller).
+
+================================================================================
+ACCEPTANCE
+================================================================================
+
+[ ] Compare returns daily zeros for quiet days in range
+[ ] Multi-profile byProfile + total correct
+[ ] Rankings + grandTotal match selected window
+[ ] Timezone bucketing consistent with /admin/resumes/analytics
+[ ] Super-admin only
+[ ] FE chart loads without needing N+1 fallback
+
+================================================================================
+OUT OF SCOPE
+================================================================================
+
+- Generation method filters
+- Client-side full archive dump
+
+================================================================================
+END
+================================================================================
