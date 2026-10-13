@@ -1,0 +1,155 @@
+# Backend Cursor Prompt — Super Admin Profile Management APIs
+
+Copy everything below to the backend agent/developer.
+
+================================================================================
+GOAL
+================================================================================
+
+Support Frontend Super Admin → Profile Management:
+
+  /super-admin/profiles          → list all users
+  /super-admin/profiles/:userId  → view + edit that user’s profile
+
+Frontend client: src/lib/super-admin-api.ts
+Calls use the signed-in Devora21 session (Bearer / cookie via apiAuthFetch).
+Temp /super-admin username-password gate is UI-only — NOT auth for these APIs.
+
+================================================================================
+AUTH
+================================================================================
+
+Every /admin/* route MUST:
+
+1. Require authenticated user (same session as /auth/me)
+2. Require role/capability: super_admin (or equivalent flag on User)
+3. Return 401 if not signed in
+4. Return 403 if signed in but not super_admin
+
+Do NOT trust the FE temp console password.
+
+================================================================================
+ENDPOINTS
+================================================================================
+
+--------------------------------------------------
+1) GET /admin/users
+--------------------------------------------------
+
+Query:
+  q       optional string — match email / firstName / lastName / name (case-insensitive)
+  page    optional int ≥ 1 (default 1)
+  limit   optional int 1–100 (default 25)
+
+Response 200:
+{
+  "users": [
+    {
+      "id": "…",
+      "email": "…",
+      "firstName": "…",
+      "lastName": "…",
+      "name": "…",
+      "emailVerified": true,
+      "onboardingCompleted": true,
+      "resumeBuilderEnabled": false,
+      "createdAt": "2026-10-12T13:18:00.000Z"
+    }
+  ],
+  "total": 123,
+  "page": 1,
+  "limit": 25
+}
+
+Notes:
+- Sort newest createdAt first (or email ASC — pick one and keep stable)
+- Never return password hashes / refresh tokens / API keys
+
+--------------------------------------------------
+2) GET /admin/users/:id
+--------------------------------------------------
+
+Response 200: same shape as GET /auth/me user object for THAT user, including:
+
+  id, email, firstName, lastName, name, avatar,
+  emailVerified, onboardingCompleted, resumeBuilderEnabled,
+  resumeTemplateFileName, resumeTemplateId, promptFileName,
+  listingUrls, createdAt
+
+404 if user missing.
+
+--------------------------------------------------
+3) PATCH /admin/users/:id
+--------------------------------------------------
+
+multipart/form-data (same field names as PATCH /auth/profile), plus:
+
+  firstName
+  lastName
+  avatar                 (file)
+  resumeTemplate         (file .docx)
+  promptFile             (file)
+  customPrompt           (text; use when no promptFile)
+  promptContent          (optional alias of customPrompt)
+  listingUrls            (JSON string object)
+  listingUrl_{platform}  (optional flat fields)
+  resumeBuilderEnabled   ("true" | "false")  ← admin-only field
+
+Behavior:
+- Update only provided fields (partial patch)
+- Resume template / prompt handling MUST match existing /auth/profile logic
+  (store file, update templateId / prompt content, structure parse if applicable)
+- resumeBuilderEnabled toggles feature access for that user
+- Response 200: full updated user object (same as GET /admin/users/:id)
+- 404 if user missing
+- Do not allow changing email via this endpoint in v1
+
+--------------------------------------------------
+4) GET /admin/users/:id/prompt
+--------------------------------------------------
+
+Same contract as GET /auth/profile/prompt but for target user:
+
+200:
+{ "content": "…", "fileName": "prompt.txt" }
+
+404 if no prompt stored (FE treats empty/404 as no prompt).
+
+--------------------------------------------------
+5) GET /admin/users/:id/resume-template
+--------------------------------------------------
+
+Same contract as GET /auth/profile/resume-template for target user:
+
+200:
+{
+  "fileName": "franco_resume_me.docx",
+  "templateId": "…",
+  "templateBase64": "…"   // optional if templateId alone is enough
+}
+
+404 if no template.
+
+================================================================================
+ACCEPTANCE
+================================================================================
+
+[ ] Super-admin user can list users with search + pagination
+[ ] Non-admin JWT gets 403 on all /admin/*
+[ ] Anonymous gets 401
+[ ] GET one user returns listingUrls + template/prompt metadata
+[ ] PATCH updates names, avatar, listingUrls, template, prompt, resumeBuilderEnabled
+[ ] Prompt/template bytes are stored and readable via the GET asset routes
+[ ] Self-serve /auth/profile unchanged for normal users
+
+================================================================================
+OUT OF SCOPE (v1)
+================================================================================
+
+- Delete user, ban, password reset, impersonation
+- Editing saved resume archives
+- Changing email
+
+================================================================================
+END
+================================================================================

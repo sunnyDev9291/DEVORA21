@@ -1,0 +1,72 @@
+# Backend Cursor Prompt — Preserve Word bullet markers on rendered resumes
+
+Copy everything below to the backend agent/developer.
+
+================================================================================
+GOAL
+================================================================================
+
+Original template shows experience lines with Word bullet symbols (•).
+After POST /resume/render (style fill), customized DOCX/PDF shows the same
+sentences but WITHOUT bullet markers.
+
+Frontend is correct: it sends plain bullet TEXT only (no leading "•").
+Backend fill of style `exp_section` must keep Word list formatting.
+
+================================================================================
+ROOT CAUSE (typical)
+================================================================================
+
+Template paragraphs for achievements are Word LIST items:
+  - paragraph has <w:numPr>…</w:numPr> (and often a list-related pStyle)
+  - the glyph "•" is drawn by Word from numbering.xml — NOT from the text run
+
+When fill replaces the whole paragraph XML (or rebuilds a plain <w:p> with only
+text), numPr / numbering is dropped → text remains, bullets disappear.
+
+================================================================================
+REQUIRED FIX
+================================================================================
+
+When writing experiences[].bullets[] into style `exp_section`:
+
+1. Clone a TEMPLATE bullet paragraph from the same job (or any exp_section list
+   paragraph in the template) that still has:
+     - w:numPr (numId + ilvl)
+     - original pPr / rPr as much as possible
+2. Replace ONLY the text content (w:t runs), preserving:
+     - w:numPr
+     - pStyle
+     - spacing / indent
+     - bold/italic run properties where appropriate
+3. Do NOT convert list paragraphs into plain paragraphs
+4. Do NOT require FE to send "• " prefixes
+   - If AI accidentally includes a leading "•"/"-"/"–", strip it before fill
+     so Word does not show double bullets
+5. Clone additional bullet paragraphs when bulletCount increases; remove extras
+   when shorter — each clone must keep numPr from the template bullet
+
+Same rule for PDF: convert the DOCX that still has list numbering (LibreOffice
+will render bullets if numPr is intact).
+
+================================================================================
+ACCEPTANCE
+================================================================================
+
+[ ] Original template: bullets visible (•)
+[ ] After /resume/render with same templateId: each exp_section line still shows •
+[ ] PDF preview matches DOCX bullets
+[ ] No double bullets (• • text)
+[ ] FE still sends plain strings in content.experiences[].bullets[]
+
+================================================================================
+OUT OF SCOPE
+================================================================================
+
+- Do not ask FE to rebuild DOCX
+- Do not ask FE to embed "•" in JSON as the primary fix
+- Frozen styles (header_name, company_*, etc.) unchanged
+
+================================================================================
+END
+================================================================================

@@ -969,7 +969,7 @@ export default function ResumeGenerator({
     setDocxBase64("");
 
     try {
-      // Ensure frozen template slots (company/role/dates/bulletCount) are applied before render.
+      // Ensure template bullet slot counts are applied before render (company/role/dates stay from draft).
       const renderDraft = alignContentWithTemplateStructure(draft, templateStructure);
       const rendered = await renderResumeOnBackend({
         templateId: templateForRequest.templateId,

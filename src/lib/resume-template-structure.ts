@@ -156,7 +156,11 @@ export async function fetchResumeTemplateStructure(
   return null;
 }
 
-/** Pad / align draft experiences to backend template job slots (Mode 1). */
+/**
+ * Pad / clip draft bullets to backend template job slot counts (Mode 1).
+ * Company / role / dates / location stay from the AI draft — structure parsing of
+ * company_name / company_role is often mangled (e.g. "Senior Software EngineerHMSHost").
+ */
 export function alignContentWithTemplateStructure(
   content: GeneratedResumeContent,
   structure: ResumeTemplateStructure | null | undefined
@@ -190,15 +194,6 @@ export function alignContentWithTemplateStructure(
 
     return {
       ...base,
-      // Frozen from template structure (never treat as AI-editable headers).
-      company: job.company.trim() || base.company,
-      role: job.role.trim() || base.role,
-      dates: job.dates.trim() || base.dates,
-      ...(job.location?.trim()
-        ? { location: job.location.trim() }
-        : base.location?.trim()
-          ? { location: base.location.trim() }
-          : {}),
       bullets,
     };
   });

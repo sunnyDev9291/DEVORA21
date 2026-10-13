@@ -25,7 +25,7 @@ interface ResumeContentReviewProps {
   applying: boolean;
   generating?: boolean;
   templateName: string;
-  /** Backend Mode-1 template jobs (bullet slots / company_period). Not AI draft length. */
+  /** Backend Mode-1 template jobs — bullet slot counts only. Company/role/dates come from the AI draft. */
   templateJobs?: ResumeTemplateStructureJob[];
   /** Backend skillsSample — category slot count for the review label. */
   templateSkillsSample?: string;
@@ -392,9 +392,11 @@ export default function ResumeContentReview({
           {content.experiences.map((exp, index) => {
             const open = expandedExp === index;
             const templateJob = templateJobs[index];
-            const displayCompany = templateJob?.company?.trim() || exp.company;
-            const displayRole = templateJob?.role?.trim() || exp.role;
-            const displayDates = templateJob?.dates?.trim() || exp.dates;
+            // Company / role / dates come from the AI draft (and user edits), not structure.
+            // Structure is only authoritative for bullet slot counts.
+            const displayCompany = exp.company;
+            const displayRole = exp.role;
+            const displayDates = exp.dates;
             const slotCount = templateJobBulletSlotCount(
               templateJobs,
               index,
@@ -441,29 +443,41 @@ export default function ResumeContentReview({
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-4">
                       <div className="sm:col-span-2">
                         <p className="text-xs font-medium text-slate-500 mb-1">Company</p>
-                        <p className="text-sm font-semibold text-slate-900 dark:text-white px-1">{displayCompany}</p>
+                        <MarkdownBoldTextarea
+                          id={`exp-${index}-company`}
+                          value={exp.company}
+                          onChange={(company) => updateExperience(index, { company })}
+                          className={`${fieldClass} ${changedRing(`exp-${index}-company`)}`}
+                          rows={1}
+                          placeholder="Company name"
+                          aria-label={`Company for experience ${index + 1}`}
+                        />
                       </div>
                       <div>
                         <p className="text-xs font-medium text-slate-500 mb-1">
                           Role / title
                         </p>
-                        {templateJob ? (
-                          <p className="text-sm text-slate-800 dark:text-slate-200 px-1">{displayRole}</p>
-                        ) : (
-                          <MarkdownBoldTextarea
-                            id={`exp-${index}-role`}
-                            value={exp.role}
-                            onChange={(role) => updateExperience(index, { role })}
-                            className={`${fieldClass} ${changedRing(`exp-${index}-role`)}`}
-                            rows={1}
-                            placeholder="Senior Java Engineer | Spring Boot"
-                            aria-label={`Role for ${displayCompany}`}
-                          />
-                        )}
+                        <MarkdownBoldTextarea
+                          id={`exp-${index}-role`}
+                          value={exp.role}
+                          onChange={(role) => updateExperience(index, { role })}
+                          className={`${fieldClass} ${changedRing(`exp-${index}-role`)}`}
+                          rows={1}
+                          placeholder="Senior Java Engineer | Spring Boot"
+                          aria-label={`Role for ${displayCompany || `experience ${index + 1}`}`}
+                        />
                       </div>
                       <div>
                         <p className="text-xs font-medium text-slate-500 mb-1">Dates</p>
-                        <p className="text-sm text-slate-800 dark:text-slate-200 px-1">{displayDates}</p>
+                        <MarkdownBoldTextarea
+                          id={`exp-${index}-dates`}
+                          value={exp.dates}
+                          onChange={(dates) => updateExperience(index, { dates })}
+                          className={`${fieldClass} ${changedRing(`exp-${index}-dates`)}`}
+                          rows={1}
+                          placeholder="01/2020 – 12/2023"
+                          aria-label={`Dates for ${displayCompany || `experience ${index + 1}`}`}
+                        />
                       </div>
                     </div>
                     {projectMode || exp.projects?.length ? (

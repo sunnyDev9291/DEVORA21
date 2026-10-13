@@ -1,0 +1,61 @@
+# Backend Cursor Prompt — Fix template structure company / role parsing
+
+Copy everything below to the backend agent/developer.
+
+================================================================================
+GOAL
+================================================================================
+
+GET /resume/templates/active/structure (and by-id / profile equivalents) returns
+jobs[] with mangled company and role, e.g.:
+
+  company: "Senior Software EngineerHMSHost"
+  role:    "Senior Software EngineerHMSHost"
+
+Expected for that job:
+
+  company: "HMSHost"
+  role:    "Senior Software Engineer"
+
+Frontend no longer overwrites AI company/role/dates with these fields (bulletCount
+only). Still fix structure so prompts and any other consumers get clean headers.
+
+================================================================================
+ROOT CAUSE (typical)
+================================================================================
+
+Styled template has separate Word styles/slots:
+  - company_name  → employer
+  - company_role  → job title
+  - company_period → dates
+
+Parser concatenates adjacent runs or dumps the whole header line into BOTH
+company and role without a separator (Role + Company glued: "...EngineerHMSHost").
+
+================================================================================
+REQUIRED FIX
+================================================================================
+
+1. Read company from style/slot `company_name` only
+2. Read role from style/slot `company_role` only
+3. Read dates from `company_period` (normalize spacing around en-dash)
+4. Never assign the same combined string to both company and role
+5. If the template uses one combined line, split with the same rules as:
+     "Role, Company, MM/YYYY – MM/YYYY" → role = before last comma-group, company = last
+   Do NOT glue without whitespace
+6. Reject / leave empty placeholder literals: "Company", "Role", "Title", "Job Title"
+7. Preserve job order top-to-bottom as in the DOCX
+8. bulletCount = number of `exp_section` paragraphs under that job (unchanged)
+
+================================================================================
+ACCEPTANCE
+================================================================================
+
+[ ] franco_resume_me.docx structure jobs show distinct company vs role
+[ ] No values like "Senior Software EngineerHMSHost"
+[ ] No placeholder "Role" / "Company" as real job headers
+[ ] bulletCount still matches Word exp_section count per job
+
+================================================================================
+END
+================================================================================
