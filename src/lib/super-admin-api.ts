@@ -320,4 +320,131 @@ export const superAdminApi = {
 
     return { fileName, templateId, templateBase64 };
   },
+
+  /**
+   * WYSIWYG PDF preview for another user’s stored DOCX template.
+   * Prefers GET /admin/users/:id/resume-template/pdf, then /resume/templates/:templateId/pdf.
+   */
+  async fetchResumeTemplatePreviewPdf(
+    userId: string,
+    templateId?: string
+  ): Promise<{ blob: Blob; fileName: string }> {
+    const id = userId.trim();
+    const candidates = [
+      `/admin/users/${encodeURIComponent(id)}/resume-template/pdf`,
+      ...(templateId?.trim()
+        ? [`/resume/templates/${encodeURIComponent(templateId.trim())}/pdf`]
+        : []),
+    ];
+
+    let lastError: Error | null = null;
+    for (const path of candidates) {
+      try {
+        const res = await adminFetch(path, { method: "GET" });
+        const contentType = res.headers.get("content-type") ?? "";
+        if (!res.ok) {
+          const data = await parseJson<{ message?: string; error?: string }>(res);
+          lastError = new ApiError(
+            data?.message || data?.error || `Template PDF preview unavailable (${res.status}).`,
+            res.status
+          );
+          if (res.status === 404 || res.status === 501) continue;
+          throw lastError;
+        }
+
+        if (contentType.includes("application/json")) {
+          const data = await parseJson<{
+            pdfBase64?: string;
+            fileName?: string;
+            filename?: string;
+          }>(res);
+          const b64 = String(data?.pdfBase64 ?? "").trim();
+          if (!b64) {
+            lastError = new ApiError("Template PDF payload missing.", 502);
+            continue;
+          }
+          const binary = atob(b64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          return {
+            blob: new Blob([bytes], { type: "application/pdf" }),
+            fileName: data?.fileName || data?.filename || "resume-template.pdf",
+          };
+        }
+
+        const blob = await res.blob();
+        const disposition = res.headers.get("content-disposition") || "";
+        const match = /filename\*?=(?:UTF-8''|")?([^\";]+)/i.exec(disposition);
+        const fileName = match
+          ? decodeURIComponent(match[1].replace(/"/g, "").trim())
+          : "resume-template.pdf";
+        return { blob, fileName };
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        if (err instanceof ApiError && err.status !== 404 && err.status !== 501) throw err;
+      }
+    }
+    throw lastError ?? new ApiError("Could not load template PDF preview.", 502);
+  },
+
+  /** Persist prompt text for a user (editable textarea save). */
+  async savePrompt(userId: string, content: string, fileName?: string): Promise<AdminPromptAsset> {
+    const id = userId.trim();
+    const trimmed = content.trim();
+    if (!trimmed) throw new ApiError("Prompt cannot be empty.", 400);
+
+    const form = new FormData();
+    form.append("customPrompt", trimmed);
+    form.append("promptContent", trimmed);
+    if (fileName?.trim()) form.append("promptFileName", fileName.trim());
+
+    const res = await adminFetch(`/admin/users/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: form,
+    });
+    if (!res.ok) {
+      const data = await parseJson<{ message?: string; error?: string }>(res);
+      throw new ApiError(data?.message || data?.error || "Could not save prompt.", res.status);
+    }
+
+    try {
+      return await this.fetchPrompt(id);
+    } catch {
+      return { content: trimmed, fileName: fileName?.trim() || undefined };
+    }
+  },
+
+  /** Permanently delete a user profile/account. */
+  async deleteUser(userId: string): Promise<void> {
+    const id = userId.trim();
+    if (!id) throw new ApiError("User id is required.", 400);
+
+    const candidates = [
+      `/admin/users/${encodeURIComponent(id)}`,
+      `/admin/users/${encodeURIComponent(id)}/delete`,
+    ];
+
+    let lastError: Error | null = null;
+    for (const path of candidates) {
+      try {
+        const res = await adminFetch(path, {
+          method: path.endsWith("/delete") ? "POST" : "DELETE",
+        });
+        if (res.ok || res.status === 204) return;
+        const data = await parseJson<{ message?: string; error?: string }>(res);
+        lastError = new ApiError(
+          data?.message || data?.error || `Could not delete user (${res.status}).`,
+          res.status
+        );
+        if (res.status === 404 || res.status === 405 || res.status === 501) continue;
+        throw lastError;
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        if (err instanceof ApiError && err.status !== 404 && err.status !== 405 && err.status !== 501) {
+          throw err;
+        }
+      }
+    }
+    throw lastError ?? new ApiError("Could not delete user.", 502);
+  },
 };

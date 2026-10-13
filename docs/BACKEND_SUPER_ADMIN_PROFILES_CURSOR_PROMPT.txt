@@ -143,11 +143,24 @@ ACCEPTANCE
 [ ] Self-serve /auth/profile unchanged for normal users
 
 ================================================================================
-OUT OF SCOPE (v1)
+FOLLOW-UPS (implemented on FE — see companion prompt)
 ================================================================================
 
-- Delete user, ban, password reset, impersonation
-- Editing saved resume archives
+Also implement (or verify) the additions documented in:
+
+  docs/BACKEND_SUPER_ADMIN_PROFILE_EDIT_DELETE_CURSOR_PROMPT.txt
+
+  - GET  /admin/users/:id/resume-template/pdf
+  - PATCH customPrompt-only saves (editable textarea)
+  - DELETE /admin/users/:id
+
+================================================================================
+OUT OF SCOPE
+================================================================================
+
+- Soft-delete / recycle bin UI
+- Ban, password reset, impersonation
+- Editing saved resume archives from this screen
 - Changing email
 
 ================================================================================

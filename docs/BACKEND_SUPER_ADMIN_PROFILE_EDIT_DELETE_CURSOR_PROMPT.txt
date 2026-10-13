@@ -1,0 +1,147 @@
+# Backend Cursor Prompt — Super Admin Profile Edit Enhancements
+# (template PDF preview · editable prompt save · delete user)
+
+Copy everything below to the backend agent/developer.
+
+================================================================================
+GOAL
+================================================================================
+
+Extend Super Admin profile APIs so the FE split-pane editor can:
+
+  1. Preview another user’s resume template as PDF (LibreOffice) / DOCX bytes
+  2. Save an edited writing prompt from a textarea (not file-only)
+  3. Permanently delete a user profile/account
+
+FE client: src/lib/super-admin-api.ts
+  - fetchResumeTemplate()
+  - fetchResumeTemplatePreviewPdf(userId, templateId?)
+  - savePrompt(userId, content, fileName?)
+  - deleteUser(userId)
+  - existing PATCH /admin/users/:id (section saves)
+
+UI: /super-admin/profiles — each section has its own Save button.
+Temp console gate is UI-only — NOT auth for these APIs.
+
+Also see: docs/BACKEND_SUPER_ADMIN_PROFILES_CURSOR_PROMPT.txt (list/get/patch/assets).
+
+================================================================================
+AUTH
+================================================================================
+
+Same as other /admin/* routes:
+
+1. Authenticated session (Bearer / cookie)
+2. role/capability = super_admin
+3. 401 anonymous / 403 non-admin
+
+================================================================================
+ENDPOINT A — Template PDF preview
+================================================================================
+
+GET /admin/users/:id/resume-template/pdf
+
+Behavior:
+- Load that user’s stored resume DOCX
+- Convert DOCX → PDF with the same pipeline as
+  GET /auth/profile/resume-template/pdf (LibreOffice / existing helper)
+- Return application/pdf binary
+  OR JSON { "pdfBase64": "…", "fileName": "resume-template.pdf" }
+
+404 if user or template missing
+501 if PDF conversion not configured (FE falls back to DOCX/base64 preview)
+
+Optional fallback already tried by FE:
+  GET /resume/templates/:templateId/pdf
+(must authorize super_admin when called for another user’s templateId)
+
+Also ensure GET /admin/users/:id/resume-template still returns:
+  fileName, templateId, templateBase64 (base64 strongly preferred for FE fallback)
+
+================================================================================
+ENDPOINT B — Save prompt text (textarea)
+================================================================================
+
+Already supported path (preferred): include in PATCH /admin/users/:id
+
+multipart/form-data fields:
+  customPrompt     required text body
+  promptContent    optional alias of customPrompt
+  promptFileName   optional display name
+
+Behavior:
+- Persist prompt content for the target user (same store as prompt file upload)
+- Update promptFileName if provided
+- Response 200: full updated user object (or at least success + FE will GET /prompt)
+
+FE also calls GET /admin/users/:id/prompt after save to re-read content.
+
+If you prefer a dedicated route, also accept:
+  PUT /admin/users/:id/prompt
+  JSON { "content": "…", "fileName": "prompt.txt" }
+  → 200 { "content": "…", "fileName": "…" }
+
+(FE currently uses PATCH with customPrompt; dedicated PUT is optional.)
+
+================================================================================
+ENDPOINT C — Delete profile / user
+================================================================================
+
+DELETE /admin/users/:id
+
+Behavior:
+- Permanently delete the user account and associated profile assets:
+  avatar, resume template, prompt, listing URLs, onboarding flags
+- Decide product policy for resume archives:
+  RECOMMENDED v1: cascade-delete or orphan with profileId cleared —
+  document which. FE expects the user to disappear from GET /admin/users.
+- Must NOT allow deleting the last remaining super_admin (return 400/409)
+- Must NOT allow a super_admin to delete themselves if that would lock out ops
+  (optional; if allowed, document it)
+- 204 No Content or 200 { "ok": true, "id": "…" }
+- 404 if user missing
+- 403 if caller is not super_admin
+
+Fallback FE also tries once:
+  POST /admin/users/:id/delete
+(same auth + semantics)
+
+================================================================================
+SECTION PATCH REMINDER (already expected)
+================================================================================
+
+PATCH /admin/users/:id must accept partial multipart updates so FE can save
+one section at a time:
+
+  Identity:   firstName, lastName, avatar
+  Access:     resumeBuilderEnabled
+  Crawl:      listingUrls / listingUrl_*
+  Template:   resumeTemplate (.docx file)
+  Prompt:     customPrompt / promptFile / promptContent
+
+Do not require all fields on every PATCH.
+
+================================================================================
+ACCEPTANCE CHECKLIST
+================================================================================
+
+[ ] GET /admin/users/:id/resume-template returns templateId and/or templateBase64
+[ ] GET /admin/users/:id/resume-template/pdf returns PDF (or 501 with clear message)
+[ ] Super-admin can preview another user’s template in the FE modal
+[ ] PATCH with only customPrompt updates stored prompt; GET /prompt reflects it
+[ ] DELETE /admin/users/:id removes user from list endpoints
+[ ] Non-admin → 403; anonymous → 401
+[ ] Partial section PATCHes do not wipe unrelated fields
+[ ] Cannot delete last super_admin (or documented equivalent guard)
+
+================================================================================
+OUT OF SCOPE
+================================================================================
+
+- Soft-delete / recycle bin UI
+- Impersonation
+- Changing email / password from this screen
+
+================================================================================
+END
+================================================================================

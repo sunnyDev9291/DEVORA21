@@ -15,6 +15,11 @@ type ResumeTemplatePreviewButtonProps = {
   templateFile?: File | null;
   /** When set (and no pending local file), preview uses backend DOCX→PDF. */
   templateId?: string | null;
+  /**
+   * Optional override for PDF fetch (e.g. super-admin previewing another user’s template).
+   * When provided with a templateId and no pending local file, this is used instead of profileApi.
+   */
+  fetchPdf?: () => Promise<{ blob: Blob; fileName: string }>;
   className?: string;
   size?: "sm" | "md";
 };
@@ -30,6 +35,7 @@ export default function ResumeTemplatePreviewButton({
   templateBase64,
   templateFile,
   templateId,
+  fetchPdf,
   className = "",
   size = "md",
 }: ResumeTemplatePreviewButtonProps) {
@@ -49,7 +55,8 @@ export default function ResumeTemplatePreviewButton({
   const downloadName = resolveDownloadName(fileName);
   // A freshly picked File must never be replaced by the server's previously stored template PDF.
   const hasPendingLocalFile = Boolean(templateFile);
-  const canUseBackendPdf = Boolean(templateId?.trim()) && !hasPendingLocalFile;
+  const canUseBackendPdf =
+    (Boolean(templateId?.trim()) || Boolean(fetchPdf)) && !hasPendingLocalFile;
   const canPreview = Boolean(docxBlob || canUseBackendPdf);
   const usePdfPreview = canUseBackendPdf && Boolean(pdfBlob) && !preferDocxFallback;
   const sizeClass =
@@ -77,7 +84,9 @@ export default function ResumeTemplatePreviewButton({
     (async () => {
       setPdfLoading(true);
       try {
-        const pdf = await profileApi.fetchResumeTemplatePreviewPdf(templateId ?? undefined);
+        const pdf = fetchPdf
+          ? await fetchPdf()
+          : await profileApi.fetchResumeTemplatePreviewPdf(templateId ?? undefined);
         if (cancelled) return;
         setPdfBlob(pdf.blob);
         setPdfFileName(pdf.fileName);
@@ -98,7 +107,7 @@ export default function ResumeTemplatePreviewButton({
     return () => {
       cancelled = true;
     };
-  }, [open, templateId, docxBlob, hasPendingLocalFile, canUseBackendPdf]);
+  }, [open, templateId, docxBlob, hasPendingLocalFile, canUseBackendPdf, fetchPdf]);
 
   return (
     <>

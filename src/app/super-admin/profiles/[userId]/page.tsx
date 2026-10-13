@@ -21,7 +21,10 @@ export default function SuperAdminProfileDetailPage() {
           onLock={() => router.replace(AUTH_LINKS.superAdmin)}
         />
         {userId ? (
-          <SuperAdminProfileEditor userId={userId} />
+          <SuperAdminProfileEditor
+            userId={userId}
+            onDeleted={() => router.replace(`${AUTH_LINKS.superAdmin}/profiles`)}
+          />
         ) : (
           <p className={`${saMono} mt-8 text-xs text-red-300`}>Missing user id.</p>
         )}

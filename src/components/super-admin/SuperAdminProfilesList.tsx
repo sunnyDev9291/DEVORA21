@@ -195,7 +195,14 @@ export default function SuperAdminProfilesList() {
                 Editing · {displayName(selectedUser)}
               </p>
             ) : null}
-            <SuperAdminProfileEditor userId={selectedId} embedded />
+            <SuperAdminProfileEditor
+              userId={selectedId}
+              embedded
+              onDeleted={() => {
+                setSelectedId(null);
+                void load(page, q, null);
+              }}
+            />
           </div>
         ) : (
           <div
