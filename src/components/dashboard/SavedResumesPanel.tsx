@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Button from "@/components/ui/Button";
 import {
   fetchSavedResumeFile,
+  fetchSavedResumeJobDescription,
+  listSavedResumes,
   resolveArchiveFileName,
   type SavedResumeSearchFilters,
 } from "@/lib/saved-resumes-api";
@@ -325,7 +327,51 @@ function JobDescriptionModal({
   onClose: () => void;
   item: SavedResumeArchive | null;
 }) {
-  const description = item?.jobDescription?.trim() || "No job description was saved for this application.";
+  const [text, setText] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!open || !item?.id) {
+      setText("");
+      setError("");
+      setLoading(false);
+      return;
+    }
+
+    // Prefer already-loaded JD (legacy payloads / after prior fetch).
+    if (item.jobDescription?.trim()) {
+      setText(item.jobDescription);
+      setError("");
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+    setText("");
+    void fetchSavedResumeJobDescription(item.id)
+      .then((result) => {
+        if (cancelled) return;
+        setText(result.jobDescription);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError((err as Error).message || "Could not load job description.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, item?.id, item?.jobDescription]);
+
+  const description =
+    text.trim() ||
+    (loading ? "" : "No job description was saved for this application.");
 
   return (
     <Modal
@@ -340,14 +386,21 @@ function JobDescriptionModal({
             Job description
           </p>
           <CopyIconButton
-            text={item?.jobDescription ?? ""}
+            text={text}
             label="Copy job description"
             className="h-10 self-auto"
+            disabled={!text.trim()}
           />
         </div>
-        <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-200">
-          {description}
-        </div>
+        {loading ? (
+          <p className="text-sm text-slate-500 dark:text-slate-400">Loading job description…</p>
+        ) : error ? (
+          <p className="text-sm text-rose-600 dark:text-rose-300">{error}</p>
+        ) : (
+          <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-200">
+            {description}
+          </div>
+        )}
       </div>
     </Modal>
   );
@@ -385,7 +438,11 @@ function ApplicationRows({
           <tbody className={styles.tbody}>
             {items.map((item) => {
               const timeLabel = parseBidAt(item.bidAt)?.timeLabel ?? "—";
-              const hasDescription = Boolean(item.jobDescription?.trim());
+              const hasDescription =
+                item.hasJobDescription === true || Boolean(item.jobDescription?.trim());
+              const previewSnippet = item.jobDescription?.trim()
+                ? truncate(item.jobDescription)
+                : "View description";
 
               return (
                 <tr key={item.id} className={`group ${styles.rowHover}`}>
@@ -393,14 +450,18 @@ function ApplicationRows({
                   <td className={styles.company}>{item.companyName}</td>
                   <td className={styles.jobTitle}>{item.jobTitle}</td>
                   <td className={styles.description}>
-                    <button
-                      type="button"
-                      onClick={() => onJobDescription(item)}
-                      className={styles.descLink}
-                      title={hasDescription ? "View full job description" : undefined}
-                    >
-                      {hasDescription ? truncate(item.jobDescription) : "No description"}
-                    </button>
+                    {hasDescription ? (
+                      <button
+                        type="button"
+                        onClick={() => onJobDescription(item)}
+                        className={styles.descLink}
+                        title="View full job description"
+                      >
+                        {previewSnippet}
+                      </button>
+                    ) : (
+                      <span className="text-slate-400 dark:text-slate-500">No description</span>
+                    )}
                   </td>
                   <td className={styles.fileNameCell}>
                     <button
@@ -463,6 +524,9 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
 
   const [jobDescOpen, setJobDescOpen] = useState(false);
   const [jobDescItem, setJobDescItem] = useState<SavedResumeArchive | null>(null);
+  /** When JD text search is active, results come from the server (lean list has no JD bodies). */
+  const [jdServerItems, setJdServerItems] = useState<SavedResumeArchive[] | null>(null);
+  const [jdServerLoading, setJdServerLoading] = useState(false);
 
   const [downloadTarget, setDownloadTarget] = useState<SavedResumeArchive | null>(null);
   const [downloadDefaults, setDownloadDefaults] = useState<{ pdf: boolean; docx: boolean }>({
@@ -530,10 +594,45 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
     return () => window.removeEventListener(TODAYS_RESUME_COUNT_CHANGED_EVENT, onArchiveChanged);
   }, [loadItems]);
 
-  const visibleItems = useMemo(
-    () => filterSavedResumes(items, activeFilters),
-    [items, activeFilters]
-  );
+  useEffect(() => {
+    const jd = debouncedJd.trim();
+    if (!jd) {
+      setJdServerItems(null);
+      setJdServerLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setJdServerLoading(true);
+    void listSavedResumes({
+      company: debouncedCompany.trim() || undefined,
+      jobTitle: debouncedJobTitle.trim() || undefined,
+      jd,
+      dateFrom: dateFrom.trim() || undefined,
+      dateTo: dateTo.trim() || undefined,
+    })
+      .then((data) => {
+        if (!cancelled) setJdServerItems(sortByBidDate(data));
+      })
+      .catch(() => {
+        if (!cancelled) setJdServerItems([]);
+      })
+      .finally(() => {
+        if (!cancelled) setJdServerLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedJd, debouncedCompany, debouncedJobTitle, dateFrom, dateTo]);
+
+  const visibleItems = useMemo(() => {
+    if (debouncedJd.trim()) {
+      return jdServerItems ?? [];
+    }
+    // Client filter without JD (lean list has no JD bodies).
+    return filterSavedResumes(items, { ...activeFilters, jd: "" });
+  }, [items, activeFilters, debouncedJd, jdServerItems]);
 
   const yearGroups = useMemo(() => groupByYearMonthDay(visibleItems), [visibleItems]);
 
@@ -764,7 +863,7 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
               type="search"
               value={jdSearch}
               onChange={(e) => setJdSearch(e.target.value)}
-              placeholder="Search inside JD text…"
+              placeholder="Search JD on server…"
               className={styles.input}
             />
           </div>
@@ -785,11 +884,13 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
         </div>
       )}
 
-      {loading ? (
+      {loading || (Boolean(debouncedJd.trim()) && jdServerLoading) ? (
         <div className={`${styles.empty} mt-5`}>
           <span className="inline-flex items-center gap-2">
             <span className="h-4 w-4 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
-            Loading saved resumes…
+            {debouncedJd.trim() && jdServerLoading
+              ? "Searching job descriptions…"
+              : "Loading saved resumes…"}
           </span>
         </div>
       ) : yearGroups.length === 0 ? (

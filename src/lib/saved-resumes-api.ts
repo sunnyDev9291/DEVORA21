@@ -2,7 +2,11 @@ import { API_BASE_URL } from "@/lib/api-base-url";
 import { apiAuthFetch } from "@/lib/api-auth";
 import { RESUME_BUILDER_ACCESS_MESSAGE } from "@/lib/resume-access";
 import { getUserApiKey } from "@/lib/user-api-key";
-import type { SavedResumeArchive, SavedResumeListResponse } from "@/lib/saved-resumes-types";
+import type {
+  SavedResumeArchive,
+  SavedResumeJobDescriptionResponse,
+  SavedResumeListResponse,
+} from "@/lib/saved-resumes-types";
 
 export type SavedResumeSearchFilters = {
   company?: string;
@@ -61,6 +65,48 @@ function archivesAuthError(status: number, fallback: string): Error {
   return new Error(fallback);
 }
 
+function pickString(row: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = row[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function toBool(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") return value;
+  if (value === "true" || value === 1 || value === "1") return true;
+  if (value === "false" || value === 0 || value === "0") return false;
+  return undefined;
+}
+
+/**
+ * Normalize list rows and drop full JD text from memory.
+ * Prefer hasJobDescription from the API; fall back to whether JD was present.
+ */
+export function normalizeSavedResumeListItem(raw: unknown): SavedResumeArchive | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const id = pickString(row, "id", "_id", "archiveId");
+  if (!id) return null;
+
+  const jobDescriptionRaw = pickString(row, "jobDescription", "job_description", "jd");
+  const hasFlag = toBool(row.hasJobDescription ?? row.has_job_description ?? row.hasJd);
+  const hasJobDescription =
+    hasFlag !== undefined ? hasFlag : Boolean(jobDescriptionRaw);
+
+  return {
+    id,
+    bidAt: pickString(row, "bidAt", "bid_at", "createdAt", "created_at") || new Date(0).toISOString(),
+    jobTitle: pickString(row, "jobTitle", "job_title", "title"),
+    companyName: pickString(row, "companyName", "company_name", "company"),
+    hasJobDescription,
+    // Intentionally omit jobDescription on list items — fetch on demand.
+    resumeFileName: pickString(row, "resumeFileName", "resume_file_name", "fileName") || "resume.docx",
+    pdfFileName: pickString(row, "pdfFileName", "pdf_file_name") || undefined,
+  };
+}
+
 export async function listSavedResumes(filters: SavedResumeSearchFilters = {}): Promise<SavedResumeArchive[]> {
   const params = new URLSearchParams();
   const company = filters.company?.trim();
@@ -71,6 +117,9 @@ export async function listSavedResumes(filters: SavedResumeSearchFilters = {}): 
   if (company) params.set("company", company);
   if (jobTitle) params.set("jobTitle", jobTitle);
   if (jd) params.set("jd", jd);
+  // Ask backend for lean list (omit JD bodies) when supported.
+  params.set("includeJobDescription", "false");
+  params.set("fields", "lean");
   if (dateFrom) params.set("from", dateFrom);
   if (dateTo) params.set("to", dateTo);
 
@@ -83,6 +132,9 @@ export async function listSavedResumes(filters: SavedResumeSearchFilters = {}): 
   const data = (await res.json().catch(() => ({}))) as SavedResumeListResponse & {
     error?: string;
     message?: string;
+    items?: unknown[];
+    archives?: unknown[];
+    data?: unknown[];
   };
 
   if (!res.ok) {
@@ -92,7 +144,85 @@ export async function listSavedResumes(filters: SavedResumeSearchFilters = {}): 
     );
   }
 
-  return data.items ?? [];
+  const rawList = Array.isArray(data.items)
+    ? data.items
+    : Array.isArray(data.archives)
+      ? data.archives
+      : Array.isArray(data.data)
+        ? data.data
+        : [];
+
+  return rawList
+    .map(normalizeSavedResumeListItem)
+    .filter((item): item is SavedResumeArchive => Boolean(item));
+}
+
+/**
+ * Load full job description for one archive (on-demand when user opens JD).
+ * Prefers GET /resume/archives/:id/job-description; falls back to legacy full-item GET.
+ */
+export async function fetchSavedResumeJobDescription(
+  id: string
+): Promise<SavedResumeJobDescriptionResponse> {
+  const archiveId = id.trim();
+  if (!archiveId) throw new Error("Archive id is required.");
+
+  const candidates = [
+    `${API_BASE_URL}/resume/archives/${encodeURIComponent(archiveId)}/job-description`,
+    `${API_BASE_URL}/resume/archives/${encodeURIComponent(archiveId)}/jd`,
+    `${API_BASE_URL}/resume/archives/${encodeURIComponent(archiveId)}`,
+  ];
+
+  let lastError: Error | null = null;
+  for (const url of candidates) {
+    try {
+      const res = await apiAuthFetch(url, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
+      const data = (await res.json().catch(() => ({}))) as Record<string, unknown> & {
+        error?: string;
+        message?: string;
+      };
+
+      if (!res.ok) {
+        lastError = archivesAuthError(
+          res.status,
+          data.error || data.message || `Could not load job description (${res.status}).`
+        );
+        if (res.status === 404 || res.status === 501) continue;
+        throw lastError;
+      }
+
+      const nested =
+        data.archive && typeof data.archive === "object"
+          ? (data.archive as Record<string, unknown>)
+          : data.item && typeof data.item === "object"
+            ? (data.item as Record<string, unknown>)
+            : data;
+
+      const jobDescription = pickString(
+        nested,
+        "jobDescription",
+        "job_description",
+        "jd",
+        "description",
+        "content"
+      );
+
+      return {
+        id: pickString(nested, "id", "_id") || archiveId,
+        jobDescription,
+      };
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (err instanceof Error && /401|403|Authentication|Admin access/i.test(err.message)) {
+        throw err;
+      }
+    }
+  }
+
+  throw lastError ?? new Error("Could not load job description.");
 }
 
 export async function fetchSavedResumeFile(

@@ -91,7 +91,17 @@ export function filterSavedResumes(
   return items.filter((item) => {
     if (!matchesText(item.companyName, company)) return false;
     if (!matchesText(item.jobTitle, jobTitle)) return false;
-    if (!matchesText(item.jobDescription, jd)) return false;
+    // JD bodies are omitted from lean list payloads. Client-side JD match only
+    // works when jobDescription is present; otherwise the panel uses a server
+    // search (see SavedResumesPanel) when `jd` is set.
+    if (jd) {
+      if (item.jobDescription != null) {
+        if (!matchesText(item.jobDescription, jd)) return false;
+      } else {
+        // Cannot prove match without JD text — exclude from client-only filter.
+        return false;
+      }
+    }
 
     if (dateFrom || dateTo) {
       const dayKey = bidLocalDateKey(item.bidAt);

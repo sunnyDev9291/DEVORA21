@@ -3,7 +3,10 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
-import { listSavedResumes } from "@/lib/saved-resumes-api";
+import {
+  fetchSavedResumeJobDescription,
+  listSavedResumes,
+} from "@/lib/saved-resumes-api";
 import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
 import { formatEstDateTime } from "@/lib/format-est-datetime";
 
@@ -42,6 +45,7 @@ export default function CompanyPastApplications({
     text: string;
   } | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [jdBusyId, setJdBusyId] = useState<string | null>(null);
 
   useEffect(() => {
     const trimmed = companyName.trim();
@@ -90,6 +94,24 @@ export default function CompanyPastApplications({
   function openDownload(item: SavedResumeArchive) {
     setDownloadFeedback(null);
     setDownloadTarget(item);
+  }
+
+  async function handleUseJobDescription(item: SavedResumeArchive) {
+    if (!onUseJobDescription) return;
+    if (item.jobDescription?.trim()) {
+      onUseJobDescription(item);
+      return;
+    }
+    setJdBusyId(item.id);
+    setError("");
+    try {
+      const result = await fetchSavedResumeJobDescription(item.id);
+      onUseJobDescription({ ...item, jobDescription: result.jobDescription });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load job description.");
+    } finally {
+      setJdBusyId(null);
+    }
   }
 
   if (companyName.trim().length < MIN_QUERY_CHARS) return null;
@@ -165,14 +187,15 @@ export default function CompanyPastApplications({
                     ) : null}
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
-                    {onUseJobDescription && item.jobDescription?.trim() ? (
+                    {onUseJobDescription &&
+                    (item.hasJobDescription === true || Boolean(item.jobDescription?.trim())) ? (
                       <button
                         type="button"
-                        disabled={disabled}
-                        onClick={() => onUseJobDescription(item)}
+                        disabled={disabled || jdBusyId === item.id}
+                        onClick={() => void handleUseJobDescription(item)}
                         className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition-colors hover:border-orange-300 hover:text-orange-800 disabled:opacity-50 dark:border-white/10 dark:bg-transparent dark:text-slate-200 dark:hover:border-orange-400/40 dark:hover:text-orange-200"
                       >
-                        Use JD
+                        {jdBusyId === item.id ? "…" : "Use JD"}
                       </button>
                     ) : null}
                     <button

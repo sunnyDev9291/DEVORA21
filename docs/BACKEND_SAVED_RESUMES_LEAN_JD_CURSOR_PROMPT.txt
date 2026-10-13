@@ -1,0 +1,117 @@
+# Backend Cursor Prompt — Lean Saved Resumes List + On-Demand Job Description
+
+Copy everything below to the backend agent/developer.
+
+================================================================================
+GOAL
+================================================================================
+
+Speed up the profile **Saved Resumes** tab.
+
+Problem: GET /resume/archives currently returns full `jobDescription` for every
+row. JD text is large and dominates payload size / load time.
+
+FE change (already implemented):
+
+  - List no longer keeps/displays full JD from the list response
+  - Clicking “View description” / “Use JD” fetches JD for ONE archive
+  - JD text search uses query param `jd=` (server-side) because lean list has
+    no JD bodies to filter client-side
+
+Client: src/lib/saved-resumes-api.ts
+  - listSavedResumes() sends includeJobDescription=false&fields=lean
+  - fetchSavedResumeJobDescription(id)
+
+UI: Saved Resumes panel + Company past applications “Use JD”
+
+================================================================================
+AUTH
+================================================================================
+
+Same as existing /resume/archives* routes (signed-in user + resume builder access).
+Users may only access their own archives.
+
+================================================================================
+1) LEAN LIST — GET /resume/archives
+================================================================================
+
+When `includeJobDescription=false` OR `fields=lean` (FE sends both):
+
+DO NOT include full jobDescription / jd body in each item.
+
+Return instead:
+
+{
+  "items": [
+    {
+      "id": "archive-uuid",
+      "bidAt": "2026-10-13T18:00:00.000Z",
+      "jobTitle": "Senior Engineer",
+      "companyName": "Acme",
+      "resumeFileName": "Acme_Senior.docx",
+      "pdfFileName": "Acme_Senior.pdf",
+      "hasJobDescription": true
+    }
+  ]
+}
+
+Rules:
+
+  - hasJobDescription = true iff a non-empty JD is stored for that archive
+  - Omit jobDescription field entirely (preferred) or send ""
+  - Default (no lean flags) MAY keep current full payload for backward compat,
+    but lean mode must be the fast path for Saved Resumes tab
+
+Existing filters still work:
+
+  company, jobTitle, jd, from, to
+
+When `jd` is present: filter archives whose job_description ILIKE %jd%
+(server-side), still return LEAN rows (no JD body in list).
+
+================================================================================
+2) ON-DEMAND JD — GET /resume/archives/:id/job-description
+================================================================================
+
+Response 200:
+
+{
+  "id": "archive-uuid",
+  "jobDescription": "…full text…"
+}
+
+404 if archive missing or not owned by caller
+404/empty string if no JD stored
+
+Optional aliases FE already tries:
+
+  GET /resume/archives/:id/jd
+  GET /resume/archives/:id   (full item — last resort fallback)
+
+Prefer the dedicated job-description route so full-item GET can also stay lean.
+
+================================================================================
+PERFORMANCE
+================================================================================
+
+- List SELECT must not pull job_description CLOB/TEXT when lean
+- Index (user_id, bid_at DESC) for list
+- For jd= filter: use trigram/ILIKE on job_description only in that query path
+- Keep has_job_description as a boolean column OR
+  (job_description IS NOT NULL AND length(trim(job_description)) > 0)
+
+================================================================================
+ACCEPTANCE CHECKLIST
+================================================================================
+
+[ ] GET /resume/archives?fields=lean returns items WITHOUT jobDescription bodies
+[ ] Each lean item includes hasJobDescription boolean
+[ ] Payload size for users with many archives is much smaller
+[ ] GET /resume/archives/:id/job-description returns full JD for owner
+[ ] GET /resume/archives?jd=foo returns matching lean rows (server-side)
+[ ] Non-owner cannot read another user’s JD (403/404)
+[ ] DOCX/PDF download routes unchanged
+
+================================================================================
+END
+================================================================================
