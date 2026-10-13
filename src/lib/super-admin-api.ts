@@ -414,6 +414,74 @@ export const superAdminApi = {
     }
   },
 
+  /**
+   * Load a user’s avatar as a blob URL (works when the image requires auth cookies).
+   * Tries GET /admin/users/:id/avatar, then an authenticated GET of the known avatar URL.
+   */
+  async fetchAvatarObjectUrl(
+    userId: string,
+    avatarUrl?: string | null
+  ): Promise<string | null> {
+    const id = userId.trim();
+    const candidates: string[] = [`/admin/users/${encodeURIComponent(id)}/avatar`];
+    const direct = avatarUrl?.trim();
+    if (direct) {
+      if (direct.startsWith("data:") || direct.startsWith("blob:")) return direct;
+      if (/^https?:\/\//i.test(direct)) {
+        candidates.push(direct);
+      } else if (direct.startsWith("/")) {
+        candidates.push(direct);
+      }
+    }
+
+    for (const pathOrUrl of candidates) {
+      try {
+        const res = pathOrUrl.startsWith("http")
+          ? await apiAuthFetch(pathOrUrl, { method: "GET", headers: { Accept: "image/*,*/*" } })
+          : await adminFetch(pathOrUrl, { method: "GET", headers: { Accept: "image/*,*/*" } });
+        if (!res.ok) continue;
+        const contentType = res.headers.get("content-type") ?? "";
+        if (contentType.includes("application/json")) {
+          const data = await parseJson<{
+            avatar?: string;
+            avatarUrl?: string;
+            url?: string;
+            dataUrl?: string;
+          }>(res);
+          const nested =
+            data?.dataUrl?.trim() ||
+            data?.avatar?.trim() ||
+            data?.avatarUrl?.trim() ||
+            data?.url?.trim();
+          if (nested?.startsWith("data:")) return nested;
+          if (nested) {
+            // Recurse once on nested URL without looping forever
+            if (nested !== pathOrUrl && !nested.startsWith("data:")) {
+              const nestedRes = nested.startsWith("http")
+                ? await apiAuthFetch(nested, { method: "GET", headers: { Accept: "image/*,*/*" } })
+                : await adminFetch(
+                    nested.startsWith("/") ? nested : `/${nested}`,
+                    { method: "GET", headers: { Accept: "image/*,*/*" } }
+                  );
+              if (nestedRes.ok) {
+                const blob = await nestedRes.blob();
+                if (blob.size > 0) return URL.createObjectURL(blob);
+              }
+            }
+          }
+          continue;
+        }
+        const blob = await res.blob();
+        if (blob.size > 0 && (contentType.startsWith("image/") || contentType.includes("octet-stream") || !contentType)) {
+          return URL.createObjectURL(blob);
+        }
+      } catch {
+        // try next candidate
+      }
+    }
+    return direct && /^https?:\/\//i.test(direct) ? direct : null;
+  },
+
   /** Permanently delete a user profile/account. */
   async deleteUser(userId: string): Promise<void> {
     const id = userId.trim();

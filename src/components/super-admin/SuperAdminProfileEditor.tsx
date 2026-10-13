@@ -19,7 +19,11 @@ import {
 } from "@/lib/builtin-crawl-types";
 import { AUTH_LINKS } from "@/lib/constants";
 import { readPromptFile, validateDocxFile } from "@/lib/profile-file";
-import { resolveListingUrls, resolveUserNames } from "@/lib/user-profile";
+import {
+  resolveAvatarUrl,
+  resolveListingUrls,
+  resolveUserNames,
+} from "@/lib/user-profile";
 import { superAdminApi } from "@/lib/super-admin-api";
 import type { User } from "@/types/auth";
 import {
@@ -135,8 +139,19 @@ export default function SuperAdminProfileEditor({
     const names = resolveUserNames(next);
     setFirstName(names.firstName);
     setLastName(names.lastName);
-    setAvatarPreviewUrl(next.avatar?.trim() || "");
     setAvatarFile(null);
+
+    const resolved = resolveAvatarUrl(next) ?? "";
+    setAvatarPreviewUrl(resolved);
+    // Prefer an auth-fetched blob when the stored URL needs credentials.
+    if (resolved && !resolved.startsWith("data:") && !resolved.startsWith("blob:")) {
+      try {
+        const objectUrl = await superAdminApi.fetchAvatarObjectUrl(next.id, resolved);
+        if (objectUrl) setAvatarPreviewUrl(objectUrl);
+      } catch {
+        // keep resolved URL; UserAvatar falls back to initials on error
+      }
+    }
     setResumeTemplateFile(null);
     setResumeTemplateFileName(next.resumeTemplateFileName || "");
     setTemplateBase64(null);

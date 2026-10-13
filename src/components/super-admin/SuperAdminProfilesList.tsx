@@ -22,6 +22,15 @@ function displayName(user: AdminUserSummary): string {
   );
 }
 
+function sortUsersByName(users: AdminUserSummary[]): AdminUserSummary[] {
+  return [...users].sort((a, b) =>
+    displayName(a).localeCompare(displayName(b), undefined, {
+      sensitivity: "base",
+      numeric: true,
+    })
+  );
+}
+
 export default function SuperAdminProfilesList() {
   const [q, setQ] = useState("");
   const [draftQ, setDraftQ] = useState("");
@@ -43,14 +52,15 @@ export default function SuperAdminProfilesList() {
           page: nextPage,
           limit,
         });
-        setUsers(result.users);
+        const ordered = sortUsersByName(result.users);
+        setUsers(ordered);
         setTotal(result.total);
         setPage(result.page);
 
         const keep =
-          preferSelected && result.users.some((u) => u.id === preferSelected)
+          preferSelected && ordered.some((u) => u.id === preferSelected)
             ? preferSelected
-            : result.users[0]?.id ?? null;
+            : ordered[0]?.id ?? null;
         setSelectedId(keep);
       } catch (err) {
         setUsers([]);

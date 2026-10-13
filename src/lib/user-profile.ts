@@ -1,4 +1,5 @@
 import type { User } from "@/types/auth";
+import { API_BASE_URL } from "@/lib/api-base-url";
 import {
   parseListingUrlsPartial,
   type JobCrawlPlatform,
@@ -156,14 +157,26 @@ export function resolveUserNames(user: User, stored?: StoredUserProfile | null):
 
 
 
+/** Make relative / media avatar paths absolute against the API host. */
+export function absolutizeMediaUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+  if (
+    trimmed.startsWith("data:") ||
+    trimmed.startsWith("blob:") ||
+    /^https?:\/\//i.test(trimmed)
+  ) {
+    return trimmed;
+  }
+  if (trimmed.startsWith("//")) return `https:${trimmed}`;
+  const base = API_BASE_URL.replace(/\/$/, "");
+  return trimmed.startsWith("/") ? `${base}${trimmed}` : `${base}/${trimmed}`;
+}
+
 export function resolveAvatarUrl(user: User, stored?: StoredUserProfile | null): string | null {
-
   const direct = stored?.avatarUrl?.trim() || user.avatar?.trim();
-
-  if (direct) return direct;
-
-  return null;
-
+  if (!direct) return null;
+  return absolutizeMediaUrl(direct) || null;
 }
 
 

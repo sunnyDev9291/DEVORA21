@@ -1,6 +1,7 @@
 "use client";
 
-import { buildFallbackAvatarUrl, buildInitials } from "@/lib/user-profile";
+import { useEffect, useState } from "react";
+import { absolutizeMediaUrl, buildInitials } from "@/lib/user-profile";
 
 export interface UserAvatarProps {
   firstName: string;
@@ -26,20 +27,38 @@ export default function UserAvatar({
   className = "",
 }: UserAvatarProps) {
   const initials = buildInitials(firstName, lastName, email);
-  const src = avatarUrl?.trim() || buildFallbackAvatarUrl(firstName, lastName);
+  const resolved = avatarUrl?.trim() ? absolutizeMediaUrl(avatarUrl) : "";
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [resolved]);
+
+  const showImage = Boolean(resolved) && !failed;
+  const label = `${firstName} ${lastName}`.trim() || email || "User";
 
   return (
     <div
-      className={`relative shrink-0 overflow-hidden rounded-2xl ring-1 ring-blue-500/25 bg-orange-500/15 ${sizeClasses[size]} ${className}`}
+      className={`relative shrink-0 overflow-hidden rounded-2xl ring-1 ring-teal-500/20 bg-gradient-to-br from-teal-600 to-slate-800 ${sizeClasses[size]} ${className}`}
+      aria-label={label}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt={`${firstName} ${lastName}`.trim() || email}
-        className="h-full w-full object-cover"
-        referrerPolicy="no-referrer"
-      />
-      <span className="sr-only">{initials}</span>
+      {showImage ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={resolved}
+          alt={label}
+          className="h-full w-full object-cover"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <span
+          className="flex h-full w-full items-center justify-center font-semibold tracking-wide text-white"
+          aria-hidden
+        >
+          {initials}
+        </span>
+      )}
     </div>
   );
 }
