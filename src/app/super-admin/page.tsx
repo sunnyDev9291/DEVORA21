@@ -18,7 +18,7 @@ export default function SuperAdminPage() {
           onLock={() => router.replace(AUTH_LINKS.superAdmin)}
         />
 
-        <section className="mt-8 grid gap-4 sm:grid-cols-2">
+        <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div className="border border-[#1e2a36] bg-[#101820] p-5">
             <p className="font-[family-name:var(--font-sa-mono)] text-[10px] uppercase tracking-[0.18em] text-teal-400/70">
               Operator
@@ -44,6 +44,22 @@ export default function SuperAdminPage() {
             <p className="mt-1 font-[family-name:var(--font-sa-mono)] text-xs leading-relaxed text-[#6b7c8f]">
               List all users, open a profile, edit identity, crawl URLs, template, prompt, and resume
               builder access.
+            </p>
+          </Link>
+
+          <Link
+            href={`${AUTH_LINKS.superAdmin}/resumes`}
+            className="border border-teal-400/25 bg-[#101820] p-5 transition-colors hover:border-teal-300/45 hover:bg-teal-400/5"
+          >
+            <p className="font-[family-name:var(--font-sa-mono)] text-[10px] uppercase tracking-[0.18em] text-teal-400/70">
+              Module
+            </p>
+            <p className="mt-3 font-[family-name:var(--font-sa-display)] text-lg font-bold text-[#f4f7fb]">
+              Resume analytics
+            </p>
+            <p className="mt-1 font-[family-name:var(--font-sa-mono)] text-xs leading-relaxed text-[#6b7c8f]">
+              Platform KPIs, trends, search every archived resume, preview PDF, download DOCX/PDF, open
+              job descriptions.
             </p>
           </Link>
         </section>
