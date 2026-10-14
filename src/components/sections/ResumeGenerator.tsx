@@ -61,6 +61,39 @@ import { resolveWritingPrompt } from "@/lib/writing-prompt";
 import CompanyPastApplications from "@/components/sections/CompanyPastApplications";
 import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
 
+/** Dev/QA sample posting — fill via “test fill” beside Job description. */
+const TEST_JOB_FILL = {
+  companyName: "TEST Northwind Analytics",
+  jobTitle: "TEST Senior Full-Stack Engineer",
+  jobDescription: `TEST About the role
+We are looking for a Senior Full-Stack Engineer to build and improve our customer-facing web products. You will work closely with product, design, and backend teams to ship reliable features end to end.
+
+Responsibilities
+- Design, build, and maintain React/Next.js frontends and Node.js APIs
+- Own features from requirements through production, including testing and monitoring
+- Improve performance, accessibility, and developer experience across the stack
+- Collaborate in code reviews and help mentor teammates
+- Integrate third-party services (auth, payments, analytics) with clear error handling
+
+Requirements
+- 5+ years of professional software engineering experience
+- Strong TypeScript, React, and modern CSS
+- Experience with REST APIs, PostgreSQL, and cloud deployment
+- Comfortable debugging production issues and writing clear technical notes
+- Strong communication and ownership mindset
+
+Nice to have
+- Next.js App Router, Tailwind CSS, Redis, Docker
+- Experience with resume/document generation or file storage workflows
+- Familiarity with analytics dashboards and admin tooling
+
+Location
+Remote (US time zones preferred)
+
+Employment type
+Full-time`,
+} as const;
+
 /**
  * Prefer the template resolved by useUserProfileAssets (remote-synced).
  * Fall back to localStorage only when the hook has not provided a template yet
@@ -1261,9 +1294,32 @@ export default function ResumeGenerator({
           />
 
           <div>
-            <label htmlFor="jobDescription" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
-              Job description
-            </label>
+            <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+              <label
+                htmlFor="jobDescription"
+                className="block text-sm font-medium text-slate-700 dark:text-slate-300"
+              >
+                Job description
+              </label>
+              <button
+                type="button"
+                disabled={generating || applying || importingJob}
+                onClick={() => {
+                  setForm((current) => ({
+                    ...current,
+                    companyName: TEST_JOB_FILL.companyName,
+                    jobTitle: TEST_JOB_FILL.jobTitle,
+                    jobDescription: TEST_JOB_FILL.jobDescription,
+                  }));
+                  setError("");
+                  setJobFetchWarning("");
+                }}
+                className="rounded-lg border border-dashed border-orange-300 bg-orange-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-orange-800 transition-colors hover:border-orange-400 hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-200 dark:hover:bg-orange-500/15"
+                title="Fill TEST company, title, and job description"
+              >
+                test fill
+              </button>
+            </div>
             <div className="flex items-start gap-2">
               <textarea
                 id="jobDescription"
