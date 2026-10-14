@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  formatAppliedLabel,
   formatInterviewRoundLabel,
   resolveNextInterviewRound,
 } from "@/lib/saved-resumes-api";
@@ -38,20 +39,19 @@ export default function InterviewHistoryTimeline({
   if (compact) {
     return (
       <div className={`flex flex-col gap-1.5 ${className}`}>
-        {history.length === 0 ? (
-          <span className="text-[11px] text-slate-400 dark:text-slate-500">No rounds yet</span>
-        ) : (
-          <div className="flex flex-wrap gap-1">
-            {history.map((entry) => (
-              <span
-                key={`${entry.round}-${entry.downloadedAt}`}
-                className="inline-flex rounded-full border border-orange-200/80 bg-orange-50 px-2 py-0.5 text-[10px] font-medium text-orange-900 dark:border-orange-500/25 dark:bg-orange-500/10 dark:text-orange-100"
-              >
-                {formatInterviewRoundLabel(entry.round, entry.downloadedAt)}
-              </span>
-            ))}
-          </div>
-        )}
+        <div className="flex flex-wrap gap-1">
+          <span className="inline-flex rounded-full border border-orange-200/80 bg-orange-50 px-2 py-0.5 text-[10px] font-medium text-orange-900 dark:border-orange-500/25 dark:bg-orange-500/10 dark:text-orange-100">
+            {formatAppliedLabel(bidAt)}
+          </span>
+          {history.map((entry) => (
+            <span
+              key={`${entry.round}-${entry.downloadedAt}`}
+              className="inline-flex rounded-full border border-orange-200/80 bg-orange-50 px-2 py-0.5 text-[10px] font-medium text-orange-900 dark:border-orange-500/25 dark:bg-orange-500/10 dark:text-orange-100"
+            >
+              {formatInterviewRoundLabel(entry.round, entry.downloadedAt)}
+            </span>
+          ))}
+        </div>
         <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
           Next · Round {next}
         </span>
@@ -67,33 +67,29 @@ export default function InterviewHistoryTimeline({
           <span className="mt-1 w-px flex-1 bg-slate-200 dark:bg-white/10" />
         </div>
         <div className="min-w-0 pb-1">
-          <p className="text-xs font-semibold text-slate-900 dark:text-white">Bid / Applied</p>
+          <p className="text-xs font-semibold text-slate-900 dark:text-white">Applied</p>
           <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
             {formatBidDate(bidAt)}
           </p>
         </div>
       </li>
 
-      {history.map((entry, index) => {
-        const isLastCompleted = index === history.length - 1;
-        return (
-          <li key={`${entry.round}-${entry.downloadedAt}`} className="relative flex gap-3 pb-4">
-            <div className="flex flex-col items-center">
-              <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500 ring-4 ring-emerald-500/15" />
-              <span
-                className={`mt-1 w-px flex-1 ${
-                  isLastCompleted ? "bg-slate-200 dark:bg-white/10" : "bg-slate-200 dark:bg-white/10"
-                }`}
-              />
-            </div>
-            <div className="min-w-0 pb-1">
-              <p className="text-xs font-semibold text-slate-900 dark:text-white">
-                {formatInterviewRoundLabel(entry.round, entry.downloadedAt)}
-              </p>
-            </div>
-          </li>
-        );
-      })}
+      {history.map((entry) => (
+        <li key={`${entry.round}-${entry.downloadedAt}`} className="relative flex gap-3 pb-4">
+          <div className="flex flex-col items-center">
+            <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500 ring-4 ring-emerald-500/15" />
+            <span className="mt-1 w-px flex-1 bg-slate-200 dark:bg-white/10" />
+          </div>
+          <div className="min-w-0 pb-1">
+            <p className="text-xs font-semibold text-slate-900 dark:text-white">
+              Round {entry.round}
+            </p>
+            <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+              {formatBidDate(entry.downloadedAt)}
+            </p>
+          </div>
+        </li>
+      ))}
 
       <li className="relative flex gap-3">
         <div className="flex flex-col items-center">

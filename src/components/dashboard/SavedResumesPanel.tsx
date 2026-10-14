@@ -494,9 +494,7 @@ function ApplicationRows({
                         disabled={downloadingId === item.id}
                         onClick={() => onDownload(item)}
                       >
-                        {downloadingId === item.id
-                          ? "…"
-                          : `Download · R${item.nextInterviewRound ?? 1}`}
+                        {downloadingId === item.id ? "…" : "Download"}
                       </Button>
                     </div>
                   </td>
@@ -546,7 +544,7 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
   const [downloadTarget, setDownloadTarget] = useState<SavedResumeArchive | null>(null);
   const [downloadDefaults, setDownloadDefaults] = useState<{ pdf: boolean; docx: boolean }>({
     pdf: true,
-    docx: true,
+    docx: false,
   });
   const [downloadFeedback, setDownloadFeedback] = useState<{
     tone: "ok" | "err" | "pending";
@@ -786,7 +784,7 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
 
   function openDownloadChooser(
     item: SavedResumeArchive,
-    defaults: { pdf: boolean; docx: boolean } = { pdf: true, docx: true }
+    defaults: { pdf: boolean; docx: boolean } = { pdf: true, docx: false }
   ) {
     setDownloadFeedback(null);
     setDownloadDefaults(defaults);

@@ -63,7 +63,7 @@ export default function ResumeDownloadChooser({
   onClose,
   onFeedback,
   defaultIncludePdf = true,
-  defaultIncludeDocx = true,
+  defaultIncludeDocx = false,
   title = "Download resume",
   showInterviewOptions = false,
   bidAt = "",
@@ -103,15 +103,18 @@ export default function ResumeDownloadChooser({
   const trackingDone = tracking ? isRemoteDeliveryTerminal(tracking) : false;
   const nextRound = resolveNextInterviewRound(interviewHistory, nextInterviewRound);
 
-  const loadDevices = useCallback(async () => {
+  const loadDevices = useCallback(async (): Promise<RemoteDevice[]> => {
     setLoadingDevices(true);
     setError("");
     try {
       const items = await remoteDevicesApi.list();
-      setDevices(items.filter((d) => !d.revokedAt));
+      const active = items.filter((d) => !d.revokedAt);
+      setDevices(active);
+      return active;
     } catch (err) {
       setDevices([]);
       setError(getApiErrorMessage(err, "Could not load remote computers."));
+      return [];
     } finally {
       setLoadingDevices(false);
     }
@@ -145,7 +148,12 @@ export default function ResumeDownloadChooser({
     setSubmitting(false);
     setTracking(null);
     setPollError("");
-    void loadDevices();
+    void loadDevices().then((active) => {
+      // Prefer remote when the profile has at least one registered computer.
+      if (!pollStopRef.current && wasOpenRef.current && active.length > 0) {
+        setMode("remote");
+      }
+    });
   }, [open, defaultIncludePdf, defaultIncludeDocx, loadDevices]);
 
   useEffect(() => {
@@ -343,7 +351,7 @@ export default function ResumeDownloadChooser({
                   >
                     <span className="block text-sm font-semibold">Round {nextRound}</span>
                     <span className="mt-0.5 block text-[11px] opacity-70">
-                      Record this round, then download
+                      Record Round {nextRound}, then download
                     </span>
                   </button>
                   <button

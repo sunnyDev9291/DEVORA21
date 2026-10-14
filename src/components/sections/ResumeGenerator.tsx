@@ -1733,7 +1733,7 @@ export default function ResumeGenerator({
         archiveId={archiveId}
         onClose={() => setDownloadChooserOpen(false)}
         defaultIncludePdf
-        defaultIncludeDocx
+        defaultIncludeDocx={false}
         onFeedback={setDownloadFeedback}
       />
 

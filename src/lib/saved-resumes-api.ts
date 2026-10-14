@@ -118,17 +118,24 @@ export function resolveNextInterviewRound(
   return Math.max(...history.map((h) => h.round)) + 1;
 }
 
+function formatInterviewDateLabel(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso || "—";
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+/** Applied (bid) step — not an interview round. */
+export function formatAppliedLabel(bidAt: string): string {
+  return `Applied: ${formatInterviewDateLabel(bidAt)}`;
+}
+
 /** Format like "Round 1: Oct 14, 2026" */
 export function formatInterviewRoundLabel(round: number, downloadedAt: string): string {
-  const date = new Date(downloadedAt);
-  const dateLabel = Number.isNaN(date.getTime())
-    ? downloadedAt
-    : date.toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-  return `Round ${round}: ${dateLabel}`;
+  return `Round ${round}: ${formatInterviewDateLabel(downloadedAt)}`;
 }
 
 /**

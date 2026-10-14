@@ -225,7 +225,7 @@ export default function SuperAdminResumeBrowser() {
   const [downloadTarget, setDownloadTarget] = useState<AdminResumeRecord | null>(null);
   const [downloadDefaults, setDownloadDefaults] = useState<{ pdf: boolean; docx: boolean }>({
     pdf: true,
-    docx: true,
+    docx: false,
   });
   const [downloadFeedback, setDownloadFeedback] = useState<{
     tone: "ok" | "err" | "pending";
@@ -323,7 +323,7 @@ export default function SuperAdminResumeBrowser() {
 
   function openDownloadChooser(
     item: AdminResumeRecord,
-    defaults: { pdf: boolean; docx: boolean } = { pdf: true, docx: true }
+    defaults: { pdf: boolean; docx: boolean } = { pdf: true, docx: false }
   ) {
     setDownloadFeedback(null);
     setDownloadDefaults(defaults);
@@ -566,7 +566,7 @@ export default function SuperAdminResumeBrowser() {
                                 disabled={busyId !== null}
                                 onClick={() => openDownloadChooser(item)}
                               >
-                                Download · R{item.nextInterviewRound ?? 1}
+                                Download
                               </Button>
                             </div>
                           </td>

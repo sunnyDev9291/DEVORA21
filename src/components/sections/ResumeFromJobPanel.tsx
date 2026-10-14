@@ -587,7 +587,7 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
         archiveId={result?.id}
         onClose={() => setDownloadChooserOpen(false)}
         defaultIncludePdf
-        defaultIncludeDocx
+        defaultIncludeDocx={false}
         onFeedback={setDownloadFeedback}
       />
 
