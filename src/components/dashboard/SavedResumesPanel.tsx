@@ -23,7 +23,6 @@ import type {
 import { TODAYS_RESUME_COUNT_CHANGED_EVENT } from "@/lib/todays-resume-count";
 import { brand, ui } from "@/lib/ui-styles";
 import CopyIconButton from "@/components/ui/CopyIconButton";
-import InterviewHistoryTimeline from "@/components/ui/InterviewHistoryTimeline";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
 const Modal = dynamic(() => import("@/components/ui/Modal"), { ssr: false });
@@ -435,7 +434,6 @@ function ApplicationRows({
               <th className="px-4 py-3 font-medium">Company</th>
               <th className="px-4 py-3 font-medium">Job title</th>
               <th className="px-4 py-3 font-medium">Job description</th>
-              <th className="px-4 py-3 font-medium">Interview</th>
               <th className="px-4 py-3 font-medium">File name</th>
               <th className={styles.actionsHead}>Download</th>
             </tr>
@@ -467,14 +465,6 @@ function ApplicationRows({
                     ) : (
                       <span className="text-slate-400 dark:text-slate-500">No description</span>
                     )}
-                  </td>
-                  <td className="px-4 py-3 align-top min-w-[10rem]">
-                    <InterviewHistoryTimeline
-                      bidAt={item.bidAt}
-                      interviewHistory={item.interviewHistory}
-                      nextInterviewRound={item.nextInterviewRound}
-                      compact
-                    />
                   </td>
                   <td className={styles.fileNameCell}>
                     <button

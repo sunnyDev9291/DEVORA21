@@ -7,7 +7,6 @@ import SuperAdminProfileMultiSelect, {
 } from "@/components/super-admin/SuperAdminProfileMultiSelect";
 import Button from "@/components/ui/Button";
 import CopyIconButton from "@/components/ui/CopyIconButton";
-import InterviewHistoryTimeline from "@/components/ui/InterviewHistoryTimeline";
 import {
   saBtnGhost,
   saBtnPrimary,
@@ -370,7 +369,7 @@ export default function SuperAdminResumeBrowser() {
   }
 
   const totalPages = Math.max(1, Math.ceil(total / limit) || 1);
-  const colSpan = 8;
+  const colSpan = 7;
 
   return (
     <div className="space-y-4">
@@ -481,7 +480,6 @@ export default function SuperAdminResumeBrowser() {
                       />
                     </th>
                     <th className="px-4 py-3 font-medium">Job description</th>
-                    <th className="px-4 py-3 font-medium">Interview</th>
                     <th className="px-4 py-3 font-medium">File name</th>
                     <th className={rowStyles.actionsHead}>Download</th>
                   </tr>
@@ -537,14 +535,6 @@ export default function SuperAdminResumeBrowser() {
                                 {previewSnippet}
                               </button>
                             )}
-                          </td>
-                          <td className="px-4 py-3 align-top min-w-[10rem]">
-                            <InterviewHistoryTimeline
-                              bidAt={item.createdAt}
-                              interviewHistory={item.interviewHistory}
-                              nextInterviewRound={item.nextInterviewRound}
-                              compact
-                            />
                           </td>
                           <td className={rowStyles.fileNameCell}>
                             <button
