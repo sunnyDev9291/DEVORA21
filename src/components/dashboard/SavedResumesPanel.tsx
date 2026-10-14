@@ -1069,7 +1069,6 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
         defaultIncludePdf={downloadDefaults.pdf}
         defaultIncludeDocx={downloadDefaults.docx}
         showInterviewOptions
-        companyName={downloadTarget?.companyName}
         bidAt={downloadTarget?.bidAt}
         interviewHistory={downloadTarget?.interviewHistory}
         nextInterviewRound={downloadTarget?.nextInterviewRound}

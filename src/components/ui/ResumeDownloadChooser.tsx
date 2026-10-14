@@ -62,6 +62,11 @@ type ResumeDownloadChooserProps = {
   nextInterviewRound?: number;
   /** Company used by Find Other Progress (same-company peer search). */
   companyName?: string;
+  /**
+   * Super Admin only: show “Find Other Progress” (cross-profile company search).
+   * Omit on profile Saved Resumes / generate flows.
+   */
+  showFindOtherProgress?: boolean;
   /** Fired after a successful Round POST so the parent can update list state. */
   onInterviewHistoryUpdated?: (update: InterviewRoundRecordResponse) => void;
 };
@@ -79,6 +84,7 @@ export default function ResumeDownloadChooser({
   interviewHistory = [],
   nextInterviewRound,
   companyName = "",
+  showFindOtherProgress = false,
   onInterviewHistoryUpdated,
 }: ResumeDownloadChooserProps) {
   const [mode, setMode] = useState<ResumeDeliverMode>("here");
@@ -107,7 +113,7 @@ export default function ResumeDownloadChooser({
   const onFeedbackRef = useRef(onFeedback);
   onFeedbackRef.current = onFeedback;
 
-  const canFindOtherProgress = Boolean(companyName.trim());
+  const canFindOtherProgress = showFindOtherProgress && Boolean(companyName.trim());
 
   const activeDevices = useMemo(
     () => devices.filter((d) => !d.revokedAt),
