@@ -1,6 +1,11 @@
 import { API_BASE_URL } from "@/lib/api-base-url";
 import { apiAuthFetch } from "@/lib/api-auth";
 import { ApiError } from "@/lib/auth-api";
+import {
+  normalizeInterviewHistory,
+  resolveNextInterviewRound,
+} from "@/lib/saved-resumes-api";
+import type { InterviewHistoryEntry } from "@/lib/saved-resumes-types";
 
 export type AdminDatePreset =
   | "today"
@@ -52,6 +57,9 @@ export type AdminResumeRecord = {
   pdfFileName?: string;
   hasDocx?: boolean;
   hasPdf?: boolean;
+  /** Same archive interview history as profile Saved Resumes. */
+  interviewHistory?: InterviewHistoryEntry[];
+  nextInterviewRound?: number;
 };
 
 export type AdminResumeListResponse = {
@@ -247,6 +255,14 @@ function normalizeResumeRecord(raw: unknown): AdminResumeRecord | null {
       ? (row.profile as Record<string, unknown>)
       : null;
 
+  const interviewHistory = normalizeInterviewHistory(
+    row.interviewHistory ?? row.interview_history ?? row.interviews
+  );
+  const nextInterviewRound = resolveNextInterviewRound(
+    interviewHistory,
+    row.nextInterviewRound ?? row.next_interview_round
+  );
+
   return {
     id,
     profileId:
@@ -279,6 +295,8 @@ function normalizeResumeRecord(raw: unknown): AdminResumeRecord | null {
       typeof row.hasPdf === "boolean"
         ? row.hasPdf
         : Boolean(pickString(row, "pdfFileName", "pdf_file_name", "pdfStorageKey")),
+    interviewHistory,
+    nextInterviewRound,
   };
 }
 

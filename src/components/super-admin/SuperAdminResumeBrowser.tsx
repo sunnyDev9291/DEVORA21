@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import SuperAdminProfileMultiSelect, {
   type ProfileOption,
 } from "@/components/super-admin/SuperAdminProfileMultiSelect";
+import InterviewHistoryTimeline from "@/components/ui/InterviewHistoryTimeline";
 import {
   saBtnGhost,
   saBtnPrimary,
@@ -16,6 +17,7 @@ import {
 } from "@/components/super-admin/resume-dashboard-styles";
 import { getApiErrorMessage } from "@/lib/auth-api";
 import { downloadBlob } from "@/lib/saved-resumes-api";
+import type { InterviewRoundRecordResponse } from "@/lib/saved-resumes-types";
 import { superAdminApi } from "@/lib/super-admin-api";
 import {
   guessBrowserTimezone,
@@ -27,6 +29,10 @@ import {
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
 const Modal = dynamic(() => import("@/components/ui/Modal"), { ssr: false });
+const ResumeDownloadChooser = dynamic(
+  () => import("@/components/ui/ResumeDownloadChooser"),
+  { ssr: false }
+);
 
 type SortState = { sortBy: AdminResumeSortField; sortDir: AdminResumeSortDir };
 
@@ -71,8 +77,21 @@ export default function SuperAdminResumeBrowser() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [preview, setPreview] = useState<{ blob: Blob; fileName: string } | null>(null);
+  const [preview, setPreview] = useState<{
+    blob: Blob;
+    fileName: string;
+    archiveId: string;
+  } | null>(null);
   const [jdItem, setJdItem] = useState<AdminResumeRecord | null>(null);
+  const [downloadTarget, setDownloadTarget] = useState<AdminResumeRecord | null>(null);
+  const [downloadDefaults, setDownloadDefaults] = useState<{ pdf: boolean; docx: boolean }>({
+    pdf: true,
+    docx: true,
+  });
+  const [downloadFeedback, setDownloadFeedback] = useState<{
+    tone: "ok" | "err" | "pending";
+    text: string;
+  } | null>(null);
 
   const canSearch = query.trim().length > 0 && selectedIds.length > 0;
   const hasSearched = submittedQuery !== null;
@@ -164,21 +183,38 @@ export default function SuperAdminResumeBrowser() {
     void runSearch(submittedQuery, selectedIds, 1, next);
   }
 
-  async function handleDownload(item: AdminResumeRecord, format: "docx" | "pdf") {
-    setBusyId(`${item.id}-${format}`);
-    setError("");
-    try {
-      const preferred =
-        format === "pdf"
-          ? item.pdfFileName || item.resumeFileName.replace(/\.docx$/i, ".pdf")
-          : item.resumeFileName;
-      const { blob, fileName } = await superAdminResumesApi.fetchFile(item.id, format, preferred);
-      downloadBlob(blob, fileName);
-    } catch (err) {
-      setError(getApiErrorMessage(err, `Could not download ${format.toUpperCase()}.`));
-    } finally {
-      setBusyId(null);
-    }
+  function openDownloadChooser(
+    item: AdminResumeRecord,
+    defaults: { pdf: boolean; docx: boolean } = { pdf: true, docx: true }
+  ) {
+    setDownloadFeedback(null);
+    setDownloadDefaults(defaults);
+    setDownloadTarget(item);
+  }
+
+  function patchInterviewHistory(update: InterviewRoundRecordResponse) {
+    setItems((current) =>
+      current.map((row) =>
+        row.id === update.id
+          ? {
+              ...row,
+              createdAt: update.bidAt || row.createdAt,
+              interviewHistory: update.interviewHistory,
+              nextInterviewRound: update.nextInterviewRound,
+            }
+          : row
+      )
+    );
+    setDownloadTarget((current) =>
+      current && current.id === update.id
+        ? {
+            ...current,
+            createdAt: update.bidAt || current.createdAt,
+            interviewHistory: update.interviewHistory,
+            nextInterviewRound: update.nextInterviewRound,
+          }
+        : current
+    );
   }
 
   async function handlePreview(item: AdminResumeRecord) {
@@ -187,7 +223,7 @@ export default function SuperAdminResumeBrowser() {
     try {
       const preferred = item.pdfFileName || item.resumeFileName.replace(/\.docx$/i, ".pdf");
       const { blob, fileName } = await superAdminResumesApi.fetchFile(item.id, "pdf", preferred);
-      setPreview({ blob, fileName });
+      setPreview({ blob, fileName, archiveId: item.id });
     } catch (err) {
       setError(getApiErrorMessage(err, "Could not preview PDF."));
     } finally {
@@ -310,19 +346,20 @@ export default function SuperAdminResumeBrowser() {
                     />
                   </th>
                   <th className="px-3 py-3 font-medium">File</th>
+                  <th className="px-3 py-3 font-medium">Interview</th>
                   <th className="px-3 py-3 font-medium text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-10 text-center text-slate-500">
+                    <td colSpan={7} className="px-3 py-10 text-center text-slate-500">
                       Searching…
                     </td>
                   </tr>
                 ) : items.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-10 text-center text-slate-500">
+                    <td colSpan={7} className="px-3 py-10 text-center text-slate-500">
                       No resumes matched “{submittedQuery}”.
                     </td>
                   </tr>
@@ -353,6 +390,14 @@ export default function SuperAdminResumeBrowser() {
                       >
                         {item.resumeFileName || "—"}
                       </td>
+                      <td className="px-3 py-3 align-top min-w-[10rem]">
+                        <InterviewHistoryTimeline
+                          bidAt={item.createdAt}
+                          interviewHistory={item.interviewHistory}
+                          nextInterviewRound={item.nextInterviewRound}
+                          compact
+                        />
+                      </td>
                       <td className="px-3 py-3">
                         <div className="flex flex-wrap justify-end gap-1.5">
                           <button
@@ -361,27 +406,19 @@ export default function SuperAdminResumeBrowser() {
                             disabled={busyId !== null}
                             onClick={() => void handlePreview(item)}
                           >
-                            {busyId === `${item.id}-preview` ? "…" : "PDF"}
-                          </button>
-                          <button
-                            type="button"
-                            className={`${saBtnGhost} h-8 px-2 text-[10px]`}
-                            disabled={busyId !== null}
-                            onClick={() => void handleDownload(item, "docx")}
-                          >
-                            {busyId === `${item.id}-docx` ? "…" : "DOCX"}
-                          </button>
-                          <button
-                            type="button"
-                            className={`${saBtnGhost} h-8 px-2 text-[10px]`}
-                            disabled={busyId !== null}
-                            onClick={() => void handleDownload(item, "pdf")}
-                          >
-                            {busyId === `${item.id}-pdf` ? "…" : "DL PDF"}
+                            {busyId === `${item.id}-preview` ? "…" : "Preview"}
                           </button>
                           <button
                             type="button"
                             className={`${saBtnPrimary} h-8 px-2 text-[10px]`}
+                            disabled={busyId !== null}
+                            onClick={() => openDownloadChooser(item)}
+                          >
+                            Download · R{item.nextInterviewRound ?? 1}
+                          </button>
+                          <button
+                            type="button"
+                            className={`${saBtnGhost} h-8 px-2 text-[10px]`}
                             onClick={() => setJdItem(item)}
                           >
                             JD
@@ -394,6 +431,20 @@ export default function SuperAdminResumeBrowser() {
               </tbody>
             </table>
           </div>
+
+          {downloadFeedback ? (
+            <p
+              className={`${saMono} text-[11px] ${
+                downloadFeedback.tone === "ok"
+                  ? "text-emerald-700"
+                  : downloadFeedback.tone === "pending"
+                    ? "text-amber-700"
+                    : "text-rose-700"
+              }`}
+            >
+              {downloadFeedback.text}
+            </p>
+          ) : null}
 
           <div
             className={`flex flex-wrap items-center justify-between gap-3 ${saMono} text-[11px] text-slate-500`}
@@ -431,7 +482,15 @@ export default function SuperAdminResumeBrowser() {
           title={preview.fileName}
           fileName={preview.fileName}
           blob={preview.blob}
-          onDownload={() => downloadBlob(preview.blob, preview.fileName)}
+          onDownload={() => {
+            const match = items.find((row) => row.id === preview.archiveId);
+            setPreview(null);
+            if (match) {
+              openDownloadChooser(match, { pdf: true, docx: false });
+              return;
+            }
+            downloadBlob(preview.blob, preview.fileName);
+          }}
         />
       ) : null}
 
@@ -452,6 +511,23 @@ export default function SuperAdminResumeBrowser() {
           </div>
         </Modal>
       ) : null}
+
+      <ResumeDownloadChooser
+        open={Boolean(downloadTarget)}
+        archiveId={downloadTarget?.id}
+        onClose={() => setDownloadTarget(null)}
+        defaultIncludePdf={downloadDefaults.pdf}
+        defaultIncludeDocx={downloadDefaults.docx}
+        showInterviewOptions
+        bidAt={downloadTarget?.createdAt}
+        interviewHistory={downloadTarget?.interviewHistory}
+        nextInterviewRound={downloadTarget?.nextInterviewRound}
+        onInterviewHistoryUpdated={patchInterviewHistory}
+        onFeedback={(feedback) => {
+          setDownloadFeedback(feedback);
+          if (feedback.tone === "err") setError(feedback.text);
+        }}
+      />
     </div>
   );
 }
