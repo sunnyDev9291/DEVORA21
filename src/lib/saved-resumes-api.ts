@@ -5,6 +5,8 @@ import { getUserApiKey } from "@/lib/user-api-key";
 import type {
   InterviewHistoryEntry,
   InterviewRoundRecordResponse,
+  OtherInterviewProgressItem,
+  OtherInterviewProgressResponse,
   SavedResumeArchive,
   SavedResumeJobDescriptionResponse,
   SavedResumeListResponse,
@@ -439,6 +441,136 @@ export async function fetchInterviewHistory(id: string): Promise<{
       data.nextInterviewRound ?? data.next_interview_round
     ),
   };
+}
+
+function normalizeOtherProgressItem(raw: unknown): OtherInterviewProgressItem | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const id = pickString(row, "id", "_id", "archiveId");
+  if (!id) return null;
+
+  const profile =
+    row.profile && typeof row.profile === "object"
+      ? (row.profile as Record<string, unknown>)
+      : null;
+
+  const interviewHistory = normalizeInterviewHistory(
+    row.interviewHistory ?? row.interview_history ?? row.interviews
+  );
+  // Only surfaces that already completed at least Round 1.
+  if (!interviewHistory.some((entry) => entry.round >= 1)) return null;
+
+  return {
+    id,
+    profileId:
+      pickString(row, "profileId", "userId", "user_id") ||
+      pickString(profile ?? {}, "id", "_id") ||
+      undefined,
+    profileName:
+      pickString(row, "profileName", "userName", "fullName", "name") ||
+      pickString(profile ?? {}, "name", "fullName") ||
+      undefined,
+    profileEmail:
+      pickString(row, "profileEmail", "userEmail", "email") ||
+      pickString(profile ?? {}, "email") ||
+      undefined,
+    jobTitle: pickString(row, "jobTitle", "job_title", "title") || "Untitled role",
+    companyName: pickString(row, "companyName", "company_name", "company"),
+    bidAt:
+      pickString(row, "bidAt", "bid_at", "createdAt", "created_at") ||
+      new Date(0).toISOString(),
+    interviewHistory,
+    nextInterviewRound: resolveNextInterviewRound(
+      interviewHistory,
+      row.nextInterviewRound ?? row.next_interview_round
+    ),
+  };
+}
+
+/**
+ * Find other profiles’ archives at the same company that already completed Round 1+.
+ * Read-only. Prefers admin route; falls back to resume archives peer-progress.
+ */
+export async function findOtherInterviewProgress(options: {
+  companyName: string;
+  excludeArchiveId?: string;
+}): Promise<OtherInterviewProgressResponse> {
+  const company = options.companyName.trim();
+  if (!company) throw new Error("Company name is required.");
+
+  const params = new URLSearchParams();
+  params.set("company", company);
+  params.set("companyName", company);
+  params.set("minCompletedRound", "1");
+  params.set("minRound", "1");
+  const exclude = options.excludeArchiveId?.trim();
+  if (exclude) {
+    params.set("excludeId", exclude);
+    params.set("excludeArchiveId", exclude);
+  }
+
+  const candidates = [
+    `${API_BASE_URL}/admin/resumes/other-progress?${params}`,
+    `${API_BASE_URL}/resume/archives/other-progress?${params}`,
+    `${API_BASE_URL}/resume/archives/peer-progress?${params}`,
+  ];
+
+  let lastError: Error | null = null;
+  for (const url of candidates) {
+    try {
+      const res = await apiAuthFetch(url, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
+      const data = (await res.json().catch(() => ({}))) as Record<string, unknown> & {
+        error?: string;
+        message?: string;
+      };
+
+      if (!res.ok) {
+        lastError = archivesAuthError(
+          res.status,
+          data.error || data.message || `Could not find other progress (${res.status}).`
+        );
+        if (res.status === 404 || res.status === 501) continue;
+        // 403 on admin route → try next (non-admin) candidate
+        if (res.status === 403) continue;
+        throw lastError;
+      }
+
+      const rawItems = Array.isArray(data.items)
+        ? data.items
+        : Array.isArray(data.archives)
+          ? data.archives
+          : Array.isArray(data.results)
+            ? data.results
+            : [];
+
+      const items: OtherInterviewProgressItem[] = [];
+      for (const raw of rawItems) {
+        const item = normalizeOtherProgressItem(raw);
+        if (!item) continue;
+        if (exclude && item.id === exclude) continue;
+        items.push(item);
+      }
+
+      items.sort((a, b) => {
+        const aMax = Math.max(0, ...a.interviewHistory.map((e) => e.round));
+        const bMax = Math.max(0, ...b.interviewHistory.map((e) => e.round));
+        if (bMax !== aMax) return bMax - aMax;
+        return (b.bidAt || "").localeCompare(a.bidAt || "");
+      });
+
+      return {
+        items,
+        companyName: pickString(data, "companyName", "company") || company,
+      };
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+    }
+  }
+
+  throw lastError ?? new Error("Could not find other interview progress.");
 }
 
 export async function fetchSavedResumeFile(

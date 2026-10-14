@@ -1,0 +1,189 @@
+# Backend Cursor Prompt — Find Other Interview Progress (Same Company)
+
+Copy everything below to the backend agent/developer.
+
+================================================================================
+GOAL
+================================================================================
+
+In the resume **Download** dialog, FE added a read-only control:
+
+  “Find Other Progress”
+
+When clicked, it searches **across all profiles** for other resume archives at the
+**same company** that already completed **at least Round 1** in interview history.
+
+Show profile name, job title (resume title), and interview timeline (Applied +
+completed rounds with dates). Do **not** change any interview history or download
+behavior — this is discovery only.
+
+FE (already implemented):
+
+  Client: src/lib/saved-resumes-api.ts → findOtherInterviewProgress()
+  UI: ResumeDownloadChooser → OtherInterviewProgressPanel
+
+FE tries these URLs in order (first success wins):
+
+  1) GET /admin/resumes/other-progress?...
+  2) GET /resume/archives/other-progress?...
+  3) GET /resume/archives/peer-progress?...   (alias)
+
+Implement at least (1) for Super Admin. Prefer also (2) with the same auth rules
+so profile Saved Resumes can use it when the caller is allowed.
+
+================================================================================
+AUTH
+================================================================================
+
+Cross-profile company search is sensitive.
+
+Required:
+
+  - Authenticated Super Admin → full search across all profiles
+
+Optional (product choice):
+
+  - Elevated staff role with same permission
+  - OR allow any signed-in user only if product explicitly wants peer visibility
+
+Do NOT return archives the caller is not allowed to see.
+
+If caller lacks permission → 403 with a clear message
+(FE will show it in the panel).
+
+================================================================================
+ENDPOINT
+================================================================================
+
+GET /admin/resumes/other-progress
+
+Query params (FE sends several aliases — accept any):
+
+  company | companyName     required — company string to match
+  excludeId | excludeArchiveId   optional — current archive id to omit
+  minCompletedRound | minRound   optional — default 1
+
+Also acceptable twin for non-admin elevation path:
+
+  GET /resume/archives/other-progress
+  (same query + response)
+
+================================================================================
+MATCHING RULES
+================================================================================
+
+1. Normalize company comparison (recommended):
+   - trim
+   - case-insensitive
+   - collapse internal whitespace
+   Exact match after normalize is enough for v1.
+   Optional later: fuzzy / alias matching.
+
+2. Exclude:
+   - archive whose id === excludeId (the one open in the dialog)
+   - optionally exclude archives with empty company
+
+3. Interview filter (required):
+   - Include only archives where interviewHistory contains at least one entry
+     with round >= minCompletedRound (default 1)
+   - “Applied” alone (no completed rounds) → EXCLUDE
+
+4. Scope:
+   - All profiles (users) the Super Admin can access
+   - Same company across different job titles is intentional
+     (FE shows each jobTitle separately)
+
+5. Read-only:
+   - GET only
+   - Must not mutate interviewHistory, bidAt, or files
+
+================================================================================
+RESPONSE
+================================================================================
+
+{
+  "companyName": "Sky Systems, Inc. (SkySys)",
+  "items": [
+    {
+      "id": "archive-uuid",
+      "profileId": "user-uuid",
+      "profileName": "Joao Teles",
+      "profileEmail": "joao@example.com",
+      "jobTitle": "Staff Software Engineer",
+      "companyName": "Sky Systems, Inc. (SkySys)",
+      "bidAt": "2026-10-14T18:00:00.000Z",
+      "interviewHistory": [
+        { "round": 1, "downloadedAt": "2026-10-14T19:00:00.000Z" },
+        { "round": 2, "downloadedAt": "2026-10-15T15:00:00.000Z" }
+      ],
+      "nextInterviewRound": 3
+    }
+  ]
+}
+
+Aliases FE accepts:
+
+  items | archives | results
+  interview_history, next_interview_round, bid_at, company_name, job_title
+  nested profile: { id, name, email }
+
+Empty result (valid):
+
+{
+  "companyName": "Acme",
+  "items": []
+}
+
+FE shows: “No other interview progress found”
+
+Sort (recommended):
+
+  - Highest completed round first
+  - Then newest bidAt
+
+Limit:
+
+  - Cap at e.g. 50 items for v1 (document in response if truncated)
+
+================================================================================
+PERFORMANCE
+================================================================================
+
+  - Filter by company first (indexed)
+  - Then filter interviewHistory length / max round in app or SQL JSON
+  - Avoid returning full jobDescription bodies
+  - Prefer lean fields only (as above)
+
+Suggested index (Postgres example):
+
+  CREATE INDEX IF NOT EXISTS resume_archives_company_lower
+    ON resume_archives (lower(trim(company_name)));
+
+================================================================================
+SECURITY
+================================================================================
+
+  - Super Admin (or elevated) only for cross-profile
+  - Do not leak remote-device secrets or file URLs here
+  - Audit optional: adminId, company, resultCount, timestamp
+
+================================================================================
+ACCEPTANCE CHECKLIST
+================================================================================
+
+[ ] Super Admin opens Download on archive at company X, clicks Find Other Progress
+[ ] Returns other profiles’ archives at company X with Round 1+ only
+[ ] Current archive (excludeId) is not in the list
+[ ] Archives with only Applied (no rounds) are excluded
+[ ] Response includes profileName, jobTitle, interviewHistory with dates
+[ ] Empty company match → items: [] (not 404)
+[ ] Non–super-admin without permission → 403
+[ ] Endpoint is read-only (no history mutations)
+
+================================================================================
+OUT OF SCOPE
+================================================================================
+
+  - FE timeline / Remove / Round-Other selection (already shipped)
+  - Downloading peer archives from this panel
+  - Fuzzy company alias database (nice-to-have later)

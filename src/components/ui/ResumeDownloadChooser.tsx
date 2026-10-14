@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Button from "@/components/ui/Button";
 import InterviewHistoryTimeline from "@/components/ui/InterviewHistoryTimeline";
+import OtherInterviewProgressPanel from "@/components/ui/OtherInterviewProgressPanel";
 import { AUTH_LINKS } from "@/lib/constants";
 import { ApiError, getApiErrorMessage } from "@/lib/auth-api";
 import {
@@ -20,12 +21,14 @@ import {
 } from "@/lib/remote-devices-api";
 import {
   deleteInterviewRound,
+  findOtherInterviewProgress,
   recordInterviewRound,
   resolveNextInterviewRound,
 } from "@/lib/saved-resumes-api";
 import type {
   InterviewHistoryEntry,
   InterviewRoundRecordResponse,
+  OtherInterviewProgressItem,
 } from "@/lib/saved-resumes-types";
 
 const Modal = dynamic(() => import("@/components/ui/Modal"), { ssr: false });
@@ -57,6 +60,8 @@ type ResumeDownloadChooserProps = {
   bidAt?: string;
   interviewHistory?: InterviewHistoryEntry[];
   nextInterviewRound?: number;
+  /** Company used by Find Other Progress (same-company peer search). */
+  companyName?: string;
   /** Fired after a successful Round POST so the parent can update list state. */
   onInterviewHistoryUpdated?: (update: InterviewRoundRecordResponse) => void;
 };
@@ -73,6 +78,7 @@ export default function ResumeDownloadChooser({
   bidAt = "",
   interviewHistory = [],
   nextInterviewRound,
+  companyName = "",
   onInterviewHistoryUpdated,
 }: ResumeDownloadChooserProps) {
   const [mode, setMode] = useState<ResumeDeliverMode>("here");
@@ -88,11 +94,20 @@ export default function ResumeDownloadChooser({
 
   const [tracking, setTracking] = useState<RemoteDelivery | null>(null);
   const [pollError, setPollError] = useState("");
+  const [otherProgressOpen, setOtherProgressOpen] = useState(false);
+  const [otherProgressLoading, setOtherProgressLoading] = useState(false);
+  const [otherProgressError, setOtherProgressError] = useState("");
+  const [otherProgressItems, setOtherProgressItems] = useState<OtherInterviewProgressItem[]>(
+    []
+  );
+  const [otherProgressCompany, setOtherProgressCompany] = useState("");
   const pollStopRef = useRef(false);
   const wasOpenRef = useRef(false);
   const lastFeedbackRef = useRef<ResumeDownloadFeedback | null>(null);
   const onFeedbackRef = useRef(onFeedback);
   onFeedbackRef.current = onFeedback;
+
+  const canFindOtherProgress = Boolean(companyName.trim());
 
   const activeDevices = useMemo(
     () => devices.filter((d) => !d.revokedAt),
@@ -138,6 +153,11 @@ export default function ResumeDownloadChooser({
       setPollError("");
       setSubmitting(false);
       setError("");
+      setOtherProgressOpen(false);
+      setOtherProgressLoading(false);
+      setOtherProgressError("");
+      setOtherProgressItems([]);
+      setOtherProgressCompany("");
       return;
     }
 
@@ -154,6 +174,11 @@ export default function ResumeDownloadChooser({
     setDeletingRound(null);
     setTracking(null);
     setPollError("");
+    setOtherProgressOpen(false);
+    setOtherProgressLoading(false);
+    setOtherProgressError("");
+    setOtherProgressItems([]);
+    setOtherProgressCompany("");
     void loadDevices().then((active) => {
       // Prefer remote when the profile has at least one registered computer.
       if (!pollStopRef.current && wasOpenRef.current && active.length > 0) {
@@ -242,6 +267,32 @@ export default function ResumeDownloadChooser({
   function handleClose() {
     pollStopRef.current = true;
     onClose();
+  }
+
+  async function handleFindOtherProgress() {
+    const company = companyName.trim();
+    if (!company || otherProgressLoading || submitting || tracking) return;
+
+    setOtherProgressOpen(true);
+    setOtherProgressLoading(true);
+    setOtherProgressError("");
+    setOtherProgressItems([]);
+    setOtherProgressCompany(company);
+
+    try {
+      const result = await findOtherInterviewProgress({
+        companyName: company,
+        excludeArchiveId: archiveId?.trim() || undefined,
+      });
+      setOtherProgressItems(result.items);
+      setOtherProgressCompany(result.companyName || company);
+    } catch (err) {
+      setOtherProgressError(
+        getApiErrorMessage(err, "Could not find other interview progress.")
+      );
+    } finally {
+      setOtherProgressLoading(false);
+    }
   }
 
   async function handleDeleteRound(round: number) {
@@ -349,7 +400,13 @@ export default function ResumeDownloadChooser({
   }
 
   return (
-    <Modal open={open} onClose={handleClose} title={title} className="max-w-lg" priority>
+    <Modal
+      open={open}
+      onClose={handleClose}
+      title={otherProgressOpen ? "Other interview progress" : title}
+      className={otherProgressOpen ? "max-w-xl" : "max-w-lg"}
+      priority
+    >
       <div className="space-y-5 px-6 py-5">
         {tracking && trackingUi ? (
           <RemoteDeliveryStatusPanel
@@ -358,6 +415,17 @@ export default function ResumeDownloadChooser({
             pollError={pollError}
             onDone={handleClose}
             onClose={handleClose}
+          />
+        ) : otherProgressOpen ? (
+          <OtherInterviewProgressPanel
+            companyName={otherProgressCompany || companyName}
+            loading={otherProgressLoading}
+            error={otherProgressError}
+            items={otherProgressItems}
+            onBack={() => {
+              setOtherProgressOpen(false);
+              setOtherProgressError("");
+            }}
           />
         ) : (
           <>
@@ -577,6 +645,24 @@ export default function ResumeDownloadChooser({
                 Cancel
               </Button>
             </div>
+
+            {canFindOtherProgress ? (
+              <div className="border-t border-slate-200 pt-4 dark:border-white/10">
+                <button
+                  type="button"
+                  disabled={submitting || deletingRound !== null || otherProgressLoading}
+                  onClick={() => void handleFindOtherProgress()}
+                  className="w-full rounded-xl border border-orange-200/80 bg-gradient-to-br from-white via-orange-50/50 to-amber-50/40 px-4 py-3 text-left transition hover:border-orange-300 hover:from-orange-50/80 disabled:cursor-not-allowed disabled:opacity-50 dark:border-orange-500/20 dark:from-warm-950/50 dark:via-orange-950/20 dark:to-warm-950/40 dark:hover:border-orange-400/35"
+                >
+                  <span className="block text-sm font-semibold text-stone-900 dark:text-white">
+                    Find Other Progress
+                  </span>
+                  <span className="mt-0.5 block text-[11px] text-stone-500 dark:text-stone-400">
+                    See other profiles at {companyName.trim()} that already reached Round 1+
+                  </span>
+                </button>
+              </div>
+            ) : null}
           </>
         )}
       </div>

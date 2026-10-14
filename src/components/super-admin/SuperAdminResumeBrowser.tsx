@@ -644,6 +644,7 @@ export default function SuperAdminResumeBrowser() {
         defaultIncludePdf={downloadDefaults.pdf}
         defaultIncludeDocx={downloadDefaults.docx}
         showInterviewOptions
+        companyName={downloadTarget?.companyName}
         bidAt={downloadTarget?.createdAt}
         interviewHistory={downloadTarget?.interviewHistory}
         nextInterviewRound={downloadTarget?.nextInterviewRound}

@@ -259,6 +259,7 @@ export default function CompanyPastApplications({
         archiveId={downloadTarget?.id}
         onClose={() => setDownloadTarget(null)}
         showInterviewOptions
+        companyName={downloadTarget?.companyName}
         bidAt={downloadTarget?.bidAt}
         interviewHistory={downloadTarget?.interviewHistory}
         nextInterviewRound={downloadTarget?.nextInterviewRound}

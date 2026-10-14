@@ -44,3 +44,21 @@ export type InterviewRoundRecordResponse = {
   /** Set when a round was removed (delete API). */
   deletedRound?: number;
 };
+
+/** Peer archive at the same company with completed interview rounds (read-only). */
+export type OtherInterviewProgressItem = {
+  id: string;
+  profileId?: string;
+  profileName?: string;
+  profileEmail?: string;
+  jobTitle: string;
+  companyName: string;
+  bidAt: string;
+  interviewHistory: InterviewHistoryEntry[];
+  nextInterviewRound: number;
+};
+
+export type OtherInterviewProgressResponse = {
+  items: OtherInterviewProgressItem[];
+  companyName: string;
+};
