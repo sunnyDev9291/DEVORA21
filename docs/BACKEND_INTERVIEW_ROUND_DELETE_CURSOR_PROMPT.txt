@@ -1,0 +1,143 @@
+# Backend Cursor Prompt — Delete Interview Round (Mistake Correction)
+
+Copy everything below to the backend agent/developer.
+
+================================================================================
+GOAL
+================================================================================
+
+Users (and Super Admin) can accidentally record the wrong interview round when
+downloading. FE now shows a **Remove** control on each completed round in the
+download dialog timeline.
+
+Implement delete so history stays correct and synchronized across:
+
+  - Profile Saved Resumes
+  - Super Admin Search (same archive id)
+  - Download dialog Round N / pending next round
+
+FE (already implemented):
+
+  DELETE /resume/archives/:id/interview-rounds/:round
+  Client: src/lib/saved-resumes-api.ts → deleteInterviewRound(id, round)
+  UI: InterviewHistoryTimeline “Remove” → ResumeDownloadChooser confirm
+
+================================================================================
+AUTH
+================================================================================
+
+Same ownership rules as POST interview-rounds / deliver:
+
+  - Archive owner may delete rounds on their own archives
+  - Super Admin may delete rounds on any archive
+    (same elevation as BACKEND_SUPER_ADMIN_RESUME_DOWNLOAD_CURSOR_PROMPT.txt)
+  - Other users → 404 or 403
+
+================================================================================
+ENDPOINT
+================================================================================
+
+DELETE /resume/archives/:id/interview-rounds/:round
+
+  :id    = archive uuid
+  :round = positive integer (1, 2, 3, …)
+
+Optional alias (not required if path above works):
+
+  DELETE /resume/archives/:id/interview-rounds
+  Body: { "round": 2 }
+
+FE uses the path form with :round.
+
+================================================================================
+BEHAVIOR
+================================================================================
+
+1. Load archive by id (owner-scoped, or global if Super Admin).
+2. If archive missing → 404 `{ "error": "Resume archive not found" }`
+3. Find entry in interviewHistory where round === :round
+4. If no such entry → 404 `{ "error": "Interview round not found" }`
+5. Remove that entry from interviewHistory
+6. Recalculate nextInterviewRound:
+     - If history empty → 1
+     - Else → max(remaining rounds) + 1
+7. Persist archive
+8. Return updated history (same shape as POST record response)
+
+Renumbering policy (pick one; document in response):
+
+  PREFERRED (simpler, matches FE labels):
+    Keep remaining round numbers as-is (gaps allowed).
+    Example: history [1,2,3], delete 2 → [1,3], nextInterviewRound = 4
+
+  ALTERNATIVE:
+    After delete, renumber remaining chronologically to 1..N and
+    nextInterviewRound = N + 1
+    Example: [1,2,3], delete 2 → [1,2] (old 3 becomes 2), next = 3
+
+FE displays whatever round numbers you return. Prefer NO renumber unless product
+requires contiguous rounds.
+
+Do NOT delete the Applied / bidAt step — only recorded interview rounds.
+
+================================================================================
+RESPONSE
+================================================================================
+
+Same JSON shape FE already uses for POST record:
+
+{
+  "id": "archive-uuid",
+  "bidAt": "2026-10-14T…",
+  "interviewHistory": [
+    { "round": 1, "downloadedAt": "2026-10-14T…" }
+  ],
+  "nextInterviewRound": 2,
+  "deletedRound": 2
+}
+
+Aliases OK: interview_history, next_interview_round, deleted_round, bid_at.
+
+Each history entry:
+
+  { "round": number, "downloadedAt": "ISO-8601" }
+
+================================================================================
+IDEMPOTENCY / SAFETY
+================================================================================
+
+  - Deleting a round that is already gone → 404 (or 200 with current history;
+    FE treats non-OK as error — prefer 404)
+  - Do not allow deleting “pending” (not yet recorded) — only stored entries
+  - Audit log recommended: userId/adminId, archiveId, deletedRound, timestamp
+
+================================================================================
+SUPER ADMIN
+================================================================================
+
+If Super Admin elevation is not yet live on owner routes, apply the same
+lookup rules here as for:
+
+  POST /resume/archives/:id/interview-rounds
+  POST /resume/archives/:id/deliver
+
+So admin can fix mistaken rounds on any profile’s archive.
+
+================================================================================
+ACCEPTANCE CHECKLIST
+================================================================================
+
+[ ] DELETE …/interview-rounds/2 removes Round 2 from that archive
+[ ] Response includes updated interviewHistory + nextInterviewRound
+[ ] Profile Saved Resumes and Super Admin Search stay in sync (same archive)
+[ ] Download dialog “Round N” button advances/retreats from new nextInterviewRound
+[ ] Owner can delete; other users cannot; Super Admin can on any archive
+[ ] Applied / bidAt is never removed by this endpoint
+[ ] Missing archive or missing round → clear 404 error message
+
+================================================================================
+OUT OF SCOPE
+================================================================================
+
+  - FE confirm dialog / Remove button styling (already shipped)
+  - Soft-delete / undo stack beyond a single DELETE

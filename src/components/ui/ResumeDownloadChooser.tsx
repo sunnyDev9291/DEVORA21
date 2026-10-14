@@ -18,7 +18,11 @@ import {
   type RemoteDevice,
   type ResumeDeliverMode,
 } from "@/lib/remote-devices-api";
-import { recordInterviewRound, resolveNextInterviewRound } from "@/lib/saved-resumes-api";
+import {
+  deleteInterviewRound,
+  recordInterviewRound,
+  resolveNextInterviewRound,
+} from "@/lib/saved-resumes-api";
 import type {
   InterviewHistoryEntry,
   InterviewRoundRecordResponse,
@@ -79,6 +83,7 @@ export default function ResumeDownloadChooser({
   const [deviceId, setDeviceId] = useState("");
   const [loadingDevices, setLoadingDevices] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [deletingRound, setDeletingRound] = useState<number | null>(null);
   const [error, setError] = useState("");
 
   const [tracking, setTracking] = useState<RemoteDelivery | null>(null);
@@ -146,6 +151,7 @@ export default function ResumeDownloadChooser({
     setIncludeDocx(defaultIncludeDocx);
     setError("");
     setSubmitting(false);
+    setDeletingRound(null);
     setTracking(null);
     setPollError("");
     void loadDevices().then((active) => {
@@ -238,9 +244,30 @@ export default function ResumeDownloadChooser({
     onClose();
   }
 
+  async function handleDeleteRound(round: number) {
+    const id = archiveId?.trim();
+    if (!id || submitting || deletingRound !== null || tracking) return;
+
+    const confirmed = window.confirm(
+      `Remove Round ${round} from interview history? This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setDeletingRound(round);
+    setError("");
+    try {
+      const updated = await deleteInterviewRound(id, round);
+      onInterviewHistoryUpdated?.(updated);
+    } catch (err) {
+      setError(getApiErrorMessage(err, "Could not remove interview round."));
+    } finally {
+      setDeletingRound(null);
+    }
+  }
+
   async function handleSubmit() {
     const id = archiveId?.trim();
-    if (!id || submitting || tracking) return;
+    if (!id || submitting || deletingRound !== null || tracking) return;
 
     if (!includePdf && !includeDocx) {
       setError("Select at least one format (PDF or DOCX).");
@@ -341,7 +368,7 @@ export default function ResumeDownloadChooser({
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    disabled={submitting}
+                    disabled={submitting || deletingRound !== null}
                     onClick={() => setInterviewPurpose("round")}
                     className={`rounded-xl border px-3 py-2.5 text-left transition ${
                       interviewPurpose === "round"
@@ -356,7 +383,7 @@ export default function ResumeDownloadChooser({
                   </button>
                   <button
                     type="button"
-                    disabled={submitting}
+                    disabled={submitting || deletingRound !== null}
                     onClick={() => setInterviewPurpose("other")}
                     className={`rounded-xl border px-3 py-2.5 text-left transition ${
                       interviewPurpose === "other"
@@ -375,6 +402,9 @@ export default function ResumeDownloadChooser({
                     bidAt={bidAt}
                     interviewHistory={interviewHistory}
                     nextInterviewRound={nextRound}
+                    onDeleteRound={(round) => void handleDeleteRound(round)}
+                    deletingRound={deletingRound}
+                    deleteDisabled={submitting}
                   />
                 ) : null}
               </div>
@@ -510,6 +540,7 @@ export default function ResumeDownloadChooser({
                 size="sm"
                 disabled={
                   submitting ||
+                  deletingRound !== null ||
                   !archiveId?.trim() ||
                   (mode === "remote" && activeDevices.length === 0)
                 }

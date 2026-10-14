@@ -41,4 +41,6 @@ export type InterviewRoundRecordResponse = {
   nextInterviewRound: number;
   recordedRound?: number;
   recordedAt?: string;
+  /** Set when a round was removed (delete API). */
+  deletedRound?: number;
 };

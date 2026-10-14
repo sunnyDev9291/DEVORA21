@@ -1,0 +1,210 @@
+# Backend Cursor Prompt — Super Admin Download + Interview Rounds (Any Archive)
+
+Copy everything below to the backend agent/developer.
+
+================================================================================
+GOAL
+================================================================================
+
+Super Admin Search uses the same Download dialog as profile Saved Resumes
+(Round N / Other, PDF/DOCX, Here / Remote).
+
+Today Super Admin can:
+
+  - LIST   GET /admin/resumes
+  - PREVIEW GET /admin/resumes/:id/pdf | /docx
+
+But Download fails with **"Resume archive not found"** because the dialog calls
+owner-scoped routes:
+
+  POST /resume/archives/:id/interview-rounds
+  POST /resume/archives/:id/deliver
+
+Those resolve the archive as **belonging to the logged-in user**. When a Super
+Admin downloads another profile’s archive, ownership check fails → 404.
+
+Profile Saved Resumes download works (same user owns the archive).
+
+Fix: Super Admin must be able to **record interview rounds** and **deliver /
+download** any resume archive by id, with the same behavior and data as the
+owner path (history stays synchronized on the shared archive record).
+
+================================================================================
+AUTH
+================================================================================
+
+Caller must be an authenticated **Super Admin** (same gate as other /admin/*).
+
+Non–super-admin callers keep today’s rules: only their own archives.
+
+Do NOT weaken owner isolation for normal users.
+
+================================================================================
+PREFERRED FIX (minimal FE change)
+================================================================================
+
+FE already posts to the owner paths from ResumeDownloadChooser. Prefer elevating
+those two routes when the caller is Super Admin:
+
+  POST /resume/archives/:id/interview-rounds
+  POST /resume/archives/:id/deliver
+
+  (optional companion used later)
+  GET  /resume/archives/:id/interview-history
+  GET  /resume/archives/:id/job-description
+
+Lookup rules:
+
+  1. Find archive by id (global), not by (id + currentUserId).
+  2. If missing → 404 `{ "error": "Resume archive not found" }` (unchanged message OK).
+  3. If caller is Super Admin → allow.
+  4. Else if archive.userId / profileId === caller.id → allow.
+  5. Else → 404 or 403 (same as today’s “not found” / forbidden for others).
+
+Reuse the exact same deliver + interview-round business logic as the owner path.
+Do not fork behavior.
+
+Also allow Super Admin on:
+
+  GET /resume/archives/:id/job-description   (admin “View description” uses this)
+
+================================================================================
+ALTERNATIVE (explicit admin routes)
+================================================================================
+
+If you prefer not to elevate owner routes, add:
+
+  POST /admin/resumes/:id/interview-rounds
+  POST /admin/resumes/:id/deliver
+  GET  /admin/resumes/:id/job-description   (optional; FE can keep owner JD if elevated)
+
+Request/response bodies MUST match the owner endpoints below so FE can point
+ResumeDownloadChooser at admin URLs with almost no logic change.
+
+If you choose this path, tell FE to switch Super Admin download to these URLs.
+
+================================================================================
+1) RECORD ROUND — POST …/interview-rounds
+================================================================================
+
+Body (FE):
+
+{
+  "action": "round"
+}
+
+("other" is client-only: FE skips this POST and only delivers.)
+
+Behavior (same as profile Saved Resumes):
+
+  - Append next interview round to the archive’s interviewHistory
+  - Persist on the **same archive document** the profile sees in Saved Resumes
+  - nextInterviewRound = max(rounds) + 1 (or 1 if empty)
+
+Response (FE normalizer):
+
+{
+  "id": "archive-uuid",
+  "bidAt": "2026-10-14T…",
+  "interviewHistory": [
+    { "round": 1, "downloadedAt": "2026-10-14T…" }
+  ],
+  "nextInterviewRound": 2,
+  "recordedRound": 1,
+  "recordedAt": "2026-10-14T…"
+}
+
+Aliases OK: interview_history, next_interview_round, bid_at, etc.
+
+Critical: Super Admin recording Round 1 on profile P’s archive must show up
+when P opens Saved Resumes for that row (same id, same history).
+
+================================================================================
+2) DELIVER / DOWNLOAD — POST …/deliver
+================================================================================
+
+Body (FE):
+
+{
+  "mode": "here" | "remote",
+  "includePdf": true,
+  "includeDocx": false,
+  "deviceId": "…"   // required when mode=remote
+}
+
+mode=here:
+
+  Return signed URLs / payload so FE can download PDF and/or DOCX on this browser
+  (same shape as owner deliver “here”).
+
+mode=remote:
+
+  Queue delivery to a **remote device belonging to the caller (Super Admin)**.
+  Do NOT require the archive owner to own that device.
+  deviceId must be one of the Super Admin’s registered remote computers
+  (same /resume/remote-devices list FE already loads for the dialog).
+
+  If you later want “send to profile owner’s PC”, that is a separate feature —
+  out of scope. Today FE lists the **logged-in** user’s remotes.
+
+Responses: identical to existing owner deliver (here vs remote / deliveryId /
+status polling via existing getRemoteDelivery).
+
+Formats:
+
+  - Honor includePdf / includeDocx
+  - At least one must be true (FE validates; backend should too → 400)
+
+Files must resolve from the target archive even when owned by another profile
+(same storage keys / template paths used by GET /admin/resumes/:id/pdf|docx).
+
+================================================================================
+3) KEEP WORKING — GET /admin/resumes/:id/pdf | /docx
+================================================================================
+
+Already used for Preview. No change required beyond ensuring the same archive
+ids appear in list + deliver + interview-rounds.
+
+================================================================================
+4) LIST FIELDS (already expected)
+================================================================================
+
+GET /admin/resumes items should continue to include (when available):
+
+  interviewHistory / interview_history
+  nextInterviewRound / next_interview_round
+
+so Search rows stay in sync after a successful Round POST (FE patches locally
+from the interview-rounds response).
+
+================================================================================
+SECURITY NOTES
+================================================================================
+
+  - Super Admin only for cross-profile access
+  - Audit log recommended: adminId, archiveId, ownerProfileId, action
+    (interview-round | deliver-here | deliver-remote), timestamp
+  - Do not expose other users’ remote device secrets
+  - Rate-limit deliver if needed
+
+================================================================================
+ACCEPTANCE CHECKLIST
+================================================================================
+
+[ ] Super Admin Download on another profile’s archive does NOT return
+    “Resume archive not found”
+[ ] Round N records history on that archive; profile Saved Resumes shows it
+[ ] Other (no round) delivers without writing interview history
+[ ] mode=here downloads PDF (and DOCX if selected) in admin browser
+[ ] mode=remote queues to Super Admin’s remote computer when they have one
+[ ] Normal user still cannot deliver / record rounds on someone else’s archive
+[ ] Preview GET /admin/resumes/:id/pdf still works
+[ ] Same archive id used across list, preview, deliver, interview-rounds
+
+================================================================================
+OUT OF SCOPE
+================================================================================
+
+  - Changing FE dialog UI (Round / Other, PDF default, remote default)
+  - Sending to the archive owner’s remote PC (unless you explicitly add it later)
+  - Replacing GET /admin/resumes list/search

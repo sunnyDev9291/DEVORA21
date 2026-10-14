@@ -349,6 +349,61 @@ export async function recordInterviewRound(
   };
 }
 
+/**
+ * Remove a recorded interview round (user mistake correction).
+ * DELETE /resume/archives/:id/interview-rounds/:round
+ */
+export async function deleteInterviewRound(
+  id: string,
+  round: number
+): Promise<InterviewRoundRecordResponse> {
+  const archiveId = id.trim();
+  const roundNum = Math.floor(Number(round));
+  if (!archiveId) throw new Error("Archive id is required.");
+  if (!Number.isFinite(roundNum) || roundNum < 1) {
+    throw new Error("Round number is required.");
+  }
+
+  const res = await apiAuthFetch(
+    `${API_BASE_URL}/resume/archives/${encodeURIComponent(archiveId)}/interview-rounds/${roundNum}`,
+    {
+      method: "DELETE",
+      headers: { Accept: "application/json" },
+    }
+  );
+
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown> & {
+    error?: string;
+    message?: string;
+  };
+
+  if (!res.ok) {
+    throw archivesAuthError(
+      res.status,
+      data.error || data.message || `Could not delete interview round (${res.status}).`
+    );
+  }
+
+  const interviewHistory = normalizeInterviewHistory(
+    data.interviewHistory ?? data.interview_history
+  );
+  return {
+    id: pickString(data, "id", "_id") || archiveId,
+    bidAt: pickString(data, "bidAt", "bid_at") || undefined,
+    interviewHistory,
+    nextInterviewRound: resolveNextInterviewRound(
+      interviewHistory,
+      data.nextInterviewRound ?? data.next_interview_round
+    ),
+    deletedRound:
+      typeof data.deletedRound === "number"
+        ? data.deletedRound
+        : typeof data.deleted_round === "number"
+          ? data.deleted_round
+          : roundNum,
+  };
+}
+
 export async function fetchInterviewHistory(id: string): Promise<{
   id: string;
   bidAt?: string;
