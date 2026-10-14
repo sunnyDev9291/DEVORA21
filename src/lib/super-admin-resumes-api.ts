@@ -52,6 +52,8 @@ export type AdminResumeRecord = {
   jobTitle: string;
   companyName: string;
   jobDescription: string;
+  /** When true/false known from lean list; omit means unknown. */
+  hasJobDescription?: boolean;
   createdAt: string;
   resumeFileName: string;
   pdfFileName?: string;
@@ -280,6 +282,12 @@ function normalizeResumeRecord(raw: unknown): AdminResumeRecord | null {
     jobTitle: pickString(row, "jobTitle", "job_title", "title"),
     companyName: pickString(row, "companyName", "company_name", "company"),
     jobDescription: pickString(row, "jobDescription", "job_description", "jd"),
+    hasJobDescription:
+      typeof row.hasJobDescription === "boolean"
+        ? row.hasJobDescription
+        : typeof row.has_job_description === "boolean"
+          ? row.has_job_description
+          : undefined,
     createdAt:
       pickString(row, "createdAt", "created_at", "bidAt", "bid_at", "datetime") ||
       new Date(0).toISOString(),

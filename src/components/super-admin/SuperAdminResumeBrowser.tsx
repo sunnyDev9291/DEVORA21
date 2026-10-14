@@ -5,6 +5,8 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import SuperAdminProfileMultiSelect, {
   type ProfileOption,
 } from "@/components/super-admin/SuperAdminProfileMultiSelect";
+import Button from "@/components/ui/Button";
+import CopyIconButton from "@/components/ui/CopyIconButton";
 import InterviewHistoryTimeline from "@/components/ui/InterviewHistoryTimeline";
 import {
   saBtnGhost,
@@ -13,10 +15,12 @@ import {
   saField,
   saLabel,
   saMono,
-  saTableWrap,
 } from "@/components/super-admin/resume-dashboard-styles";
 import { getApiErrorMessage } from "@/lib/auth-api";
-import { downloadBlob } from "@/lib/saved-resumes-api";
+import {
+  downloadBlob,
+  fetchSavedResumeJobDescription,
+} from "@/lib/saved-resumes-api";
 import type { InterviewRoundRecordResponse } from "@/lib/saved-resumes-types";
 import { superAdminApi } from "@/lib/super-admin-api";
 import {
@@ -35,6 +39,49 @@ const ResumeDownloadChooser = dynamic(
 );
 
 type SortState = { sortBy: AdminResumeSortField; sortDir: AdminResumeSortDir };
+
+/** Match Saved Resumes (resume variant) table chrome. */
+const rowStyles = {
+  groupPanel:
+    "overflow-hidden rounded-2xl border border-orange-200/55 bg-white/55 shadow-sm backdrop-blur-sm",
+  thead:
+    "border-b border-orange-200/50 bg-orange-50/70 text-[11px] uppercase tracking-[0.12em] text-orange-800/70",
+  tbody: "divide-y divide-orange-100/80 text-sm",
+  rowHover: "group align-top hover:bg-orange-50/50",
+  bidTime: "whitespace-nowrap px-4 py-3 text-stone-600 tabular-nums",
+  profile: "px-4 py-3",
+  profileName: "font-semibold text-stone-900",
+  profileEmail: "mt-0.5 text-[11px] text-stone-500",
+  company: "px-4 py-3 font-semibold text-stone-900",
+  jobTitle: "px-4 py-3 text-stone-700",
+  description: "max-w-xs px-4 py-3 text-stone-500 md:max-w-md",
+  descLink:
+    "text-left text-xs text-orange-700 underline-offset-2 hover:text-tomato-600 hover:underline line-clamp-2",
+  fileName:
+    "block text-left font-mono text-xs leading-relaxed whitespace-normal break-all text-orange-700 underline-offset-2 hover:text-tomato-600 hover:underline",
+  fileNameCell: "min-w-[14rem] px-4 py-3 align-top whitespace-normal",
+  actionsCell:
+    "sticky right-0 z-[1] whitespace-nowrap bg-white/90 px-4 py-3 shadow-[-8px_0_12px_-8px_rgba(194,65,12,0.12)] backdrop-blur-sm group-hover:bg-orange-50/95",
+  actionsHead:
+    "sticky right-0 z-[1] bg-orange-50/95 px-4 py-3 text-right font-medium shadow-[-8px_0_12px_-8px_rgba(194,65,12,0.12)]",
+} as const;
+
+function formatBidTime(iso: string): { timeLabel: string; fullLabel: string } {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return { timeLabel: "—", fullLabel: iso || "—" };
+  }
+  return {
+    timeLabel: new Intl.DateTimeFormat(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(date),
+    fullLabel: new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(date),
+  };
+}
 
 function SortHeader({
   label,
@@ -55,11 +102,103 @@ function SortHeader({
       type="button"
       disabled={disabled}
       onClick={() => onSort(field)}
-      className="inline-flex items-center gap-1 uppercase tracking-[0.14em] hover:text-teal-700 disabled:opacity-40"
+      className="inline-flex items-center gap-1 uppercase tracking-[0.12em] hover:text-orange-900 disabled:opacity-40"
     >
       {label}
-      <span className="text-teal-700">{active ? (sort.sortDir === "asc" ? "↑" : "↓") : ""}</span>
+      <span className="text-orange-700">{active ? (sort.sortDir === "asc" ? "↑" : "↓") : ""}</span>
     </button>
+  );
+}
+
+function AdminJobDescriptionModal({
+  open,
+  onClose,
+  item,
+}: {
+  open: boolean;
+  onClose: () => void;
+  item: AdminResumeRecord | null;
+}) {
+  const [text, setText] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!open || !item?.id) {
+      setText("");
+      setError("");
+      setLoading(false);
+      return;
+    }
+
+    if (item.jobDescription?.trim()) {
+      setText(item.jobDescription);
+      setError("");
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+    setText("");
+    void fetchSavedResumeJobDescription(item.id)
+      .then((result) => {
+        if (cancelled) return;
+        setText(result.jobDescription);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError((err as Error).message || "Could not load job description.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, item?.id, item?.jobDescription]);
+
+  const description =
+    text.trim() ||
+    (loading ? "" : "No job description was saved for this application.");
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={item ? `${item.jobTitle} at ${item.companyName}` : "Job description"}
+      className="max-w-2xl"
+    >
+      <div className="overflow-y-auto px-6 py-5 max-h-[min(70dvh,32rem)]">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold uppercase tracking-wider text-stone-500">
+            Job description
+            {item?.profileName || item?.profileEmail ? (
+              <span className="ml-2 font-normal normal-case tracking-normal text-stone-400">
+                · {item.profileName || item.profileEmail}
+              </span>
+            ) : null}
+          </p>
+          <CopyIconButton
+            text={text}
+            label="Copy job description"
+            className="h-10 self-auto"
+            disabled={!text.trim()}
+          />
+        </div>
+        {loading ? (
+          <p className="text-sm text-stone-500">Loading job description…</p>
+        ) : error ? (
+          <p className="text-sm text-rose-600">{error}</p>
+        ) : (
+          <div className="whitespace-pre-wrap text-sm leading-relaxed text-stone-700">
+            {description}
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 
@@ -150,7 +289,6 @@ export default function SuperAdminResumeBrowser() {
           limit,
           sortBy: nextSort.sortBy,
           sortDir: nextSort.sortDir,
-          // No date preset — integrated search across all time for selected profiles
           preset: "all",
         });
         setItems(result.items);
@@ -232,6 +370,7 @@ export default function SuperAdminResumeBrowser() {
   }
 
   const totalPages = Math.max(1, Math.ceil(total / limit) || 1);
+  const colSpan = 8;
 
   return (
     <div className="space-y-4">
@@ -288,11 +427,6 @@ export default function SuperAdminResumeBrowser() {
       {error ? (
         <div className="sa-alert px-4 py-3 text-xs" role="alert">
           <p className={saMono}>{error}</p>
-          <p className={`${saMono} mt-2 text-slate-500`}>
-            Backend must expose <code className="text-teal-700">GET /admin/resumes</code> with
-            integrated <code className="text-teal-700">q</code> search across company, title, JD,
-            and file name.
-          </p>
         </div>
       ) : null}
 
@@ -305,131 +439,144 @@ export default function SuperAdminResumeBrowser() {
         </div>
       ) : (
         <>
-          <div className={`${saTableWrap} overflow-x-auto`}>
-            <table className={`min-w-full text-left ${saMono} text-xs text-slate-600`}>
-              <thead className="border-b border-slate-200 bg-slate-50 text-[10px] text-slate-500">
-                <tr>
-                  <th className="px-3 py-3 font-medium">
-                    <SortHeader
-                      label="Created"
-                      field="createdAt"
-                      sort={sort}
-                      onSort={handleSort}
-                      disabled={loading}
-                    />
-                  </th>
-                  <th className="px-3 py-3 font-medium">
-                    <SortHeader
-                      label="Profile"
-                      field="profileName"
-                      sort={sort}
-                      onSort={handleSort}
-                      disabled={loading}
-                    />
-                  </th>
-                  <th className="px-3 py-3 font-medium">
-                    <SortHeader
-                      label="Company"
-                      field="companyName"
-                      sort={sort}
-                      onSort={handleSort}
-                      disabled={loading}
-                    />
-                  </th>
-                  <th className="px-3 py-3 font-medium">
-                    <SortHeader
-                      label="Title"
-                      field="jobTitle"
-                      sort={sort}
-                      onSort={handleSort}
-                      disabled={loading}
-                    />
-                  </th>
-                  <th className="px-3 py-3 font-medium">File</th>
-                  <th className="px-3 py-3 font-medium">Interview</th>
-                  <th className="px-3 py-3 font-medium text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
+          <div className={rowStyles.groupPanel}>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead className={rowStyles.thead}>
                   <tr>
-                    <td colSpan={7} className="px-3 py-10 text-center text-slate-500">
-                      Searching…
-                    </td>
+                    <th className="px-4 py-3 font-medium">
+                      <SortHeader
+                        label="Bid time"
+                        field="createdAt"
+                        sort={sort}
+                        onSort={handleSort}
+                        disabled={loading}
+                      />
+                    </th>
+                    <th className="px-4 py-3 font-medium">
+                      <SortHeader
+                        label="Profile"
+                        field="profileName"
+                        sort={sort}
+                        onSort={handleSort}
+                        disabled={loading}
+                      />
+                    </th>
+                    <th className="px-4 py-3 font-medium">
+                      <SortHeader
+                        label="Company"
+                        field="companyName"
+                        sort={sort}
+                        onSort={handleSort}
+                        disabled={loading}
+                      />
+                    </th>
+                    <th className="px-4 py-3 font-medium">
+                      <SortHeader
+                        label="Job title"
+                        field="jobTitle"
+                        sort={sort}
+                        onSort={handleSort}
+                        disabled={loading}
+                      />
+                    </th>
+                    <th className="px-4 py-3 font-medium">Job description</th>
+                    <th className="px-4 py-3 font-medium">Interview</th>
+                    <th className="px-4 py-3 font-medium">File name</th>
+                    <th className={rowStyles.actionsHead}>Download</th>
                   </tr>
-                ) : items.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-3 py-10 text-center text-slate-500">
-                      No resumes matched “{submittedQuery}”.
-                    </td>
-                  </tr>
-                ) : (
-                  items.map((item) => (
-                    <tr key={item.id} className="border-t border-slate-200 hover:bg-slate-50">
-                      <td className="px-3 py-3 whitespace-nowrap text-slate-900">
-                        {new Date(item.createdAt).toLocaleString(undefined, {
-                          dateStyle: "medium",
-                          timeStyle: "short",
-                        })}
-                      </td>
-                      <td className="px-3 py-3">
-                        <p className="text-slate-900">
-                          {item.profileName || item.profileEmail || item.profileId || "—"}
-                        </p>
-                        {item.profileEmail && item.profileName ? (
-                          <p className="text-[10px] text-slate-500">{item.profileEmail}</p>
-                        ) : null}
-                      </td>
-                      <td className="px-3 py-3">{item.companyName || "—"}</td>
-                      <td className="px-3 py-3 max-w-[14rem] truncate" title={item.jobTitle}>
-                        {item.jobTitle || "—"}
-                      </td>
-                      <td
-                        className="px-3 py-3 max-w-[10rem] truncate text-slate-500"
-                        title={item.resumeFileName}
-                      >
-                        {item.resumeFileName || "—"}
-                      </td>
-                      <td className="px-3 py-3 align-top min-w-[10rem]">
-                        <InterviewHistoryTimeline
-                          bidAt={item.createdAt}
-                          interviewHistory={item.interviewHistory}
-                          nextInterviewRound={item.nextInterviewRound}
-                          compact
-                        />
-                      </td>
-                      <td className="px-3 py-3">
-                        <div className="flex flex-wrap justify-end gap-1.5">
-                          <button
-                            type="button"
-                            className={`${saBtnGhost} h-8 px-2 text-[10px]`}
-                            disabled={busyId !== null}
-                            onClick={() => void handlePreview(item)}
-                          >
-                            {busyId === `${item.id}-preview` ? "…" : "Preview"}
-                          </button>
-                          <button
-                            type="button"
-                            className={`${saBtnPrimary} h-8 px-2 text-[10px]`}
-                            disabled={busyId !== null}
-                            onClick={() => openDownloadChooser(item)}
-                          >
-                            Download · R{item.nextInterviewRound ?? 1}
-                          </button>
-                          <button
-                            type="button"
-                            className={`${saBtnGhost} h-8 px-2 text-[10px]`}
-                            onClick={() => setJdItem(item)}
-                          >
-                            JD
-                          </button>
-                        </div>
+                </thead>
+                <tbody className={rowStyles.tbody}>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={colSpan} className="px-4 py-10 text-center text-stone-500">
+                        Searching…
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : items.length === 0 ? (
+                    <tr>
+                      <td colSpan={colSpan} className="px-4 py-10 text-center text-stone-500">
+                        No resumes matched “{submittedQuery}”.
+                      </td>
+                    </tr>
+                  ) : (
+                    items.map((item) => {
+                      const bid = formatBidTime(item.createdAt);
+                      const noDescription = item.hasJobDescription === false;
+                      const jdTrimmed = item.jobDescription?.trim() ?? "";
+                      const previewSnippet =
+                        jdTrimmed.length > 100
+                          ? `${jdTrimmed.slice(0, 100)}…`
+                          : jdTrimmed || "View description";
+
+                      return (
+                        <tr key={item.id} className={rowStyles.rowHover}>
+                          <td className={rowStyles.bidTime} title={bid.fullLabel}>
+                            {bid.timeLabel}
+                          </td>
+                          <td className={rowStyles.profile}>
+                            <p className={rowStyles.profileName}>
+                              {item.profileName || item.profileEmail || item.profileId || "—"}
+                            </p>
+                            {item.profileEmail && item.profileName ? (
+                              <p className={rowStyles.profileEmail}>{item.profileEmail}</p>
+                            ) : null}
+                          </td>
+                          <td className={rowStyles.company}>{item.companyName || "—"}</td>
+                          <td className={rowStyles.jobTitle}>{item.jobTitle || "—"}</td>
+                          <td className={rowStyles.description}>
+                            {noDescription ? (
+                              <span className="text-stone-400">No description</span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setJdItem(item)}
+                                className={rowStyles.descLink}
+                                title="View full job description"
+                              >
+                                {previewSnippet}
+                              </button>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 align-top min-w-[10rem]">
+                            <InterviewHistoryTimeline
+                              bidAt={item.createdAt}
+                              interviewHistory={item.interviewHistory}
+                              nextInterviewRound={item.nextInterviewRound}
+                              compact
+                            />
+                          </td>
+                          <td className={rowStyles.fileNameCell}>
+                            <button
+                              type="button"
+                              onClick={() => void handlePreview(item)}
+                              className={rowStyles.fileName}
+                              disabled={busyId !== null}
+                              title="Preview PDF"
+                            >
+                              {busyId === `${item.id}-preview` ? "…" : item.resumeFileName || "—"}
+                            </button>
+                          </td>
+                          <td className={rowStyles.actionsCell}>
+                            <div className="inline-flex flex-row flex-nowrap items-center gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={busyId !== null}
+                                onClick={() => openDownloadChooser(item)}
+                              >
+                                Download · R{item.nextInterviewRound ?? 1}
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {downloadFeedback ? (
@@ -447,7 +594,7 @@ export default function SuperAdminResumeBrowser() {
           ) : null}
 
           <div
-            className={`flex flex-wrap items-center justify-between gap-3 ${saMono} text-[11px] text-slate-500`}
+            className={`flex flex-wrap items-center justify-between gap-3 ${saMono} text-[11px] text-stone-500`}
           >
             <p>
               {total.toLocaleString()} result{total === 1 ? "" : "s"} for “{submittedQuery}” · page{" "}
@@ -494,23 +641,11 @@ export default function SuperAdminResumeBrowser() {
         />
       ) : null}
 
-      {jdItem ? (
-        <Modal
-          open
-          onClose={() => setJdItem(null)}
-          title={`${jdItem.companyName || "Job"} · ${jdItem.jobTitle || "Description"}`}
-        >
-          <div className="space-y-3">
-            <p className={`${saMono} text-[11px] text-slate-500`}>
-              {jdItem.profileName || jdItem.profileEmail || jdItem.profileId} ·{" "}
-              {new Date(jdItem.createdAt).toLocaleString()}
-            </p>
-            <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap border border-slate-200 bg-slate-50 p-4 font-[family-name:var(--font-sa-mono)] text-xs leading-relaxed text-slate-600">
-              {jdItem.jobDescription?.trim() || "No job description stored for this resume."}
-            </pre>
-          </div>
-        </Modal>
-      ) : null}
+      <AdminJobDescriptionModal
+        open={Boolean(jdItem)}
+        onClose={() => setJdItem(null)}
+        item={jdItem}
+      />
 
       <ResumeDownloadChooser
         open={Boolean(downloadTarget)}
