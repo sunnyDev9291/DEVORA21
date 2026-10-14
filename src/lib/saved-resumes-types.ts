@@ -1,3 +1,9 @@
+export type InterviewHistoryEntry = {
+  round: number;
+  /** ISO 8601 when that round’s download was recorded */
+  downloadedAt: string;
+};
+
 export type SavedResumeArchive = {
   id: string;
   /** ISO 8601 UTC — when the application / bid was saved */
@@ -13,6 +19,10 @@ export type SavedResumeArchive = {
   hasJobDescription?: boolean;
   resumeFileName: string;
   pdfFileName?: string;
+  /** Completed interview downloads, chronological by round. */
+  interviewHistory?: InterviewHistoryEntry[];
+  /** Next round number to offer (1 when history empty). */
+  nextInterviewRound?: number;
 };
 
 export type SavedResumeListResponse = {
@@ -22,4 +32,13 @@ export type SavedResumeListResponse = {
 export type SavedResumeJobDescriptionResponse = {
   id: string;
   jobDescription: string;
+};
+
+export type InterviewRoundRecordResponse = {
+  id: string;
+  bidAt?: string;
+  interviewHistory: InterviewHistoryEntry[];
+  nextInterviewRound: number;
+  recordedRound?: number;
+  recordedAt?: string;
 };

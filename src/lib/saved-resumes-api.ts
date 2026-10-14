@@ -3,6 +3,8 @@ import { apiAuthFetch } from "@/lib/api-auth";
 import { RESUME_BUILDER_ACCESS_MESSAGE } from "@/lib/resume-access";
 import { getUserApiKey } from "@/lib/user-api-key";
 import type {
+  InterviewHistoryEntry,
+  InterviewRoundRecordResponse,
   SavedResumeArchive,
   SavedResumeJobDescriptionResponse,
   SavedResumeListResponse,
@@ -80,6 +82,55 @@ function toBool(value: unknown): boolean | undefined {
   return undefined;
 }
 
+export function normalizeInterviewHistory(raw: unknown): InterviewHistoryEntry[] {
+  if (!Array.isArray(raw)) return [];
+  const out: InterviewHistoryEntry[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const o = entry as Record<string, unknown>;
+    const round = Number(o.round ?? o.n ?? o.interviewRound);
+    const downloadedAt = pickString(
+      o,
+      "downloadedAt",
+      "downloaded_at",
+      "recordedAt",
+      "recorded_at",
+      "at"
+    );
+    if (!Number.isFinite(round) || round < 1 || !downloadedAt) continue;
+    out.push({ round: Math.floor(round), downloadedAt });
+  }
+  return out.sort((a, b) => a.round - b.round || a.downloadedAt.localeCompare(b.downloadedAt));
+}
+
+export function resolveNextInterviewRound(
+  history: InterviewHistoryEntry[],
+  explicit?: unknown
+): number {
+  if (typeof explicit === "number" && Number.isFinite(explicit) && explicit >= 1) {
+    return Math.floor(explicit);
+  }
+  if (typeof explicit === "string" && explicit.trim()) {
+    const n = Number(explicit);
+    if (Number.isFinite(n) && n >= 1) return Math.floor(n);
+  }
+  if (!history.length) return 1;
+  return Math.max(...history.map((h) => h.round)) + 1;
+}
+
+/** Format like "Round 1: Oct 14, 2026" */
+export function formatInterviewRoundLabel(round: number, downloadedAt: string): string {
+  const date = new Date(downloadedAt);
+  const dateLabel = Number.isNaN(date.getTime())
+    ? downloadedAt
+    : date.toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+  return `Round ${round}: ${dateLabel}`;
+}
+
 /**
  * Normalize list rows and drop full JD text from memory.
  * Prefer hasJobDescription from the API; fall back to whether JD was present.
@@ -95,6 +146,14 @@ export function normalizeSavedResumeListItem(raw: unknown): SavedResumeArchive |
   const hasJobDescription =
     hasFlag !== undefined ? hasFlag : Boolean(jobDescriptionRaw);
 
+  const interviewHistory = normalizeInterviewHistory(
+    row.interviewHistory ?? row.interview_history ?? row.interviews
+  );
+  const nextInterviewRound = resolveNextInterviewRound(
+    interviewHistory,
+    row.nextInterviewRound ?? row.next_interview_round
+  );
+
   return {
     id,
     bidAt: pickString(row, "bidAt", "bid_at", "createdAt", "created_at") || new Date(0).toISOString(),
@@ -104,6 +163,8 @@ export function normalizeSavedResumeListItem(raw: unknown): SavedResumeArchive |
     // Intentionally omit jobDescription on list items — fetch on demand.
     resumeFileName: pickString(row, "resumeFileName", "resume_file_name", "fileName") || "resume.docx",
     pdfFileName: pickString(row, "pdfFileName", "pdf_file_name") || undefined,
+    interviewHistory,
+    nextInterviewRound,
   };
 }
 
@@ -223,6 +284,99 @@ export async function fetchSavedResumeJobDescription(
   }
 
   throw lastError ?? new Error("Could not load job description.");
+}
+
+/**
+ * Record the next interview round when the user downloads for Round N.
+ * Body: { action: "round" }
+ */
+export async function recordInterviewRound(
+  id: string,
+  action: "round" | "other" = "round"
+): Promise<InterviewRoundRecordResponse> {
+  const archiveId = id.trim();
+  if (!archiveId) throw new Error("Archive id is required.");
+
+  const res = await apiAuthFetch(
+    `${API_BASE_URL}/resume/archives/${encodeURIComponent(archiveId)}/interview-rounds`,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ action }),
+    }
+  );
+
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown> & {
+    error?: string;
+    message?: string;
+  };
+
+  if (!res.ok) {
+    throw archivesAuthError(
+      res.status,
+      data.error || data.message || `Could not record interview round (${res.status}).`
+    );
+  }
+
+  const interviewHistory = normalizeInterviewHistory(
+    data.interviewHistory ?? data.interview_history
+  );
+  return {
+    id: pickString(data, "id", "_id") || archiveId,
+    bidAt: pickString(data, "bidAt", "bid_at") || undefined,
+    interviewHistory,
+    nextInterviewRound: resolveNextInterviewRound(
+      interviewHistory,
+      data.nextInterviewRound ?? data.next_interview_round
+    ),
+    recordedRound:
+      typeof data.recordedRound === "number"
+        ? data.recordedRound
+        : typeof data.recorded_round === "number"
+          ? data.recorded_round
+          : undefined,
+    recordedAt: pickString(data, "recordedAt", "recorded_at") || undefined,
+  };
+}
+
+export async function fetchInterviewHistory(id: string): Promise<{
+  id: string;
+  bidAt?: string;
+  interviewHistory: InterviewHistoryEntry[];
+  nextInterviewRound: number;
+}> {
+  const archiveId = id.trim();
+  if (!archiveId) throw new Error("Archive id is required.");
+
+  const res = await apiAuthFetch(
+    `${API_BASE_URL}/resume/archives/${encodeURIComponent(archiveId)}/interview-history`,
+    { method: "GET", headers: { Accept: "application/json" } }
+  );
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown> & {
+    error?: string;
+    message?: string;
+  };
+  if (!res.ok) {
+    throw archivesAuthError(
+      res.status,
+      data.error || data.message || `Could not load interview history (${res.status}).`
+    );
+  }
+  const interviewHistory = normalizeInterviewHistory(
+    data.interviewHistory ?? data.interview_history
+  );
+  return {
+    id: pickString(data, "id", "_id") || archiveId,
+    bidAt: pickString(data, "bidAt", "bid_at") || undefined,
+    interviewHistory,
+    nextInterviewRound: resolveNextInterviewRound(
+      interviewHistory,
+      data.nextInterviewRound ?? data.next_interview_round
+    ),
+  };
 }
 
 export async function fetchSavedResumeFile(

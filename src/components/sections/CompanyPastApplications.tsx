@@ -258,6 +258,34 @@ export default function CompanyPastApplications({
         open={Boolean(downloadTarget)}
         archiveId={downloadTarget?.id}
         onClose={() => setDownloadTarget(null)}
+        showInterviewOptions
+        bidAt={downloadTarget?.bidAt}
+        interviewHistory={downloadTarget?.interviewHistory}
+        nextInterviewRound={downloadTarget?.nextInterviewRound}
+        onInterviewHistoryUpdated={(update) => {
+          setItems((current) =>
+            current.map((row) =>
+              row.id === update.id
+                ? {
+                    ...row,
+                    bidAt: update.bidAt || row.bidAt,
+                    interviewHistory: update.interviewHistory,
+                    nextInterviewRound: update.nextInterviewRound,
+                  }
+                : row
+            )
+          );
+          setDownloadTarget((current) =>
+            current && current.id === update.id
+              ? {
+                  ...current,
+                  bidAt: update.bidAt || current.bidAt,
+                  interviewHistory: update.interviewHistory,
+                  nextInterviewRound: update.nextInterviewRound,
+                }
+              : current
+          );
+        }}
         onFeedback={(feedback) => {
           setDownloadFeedback(feedback);
           if (feedback.tone === "err") setError(feedback.text);

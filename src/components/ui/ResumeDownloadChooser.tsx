@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Button from "@/components/ui/Button";
+import InterviewHistoryTimeline from "@/components/ui/InterviewHistoryTimeline";
 import { AUTH_LINKS } from "@/lib/constants";
 import { ApiError, getApiErrorMessage } from "@/lib/auth-api";
 import {
@@ -17,6 +18,11 @@ import {
   type RemoteDevice,
   type ResumeDeliverMode,
 } from "@/lib/remote-devices-api";
+import { recordInterviewRound, resolveNextInterviewRound } from "@/lib/saved-resumes-api";
+import type {
+  InterviewHistoryEntry,
+  InterviewRoundRecordResponse,
+} from "@/lib/saved-resumes-types";
 
 const Modal = dynamic(() => import("@/components/ui/Modal"), { ssr: false });
 
@@ -28,6 +34,8 @@ export type ResumeDownloadFeedback = {
   text: string;
 };
 
+type InterviewPurpose = "round" | "other";
+
 type ResumeDownloadChooserProps = {
   open: boolean;
   archiveId: string | null | undefined;
@@ -37,6 +45,16 @@ type ResumeDownloadChooserProps = {
   defaultIncludePdf?: boolean;
   defaultIncludeDocx?: boolean;
   title?: string;
+  /**
+   * When set, show Round N / Other before download (Saved Resumes interview history).
+   * Omit for generate/apply flows that are not archive-history aware.
+   */
+  showInterviewOptions?: boolean;
+  bidAt?: string;
+  interviewHistory?: InterviewHistoryEntry[];
+  nextInterviewRound?: number;
+  /** Fired after a successful Round POST so the parent can update list state. */
+  onInterviewHistoryUpdated?: (update: InterviewRoundRecordResponse) => void;
 };
 
 export default function ResumeDownloadChooser({
@@ -47,8 +65,14 @@ export default function ResumeDownloadChooser({
   defaultIncludePdf = true,
   defaultIncludeDocx = true,
   title = "Download resume",
+  showInterviewOptions = false,
+  bidAt = "",
+  interviewHistory = [],
+  nextInterviewRound,
+  onInterviewHistoryUpdated,
 }: ResumeDownloadChooserProps) {
   const [mode, setMode] = useState<ResumeDeliverMode>("here");
+  const [interviewPurpose, setInterviewPurpose] = useState<InterviewPurpose>("round");
   const [includePdf, setIncludePdf] = useState(defaultIncludePdf);
   const [includeDocx, setIncludeDocx] = useState(defaultIncludeDocx);
   const [devices, setDevices] = useState<RemoteDevice[]>([]);
@@ -77,6 +101,7 @@ export default function ResumeDownloadChooser({
 
   const trackingUi = tracking ? remoteDeliveryUiState(tracking) : null;
   const trackingDone = tracking ? isRemoteDeliveryTerminal(tracking) : false;
+  const nextRound = resolveNextInterviewRound(interviewHistory, nextInterviewRound);
 
   const loadDevices = useCallback(async () => {
     setLoadingDevices(true);
@@ -113,6 +138,7 @@ export default function ResumeDownloadChooser({
     pollStopRef.current = false;
     lastFeedbackRef.current = null;
     setMode("here");
+    setInterviewPurpose("round");
     setIncludePdf(defaultIncludePdf);
     setIncludeDocx(defaultIncludeDocx);
     setError("");
@@ -223,6 +249,13 @@ export default function ResumeDownloadChooser({
     setPollError("");
 
     try {
+      // Round N: record interview history before delivering files.
+      // Other: download only (do not POST).
+      if (showInterviewOptions && interviewPurpose === "round") {
+        const recorded = await recordInterviewRound(id, "round");
+        onInterviewHistoryUpdated?.(recorded);
+      }
+
       const result = await deliverResumeArchive(id, {
         mode,
         deviceId: mode === "remote" ? deviceId || undefined : undefined,
@@ -291,6 +324,53 @@ export default function ResumeDownloadChooser({
             <p className="text-sm text-slate-600 dark:text-slate-300">
               Choose where this archived resume should go.
             </p>
+
+            {showInterviewOptions ? (
+              <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-white/10 dark:bg-white/[0.03]">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Interview history
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => setInterviewPurpose("round")}
+                    className={`rounded-xl border px-3 py-2.5 text-left transition ${
+                      interviewPurpose === "round"
+                        ? "border-orange-400 bg-orange-50 text-orange-950 shadow-sm dark:border-orange-400/50 dark:bg-orange-500/15 dark:text-orange-50"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-white/10 dark:bg-transparent dark:text-slate-200"
+                    }`}
+                  >
+                    <span className="block text-sm font-semibold">Round {nextRound}</span>
+                    <span className="mt-0.5 block text-[11px] opacity-70">
+                      Record this round, then download
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={() => setInterviewPurpose("other")}
+                    className={`rounded-xl border px-3 py-2.5 text-left transition ${
+                      interviewPurpose === "other"
+                        ? "border-orange-400 bg-orange-50 text-orange-950 shadow-sm dark:border-orange-400/50 dark:bg-orange-500/15 dark:text-orange-50"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-white/10 dark:bg-transparent dark:text-slate-200"
+                    }`}
+                  >
+                    <span className="block text-sm font-semibold">Other</span>
+                    <span className="mt-0.5 block text-[11px] opacity-70">
+                      Download only — no round recorded
+                    </span>
+                  </button>
+                </div>
+                {bidAt ? (
+                  <InterviewHistoryTimeline
+                    bidAt={bidAt}
+                    interviewHistory={interviewHistory}
+                    nextInterviewRound={nextRound}
+                  />
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="space-y-2">
               <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3 dark:border-white/10">

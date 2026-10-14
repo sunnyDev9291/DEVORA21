@@ -16,10 +16,14 @@ import {
   listSavedResumesCached,
   peekCachedSavedResumes,
 } from "@/lib/saved-resumes-cache";
-import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
+import type {
+  InterviewRoundRecordResponse,
+  SavedResumeArchive,
+} from "@/lib/saved-resumes-types";
 import { TODAYS_RESUME_COUNT_CHANGED_EVENT } from "@/lib/todays-resume-count";
 import { brand, ui } from "@/lib/ui-styles";
 import CopyIconButton from "@/components/ui/CopyIconButton";
+import InterviewHistoryTimeline from "@/components/ui/InterviewHistoryTimeline";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
 const Modal = dynamic(() => import("@/components/ui/Modal"), { ssr: false });
@@ -431,6 +435,7 @@ function ApplicationRows({
               <th className="px-4 py-3 font-medium">Company</th>
               <th className="px-4 py-3 font-medium">Job title</th>
               <th className="px-4 py-3 font-medium">Job description</th>
+              <th className="px-4 py-3 font-medium">Interview</th>
               <th className="px-4 py-3 font-medium">File name</th>
               <th className={styles.actionsHead}>Download</th>
             </tr>
@@ -463,6 +468,14 @@ function ApplicationRows({
                       <span className="text-slate-400 dark:text-slate-500">No description</span>
                     )}
                   </td>
+                  <td className="px-4 py-3 align-top min-w-[10rem]">
+                    <InterviewHistoryTimeline
+                      bidAt={item.bidAt}
+                      interviewHistory={item.interviewHistory}
+                      nextInterviewRound={item.nextInterviewRound}
+                      compact
+                    />
+                  </td>
                   <td className={styles.fileNameCell}>
                     <button
                       type="button"
@@ -481,7 +494,9 @@ function ApplicationRows({
                         disabled={downloadingId === item.id}
                         onClick={() => onDownload(item)}
                       >
-                        {downloadingId === item.id ? "…" : "Download"}
+                        {downloadingId === item.id
+                          ? "…"
+                          : `Download · R${item.nextInterviewRound ?? 1}`}
                       </Button>
                     </div>
                   </td>
@@ -737,6 +752,36 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
     setPreviewBlob(null);
     setPreviewError("");
     setPreviewLoading(false);
+  }
+
+  function patchArchiveInterview(
+    archiveId: string,
+    update: InterviewRoundRecordResponse
+  ) {
+    setItems((current) =>
+      current.map((row) =>
+        row.id === archiveId
+          ? {
+              ...row,
+              bidAt: update.bidAt || row.bidAt,
+              interviewHistory: update.interviewHistory,
+              nextInterviewRound: update.nextInterviewRound,
+            }
+          : row
+      )
+    );
+    setDownloadTarget((current) =>
+      current && current.id === archiveId
+        ? {
+            ...current,
+            bidAt: update.bidAt || current.bidAt,
+            interviewHistory: update.interviewHistory,
+            nextInterviewRound: update.nextInterviewRound,
+          }
+        : current
+    );
+    // Keep session cache in sync so reload of panel does not flash stale history.
+    invalidateSavedResumesCache();
   }
 
   function openDownloadChooser(
@@ -1035,6 +1080,13 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
         onClose={closeDownloadChooser}
         defaultIncludePdf={downloadDefaults.pdf}
         defaultIncludeDocx={downloadDefaults.docx}
+        showInterviewOptions
+        bidAt={downloadTarget?.bidAt}
+        interviewHistory={downloadTarget?.interviewHistory}
+        nextInterviewRound={downloadTarget?.nextInterviewRound}
+        onInterviewHistoryUpdated={(update) => {
+          if (downloadTarget?.id) patchArchiveInterview(downloadTarget.id, update);
+        }}
         onFeedback={(feedback) => {
           setDownloadFeedback(feedback);
           if (feedback.tone === "err") setError(feedback.text);
