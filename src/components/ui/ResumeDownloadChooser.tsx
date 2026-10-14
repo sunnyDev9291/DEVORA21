@@ -76,7 +76,7 @@ export default function ResumeDownloadChooser({
   onInterviewHistoryUpdated,
 }: ResumeDownloadChooserProps) {
   const [mode, setMode] = useState<ResumeDeliverMode>("here");
-  const [interviewPurpose, setInterviewPurpose] = useState<InterviewPurpose>("round");
+  const [interviewPurpose, setInterviewPurpose] = useState<InterviewPurpose | null>(null);
   const [includePdf, setIncludePdf] = useState(defaultIncludePdf);
   const [includeDocx, setIncludeDocx] = useState(defaultIncludeDocx);
   const [devices, setDevices] = useState<RemoteDevice[]>([]);
@@ -146,7 +146,7 @@ export default function ResumeDownloadChooser({
     pollStopRef.current = false;
     lastFeedbackRef.current = null;
     setMode("here");
-    setInterviewPurpose("round");
+    setInterviewPurpose(null);
     setIncludePdf(defaultIncludePdf);
     setIncludeDocx(defaultIncludeDocx);
     setError("");
@@ -269,6 +269,11 @@ export default function ResumeDownloadChooser({
     const id = archiveId?.trim();
     if (!id || submitting || deletingRound !== null || tracking) return;
 
+    if (showInterviewOptions && !interviewPurpose) {
+      setError("Select Round or Other before downloading.");
+      return;
+    }
+
     if (!includePdf && !includeDocx) {
       setError("Select at least one format (PDF or DOCX).");
       return;
@@ -370,6 +375,7 @@ export default function ResumeDownloadChooser({
                     type="button"
                     disabled={submitting || deletingRound !== null}
                     onClick={() => setInterviewPurpose("round")}
+                    aria-pressed={interviewPurpose === "round"}
                     className={`rounded-xl border px-3 py-2.5 text-left transition ${
                       interviewPurpose === "round"
                         ? "border-orange-400 bg-orange-50 text-orange-950 shadow-sm dark:border-orange-400/50 dark:bg-orange-500/15 dark:text-orange-50"
@@ -385,6 +391,7 @@ export default function ResumeDownloadChooser({
                     type="button"
                     disabled={submitting || deletingRound !== null}
                     onClick={() => setInterviewPurpose("other")}
+                    aria-pressed={interviewPurpose === "other"}
                     className={`rounded-xl border px-3 py-2.5 text-left transition ${
                       interviewPurpose === "other"
                         ? "border-orange-400 bg-orange-50 text-orange-950 shadow-sm dark:border-orange-400/50 dark:bg-orange-500/15 dark:text-orange-50"
@@ -397,6 +404,11 @@ export default function ResumeDownloadChooser({
                     </span>
                   </button>
                 </div>
+                {!interviewPurpose ? (
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Select Round or Other to enable download.
+                  </p>
+                ) : null}
                 {bidAt ? (
                   <InterviewHistoryTimeline
                     bidAt={bidAt}
@@ -542,6 +554,7 @@ export default function ResumeDownloadChooser({
                   submitting ||
                   deletingRound !== null ||
                   !archiveId?.trim() ||
+                  (showInterviewOptions && !interviewPurpose) ||
                   (mode === "remote" && activeDevices.length === 0)
                 }
                 onClick={() => void handleSubmit()}
