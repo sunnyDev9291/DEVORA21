@@ -15,7 +15,7 @@ export default function SuperAdminApplicationQaSessionDetailPage() {
 
   return (
     <SuperAdminGate>
-      <div className={`${saPage} max-w-7xl`}>
+      <div className={`${saPage} max-w-[90rem]`}>
         <SuperAdminHeader
           title="Session detail"
           subtitle="Owner, tab context, and every captured question/answer with timestamps."

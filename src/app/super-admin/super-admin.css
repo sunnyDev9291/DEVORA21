@@ -204,7 +204,9 @@
 }
 
 .sa-table-wrap {
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
   border-radius: var(--sa-radius);
   border: 1px solid var(--sa-border);
   background: #ffffff;
@@ -213,6 +215,9 @@
 
 .sa-table-wrap table {
   width: 100%;
+  min-width: 72rem;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
 .sa-table-wrap thead {

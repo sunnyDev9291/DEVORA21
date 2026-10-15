@@ -17,11 +17,10 @@ import {
 } from "@/components/super-admin/resume-dashboard-styles";
 import { AUTH_LINKS } from "@/lib/constants";
 import { getApiErrorMessage } from "@/lib/auth-api";
-import { formatEstDateTime } from "@/lib/format-est-datetime";
+import { formatEstDateTime, formatEstDateTimeParts } from "@/lib/format-est-datetime";
 import {
   displayApplicationQaOwnerName,
   superAdminApplicationQaApi,
-  truncateUrl,
   type ApplicationQaSessionSummary,
 } from "@/lib/super-admin-application-qa-api";
 
@@ -108,7 +107,7 @@ export default function SuperAdminApplicationQaSessions({
   }
 
   async function handleDelete(session: ApplicationQaSessionSummary) {
-    const label = session.pageTitle || truncateUrl(session.tabUrl, 40);
+    const label = session.pageTitle || session.tabUrl || session.id;
     if (!window.confirm(`Delete session “${label}”? This cannot be undone.`)) return;
 
     setDeletingId(session.id);
@@ -196,7 +195,7 @@ export default function SuperAdminApplicationQaSessions({
               <th className="px-4 py-3 font-medium">Status</th>
               <th className="px-4 py-3 font-medium">Items</th>
               <th className="px-4 py-3 font-medium">Updated</th>
-              <th className="px-4 py-3 font-medium">Actions</th>
+              <th className="sticky right-0 bg-[#f8fafc] px-4 py-3 font-medium">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -211,51 +210,59 @@ export default function SuperAdminApplicationQaSessions({
               const ownerLabel = displayApplicationQaOwnerName(
                 session.owner || { email: undefined, id: session.userId }
               );
-              const when =
-                (session.lastSyncedAt && formatEstDateTime(session.lastSyncedAt)) ||
-                (session.updatedAt && formatEstDateTime(session.updatedAt)) ||
-                session.lastSyncedAt ||
-                session.updatedAt ||
-                "—";
+              const whenIso = session.lastSyncedAt || session.updatedAt || "";
+              const whenParts = whenIso ? formatEstDateTimeParts(whenIso) : null;
+              const whenFallback =
+                (whenIso && formatEstDateTime(whenIso)) || whenIso || "—";
               return (
                 <tr key={session.id} className="border-t border-slate-100 align-top">
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-slate-800">{ownerLabel}</p>
+                  <td className="min-w-[10rem] px-4 py-3">
+                    <p className="break-words font-medium text-slate-800">{ownerLabel}</p>
                     {session.owner?.email ? (
-                      <p className={`${saMono} mt-0.5 text-[11px] text-slate-400`}>
+                      <p className={`${saMono} mt-0.5 break-all text-[11px] text-slate-400`}>
                         {session.owner.email}
                       </p>
                     ) : null}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="min-w-[16rem] max-w-[22rem] px-4 py-3">
                     {session.tabUrl ? (
                       <a
                         href={session.tabUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className={`${saMono} text-xs text-teal-700 hover:underline`}
-                        title={session.tabUrl}
+                        className={`${saMono} break-all text-xs text-teal-700 hover:underline`}
                       >
-                        {truncateUrl(session.tabUrl)}
+                        {session.tabUrl}
                       </a>
                     ) : (
                       <span className={`${saMono} text-xs text-slate-400`}>—</span>
                     )}
                   </td>
-                  <td className="max-w-[14rem] px-4 py-3 text-slate-700">
-                    <span className="line-clamp-2">{session.pageTitle || "—"}</span>
+                  <td className="min-w-[12rem] max-w-[18rem] px-4 py-3 text-slate-700">
+                    <span className="break-words whitespace-normal">
+                      {session.pageTitle || "—"}
+                    </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="whitespace-nowrap px-4 py-3">
                     <span className={statusClass(session.status)}>{session.status}</span>
                   </td>
-                  <td className={`${saMono} px-4 py-3 text-xs text-slate-600`}>
+                  <td className={`${saMono} whitespace-nowrap px-4 py-3 text-xs text-slate-600`}>
                     {session.itemCount}
                   </td>
-                  <td className={`${saMono} whitespace-nowrap px-4 py-3 text-[11px] text-slate-500`}>
-                    {when}
+                  <td className={`${saMono} min-w-[9.5rem] px-4 py-3 text-[11px] text-slate-500`}>
+                    {whenParts ? (
+                      <span className="block whitespace-normal">
+                        <span className="block">{whenParts.date}</span>
+                        <span className="block">
+                          {whenParts.time} {whenParts.zone}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="whitespace-normal">{whenFallback}</span>
+                    )}
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-2">
+                  <td className="sticky right-0 whitespace-nowrap bg-white px-4 py-3 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.35)]">
+                    <div className="flex flex-nowrap gap-2">
                       <Link
                         href={`${AUTH_LINKS.superAdmin}/application-qa/sessions/${encodeURIComponent(session.id)}`}
                         className={saBtnGhost}

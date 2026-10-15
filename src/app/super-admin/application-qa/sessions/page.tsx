@@ -15,7 +15,7 @@ function SessionsInner() {
   const q = searchParams.get("q")?.trim() || "";
 
   return (
-    <div className={`${saPage} max-w-7xl`}>
+    <div className={`${saPage} max-w-[90rem]`}>
       <SuperAdminHeader
         title="Q&A sessions"
         subtitle="Filter by extension owner or search URL, page title, and owner email."
