@@ -1,0 +1,230 @@
+# Backend Cursor Prompt — Claude Model Selector for Resume Generation
+
+Copy everything below to the backend agent/developer.
+
+================================================================================
+GOAL
+================================================================================
+
+Frontend now lets users pick a Claude model (Haiku / Sonnet / Opus + versions)
+for resume content generation.
+
+Default model (must match FE):
+
+  claude-sonnet-4-6
+
+FE already:
+
+  - Shows a Claude model dropdown on Web UI resume generate + One-Click from-job
+  - Loads the catalog from GET /ai/models (with fallbacks)
+  - Sends `model` on AI stream completions and on POST /resume/from-job
+  - Persists the last choice in localStorage
+
+Backend must:
+
+  1) Expose an authenticated list of available Claude models
+  2) Accept `model` on AI chat completion (stream + sync)
+  3) Accept `model` on One-Click resume-from-job and use it for all AI steps
+  4) Default to claude-sonnet-4-6 when `model` is omitted or invalid
+  5) Keep existing prompt building, template formatting, gates, and pipelines
+
+Do NOT change resume JSON shape, DOCX fill, or PDF render behavior.
+
+================================================================================
+AUTH
+================================================================================
+
+Same auth as existing AI / resume endpoints:
+
+  - Cookie session, OR
+  - Authorization: Bearer <AI_INTERNAL_API_KEY>, OR
+  - Authorization: Bearer <dv21_ user API key>
+
+Model list is not secret beyond normal auth — any signed-in resume user may call it.
+
+================================================================================
+ENDPOINT 1 — List Claude models
+================================================================================
+
+Implement one of these (FE tries in order; first 200 with a non-empty list wins):
+
+  1) GET /ai/models
+  2) GET /ai/claude/models
+  3) GET /ai/models/claude
+
+Preferred: GET /ai/models
+
+Success response (200):
+
+```json
+{
+  "defaultModelId": "claude-sonnet-4-6",
+  "models": [
+    {
+      "id": "claude-haiku-4-5",
+      "label": "Haiku 4.5",
+      "family": "haiku",
+      "description": "Fastest · lower cost"
+    },
+    {
+      "id": "claude-sonnet-4-5",
+      "label": "Sonnet 4.5",
+      "family": "sonnet",
+      "description": "Balanced quality and speed"
+    },
+    {
+      "id": "claude-sonnet-4-6",
+      "label": "Sonnet 4.6",
+      "family": "sonnet",
+      "description": "Recommended for resume drafting",
+      "isDefault": true
+    },
+    {
+      "id": "claude-opus-4-5",
+      "label": "Opus 4.5",
+      "family": "opus",
+      "description": "Highest quality · slower"
+    },
+    {
+      "id": "claude-opus-4-6",
+      "label": "Opus 4.6",
+      "family": "opus",
+      "description": "Highest quality · slower"
+    }
+  ]
+}
+```
+
+Field notes:
+
+  - `id` — Anthropic / your provider model id (required). Also accept aliases
+    `model`, `modelId`, `model_id` if you already use those shapes.
+  - `label` / `name` / `displayName` — human label (FE falls back to id)
+  - `family` — `haiku` | `sonnet` | `opus` (FE infers from id if missing)
+  - `description` — optional short hint under the dropdown
+  - `isDefault` / `is_default` — mark Sonnet 4.6
+  - `defaultModelId` — top-level preferred default (claude-sonnet-4-6)
+
+Only return models your Anthropic (or proxy) account can actually call.
+Keep the catalog in sync when you enable new Claude versions.
+
+================================================================================
+ENDPOINT 2 — AI chat completions (stream + sync)
+================================================================================
+
+Existing:
+
+  POST /ai/chat/completions
+  POST /ai/chat/completions/stream
+
+FE / Next BFF now may send:
+
+```json
+{
+  "model": "claude-sonnet-4-6",
+  "messages": [],
+  "maxTokens": 16384,
+  "jsonObject": true,
+  "jobTitle": "...",
+  "jobDescription": "...",
+  "templateId": "...",
+  "customPrompt": "...",
+  "userId": "...",
+  "skipEnglishTeamGate": true
+}
+```
+
+Rules:
+
+  - If `model` is present and allowed → use that Anthropic model for the call
+  - If `model` is missing / empty → use claude-sonnet-4-6 (or env RESUME_AI_MODEL
+    if you already have one; default that env to claude-sonnet-4-6)
+  - If `model` is unknown / not in allowlist → 400 with clear message, e.g.
+    `{ "error": "Unsupported Claude model: …" }`
+  - Do not silently remapping to a different family (Haiku request must not become Opus)
+  - English-team gate, profile prompt, templateId prompt building — unchanged
+
+Also accept snake_case if useful: `model_id` as alias for `model`.
+
+================================================================================
+ENDPOINT 3 — One-Click resume from job
+================================================================================
+
+Existing:
+
+  POST /resume/from-job
+
+FE now sends (among existing fields):
+
+```json
+{
+  "url": "https://…",
+  "customPrompt": "…",
+  "model": "claude-sonnet-4-6",
+  "skipEnglishTeamGate": true
+}
+```
+
+Rules:
+
+  - Persist `model` on the job record (or pass through the pipeline)
+  - Use the same model for every AI step in that job (scrape helpers if any,
+    resume JSON generation, improve/regenerate if those run inside the job)
+  - Same default / validation as completions endpoints
+  - Polling status responses do not need to echo the model (optional nicety)
+
+================================================================================
+ENV (optional)
+================================================================================
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| RESUME_AI_MODEL / CLAUDE_DEFAULT_MODEL | claude-sonnet-4-6 | Used when request omits `model` |
+| ANTHROPIC_API_KEY (or existing) | — | Unchanged |
+
+Remove any hard-coded “always sonnet-4-6” constants that ignore the request body.
+
+================================================================================
+ALLOWLIST SUGGESTION
+================================================================================
+
+Maintain a server-side allowlist. Start with (adjust to what Anthropic exposes
+for your account):
+
+  - claude-haiku-4-5
+  - claude-sonnet-4-5
+  - claude-sonnet-4-6   ← default
+  - claude-opus-4-5
+  - claude-opus-4-6
+
+When Anthropic ships new versions, add them to the allowlist AND to GET /ai/models
+so the FE dropdown updates without a frontend deploy of the fallback catalog.
+
+================================================================================
+ACCEPTANCE CHECKS
+================================================================================
+
+1) GET /ai/models returns models grouped by Haiku/Sonnet/Opus; default is
+   claude-sonnet-4-6 (isDefault and/or defaultModelId).
+
+2) POST /ai/chat/completions/stream with `"model":"claude-haiku-4-5"` calls Haiku
+   (verify in provider logs / response headers / your AI audit log).
+
+3) Same stream without `model` uses claude-sonnet-4-6.
+
+4) POST /resume/from-job with `"model":"claude-opus-4-6"` generates using Opus
+   for the resume AI step(s).
+
+5) Invalid model id → 400, not a silent fallback to Sonnet.
+
+6) Existing resume generation without `model` still works (backward compatible).
+
+================================================================================
+OUT OF SCOPE
+================================================================================
+
+- Do not change DOCX template fill or PDF rendering
+- Do not change English-team gate rules (except continuing to honor skip*)
+- Do not require FE to send messages[] for resume mode (templateId + JD still OK)
+- Chat Q&A UI may keep its own model later; this work is resume generation only
+)

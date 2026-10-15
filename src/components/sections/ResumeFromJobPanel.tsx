@@ -27,6 +27,11 @@ import type { ResumeWorkspaceFabActions } from "@/components/ui/ResumeWorkspaceF
 import { resolveWritingPrompt } from "@/lib/writing-prompt";
 import { fetchRenderedPdf } from "@/lib/resume-render-api";
 import { resumeBuilderAccessDeniedMessage } from "@/lib/resume-access";
+import ClaudeModelSelector from "@/components/ui/ClaudeModelSelector";
+import {
+  DEFAULT_CLAUDE_MODEL,
+  readStoredClaudeModel,
+} from "@/lib/claude-models";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
 const ResumeChatDialog = dynamic(() => import("@/components/ui/ResumeChatDialog"));
@@ -62,6 +67,9 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
   }, [user]);
 
   const [jobUrl, setJobUrl] = useState("");
+  const [claudeModel, setClaudeModel] = useState(
+    () => readStoredClaudeModel() || DEFAULT_CLAUDE_MODEL
+  );
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
   const [job, setJob] = useState<ResumeFromJobJob | null>(null);
@@ -391,6 +399,7 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
       const started = await startResumeFromJob(url, controller.signal, {
         skipEnglishTeamGate: true,
         customPrompt: freshPrompt || undefined,
+        model: claudeModel,
       });
       setJob(started);
 
@@ -507,6 +516,12 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
             </button>
           ) : null}
         </div>
+        <ClaudeModelSelector
+          id="from-job-claude-model"
+          value={claudeModel}
+          onChange={setClaudeModel}
+          disabled={running}
+        />
       </form>
 
       {error ? (

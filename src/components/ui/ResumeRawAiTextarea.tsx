@@ -3,12 +3,15 @@
 import ClaudeIcon from "@/components/ui/ClaudeIcon";
 import ResumeAiKeyValueView from "@/components/ui/ResumeAiKeyValueView";
 import { useFollowOutputScroll } from "@/hooks/useFollowOutputScroll";
+import { DEFAULT_CLAUDE_MODEL } from "@/lib/claude-models";
 
 interface ResumeRawAiTextareaProps {
   value: string;
   streaming?: boolean;
   /** Optional label override */
   label?: string;
+  /** Claude model id shown in the header (defaults to Sonnet 4.6). */
+  model?: string;
 }
 
 /** Live / completed AI response shown as a Claude-style chat message. */
@@ -16,6 +19,7 @@ export default function ResumeRawAiTextarea({
   value,
   streaming = false,
   label = "Claude",
+  model = DEFAULT_CLAUDE_MODEL,
 }: ResumeRawAiTextareaProps) {
   const { containerRef, onScroll } = useFollowOutputScroll({
     deps: [value],
@@ -38,7 +42,7 @@ export default function ResumeRawAiTextarea({
           <div className="min-w-0">
             <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">{label}</p>
             <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-              claude-sonnet-4-6
+              {model.trim() || DEFAULT_CLAUDE_MODEL}
               {streaming ? " · generating…" : value ? " · draft ready" : ""}
             </p>
           </div>

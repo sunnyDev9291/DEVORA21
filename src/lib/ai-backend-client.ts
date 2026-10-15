@@ -8,6 +8,8 @@ export type AiChatMessage = {
 export type AiCompletionOptions = {
   maxTokens?: number;
   jsonObject?: boolean;
+  /** Claude model id (e.g. claude-sonnet-4-6). Backend defaults when omitted. */
+  model?: string;
   /** Logged-in user id for profile-prompt application. */
   userId?: string;
   /** Fresh writing prompt — prefer over a stale userId prompt cache when supported. */
@@ -74,6 +76,10 @@ function buildAiBody(
     maxTokens: options?.maxTokens ?? maxTokens,
     jsonObject: options?.jsonObject ?? false,
   };
+  const model = options?.model?.trim();
+  if (model) {
+    body.model = model;
+  }
   const userId = options?.userId?.trim();
   if (userId) {
     body.userId = userId;

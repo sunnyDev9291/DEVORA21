@@ -60,6 +60,11 @@ import { loadStoredProfile, resolveUserNames } from "@/lib/user-profile";
 import { resolveWritingPrompt } from "@/lib/writing-prompt";
 import CompanyPastApplications from "@/components/sections/CompanyPastApplications";
 import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
+import ClaudeModelSelector from "@/components/ui/ClaudeModelSelector";
+import {
+  DEFAULT_CLAUDE_MODEL,
+  readStoredClaudeModel,
+} from "@/lib/claude-models";
 
 /** Dev/QA sample posting — fill via “test fill” beside Job description. */
 const TEST_JOB_FILL = {
@@ -185,6 +190,9 @@ export default function ResumeGenerator({
     jobDescription: "",
     customPrompt: userPrompt,
   });
+  const [claudeModel, setClaudeModel] = useState(
+    () => readStoredClaudeModel() || DEFAULT_CLAUDE_MODEL
+  );
   const [step, setStep] = useState<Step>("form");
   const [content, setContent] = useState<GeneratedResumeContent | null>(null);
   const [docxBase64, setDocxBase64] = useState("");
@@ -803,6 +811,7 @@ export default function ResumeGenerator({
           templateBase64: templateForRequest.templateBase64,
           profileName: chatProfile?.fullName,
           userId: user?.id,
+          model: claudeModel,
         },
         {
           onPhase: (phase) => {
@@ -813,6 +822,7 @@ export default function ResumeGenerator({
           },
           signal: controller.signal,
           skipEnglishTeamGate: true,
+          model: claudeModel,
         }
       );
 
@@ -893,6 +903,7 @@ export default function ResumeGenerator({
           previousContent: content,
           atsFeedback: baselineScore.ats,
           ruleKeepFeedback: baselineScore.ruleKeep,
+          model: claudeModel,
         },
         {
           onPhase: (phase) => {
@@ -903,6 +914,7 @@ export default function ResumeGenerator({
           },
           signal: controller.signal,
           skipEnglishTeamGate: true,
+          model: claudeModel,
         }
       );
 
@@ -1371,6 +1383,13 @@ export default function ResumeGenerator({
             </div>
           )}
 
+          <ClaudeModelSelector
+            id="resume-claude-model"
+            value={claudeModel}
+            onChange={setClaudeModel}
+            disabled={generating || applying}
+          />
+
           <div className="flex flex-col sm:flex-row flex-wrap gap-3">
             <button
               type="submit"
@@ -1602,6 +1621,7 @@ export default function ResumeGenerator({
               <ResumeRawAiTextarea
                 value={streamOutput}
                 streaming={generating}
+                model={claudeModel}
               />
             </div>
           )}

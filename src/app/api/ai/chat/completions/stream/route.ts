@@ -8,6 +8,7 @@ type StreamBody = {
   messages?: Array<{ role?: string; content?: string }>;
   maxTokens?: number;
   jsonObject?: boolean;
+  model?: string;
   userId?: string;
   customPrompt?: string;
   profilePrompt?: string;
@@ -126,6 +127,8 @@ export async function POST(req: Request) {
     (typeof body.promptContent === "string" && body.promptContent.trim()) ||
     "";
 
+  const model = typeof body.model === "string" ? body.model.trim() : "";
+
   // Job fields first + snake_case aliases for the English-team resume gate.
   const upstreamBody: Record<string, unknown> = {
     jobTitle,
@@ -136,6 +139,9 @@ export async function POST(req: Request) {
     maxTokens: typeof body.maxTokens === "number" ? body.maxTokens : 4096,
     jsonObject: Boolean(body.jsonObject),
   };
+  if (model) {
+    upstreamBody.model = model;
+  }
   if (userId) {
     upstreamBody.userId = userId;
   }

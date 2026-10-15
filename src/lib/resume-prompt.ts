@@ -1,3 +1,4 @@
+import { DEFAULT_CLAUDE_MODEL } from "@/lib/claude-models";
 import { applyResumeContentPostProcess } from "@/lib/resume-content-postprocess";
 import { buildTemplateSkillsPromptBlock } from "@/lib/resume-skills-style";
 import { isProjectLayout, normalizeResumeExperience, normalizeResumeProject } from "@/lib/resume-experience-utils";
@@ -7,7 +8,7 @@ import type {
   ResumeTemplateLayout,
 } from "@/lib/resume-types";
 
-export const RESUME_AI_MODEL = "claude-sonnet-4-6";
+export const RESUME_AI_MODEL = DEFAULT_CLAUDE_MODEL;
 
 /** Resume generation streams with this budget (full multi-role JSON needs headroom). */
 export const RESUME_MAX_TOKENS = 16384;

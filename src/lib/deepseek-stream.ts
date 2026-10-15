@@ -5,8 +5,9 @@ import {
   type AiCompletionOptions,
   type AiStreamDelta,
 } from "@/lib/ai-backend-client";
+import { DEFAULT_CLAUDE_MODEL } from "@/lib/claude-models";
 
-export const DEEPSEEK_MODEL = "claude-sonnet-4-6";
+export const DEEPSEEK_MODEL = DEFAULT_CLAUDE_MODEL;
 
 export type ChatMessage = AiChatMessage;
 export type DeepSeekCallOptions = AiCompletionOptions;
@@ -20,6 +21,7 @@ export async function completeDeepSeek(
   return completeAiChat(messages, maxTokens, {
     maxTokens: options?.maxTokens ?? maxTokens,
     jsonObject: options?.jsonObject,
+    model: options?.model,
     userId: options?.userId,
     customPrompt: options?.customPrompt,
     userAuthorization: options?.userAuthorization,
@@ -39,6 +41,7 @@ export async function* iterateDeepSeekStream(
   yield* iterateAiChatStream(messages, maxTokens, {
     maxTokens: options?.maxTokens ?? maxTokens,
     jsonObject: options?.jsonObject,
+    model: options?.model,
     userId: options?.userId,
     customPrompt: options?.customPrompt,
     userAuthorization: options?.userAuthorization,

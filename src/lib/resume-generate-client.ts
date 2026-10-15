@@ -55,6 +55,8 @@ export async function generateResume(
     signal?: AbortSignal;
     /** Always true for create/improve — English-team gate is disabled in the UI. */
     skipEnglishTeamGate?: boolean;
+    /** Claude model id for this generation (e.g. claude-sonnet-4-6). */
+    model?: string;
   }
 ): Promise<ResumeGenerateResult> {
   handlers.onPhase?.("starting");
@@ -68,6 +70,10 @@ export async function generateResume(
   const templateId =
     typeof body.templateId === "string" ? body.templateId.trim() : "";
   const task = typeof body.task === "string" ? body.task.trim() : "";
+  const model =
+    (typeof handlers.model === "string" && handlers.model.trim()) ||
+    (typeof body.model === "string" && body.model.trim()) ||
+    "";
   const userApiKey = getUserApiKey();
   const usingUserApiKey = Boolean(userApiKey && isUserApiKey(userApiKey));
 
@@ -125,6 +131,7 @@ export async function generateResume(
       jobDescription,
       templateId: resolvedTemplateId || undefined,
       task: task || prep.task || undefined,
+      model: model || undefined,
       skipEnglishTeamGate: handlers.skipEnglishTeamGate !== false,
     })) {
       if (!delta.content) continue;

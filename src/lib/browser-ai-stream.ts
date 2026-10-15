@@ -23,6 +23,8 @@ export type BrowserAiStreamOptions = {
    * - AI_INTERNAL_API_KEY from prepare (cookie sessions)
    */
   authToken: string;
+  /** Claude model id (e.g. claude-sonnet-4-6). Backend defaults when omitted. */
+  model?: string;
   /** Logged-in user id — required when Authorization is the internal key. */
   userId?: string;
   /**
@@ -130,6 +132,7 @@ function buildAiStreamBody(
   const customPrompt = options.customPrompt?.trim() || "";
   const templateId = options.templateId?.trim() || "";
   const task = options.task?.trim() || "";
+  const model = options.model?.trim() || "";
 
   // Resume mode: backend owns the Claude prompt from template structure.
   // FE may send messages:[] — do not invent fake bullet-count system prompts.
@@ -142,6 +145,9 @@ function buildAiStreamBody(
     maxTokens,
     jsonObject: options.jsonObject ?? false,
   };
+  if (model) {
+    body.model = model;
+  }
   if (userId) {
     body.userId = userId;
   }
