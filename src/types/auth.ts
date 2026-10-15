@@ -16,7 +16,7 @@ export interface User {
   /** Backend-stored template id — source of truth for render. */
   resumeTemplateId?: string;
   promptFileName?: string;
-  /** Per-user job crawl settings (listing URLs; Himalayas stores country name). */
+  /** Per-user job crawl settings (listing URLs; Himalayas/Jobicy/Jobgether store country name). */
   listingUrls?: ProfileListingUrls;
   createdAt?: string;
 }

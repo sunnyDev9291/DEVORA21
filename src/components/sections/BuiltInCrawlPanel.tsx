@@ -4,7 +4,16 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { getApiErrorMessage } from "@/lib/auth-api";
-import { crawlBuiltInJobs, crawlGetOnBoardJobs, crawlHiringCafeJobs, crawlHimalayasJobs, crawlJobicyJobs, crawlWorkableJobs, crawlWorkingNomadsJobs } from "@/lib/builtin-crawl-api";
+import {
+  crawlBuiltInJobs,
+  crawlGetOnBoardJobs,
+  crawlHiringCafeJobs,
+  crawlHimalayasJobs,
+  crawlJobgetherJobs,
+  crawlJobicyJobs,
+  crawlWorkableJobs,
+  crawlWorkingNomadsJobs,
+} from "@/lib/builtin-crawl-api";
 import {
   ALL_JOB_CRAWL_PLATFORMS,
   BUILTIN_CRAWL_TIMEOUT_MS,
@@ -54,6 +63,7 @@ const PLATFORM_TABLE_BADGE_CLASS: Record<JobCrawlPlatform, string> = {
   himalayas: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 ring-1 ring-emerald-500/20",
   getonboard: "bg-rose-500/15 text-rose-800 dark:text-rose-300 ring-1 ring-rose-500/20",
   jobicy: "bg-indigo-500/15 text-indigo-800 dark:text-indigo-300 ring-1 ring-indigo-500/20",
+  jobgether: "bg-teal-500/15 text-teal-800 dark:text-teal-300 ring-1 ring-teal-500/20",
 };
 
 const PLATFORM_BLURB: Record<JobCrawlPlatform, string> = {
@@ -64,6 +74,7 @@ const PLATFORM_BLURB: Record<JobCrawlPlatform, string> = {
   himalayas: "Remote roles via Himalayas free API (country filter)",
   getonboard: "Remote roles via Get on Board (country filter, last 24 hours)",
   jobicy: "Remote roles via Jobicy free API (country filter, last 24 hours)",
+  jobgether: "Full-remote roles via Jobgether (country filter, last 24 hours)",
 };
 
 function defaultSelectedPlatforms(): JobCrawlPlatform[] {
@@ -85,6 +96,7 @@ function crawlPlatform(
   if (platform === "workingnomads") return crawlWorkingNomadsJobs(url, signal);
   if (platform === "getonboard") return crawlGetOnBoardJobs(url, signal);
   if (platform === "jobicy") return crawlJobicyJobs(url, signal);
+  if (platform === "jobgether") return crawlJobgetherJobs(url, signal);
   return crawlHimalayasJobs(url, signal);
 }
 
@@ -430,11 +442,37 @@ function NewJobBadge() {
   );
 }
 
-function JobTitleCell({ title, isNew }: { title: string; isNew: boolean }) {
+function formatPostedAt(iso?: string): string | null {
+  if (!iso?.trim()) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function JobTitleCell({
+  title,
+  isNew,
+  postedAt,
+}: {
+  title: string;
+  isNew: boolean;
+  postedAt?: string;
+}) {
+  const postedLabel = formatPostedAt(postedAt);
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {isNew ? <NewJobBadge /> : null}
-      <span>{title || "—"}</span>
+    <div className="min-w-0">
+      <div className="flex flex-wrap items-center gap-2">
+        {isNew ? <NewJobBadge /> : null}
+        <span>{title || "—"}</span>
+      </div>
+      {postedLabel ? (
+        <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Posted {postedLabel}</p>
+      ) : null}
     </div>
   );
 }
@@ -565,14 +603,25 @@ function MergedJobTable({
                         </td>
                       ) : null}
                       <td className="px-4 py-3 text-slate-800 dark:text-slate-100">
-                        <JobTitleCell title={row.job.jobTitle} isNew={isNew} />
+                        <JobTitleCell
+                          title={row.job.jobTitle}
+                          isNew={isNew}
+                          postedAt={row.job.postedAt}
+                        />
                       </td>
                       <td className="px-4 py-3 max-w-[20rem]">
                         {row.job.jobUrl ? (
                           <div className="flex items-center gap-2 min-w-0" data-no-row-toggle>
-                            <span title={row.job.jobUrl} className="truncate text-orange-600 dark:text-orange-400 select-all">
+                            <a
+                              href={row.job.jobUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={row.job.jobUrl}
+                              className="truncate text-orange-600 hover:underline dark:text-orange-400 select-all"
+                              data-no-row-toggle
+                            >
                               {row.job.jobUrl}
-                            </span>
+                            </a>
                             <CopyUrlButton url={row.job.jobUrl} />
                           </div>
                         ) : (
@@ -615,14 +664,25 @@ function MergedJobTable({
                         {normalizeCompanyName(row.job.companyName) || "—"}
                       </td>
                       <td className="px-4 py-3 text-slate-800 dark:text-slate-100">
-                        <JobTitleCell title={row.job.jobTitle} isNew={isNew} />
+                        <JobTitleCell
+                          title={row.job.jobTitle}
+                          isNew={isNew}
+                          postedAt={row.job.postedAt}
+                        />
                       </td>
                       <td className="px-4 py-3 max-w-[20rem]">
                         {row.job.jobUrl ? (
                           <div className="flex items-center gap-2 min-w-0" data-no-row-toggle>
-                            <span title={row.job.jobUrl} className="truncate text-orange-600 dark:text-orange-400 select-all">
+                            <a
+                              href={row.job.jobUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={row.job.jobUrl}
+                              className="truncate text-orange-600 hover:underline dark:text-orange-400 select-all"
+                              data-no-row-toggle
+                            >
                               {row.job.jobUrl}
-                            </span>
+                            </a>
                             <CopyUrlButton url={row.job.jobUrl} />
                           </div>
                         ) : (

@@ -3,6 +3,8 @@ export type JobCrawlJob = {
   companyName: string;
   jobTitle: string;
   jobUrl: string;
+  /** ISO 8601 when the source reports a post time (e.g. Jobgether). */
+  postedAt?: string;
 };
 
 /** @deprecated Use JobCrawlJob */
@@ -15,7 +17,8 @@ export type JobCrawlPlatform =
   | "workingnomads"
   | "himalayas"
   | "getonboard"
-  | "jobicy";
+  | "jobicy"
+  | "jobgether";
 
 export const ALL_JOB_CRAWL_PLATFORMS: JobCrawlPlatform[] = [
   "builtin",
@@ -25,6 +28,7 @@ export const ALL_JOB_CRAWL_PLATFORMS: JobCrawlPlatform[] = [
   "himalayas",
   "getonboard",
   "jobicy",
+  "jobgether",
 ];
 
 export type JobCrawlResult = {
@@ -75,6 +79,9 @@ export const DEFAULT_GETONBOARD_COUNTRY = "Argentina";
 /** Default Jobicy country filter (free Remote Jobs API — no listing URL). */
 export const DEFAULT_JOBICY_COUNTRY = "Argentina";
 
+/** Default Jobgether country filter (full-remote, last 24h — no listing URL). */
+export const DEFAULT_JOBGETHER_COUNTRY = "Argentina";
+
 export const DEFAULT_LISTING_URLS: Record<JobCrawlPlatform, string> = {
   builtin: DEFAULT_BUILTIN_LISTING_URL,
   hiringcafe: DEFAULT_HIRINGCAFE_LISTING_URL,
@@ -83,6 +90,7 @@ export const DEFAULT_LISTING_URLS: Record<JobCrawlPlatform, string> = {
   himalayas: DEFAULT_HIMALAYAS_COUNTRY,
   getonboard: DEFAULT_GETONBOARD_COUNTRY,
   jobicy: DEFAULT_JOBICY_COUNTRY,
+  jobgether: DEFAULT_JOBGETHER_COUNTRY,
 };
 
 export const JOB_CRAWL_PLATFORM_LABEL: Record<JobCrawlPlatform, string> = {
@@ -93,6 +101,7 @@ export const JOB_CRAWL_PLATFORM_LABEL: Record<JobCrawlPlatform, string> = {
   himalayas: "Himalayas",
   getonboard: "Get on Board",
   jobicy: "Jobicy",
+  jobgether: "Jobgether",
 };
 
 export const JOB_CRAWL_PLATFORM_PLACEHOLDER: Record<JobCrawlPlatform, string> = {
@@ -103,6 +112,7 @@ export const JOB_CRAWL_PLATFORM_PLACEHOLDER: Record<JobCrawlPlatform, string> = 
   himalayas: "Argentina",
   getonboard: "Argentina",
   jobicy: "Argentina",
+  jobgether: "Argentina",
 };
 
 export const JOB_CRAWL_PLATFORM_HINT: Record<JobCrawlPlatform, string> = {
@@ -116,11 +126,18 @@ export const JOB_CRAWL_PLATFORM_HINT: Record<JobCrawlPlatform, string> = {
     "Country name or ISO code (e.g. Argentina or AR). Uses Get on Board via backend — remote jobs from the last 24 hours.",
   jobicy:
     "Country name only (e.g. Argentina). Uses Jobicy via backend — remote jobs from the last 24 hours.",
+  jobgether:
+    "Country name only (e.g. Argentina). Uses Jobgether via backend — full-remote jobs from the last 24 hours.",
 };
 
 /** Platforms that store a listing URL vs a simple filter value. */
 export function isJobCrawlUrlPlatform(platform: JobCrawlPlatform): boolean {
-  return platform !== "himalayas" && platform !== "getonboard" && platform !== "jobicy";
+  return (
+    platform !== "himalayas" &&
+    platform !== "getonboard" &&
+    platform !== "jobicy" &&
+    platform !== "jobgether"
+  );
 }
 
 export const JOB_CRAWL_PLATFORM_VALIDATOR: Record<JobCrawlPlatform, (value: string) => boolean> = {
@@ -131,6 +148,7 @@ export const JOB_CRAWL_PLATFORM_VALIDATOR: Record<JobCrawlPlatform, (value: stri
   himalayas: isHimalayasCountry,
   getonboard: isGetOnBoardCountry,
   jobicy: isJobicyCountry,
+  jobgether: isJobgetherCountry,
 };
 
 /** Fill missing platform URLs from defaults (e.g. after adding Workable to saved sessions). */
@@ -145,6 +163,7 @@ export function mergeListingUrls(
     himalayas: normalizeHimalayasCountry(stored?.himalayas ?? "") || DEFAULT_HIMALAYAS_COUNTRY,
     getonboard: normalizeGetOnBoardCountry(stored?.getonboard ?? "") || DEFAULT_GETONBOARD_COUNTRY,
     jobicy: normalizeJobicyCountry(stored?.jobicy ?? "") || DEFAULT_JOBICY_COUNTRY,
+    jobgether: normalizeJobgetherCountry(stored?.jobgether ?? "") || DEFAULT_JOBGETHER_COUNTRY,
   };
 }
 
@@ -156,7 +175,10 @@ export function parseListingUrlsPartial(
   const obj = raw as Record<string, unknown>;
   const next: Partial<Record<JobCrawlPlatform, string>> = {};
   for (const platform of ALL_JOB_CRAWL_PLATFORMS) {
-    const value = obj[platform];
+    const value =
+      obj[platform] ??
+      obj[`listingUrl_${platform}`] ??
+      obj[`listing_url_${platform}`];
     if (typeof value === "string" && value.trim()) {
       next[platform] = value.trim();
     }
@@ -292,6 +314,16 @@ export function isJobicyCountry(value: string): boolean {
   return isHimalayasCountry(value);
 }
 
+/** Normalize Jobgether profile value to a country name (same rules as Jobicy). */
+export function normalizeJobgetherCountry(value: string): string {
+  return normalizeHimalayasCountry(value);
+}
+
+/** Country name for Jobgether full-remote crawl (geo resolved on backend). */
+export function isJobgetherCountry(value: string): boolean {
+  return isHimalayasCountry(value);
+}
+
 /**
  * Map a user-entered country name to ISO 3166-1 alpha-2 for Get on Board `country_code`.
  * Backend should use this (or extend it) when calling the public search API.
@@ -333,7 +365,7 @@ export function detectJobCrawlPlatform(url: string): JobCrawlPlatform | null {
   if (isHiringCafeListingUrl(url)) return "hiringcafe";
   if (isWorkableListingUrl(url)) return "workable";
   if (isWorkingNomadsListingUrl(url)) return "workingnomads";
-  // Himalayas / Get on Board / Jobicy use country-only filters — not listing URLs.
+  // Himalayas / Get on Board / Jobicy / Jobgether use country-only filters — not listing URLs.
   return null;
 }
 

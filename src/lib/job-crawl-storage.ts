@@ -33,7 +33,8 @@ function isPlatform(value: unknown): value is JobCrawlPlatform {
     value === "workingnomads" ||
     value === "himalayas" ||
     value === "getonboard" ||
-    value === "jobicy"
+    value === "jobicy" ||
+    value === "jobgether"
   );
 }
 
@@ -42,12 +43,15 @@ function parseJobRow(raw: unknown, index: number): DiscoveredJobRow | null {
   const obj = raw as Record<string, unknown>;
   if (!isPlatform(obj.platform)) return null;
 
+  const postedAt = typeof obj.postedAt === "string" ? obj.postedAt.trim() : "";
+
   return {
     platform: obj.platform,
     jobId: typeof obj.jobId === "string" ? obj.jobId : String(index),
     companyName: typeof obj.companyName === "string" ? obj.companyName : "",
     jobTitle: typeof obj.jobTitle === "string" ? obj.jobTitle : "",
     jobUrl: typeof obj.jobUrl === "string" ? obj.jobUrl : "",
+    ...(postedAt ? { postedAt } : {}),
   };
 }
 
@@ -69,6 +73,7 @@ function parseListingUrls(raw: unknown): Record<JobCrawlPlatform, string> | null
     himalayas: typeof obj.himalayas === "string" ? obj.himalayas : "",
     getonboard: typeof obj.getonboard === "string" ? obj.getonboard : "",
     jobicy: typeof obj.jobicy === "string" ? obj.jobicy : "",
+    jobgether: typeof obj.jobgether === "string" ? obj.jobgether : "",
   });
 }
 
@@ -86,12 +91,16 @@ function parseResult(raw: unknown): JobCrawlResult | null {
 
   const jobs = obj.jobs
     .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
-    .map((item, index) => ({
-      jobId: typeof item.jobId === "string" ? item.jobId : String(index),
-      companyName: typeof item.companyName === "string" ? item.companyName : "",
-      jobTitle: typeof item.jobTitle === "string" ? item.jobTitle : "",
-      jobUrl: typeof item.jobUrl === "string" ? item.jobUrl : "",
-    }));
+    .map((item, index) => {
+      const postedAt = typeof item.postedAt === "string" ? item.postedAt.trim() : "";
+      return {
+        jobId: typeof item.jobId === "string" ? item.jobId : String(index),
+        companyName: typeof item.companyName === "string" ? item.companyName : "",
+        jobTitle: typeof item.jobTitle === "string" ? item.jobTitle : "",
+        jobUrl: typeof item.jobUrl === "string" ? item.jobUrl : "",
+        ...(postedAt ? { postedAt } : {}),
+      };
+    });
 
   return {
     sourceUrl: typeof obj.sourceUrl === "string" ? obj.sourceUrl : "",
@@ -134,6 +143,10 @@ function parseResults(raw: unknown): Partial<Record<JobCrawlPlatform, JobCrawlRe
   if (obj.jobicy) {
     const parsed = parseResult(obj.jobicy);
     if (parsed) out.jobicy = parsed;
+  }
+  if (obj.jobgether) {
+    const parsed = parseResult(obj.jobgether);
+    if (parsed) out.jobgether = parsed;
   }
 
   return out;
@@ -206,6 +219,7 @@ function migrateLegacy(rawKey: string): StoredJobCrawlSession | null {
           himalayas: platform === "himalayas" ? listingUrl : "",
           getonboard: platform === "getonboard" ? listingUrl : "",
           jobicy: platform === "jobicy" ? listingUrl : "",
+          jobgether: platform === "jobgether" ? listingUrl : "",
         }),
         jobs: flattenCrawlResults({ [platform]: result }, [platform]),
         savedAt: typeof obj.savedAt === "string" ? obj.savedAt : "",
