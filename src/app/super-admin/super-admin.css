@@ -278,12 +278,115 @@
   border-radius: 0.875rem;
 }
 
+@keyframes sa-live-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(15, 118, 110, 0.35);
+    background-color: rgba(204, 251, 241, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(15, 118, 110, 0);
+    background-color: rgba(204, 251, 241, 0.95);
+  }
+}
+
+@keyframes sa-rec-dot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.85);
+  }
+}
+
+.sa-live-flash {
+  animation: sa-live-pulse 1.1s ease-out 2;
+}
+
+.sa-live-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #ffffff;
+  padding: 0.35rem 0.7rem;
+  font-family: var(--font-sa-mono), ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.sa-live-status[data-state="live"] {
+  border-color: rgba(15, 118, 110, 0.35);
+  background: #ccfbf1;
+  color: #115e59;
+}
+
+.sa-live-status[data-state="connecting"],
+.sa-live-status[data-state="reconnecting"] {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.sa-live-status[data-state="offline"] {
+  border-color: rgba(148, 163, 184, 0.45);
+  background: #f8fafc;
+  color: #64748b;
+}
+
+.sa-live-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.sa-live-status[data-state="live"] .sa-live-dot,
+.sa-rec-pill .sa-live-dot {
+  animation: sa-rec-dot 1.2s ease-in-out infinite;
+}
+
+.sa-rec-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  border: 1px solid rgba(22, 163, 74, 0.35);
+  background: #dcfce7;
+  padding: 0.2rem 0.55rem;
+  font-family: var(--font-sa-mono), ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #166534;
+}
+
+.sa-rec-pill[data-state="paused"] {
+  border-color: rgba(245, 158, 11, 0.4);
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.sa-rec-pill[data-state="paused"] .sa-live-dot {
+  animation: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sa-animate-in,
   .sa-animate-in-delay-1,
   .sa-animate-in-delay-2,
   .sa-animate-in-delay-3,
-  .sa-skeleton {
+  .sa-skeleton,
+  .sa-live-flash,
+  .sa-live-dot {
     animation: none;
   }
 

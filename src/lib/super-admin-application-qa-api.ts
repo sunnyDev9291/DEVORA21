@@ -129,7 +129,8 @@ function normalizeStatus(raw: unknown): string {
   return value || "paused";
 }
 
-function normalizeSessionSummary(raw: unknown): ApplicationQaSessionSummary | null {
+/** Normalize list/detail/SSE session payloads into a stable FE shape. */
+export function normalizeSessionSummary(raw: unknown): ApplicationQaSessionSummary | null {
   if (!raw || typeof raw !== "object") return null;
   const row = raw as Record<string, unknown>;
   const id = pickString(row, "id", "_id", "sessionId", "session_id");
@@ -175,7 +176,7 @@ function normalizeQaItem(raw: unknown): ApplicationQaItem | null {
   };
 }
 
-function extractQaItems(session: Record<string, unknown>): ApplicationQaItem[] {
+export function extractQaItems(session: Record<string, unknown>): ApplicationQaItem[] {
   const rawList = Array.isArray(session.questionsAnswers)
     ? session.questionsAnswers
     : Array.isArray(session.questions_answers)
@@ -237,6 +238,78 @@ export function sessionActivityIso(
   session: Pick<ApplicationQaSessionSummary, "lastSyncedAt" | "updatedAt" | "createdAt">
 ): string {
   return session.lastSyncedAt || session.updatedAt || session.createdAt || "";
+}
+
+/** Parse SSE / detail session blob (summary + Q&A pairs). */
+export function parseApplicationQaSessionPayload(
+  raw: unknown
+): ApplicationQaSessionDetail | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const summary = normalizeSessionSummary(row);
+  if (!summary) return null;
+  return {
+    ...summary,
+    questionsAnswers: extractQaItems(row),
+  };
+}
+
+export type ApplicationQaLiveEvent =
+  | { kind: "ready"; at?: string }
+  | { kind: "session.created"; at?: string; session: ApplicationQaSessionDetail }
+  | { kind: "session.updated"; at?: string; session: ApplicationQaSessionDetail }
+  | { kind: "session.deleted"; at?: string; sessionId: string; userId?: string };
+
+export function parseApplicationQaLiveEvent(
+  eventName: string,
+  data: unknown
+): ApplicationQaLiveEvent | null {
+  const row =
+    data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+  const at = pickString(row, "at") || undefined;
+
+  if (eventName === "ready") {
+    return { kind: "ready", at };
+  }
+
+  if (eventName === "session.created" || eventName === "session.updated") {
+    const sessionRaw = row.session ?? row;
+    const session = parseApplicationQaSessionPayload(sessionRaw);
+    if (!session) return null;
+    return {
+      kind: eventName,
+      at,
+      session,
+    };
+  }
+
+  if (eventName === "session.deleted") {
+    const sessionId =
+      pickString(row, "sessionId", "session_id", "id") ||
+      (row.session && typeof row.session === "object"
+        ? pickString(row.session as Record<string, unknown>, "id", "_id")
+        : "");
+    if (!sessionId) return null;
+    return {
+      kind: "session.deleted",
+      at,
+      sessionId,
+      userId: pickString(row, "userId", "user_id") || undefined,
+    };
+  }
+
+  return null;
+}
+
+/** Build SSE URL — cookies via withCredentials; optional dv21_ as access_token. */
+export function buildApplicationQaStreamUrl(accessToken?: string | null): string {
+  const base = `${API_BASE_URL}/admin/application-qa/stream`;
+  const token = accessToken?.trim();
+  if (!token) return base;
+  const params = new URLSearchParams();
+  params.set("access_token", token);
+  params.set("token", token);
+  return `${base}?${params.toString()}`;
 }
 
 export const superAdminApplicationQaApi = {

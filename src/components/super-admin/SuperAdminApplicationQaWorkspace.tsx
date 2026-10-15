@@ -1,19 +1,21 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   saAlert,
   saBtnGhost,
   saBtnPrimary,
   saCard,
-  saChip,
-  saChipActive,
   saDisplay,
   saEyebrow,
   saField,
   saLabel,
   saMono,
 } from "@/components/super-admin/resume-dashboard-styles";
+import {
+  useApplicationQaLive,
+  type ApplicationQaLiveStatus,
+} from "@/hooks/useApplicationQaLive";
 import { getApiErrorMessage } from "@/lib/auth-api";
 import {
   formatEstDateTime,
@@ -21,11 +23,13 @@ import {
   formatEstYmd,
   isIsoOnEstYmd,
 } from "@/lib/format-est-datetime";
+import { getUserApiKey } from "@/lib/user-api-key";
 import { superAdminApi, type AdminUserSummary } from "@/lib/super-admin-api";
 import {
   resolveApplicationQaCompanyName,
   sessionActivityIso,
   superAdminApplicationQaApi,
+  type ApplicationQaLiveEvent,
   type ApplicationQaSessionDetail,
   type ApplicationQaSessionSummary,
 } from "@/lib/super-admin-application-qa-api";
@@ -58,12 +62,28 @@ type SuperAdminApplicationQaWorkspaceProps = {
   initialUserId?: string;
   initialDate?: string;
   initialSessionId?: string;
+  onLiveStatusChange?: (status: ApplicationQaLiveStatus) => void;
 };
+
+function sessionMatchesDay(session: ApplicationQaSessionSummary, day: string): boolean {
+  const iso = sessionActivityIso(session);
+  if (!iso) return true;
+  return isIsoOnEstYmd(iso, day);
+}
+
+function upsertSessionList(
+  prev: ApplicationQaSessionSummary[],
+  session: ApplicationQaSessionSummary
+): ApplicationQaSessionSummary[] {
+  const without = prev.filter((s) => s.id !== session.id);
+  return sortSessionsRecent([session, ...without]);
+}
 
 export default function SuperAdminApplicationQaWorkspace({
   initialUserId = "",
   initialDate = "",
   initialSessionId = "",
+  onLiveStatusChange,
 }: SuperAdminApplicationQaWorkspaceProps) {
   const todayYmd = formatEstYmd();
 
@@ -94,6 +114,15 @@ export default function SuperAdminApplicationQaWorkspace({
   const [detailError, setDetailError] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [toast, setToast] = useState("");
+  const [flashIds, setFlashIds] = useState<Record<string, number>>({});
+  const [outsideFilterHint, setOutsideFilterHint] = useState("");
+
+  const selectedUserIdRef = useRef(selectedUserId);
+  const dateYmdRef = useRef(dateYmd);
+  const selectedSessionIdRef = useRef(selectedSessionId);
+  selectedUserIdRef.current = selectedUserId;
+  dateYmdRef.current = dateYmd;
+  selectedSessionIdRef.current = selectedSessionId;
 
   const profileLimit = 100;
   const profileTotalPages = Math.max(1, Math.ceil(profileTotal / profileLimit));
@@ -253,6 +282,80 @@ export default function SuperAdminApplicationQaWorkspace({
       cancelled = true;
     };
   }, [selectedSessionId]);
+
+  const flashSession = useCallback((sessionId: string) => {
+    const token = Date.now();
+    setFlashIds((prev) => ({ ...prev, [sessionId]: token }));
+    window.setTimeout(() => {
+      setFlashIds((prev) => {
+        if (prev[sessionId] !== token) return prev;
+        const next = { ...prev };
+        delete next[sessionId];
+        return next;
+      });
+    }, 2200);
+  }, []);
+
+  const handleLiveEvent = useCallback(
+    (event: ApplicationQaLiveEvent) => {
+      if (event.kind === "ready") return;
+
+      if (event.kind === "session.deleted") {
+        const { sessionId, userId } = event;
+        setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+        if (selectedSessionIdRef.current === sessionId) {
+          setSelectedSessionId(null);
+          setDetail(null);
+          setToast("Session deleted.");
+        }
+        if (userId && userId === selectedUserIdRef.current) {
+          setOutsideFilterHint("");
+        }
+        return;
+      }
+
+      const session = event.session;
+      const ownerId = session.userId;
+      const openOwner = selectedUserIdRef.current;
+      const openDay = dateYmdRef.current;
+      const matchesOwner = Boolean(openOwner && ownerId && ownerId === openOwner);
+      const matchesDay = sessionMatchesDay(session, openDay);
+
+      // Always refresh open detail for the same session id.
+      if (selectedSessionIdRef.current === session.id) {
+        setDetail(session);
+        setDetailError("");
+      }
+
+      if (!matchesOwner) {
+        return;
+      }
+
+      if (matchesDay) {
+        setSessions((prev) => upsertSessionList(prev, session));
+        flashSession(session.id);
+        setOutsideFilterHint("");
+        return;
+      }
+
+      // Owner matches but date filter excludes — keep list filter, surface a live hint.
+      setOutsideFilterHint(
+        `Live update for ${resolveApplicationQaCompanyName(session)} outside ${openDay}.`
+      );
+      flashSession(session.id);
+    },
+    [flashSession]
+  );
+
+  const liveStatus = useApplicationQaLive({
+    enabled: true,
+    accessToken: typeof window !== "undefined" ? getUserApiKey() : null,
+    onEvent: handleLiveEvent,
+  });
+
+  useEffect(() => {
+    onLiveStatusChange?.(liveStatus);
+  }, [liveStatus, onLiveStatusChange]);
 
   function handleProfileSearch(e: FormEvent) {
     e.preventDefault();
@@ -438,6 +541,15 @@ export default function SuperAdminApplicationQaWorkspace({
           </div>
         ) : null}
 
+        {outsideFilterHint ? (
+          <p
+            className={`${saMono} mx-3 mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900`}
+            role="status"
+          >
+            {outsideFilterHint}
+          </p>
+        ) : null}
+
         <ul className="min-h-0 flex-1 overflow-y-auto py-1" role="listbox" aria-label="Sessions">
           {!selectedUserId ? (
             <li className={`${saMono} px-4 py-10 text-center text-xs text-slate-400`}>
@@ -457,9 +569,11 @@ export default function SuperAdminApplicationQaWorkspace({
           ) : (
             sessions.map((session) => {
               const active = session.id === selectedSessionId;
+              const flashing = Boolean(flashIds[session.id]);
               const company = resolveApplicationQaCompanyName(session);
               const iso = sessionActivityIso(session);
               const timeLabel = (iso && formatEstTime(iso)) || "—";
+              const recording = session.status === "recording";
               return (
                 <li key={session.id}>
                   <button
@@ -469,8 +583,11 @@ export default function SuperAdminApplicationQaWorkspace({
                     onClick={() => {
                       setSelectedSessionId(session.id);
                       setToast("");
+                      setOutsideFilterHint("");
                     }}
                     className={`flex w-full flex-col gap-1.5 border-l-2 px-4 py-3.5 text-left transition-all duration-200 ${
+                      flashing ? "sa-live-flash" : ""
+                    } ${
                       active
                         ? "border-teal-600 bg-teal-50/90"
                         : "border-transparent hover:bg-slate-50"
@@ -478,22 +595,22 @@ export default function SuperAdminApplicationQaWorkspace({
                   >
                     <div className="flex items-start justify-between gap-2">
                       <span
-                        className={`text-sm font-semibold leading-snug ${
+                        className={`break-words text-sm font-semibold leading-snug ${
                           active ? "text-teal-950" : "text-slate-900"
                         }`}
                       >
                         {company}
                       </span>
                       <span
-                        className={
-                          session.status === "recording" ? saChipActive : saChip
-                        }
+                        className="sa-rec-pill shrink-0"
+                        data-state={recording ? "recording" : "paused"}
                       >
-                        {session.status}
+                        <span className="sa-live-dot" aria-hidden />
+                        {recording ? "Live recording" : "Paused"}
                       </span>
                     </div>
                     {session.tabUrl ? (
-                      <span className={`${saMono} line-clamp-2 break-all text-[11px] text-slate-400`}>
+                      <span className={`${saMono} break-all text-[11px] text-slate-400`}>
                         {session.tabUrl}
                       </span>
                     ) : null}
@@ -572,12 +689,13 @@ export default function SuperAdminApplicationQaWorkspace({
                       {detail.tabUrl}
                     </a>
                   ) : null}
-                  <div className={`${saMono} mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500`}>
-                    <span>
-                      Status{" "}
-                      <span className={detail.status === "recording" ? saChipActive : saChip}>
-                        {detail.status}
-                      </span>
+                  <div className={`${saMono} mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500`}>
+                    <span
+                      className="sa-rec-pill"
+                      data-state={detail.status === "recording" ? "recording" : "paused"}
+                    >
+                      <span className="sa-live-dot" aria-hidden />
+                      {detail.status === "recording" ? "Live recording" : "Paused"}
                     </span>
                     <span>
                       Recorded ·{" "}
@@ -589,6 +707,9 @@ export default function SuperAdminApplicationQaWorkspace({
                       {detail.questionsAnswers.length} pair
                       {detail.questionsAnswers.length === 1 ? "" : "s"}
                     </span>
+                    {liveStatus === "live" ? (
+                      <span className="text-teal-700">Streaming updates</span>
+                    ) : null}
                   </div>
                 </div>
                 <button

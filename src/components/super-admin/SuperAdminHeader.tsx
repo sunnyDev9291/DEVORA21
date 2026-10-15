@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { AUTH_LINKS } from "@/lib/constants";
 import { lockSuperAdminSession } from "@/components/super-admin/SuperAdminGate";
 import {
@@ -14,9 +15,16 @@ type SuperAdminHeaderProps = {
   title: string;
   subtitle?: string;
   onLock?: () => void;
+  /** Optional live status / tools shown before Hub / Logout. */
+  aside?: ReactNode;
 };
 
-export default function SuperAdminHeader({ title, subtitle, onLock }: SuperAdminHeaderProps) {
+export default function SuperAdminHeader({
+  title,
+  subtitle,
+  onLock,
+  aside,
+}: SuperAdminHeaderProps) {
   return (
     <header className="flex flex-col gap-5 border-b border-slate-200/80 pb-7 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
@@ -35,7 +43,8 @@ export default function SuperAdminHeader({ title, subtitle, onLock }: SuperAdmin
           </p>
         ) : null}
       </div>
-      <nav className="flex flex-wrap gap-2" aria-label="Super admin actions">
+      <nav className="flex flex-wrap items-center gap-2" aria-label="Super admin actions">
+        {aside}
         <Link href={AUTH_LINKS.superAdmin} className={saBtnGhost}>
           Hub
         </Link>
