@@ -33,7 +33,7 @@ const modules = [
     href: `${AUTH_LINKS.superAdmin}/application-qa`,
     eyebrow: "Module 03",
     title: "Application Q&A",
-    body: "Browse Chrome extension recordings by owner — sessions, apply-page URLs, and captured question/answer pairs.",
+    body: "Three-panel review: profile → date → Apply Page session → questions & answers from the Chrome extension.",
     delay: "sa-animate-in-delay-2",
   },
 ] as const;

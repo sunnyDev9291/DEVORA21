@@ -1,4 +1,4 @@
-const EST_TZ = "America/New_York";
+export const EST_TZ = "America/New_York";
 
 const EST_PARTS_FORMATTER = new Intl.DateTimeFormat("en-US", {
   timeZone: EST_TZ,
@@ -10,6 +10,13 @@ const EST_PARTS_FORMATTER = new Intl.DateTimeFormat("en-US", {
   minute: "2-digit",
   hour12: true,
   timeZoneName: "short",
+});
+
+const EST_YMD_FORMATTER = new Intl.DateTimeFormat("en-CA", {
+  timeZone: EST_TZ,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
 });
 
 export type EstDateTimeParts = {
@@ -64,4 +71,23 @@ export function formatEstDateTimeParts(iso: string): EstDateTimeParts | null {
     zone,
     combined: `${dateLabel} ${timeLabel} ${zone}`.replace(/\s+/g, " ").trim(),
   };
+}
+
+/** Calendar date in US Eastern as `YYYY-MM-DD` (for date inputs / filters). */
+export function formatEstYmd(date: Date = new Date()): string {
+  return EST_YMD_FORMATTER.format(date);
+}
+
+/** True when the ISO timestamp falls on the given Eastern calendar day (`YYYY-MM-DD`). */
+export function isIsoOnEstYmd(iso: string, ymd: string): boolean {
+  const date = parseIso(iso);
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return false;
+  return formatEstYmd(date) === ymd;
+}
+
+/** Compact Eastern time only, e.g. `3:30 PM EDT`. */
+export function formatEstTime(iso: string): string | null {
+  const parts = formatEstDateTimeParts(iso);
+  if (!parts) return null;
+  return `${parts.time} ${parts.zone}`.trim();
 }

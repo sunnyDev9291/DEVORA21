@@ -21,10 +21,13 @@ export type ApplicationQaSessionSummary = {
   userId: string;
   tabUrl: string;
   pageTitle: string;
+  /** Prefer backend companyName; FE may derive from title/URL when missing. */
+  companyName?: string;
   status: "recording" | "paused" | string;
   itemCount: number;
   updatedAt?: string;
   lastSyncedAt?: string;
+  createdAt?: string;
   owner?: ApplicationQaSessionOwner;
 };
 
@@ -139,6 +142,8 @@ function normalizeSessionSummary(raw: unknown): ApplicationQaSessionSummary | nu
     userId,
     tabUrl: pickString(row, "tabUrl", "tab_url", "url", "pageUrl", "page_url"),
     pageTitle: pickString(row, "pageTitle", "page_title", "title"),
+    companyName:
+      pickString(row, "companyName", "company_name", "company") || undefined,
     status: normalizeStatus(row.status),
     itemCount: toNumber(
       row.itemCount ??
@@ -151,6 +156,7 @@ function normalizeSessionSummary(raw: unknown): ApplicationQaSessionSummary | nu
     ),
     updatedAt: pickString(row, "updatedAt", "updated_at") || undefined,
     lastSyncedAt: pickString(row, "lastSyncedAt", "last_synced_at") || undefined,
+    createdAt: pickString(row, "createdAt", "created_at", "recordedAt", "recorded_at") || undefined,
     owner,
   };
 }
@@ -202,6 +208,37 @@ export function truncateUrl(url: string, max = 56): string {
   return `${value.slice(0, max - 1)}…`;
 }
 
+/** Best-effort company label for session list cards. */
+export function resolveApplicationQaCompanyName(
+  session: Pick<ApplicationQaSessionSummary, "companyName" | "pageTitle" | "tabUrl">
+): string {
+  if (session.companyName?.trim()) return session.companyName.trim();
+
+  const title = session.pageTitle?.trim() || "";
+  const atMatch = title.match(/\s+@\s+(.+)$/);
+  if (atMatch?.[1]?.trim()) return atMatch[1].trim();
+
+  const dashMatch = title.match(/\s+[—–-]\s+(.+)$/);
+  if (dashMatch?.[1]?.trim() && !dashMatch[1].includes("@")) {
+    return dashMatch[1].trim();
+  }
+
+  try {
+    const host = new URL(session.tabUrl).hostname.replace(/^www\./i, "");
+    if (host) return host;
+  } catch {
+    // ignore
+  }
+
+  return title || "Application";
+}
+
+export function sessionActivityIso(
+  session: Pick<ApplicationQaSessionSummary, "lastSyncedAt" | "updatedAt" | "createdAt">
+): string {
+  return session.lastSyncedAt || session.updatedAt || session.createdAt || "";
+}
+
 export const superAdminApplicationQaApi = {
   async listOwners(): Promise<ApplicationQaOwner[]> {
     const data = await adminJson("/admin/application-qa/owners");
@@ -225,6 +262,11 @@ export const superAdminApplicationQaApi = {
   async listSessions(params: {
     userId?: string;
     q?: string;
+    /** Eastern calendar day `YYYY-MM-DD` (preferred when backend supports it). */
+    date?: string;
+    from?: string;
+    to?: string;
+    timezone?: string;
     page?: number;
     limit?: number;
   } = {}): Promise<ApplicationQaSessionsListResponse> {
@@ -235,6 +277,15 @@ export const superAdminApplicationQaApi = {
     search.set("limit", String(limit));
     if (params.userId?.trim()) search.set("userId", params.userId.trim());
     if (params.q?.trim()) search.set("q", params.q.trim());
+    if (params.date?.trim()) {
+      search.set("date", params.date.trim());
+      search.set("day", params.date.trim());
+    }
+    if (params.from?.trim()) search.set("from", params.from.trim());
+    if (params.to?.trim()) search.set("to", params.to.trim());
+    const tz = params.timezone?.trim() || "America/New_York";
+    search.set("timezone", tz);
+    search.set("tz", tz);
 
     const data = await adminJson(`/admin/application-qa/sessions?${search.toString()}`);
     const raw = Array.isArray(data.sessions)

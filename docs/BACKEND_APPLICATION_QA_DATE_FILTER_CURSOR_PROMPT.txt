@@ -1,0 +1,94 @@
+# Backend Cursor Prompt — Application Q&A date filter + company name
+
+Copy everything below to the backend agent/developer.
+
+================================================================================
+GOAL
+================================================================================
+
+Frontend Super Admin Application Q&A is now a three-panel workspace:
+
+  Profile → Date (default today, America/New_York) → Session list → Q&A detail
+
+FE already calls existing endpoints. Improve list filtering so “today” (and other
+days) are accurate at scale, and return an explicit company name when possible.
+
+FE client: src/lib/super-admin-application-qa-api.ts
+FE UI:     SuperAdminApplicationQaWorkspace
+
+================================================================================
+EXISTING ENDPOINTS (keep working)
+================================================================================
+
+  GET    /admin/application-qa/owners
+  GET    /admin/application-qa/sessions?userId=&q=&page=&limit=
+  GET    /admin/application-qa/sessions/:id
+  DELETE /admin/application-qa/sessions/:id
+
+Auth unchanged: cookie / Bearer, Super Admin only.
+
+================================================================================
+CHANGE 1 — Date filter on sessions list
+================================================================================
+
+GET /admin/application-qa/sessions
+
+FE now also sends (when a day is selected):
+
+  date=YYYY-MM-DD
+  day=YYYY-MM-DD          (alias)
+  timezone=America/New_York
+  tz=America/New_York     (alias)
+
+Optional range aliases (accept if easy):
+
+  from=ISO
+  to=ISO
+
+Rules:
+
+  - When `date` / `day` is present, return only sessions whose activity timestamp
+    falls on that calendar day in `timezone` (default America/New_York).
+  - Activity timestamp preference (first non-empty):
+      lastSyncedAt → updatedAt → createdAt / recordedAt
+  - Still honor `userId`, `q`, `page`, `limit`.
+  - Sort most recent first (same activity timestamp desc).
+  - Without `date`, keep previous behavior (all days for that user / search).
+
+Until this ships, FE client-filters the page of results by Eastern day — that
+breaks once a profile has more than one page of sessions across days.
+
+================================================================================
+CHANGE 2 — companyName on session payloads
+================================================================================
+
+On list + detail session objects, include when known:
+
+  "companyName": "Scale Army Careers"
+
+Also accept / continue returning:
+
+  tabUrl, pageTitle, status, itemCount, updatedAt, lastSyncedAt, createdAt, owner
+
+FE falls back to parsing pageTitle (`Role @ Company`) or hostname if
+companyName is missing — but explicit companyName is preferred.
+
+================================================================================
+ACCEPTANCE
+================================================================================
+
+1) GET .../sessions?userId=X&date=2026-10-15&timezone=America/New_York
+   returns only that user’s sessions for 15 Oct 2026 Eastern.
+2) Changing date to another day returns a different set (or empty).
+3) Sessions sorted newest first.
+4) Detail endpoint unchanged for Q&A pairs (questionsAnswers / questions_answers).
+5) Non–super-admin still 403.
+
+================================================================================
+OUT OF SCOPE
+================================================================================
+
+- Do not change Chrome extension capture format beyond optional companyName
+- Do not remove q / pagination
+- Do not change gateway credentials APIs
+)
