@@ -63,7 +63,7 @@ const PLATFORM_TABLE_BADGE_CLASS: Record<JobCrawlPlatform, string> = {
   himalayas: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 ring-1 ring-emerald-500/20",
   getonboard: "bg-rose-500/15 text-rose-800 dark:text-rose-300 ring-1 ring-rose-500/20",
   jobicy: "bg-indigo-500/15 text-indigo-800 dark:text-indigo-300 ring-1 ring-indigo-500/20",
-  jobgether: "bg-teal-500/15 text-teal-800 dark:text-teal-300 ring-1 ring-teal-500/20",
+  jobgether: "bg-fuchsia-500/15 text-fuchsia-800 dark:text-fuchsia-300 ring-1 ring-fuchsia-500/20",
 };
 
 const PLATFORM_BLURB: Record<JobCrawlPlatform, string> = {

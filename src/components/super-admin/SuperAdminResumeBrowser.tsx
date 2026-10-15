@@ -65,21 +65,13 @@ const rowStyles = {
     "sticky right-0 z-[1] bg-orange-50/95 px-4 py-3 text-right font-medium shadow-[-8px_0_12px_-8px_rgba(194,65,12,0.12)]",
 } as const;
 
-function formatBidTime(iso: string): { timeLabel: string; fullLabel: string } {
+function formatBidTime(iso: string): string {
   const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) {
-    return { timeLabel: "—", fullLabel: iso || "—" };
-  }
-  return {
-    timeLabel: new Intl.DateTimeFormat(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-    }).format(date),
-    fullLabel: new Intl.DateTimeFormat(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(date),
-  };
+  if (Number.isNaN(date.getTime())) return iso || "—";
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
 }
 
 function SortHeader({
@@ -499,7 +491,7 @@ export default function SuperAdminResumeBrowser() {
                     </tr>
                   ) : (
                     items.map((item) => {
-                      const bid = formatBidTime(item.createdAt);
+                      const bidLabel = formatBidTime(item.createdAt);
                       const noDescription = item.hasJobDescription === false;
                       const jdTrimmed = item.jobDescription?.trim() ?? "";
                       const previewSnippet =
@@ -509,8 +501,8 @@ export default function SuperAdminResumeBrowser() {
 
                       return (
                         <tr key={item.id} className={rowStyles.rowHover}>
-                          <td className={rowStyles.bidTime} title={bid.fullLabel}>
-                            {bid.timeLabel}
+                          <td className={rowStyles.bidTime} title={bidLabel}>
+                            {bidLabel}
                           </td>
                           <td className={rowStyles.profile}>
                             <p className={rowStyles.profileName}>
