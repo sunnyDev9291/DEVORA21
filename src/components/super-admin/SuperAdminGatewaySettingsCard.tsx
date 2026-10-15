@@ -42,7 +42,7 @@ export default function SuperAdminGatewaySettingsCard() {
 
   return (
     <section className={`${saCard} mt-8 p-6`}>
-      <p className={saEyebrow}>Security · Module 03</p>
+      <p className={saEyebrow}>Security · Module 04</p>
       <h2 className={`${saDisplay} mt-3 text-xl font-bold tracking-tight text-slate-900`}>
         Gateway credentials
       </h2>

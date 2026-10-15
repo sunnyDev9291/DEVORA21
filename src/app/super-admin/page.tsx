@@ -29,6 +29,13 @@ const modules = [
     body: "Compare profiles, inspect any date range, toggle bars and lines, and browse every archived resume.",
     delay: "sa-animate-in-delay-2",
   },
+  {
+    href: `${AUTH_LINKS.superAdmin}/application-qa`,
+    eyebrow: "Module 03",
+    title: "Application Q&A",
+    body: "Browse Chrome extension recordings by owner — sessions, apply-page URLs, and captured question/answer pairs.",
+    delay: "sa-animate-in-delay-2",
+  },
 ] as const;
 
 export default function SuperAdminPage() {
@@ -39,11 +46,11 @@ export default function SuperAdminPage() {
       <div className={saPage}>
         <SuperAdminHeader
           title="Super Admin"
-          subtitle="Quiet ops workspace for profiles and resume analytics. Sign in to Devora21 with a super-admin account before calling /admin APIs."
+          subtitle="Quiet ops workspace for profiles, resume analytics, and extension Application Q&A. Sign in to Devora21 with a super-admin account before calling /admin APIs."
           onLock={() => router.replace(AUTH_LINKS.superAdmin)}
         />
 
-        <section className="mt-9 grid gap-4 sm:grid-cols-2">
+        <section className="mt-9 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {modules.map((mod) => (
             <Link
               key={mod.href}
