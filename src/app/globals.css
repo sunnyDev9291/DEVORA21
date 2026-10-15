@@ -4,6 +4,7 @@
 
 @layer base {
   :root {
+    --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
     --surface-page: 255 251 245;
     --surface-elevated: 255 255 255;
     --text-primary: 28 25 23;

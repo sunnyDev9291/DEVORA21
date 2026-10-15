@@ -1,20 +1,12 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Mono, Syne } from "next/font/google";
+// Self-hosted — same Netlify next/font/google breakage risk as root layout.
+import "@fontsource/syne/600.css";
+import "@fontsource/syne/700.css";
+import "@fontsource/syne/800.css";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/500.css";
+import "@fontsource/ibm-plex-mono/600.css";
 import "./super-admin.css";
-
-const syne = Syne({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-sa-display",
-  weight: ["600", "700", "800"],
-});
-
-const plexMono = IBM_Plex_Mono({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-sa-mono",
-  weight: ["400", "500", "600"],
-});
 
 export const metadata: Metadata = {
   title: "Super Admin",
@@ -24,9 +16,7 @@ export const metadata: Metadata = {
 /** Light ops analytics shell — quiet, airy, distinct from marketing UI. */
 export default function SuperAdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      className={`${syne.variable} ${plexMono.variable} sa-console relative isolate min-h-[calc(100vh-5rem)] overflow-hidden bg-[var(--sa-bg)] text-[var(--sa-text)]`}
-    >
+    <div className="sa-console relative isolate min-h-[calc(100vh-5rem)] overflow-hidden bg-[var(--sa-bg)] text-[var(--sa-text)]">
       <div
         className="pointer-events-none absolute inset-0"
         style={{

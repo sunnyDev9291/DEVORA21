@@ -1,6 +1,8 @@
 /* Super Admin — light, quiet analytics console */
 
 .sa-console {
+  --font-sa-display: "Syne", system-ui, sans-serif;
+  --font-sa-mono: "IBM Plex Mono", ui-monospace, monospace;
   --sa-bg: #f4f6f8;
   --sa-surface: #ffffff;
   --sa-surface-soft: #fafbfc;
