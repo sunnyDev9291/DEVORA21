@@ -1,6 +1,7 @@
-/** Temporary Super Admin gate — replace with real role auth later. */
-export const TEMP_SUPER_ADMIN_USERNAME = "qazwsx";
-export const TEMP_SUPER_ADMIN_PASSWORD = "edcrfv";
+/**
+ * Session unlock flag for the Super Admin UI gate.
+ * Credentials live per Super Admin via superAdminGatewayApi (backend, with local fallback).
+ */
 
 const STORAGE_KEY = "dv21:super-admin-temp-auth:v1";
 
@@ -21,10 +22,4 @@ export function setTempSuperAdminAuthed(authed: boolean): void {
   } catch {
     // ignore
   }
-}
-
-export function verifyTempSuperAdminCredentials(username: string, password: string): boolean {
-  return (
-    username.trim() === TEMP_SUPER_ADMIN_USERNAME && password === TEMP_SUPER_ADMIN_PASSWORD
-  );
 }

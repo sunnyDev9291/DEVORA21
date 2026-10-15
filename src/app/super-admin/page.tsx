@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SuperAdminGate } from "@/components/super-admin/SuperAdminGate";
+import SuperAdminGatewaySettingsCard from "@/components/super-admin/SuperAdminGatewaySettingsCard";
 import SuperAdminHeader from "@/components/super-admin/SuperAdminHeader";
 import {
   saCardInteractive,
@@ -64,6 +65,8 @@ export default function SuperAdminPage() {
             </Link>
           ))}
         </section>
+
+        <SuperAdminGatewaySettingsCard />
       </div>
     </SuperAdminGate>
   );
