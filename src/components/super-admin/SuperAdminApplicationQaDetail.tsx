@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import ApplicationQaInputEventsList from "@/components/super-admin/ApplicationQaInputEventsList";
+import ApplicationQaSessionDetailPanels from "@/components/super-admin/ApplicationQaSessionDetailPanels";
 import {
   saAlert,
   saBtnGhost,
@@ -113,7 +113,8 @@ export default function SuperAdminApplicationQaDetail({
     (session.updatedAt && formatEstDateTime(session.updatedAt)) ||
     session.updatedAt ||
     "—";
-  const eventCount = session.eventCount || session.inputEvents.length || session.itemCount;
+  const matchedCount = session.matchedCount ?? session.matchedQa.length;
+  const unmatchedCount = session.unmatchedCount ?? session.unmatchedEvents.length;
 
   return (
     <div className="mt-8 space-y-5">
@@ -176,30 +177,15 @@ export default function SuperAdminApplicationQaDetail({
                 {session.status}
               </span>
             </p>
-            <p>
-              Events · {eventCount}
-            </p>
+            <p>Matched · {matchedCount}</p>
+            <p>Unmatched · {unmatchedCount}</p>
             <p>Updated · {updated}</p>
             <p>Last sync · {synced}</p>
           </div>
         </div>
       </section>
 
-      <section>
-        <div className="mb-3 flex items-end justify-between gap-3">
-          <div>
-            <p className={saEyebrow}>Capture</p>
-            <h2 className={`${saDisplay} mt-1 text-lg font-bold text-slate-900`}>
-              DOM input events
-            </h2>
-          </div>
-          <p className={`${saMono} text-[11px] text-slate-400`}>
-            {eventCount} event{eventCount === 1 ? "" : "s"}
-          </p>
-        </div>
-
-        <ApplicationQaInputEventsList events={session.inputEvents} />
-      </section>
+      <ApplicationQaSessionDetailPanels detail={session} />
     </div>
   );
 }

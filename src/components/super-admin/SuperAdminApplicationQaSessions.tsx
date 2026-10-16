@@ -247,7 +247,12 @@ export default function SuperAdminApplicationQaSessions({
                     <span className={statusClass(session.status)}>{session.status}</span>
                   </td>
                   <td className={`${saMono} whitespace-nowrap px-4 py-3 text-xs text-slate-600`}>
-                    {session.eventCount || session.itemCount}
+                    <span>{session.eventCount || session.itemCount}</span>
+                    {typeof session.matchedCount === "number" ? (
+                      <span className="mt-0.5 block text-[10px] text-slate-400">
+                        {session.matchedCount} matched
+                      </span>
+                    ) : null}
                   </td>
                   <td className={`${saMono} min-w-[9.5rem] px-4 py-3 text-[11px] text-slate-500`}>
                     {whenParts ? (

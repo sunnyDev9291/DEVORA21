@@ -28,6 +28,10 @@ export type ApplicationQaSessionSummary = {
   eventCount: number;
   /** Alias of eventCount for older payloads / list UIs. */
   itemCount: number;
+  /** DeepSeek-matched Q&A count when backend provides it. */
+  matchedCount?: number;
+  /** Unmatched DOM event count when backend provides it. */
+  unmatchedCount?: number;
   updatedAt?: string;
   lastSyncedAt?: string;
   createdAt?: string;
@@ -47,13 +51,36 @@ export type ApplicationQaInputEvent = {
   className?: string;
   cssSelector?: string;
   attributes?: Record<string, string>;
-  /** Short element summary — not a scraped "question". */
+  /** Short element summary — not a scraped/invented "question". */
   label?: string;
+  elementLabel?: string;
+  matchStatus?: "matched" | "unmatched";
+  matchedQuestion?: string;
+  /** AI question when matched; do not treat as element label. */
+  question?: string;
+  answer?: string;
+  matchConfidence?: number;
   occurredAt: string;
   updatedAt: string;
 };
 
-/** @deprecated Compat shape; prefer ApplicationQaInputEvent. */
+/** DeepSeek-identified application question + user answer. */
+export type ApplicationQaMatchedItem = {
+  id: string;
+  elementKey: string;
+  question: string;
+  answer: string;
+  matchConfidence?: number;
+  occurredAt: string;
+  updatedAt: string;
+};
+
+/** DOM control the AI could not confidently map — never invent a question. */
+export type ApplicationQaUnmatchedEvent = ApplicationQaInputEvent & {
+  matchStatus: "unmatched";
+};
+
+/** @deprecated Compat shape; prefer matchedQa / unmatchedEvents. */
 export type ApplicationQaItem = {
   id?: string;
   question: string;
@@ -63,7 +90,9 @@ export type ApplicationQaItem = {
 
 export type ApplicationQaSessionDetail = ApplicationQaSessionSummary & {
   inputEvents: ApplicationQaInputEvent[];
-  /** Compat alias (question≈label, answer≈value). */
+  matchedQa: ApplicationQaMatchedItem[];
+  unmatchedEvents: ApplicationQaUnmatchedEvent[];
+  /** Compat alias — prefers matched rows when any exist. */
   questionsAnswers: ApplicationQaItem[];
 };
 
@@ -163,9 +192,22 @@ export function normalizeSessionSummary(raw: unknown): ApplicationQaSessionSumma
   const owner = normalizeSessionOwner(row.owner ?? row.user);
   const userId =
     pickString(row, "userId", "user_id") || owner?.id || "";
+  const matchedCountRaw = row.matchedCount ?? row.matched_count;
+  const unmatchedCountRaw = row.unmatchedCount ?? row.unmatched_count;
+  const matchedCount =
+    matchedCountRaw !== undefined && matchedCountRaw !== null
+      ? toNumber(matchedCountRaw, 0)
+      : undefined;
+  const unmatchedCount =
+    unmatchedCountRaw !== undefined && unmatchedCountRaw !== null
+      ? toNumber(unmatchedCountRaw, 0)
+      : undefined;
   const eventCount = toNumber(
     row.eventCount ??
       row.event_count ??
+      (matchedCount !== undefined || unmatchedCount !== undefined
+        ? (matchedCount ?? 0) + (unmatchedCount ?? 0)
+        : undefined) ??
       row.itemCount ??
       row.item_count ??
       row.qaCount ??
@@ -186,6 +228,8 @@ export function normalizeSessionSummary(raw: unknown): ApplicationQaSessionSumma
     status: normalizeStatus(row.status),
     eventCount,
     itemCount: eventCount,
+    matchedCount,
+    unmatchedCount,
     updatedAt: pickString(row, "updatedAt", "updated_at") || undefined,
     lastSyncedAt: pickString(row, "lastSyncedAt", "last_synced_at") || undefined,
     createdAt: pickString(row, "createdAt", "created_at", "recordedAt", "recorded_at") || undefined,
@@ -203,18 +247,46 @@ function normalizeAttributes(raw: unknown): Record<string, string> | undefined {
   return Object.keys(out).length ? out : undefined;
 }
 
+function normalizeMatchStatus(raw: unknown): "matched" | "unmatched" | undefined {
+  const value = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (value === "matched" || value === "unmatched") return value;
+  return undefined;
+}
+
+function normalizeConfidence(raw: unknown): number | undefined {
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string" && raw.trim() && !Number.isNaN(Number(raw))) {
+    return Number(raw);
+  }
+  return undefined;
+}
+
+function ownArray(
+  row: Record<string, unknown>,
+  ...keys: string[]
+): unknown[] | null {
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(row, key) && Array.isArray(row[key])) {
+      return row[key] as unknown[];
+    }
+  }
+  return null;
+}
+
 function normalizeInputEvent(raw: unknown, index = 0): ApplicationQaInputEvent | null {
   if (!raw || typeof raw !== "object") return null;
   const row = raw as Record<string, unknown>;
 
-  // Prefer DOM event fields; fall back to Q&A compat (question≈label, answer≈value).
   const value =
     pickString(row, "value", "answer", "a", "response") ||
     (typeof row.value === "number" || typeof row.value === "boolean"
       ? String(row.value)
       : "");
+  // Element summary only — never treat AI question text as a label.
   const label =
-    pickString(row, "label", "question", "q", "prompt") || undefined;
+    pickString(row, "label", "elementLabel", "element_label") || undefined;
+  const question =
+    pickString(row, "matchedQuestion", "matched_question", "question") || undefined;
   const elementKey =
     pickString(row, "elementKey", "element_key", "key") ||
     pickString(row, "id", "_id") ||
@@ -229,8 +301,15 @@ function normalizeInputEvent(raw: unknown, index = 0): ApplicationQaInputEvent |
     "";
   const updatedAt =
     pickString(row, "updatedAt", "updated_at", "occurredAt", "occurred_at") || occurredAt;
+  const matchStatus = normalizeMatchStatus(row.matchStatus ?? row.match_status);
 
-  if (!value && !label && !elementKey && !pickString(row, "tagName", "tag_name", "cssSelector", "css_selector")) {
+  if (
+    !value &&
+    !label &&
+    !question &&
+    !elementKey &&
+    !pickString(row, "tagName", "tag_name", "cssSelector", "css_selector")
+  ) {
     return null;
   }
 
@@ -247,8 +326,88 @@ function normalizeInputEvent(raw: unknown, index = 0): ApplicationQaInputEvent |
     cssSelector: pickString(row, "cssSelector", "css_selector", "selector") || undefined,
     attributes: normalizeAttributes(row.attributes),
     label,
+    elementLabel: pickString(row, "elementLabel", "element_label") || label || undefined,
+    matchStatus,
+    matchedQuestion: pickString(row, "matchedQuestion", "matched_question") || undefined,
+    question,
+    answer: pickString(row, "answer") || value || undefined,
+    matchConfidence: normalizeConfidence(row.matchConfidence ?? row.match_confidence),
     occurredAt,
     updatedAt,
+  };
+}
+
+function normalizeMatchedItem(raw: unknown, index = 0): ApplicationQaMatchedItem | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const question =
+    pickString(row, "question", "matchedQuestion", "matched_question") || "";
+  const answer =
+    pickString(row, "answer", "value", "a", "response") ||
+    (typeof row.value === "number" || typeof row.value === "boolean"
+      ? String(row.value)
+      : "");
+  const elementKey =
+    pickString(row, "elementKey", "element_key", "key") ||
+    pickString(row, "id", "_id") ||
+    "";
+  const id =
+    pickString(row, "id", "_id") ||
+    (elementKey ? `matched:${elementKey}` : "") ||
+    `matched-${index}`;
+  if (!question && !answer) return null;
+  const occurredAt =
+    pickString(row, "occurredAt", "occurred_at", "updatedAt", "updated_at") || "";
+  const updatedAt =
+    pickString(row, "updatedAt", "updated_at", "occurredAt", "occurred_at") || occurredAt;
+  return {
+    id,
+    elementKey: elementKey || id,
+    question: question || "(untitled question)",
+    answer,
+    matchConfidence: normalizeConfidence(row.matchConfidence ?? row.match_confidence),
+    occurredAt,
+    updatedAt,
+  };
+}
+
+function sortMatchedChronological(
+  items: ApplicationQaMatchedItem[]
+): ApplicationQaMatchedItem[] {
+  return [...items].sort((a, b) => {
+    const byTime = (a.occurredAt || a.updatedAt || "").localeCompare(
+      b.occurredAt || b.updatedAt || ""
+    );
+    if (byTime) return byTime;
+    return (a.id || "").localeCompare(b.id || "");
+  });
+}
+
+function eventToMatchedItem(event: ApplicationQaInputEvent): ApplicationQaMatchedItem {
+  return {
+    id: event.id,
+    elementKey: event.elementKey,
+    question:
+      event.matchedQuestion ||
+      event.question ||
+      "(untitled question)",
+    answer: event.answer || event.value || "",
+    matchConfidence: event.matchConfidence,
+    occurredAt: event.occurredAt,
+    updatedAt: event.updatedAt || event.occurredAt,
+  };
+}
+
+function eventToUnmatched(
+  event: ApplicationQaInputEvent
+): ApplicationQaUnmatchedEvent {
+  return {
+    ...event,
+    matchStatus: "unmatched",
+    // Never surface AI question text as an invented question on unmatched rows.
+    question: undefined,
+    matchedQuestion: undefined,
+    label: event.label || event.elementLabel,
   };
 }
 
@@ -262,26 +421,26 @@ function sortInputEventsChronological(
   });
 }
 
-/** Upsert by id, then elementKey — unchanged re-types / radio groups stay one row. */
-export function upsertInputEvents(
-  prev: ApplicationQaInputEvent[],
-  incoming: ApplicationQaInputEvent[]
-): ApplicationQaInputEvent[] {
-  if (!incoming.length) return sortInputEventsChronological(prev);
-  if (!prev.length) return sortInputEventsChronological(incoming);
+function upsertByIdOrElementKey<T extends { id: string; elementKey: string }>(
+  prev: T[],
+  incoming: T[],
+  sortFn: (items: T[]) => T[]
+): T[] {
+  if (!incoming.length) return sortFn(prev);
+  if (!prev.length) return sortFn(incoming);
 
-  const byId = new Map<string, ApplicationQaInputEvent>();
-  const byKey = new Map<string, string>(); // elementKey → id
+  const byId = new Map<string, T>();
+  const byKey = new Map<string, string>();
 
-  for (const event of prev) {
-    byId.set(event.id, event);
-    if (event.elementKey) byKey.set(event.elementKey, event.id);
+  for (const item of prev) {
+    byId.set(item.id, item);
+    if (item.elementKey) byKey.set(item.elementKey, item.id);
   }
 
-  for (const event of incoming) {
+  for (const item of incoming) {
     const existingId =
-      (event.id && byId.has(event.id) ? event.id : undefined) ||
-      (event.elementKey ? byKey.get(event.elementKey) : undefined);
+      (item.id && byId.has(item.id) ? item.id : undefined) ||
+      (item.elementKey ? byKey.get(item.elementKey) : undefined);
 
     if (existingId) {
       const prior = byId.get(existingId);
@@ -289,28 +448,49 @@ export function upsertInputEvents(
       if (prior?.elementKey) byKey.delete(prior.elementKey);
     }
 
-    byId.set(event.id, event);
-    if (event.elementKey) byKey.set(event.elementKey, event.id);
+    byId.set(item.id, item);
+    if (item.elementKey) byKey.set(item.elementKey, item.id);
   }
 
-  return sortInputEventsChronological([...byId.values()]);
+  return sortFn([...byId.values()]);
+}
+
+/** Upsert by id, then elementKey — unchanged re-types / radio groups stay one row. */
+export function upsertInputEvents(
+  prev: ApplicationQaInputEvent[],
+  incoming: ApplicationQaInputEvent[]
+): ApplicationQaInputEvent[] {
+  return upsertByIdOrElementKey(prev, incoming, sortInputEventsChronological);
+}
+
+export function upsertMatchedQa(
+  prev: ApplicationQaMatchedItem[],
+  incoming: ApplicationQaMatchedItem[]
+): ApplicationQaMatchedItem[] {
+  return upsertByIdOrElementKey(prev, incoming, sortMatchedChronological);
+}
+
+export function upsertUnmatchedEvents(
+  prev: ApplicationQaUnmatchedEvent[],
+  incoming: ApplicationQaUnmatchedEvent[]
+): ApplicationQaUnmatchedEvent[] {
+  return upsertByIdOrElementKey(prev, incoming, (items) =>
+    sortInputEventsChronological(items) as ApplicationQaUnmatchedEvent[]
+  );
 }
 
 export function extractInputEvents(session: Record<string, unknown>): ApplicationQaInputEvent[] {
-  const rawList = Array.isArray(session.inputEvents)
-    ? session.inputEvents
-    : Array.isArray(session.input_events)
-      ? session.input_events
-      : Array.isArray(session.questionsAnswers)
-        ? session.questionsAnswers
-        : Array.isArray(session.questions_answers)
-          ? session.questions_answers
-          : Array.isArray(session.items)
-            ? session.items
-            : Array.isArray(session.qa)
-              ? session.qa
-              : [];
+  const preferred = ownArray(session, "inputEvents", "input_events");
+  const rawList =
+    preferred ??
+    (Array.isArray(session.items)
+      ? session.items
+      : Array.isArray(session.qa)
+        ? session.qa
+        : []);
 
+  // When preferred inputEvents is absent, do not steal questionsAnswers here —
+  // those feed matchedQa for legacy payloads.
   const events = rawList
     .map((row, index) => normalizeInputEvent(row, index))
     .filter((item): item is ApplicationQaInputEvent => Boolean(item));
@@ -318,12 +498,77 @@ export function extractInputEvents(session: Record<string, unknown>): Applicatio
   return sortInputEventsChronological(events);
 }
 
-function inputEventsToQaItems(events: ApplicationQaInputEvent[]): ApplicationQaItem[] {
-  return events.map((event) => ({
-    id: event.id,
-    question: event.label || event.elementKey || event.cssSelector || "(element)",
-    answer: event.value,
-    updatedAt: event.updatedAt || event.occurredAt || undefined,
+export function extractMatchedQa(
+  session: Record<string, unknown>,
+  inputEvents: ApplicationQaInputEvent[]
+): ApplicationQaMatchedItem[] {
+  const preferred = ownArray(session, "matchedQa", "matched_qa");
+  if (preferred) {
+    return sortMatchedChronological(
+      preferred
+        .map((row, index) => normalizeMatchedItem(row, index))
+        .filter((item): item is ApplicationQaMatchedItem => Boolean(item))
+    );
+  }
+
+  const fromEvents = inputEvents.filter((e) => e.matchStatus === "matched");
+  if (fromEvents.length || inputEvents.some((e) => e.matchStatus)) {
+    return sortMatchedChronological(fromEvents.map(eventToMatchedItem));
+  }
+
+  const legacyQa = ownArray(session, "questionsAnswers", "questions_answers");
+  if (legacyQa) {
+    return sortMatchedChronological(
+      legacyQa
+        .map((row, index) => normalizeMatchedItem(row, index))
+        .filter((item): item is ApplicationQaMatchedItem => Boolean(item))
+    );
+  }
+
+  return [];
+}
+
+export function extractUnmatchedEvents(
+  session: Record<string, unknown>,
+  inputEvents: ApplicationQaInputEvent[]
+): ApplicationQaUnmatchedEvent[] {
+  const preferred = ownArray(session, "unmatchedEvents", "unmatched_events");
+  if (preferred) {
+    return sortInputEventsChronological(
+      preferred
+        .map((row, index) => {
+          const event = normalizeInputEvent(row, index);
+          return event ? eventToUnmatched(event) : null;
+        })
+        .filter((item): item is ApplicationQaUnmatchedEvent => Boolean(item))
+    ) as ApplicationQaUnmatchedEvent[];
+  }
+
+  if (inputEvents.some((e) => e.matchStatus === "matched" || e.matchStatus === "unmatched")) {
+    return sortInputEventsChronological(
+      inputEvents.filter((e) => e.matchStatus === "unmatched").map(eventToUnmatched)
+    ) as ApplicationQaUnmatchedEvent[];
+  }
+
+  // No match split from backend — treat DOM events as unmatched (do not invent questions).
+  const hasMatchedKey =
+    Object.prototype.hasOwnProperty.call(session, "matchedQa") ||
+    Object.prototype.hasOwnProperty.call(session, "matched_qa");
+  if (!hasMatchedKey && inputEvents.length) {
+    return sortInputEventsChronological(
+      inputEvents.map(eventToUnmatched)
+    ) as ApplicationQaUnmatchedEvent[];
+  }
+
+  return [];
+}
+
+function matchedToQaItems(items: ApplicationQaMatchedItem[]): ApplicationQaItem[] {
+  return items.map((item) => ({
+    id: item.id,
+    question: item.question,
+    answer: item.answer,
+    updatedAt: item.updatedAt || item.occurredAt || undefined,
   }));
 }
 
@@ -336,6 +581,7 @@ export function formatInputEventElement(event: ApplicationQaInputEvent): string 
   if (event.name?.trim()) parts.push(`[name=${event.name.trim()}]`);
   if (event.cssSelector?.trim()) parts.push(event.cssSelector.trim());
   if (parts.length) return parts.join(" ");
+  if (event.elementLabel?.trim()) return event.elementLabel.trim();
   if (event.label?.trim()) return event.label.trim();
   if (event.elementKey?.trim()) return event.elementKey.trim();
   return "—";
@@ -392,7 +638,7 @@ export function sessionActivityIso(
   return session.lastSyncedAt || session.updatedAt || session.createdAt || "";
 }
 
-/** Parse SSE / detail session blob (summary + DOM input events). */
+/** Parse SSE / detail session blob (matched Q&A + unmatched DOM events). */
 export function parseApplicationQaSessionPayload(
   raw: unknown
 ): ApplicationQaSessionDetail | null {
@@ -401,13 +647,25 @@ export function parseApplicationQaSessionPayload(
   const summary = normalizeSessionSummary(row);
   if (!summary) return null;
   const inputEvents = extractInputEvents(row);
-  const eventCount = Math.max(summary.eventCount, inputEvents.length);
+  const matchedQa = extractMatchedQa(row, inputEvents);
+  const unmatchedEvents = extractUnmatchedEvents(row, inputEvents);
+  const matchedCount = Math.max(summary.matchedCount ?? 0, matchedQa.length);
+  const unmatchedCount = Math.max(summary.unmatchedCount ?? 0, unmatchedEvents.length);
+  const eventCount = Math.max(
+    summary.eventCount,
+    inputEvents.length,
+    matchedCount + unmatchedCount
+  );
   return {
     ...summary,
     eventCount,
     itemCount: eventCount,
+    matchedCount,
+    unmatchedCount,
     inputEvents,
-    questionsAnswers: inputEventsToQaItems(inputEvents),
+    matchedQa,
+    unmatchedEvents,
+    questionsAnswers: matchedToQaItems(matchedQa),
   };
 }
 

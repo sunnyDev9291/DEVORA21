@@ -12,7 +12,7 @@ import {
   saLabel,
   saMono,
 } from "@/components/super-admin/resume-dashboard-styles";
-import ApplicationQaInputEventsList from "@/components/super-admin/ApplicationQaInputEventsList";
+import ApplicationQaSessionDetailPanels from "@/components/super-admin/ApplicationQaSessionDetailPanels";
 import CopyIconButton from "@/components/ui/CopyIconButton";
 import {
   useApplicationQaLive,
@@ -31,6 +31,8 @@ import {
   sessionActivityIso,
   superAdminApplicationQaApi,
   upsertInputEvents,
+  upsertMatchedQa,
+  upsertUnmatchedEvents,
   type ApplicationQaLiveEvent,
   type ApplicationQaSessionDetail,
   type ApplicationQaSessionSummary,
@@ -350,43 +352,77 @@ export default function SuperAdminApplicationQaWorkspace({
       const openDay = dateYmdRef.current;
       const matchesOwner = Boolean(openOwner && ownerId && ownerId === openOwner);
       const matchesDay = sessionMatchesDay(session, openDay);
-      const hasEventRows = session.inputEvents.length > 0;
-      const reportedCount = Math.max(session.eventCount, session.itemCount);
-      const sparsePayload = !hasEventRows && reportedCount > 0;
+      const hasDetailRows =
+        session.matchedQa.length > 0 ||
+        session.unmatchedEvents.length > 0 ||
+        session.inputEvents.length > 0;
+      const reportedCount = Math.max(
+        session.eventCount,
+        session.itemCount,
+        (session.matchedCount ?? 0) + (session.unmatchedCount ?? 0)
+      );
+      const sparsePayload = !hasDetailRows && reportedCount > 0;
 
       // Always refresh open detail for this session id.
       if (selectedSessionIdRef.current === session.id) {
-        setDetail((prev) => {
-          // Full event list from SSE → replace (dedupe by id/elementKey).
-          // Sparse summary-only payload → keep prior rows so live typing does not wipe UI.
-          const inputEvents = hasEventRows
-            ? upsertInputEvents([], session.inputEvents)
-            : prev?.id === session.id
-              ? prev.inputEvents
-              : [];
+        if (sparsePayload) {
+          // Summary-only SSE — keep prior rows, hydrate full detail once.
+          setDetail((prev) =>
+            prev?.id === session.id
+              ? {
+                  ...prev,
+                  ...session,
+                  matchedQa: prev.matchedQa,
+                  unmatchedEvents: prev.unmatchedEvents,
+                  inputEvents: prev.inputEvents,
+                  questionsAnswers: prev.questionsAnswers,
+                  matchedCount: Math.max(session.matchedCount ?? 0, prev.matchedCount ?? 0),
+                  unmatchedCount: Math.max(
+                    session.unmatchedCount ?? 0,
+                    prev.unmatchedCount ?? 0
+                  ),
+                  eventCount: Math.max(
+                    reportedCount,
+                    prev.eventCount || prev.itemCount
+                  ),
+                  itemCount: Math.max(reportedCount, prev.itemCount || prev.eventCount),
+                }
+              : session
+          );
+          setDetailError("");
+          hydrateSessionDetail(session.id);
+        } else {
+          // Replace from matchedQa / unmatchedEvents (upsert dedupes same elementKey).
+          const matchedQa = upsertMatchedQa([], session.matchedQa);
+          const unmatchedEvents = upsertUnmatchedEvents([], session.unmatchedEvents);
+          const inputEvents = upsertInputEvents([], session.inputEvents);
+          const matchedCount = Math.max(session.matchedCount ?? 0, matchedQa.length);
+          const unmatchedCount = Math.max(
+            session.unmatchedCount ?? 0,
+            unmatchedEvents.length
+          );
           const eventCount = Math.max(
             reportedCount,
             inputEvents.length,
-            prev?.id === session.id ? prev.eventCount || prev.itemCount : 0
+            matchedCount + unmatchedCount
           );
-          return {
-            ...(prev?.id === session.id ? prev : session),
+          setDetail({
             ...session,
+            matchedQa,
+            unmatchedEvents,
+            inputEvents,
+            matchedCount,
+            unmatchedCount,
             eventCount,
             itemCount: eventCount,
-            inputEvents,
-            questionsAnswers: hasEventRows
-              ? session.questionsAnswers
-              : prev?.id === session.id
-                ? prev.questionsAnswers
-                : session.questionsAnswers,
-          };
-        });
-        setDetailError("");
-
-        // Sparse SSE (summary only) — one REST hydrate (notification channel stays SSE).
-        if (sparsePayload) {
-          hydrateSessionDetail(session.id);
+            questionsAnswers: matchedQa.map((item) => ({
+              id: item.id,
+              question: item.question,
+              answer: item.answer,
+              updatedAt: item.updatedAt || item.occurredAt,
+            })),
+          });
+          setDetailError("");
         }
       }
 
@@ -681,6 +717,9 @@ export default function SuperAdminApplicationQaWorkspace({
                         {session.eventCount || session.itemCount} event
                         {(session.eventCount || session.itemCount) === 1 ? "" : "s"}
                       </span>
+                      {typeof session.matchedCount === "number" ? (
+                        <span>{session.matchedCount} matched</span>
+                      ) : null}
                     </div>
                   </button>
                 </li>
@@ -690,7 +729,7 @@ export default function SuperAdminApplicationQaWorkspace({
         </ul>
       </section>
 
-      {/* Right — DOM input events detail */}
+      {/* Right — matched Q&A + unmatched DOM events */}
       <section className={`${saCard} flex min-w-0 flex-1 flex-col overflow-hidden`}>
         {!selectedUserId ? (
           <div className="flex flex-1 items-center justify-center p-8 text-center">
@@ -700,8 +739,8 @@ export default function SuperAdminApplicationQaWorkspace({
                 Select a profile
               </p>
               <p className={`${saMono} mt-2 max-w-sm text-xs leading-relaxed text-slate-400`}>
-                Pick a profile, choose a date, then open an Apply Page session to review chronological
-                DOM input events.
+                Pick a profile, choose a date, then open an Apply Page session to review matched
+                questions and unmatched DOM events.
               </p>
             </div>
           </div>
@@ -716,7 +755,7 @@ export default function SuperAdminApplicationQaWorkspace({
           </div>
         ) : detailLoading && !detail ? (
           <div className="flex flex-1 items-center justify-center p-8">
-            <p className={`${saMono} text-xs text-slate-400`}>Loading events…</p>
+            <p className={`${saMono} text-xs text-slate-400`}>Loading session…</p>
           </div>
         ) : detailError && !detail ? (
           <div className="p-5">
@@ -766,8 +805,10 @@ export default function SuperAdminApplicationQaWorkspace({
                         "—"}
                     </span>
                     <span>
-                      {detail.eventCount || detail.inputEvents.length} event
-                      {(detail.eventCount || detail.inputEvents.length) === 1 ? "" : "s"}
+                      Matched: {detail.matchedCount ?? detail.matchedQa.length}
+                    </span>
+                    <span>
+                      Unmatched: {detail.unmatchedCount ?? detail.unmatchedEvents.length}
                     </span>
                     {liveStatus === "live" ? (
                       <span className="text-teal-700">Streaming updates</span>
@@ -799,19 +840,10 @@ export default function SuperAdminApplicationQaWorkspace({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
-              <div className="mb-3 flex items-end justify-between gap-3">
-                <div>
-                  <p className={saEyebrow}>Capture</p>
-                  <h3 className={`${saDisplay} mt-1 text-lg font-bold text-slate-900`}>
-                    DOM input events
-                  </h3>
-                </div>
-                <p className={`${saMono} text-[11px] text-slate-400`}>
-                  {detail.eventCount || detail.inputEvents.length} event
-                  {(detail.eventCount || detail.inputEvents.length) === 1 ? "" : "s"}
-                </p>
-              </div>
-              <ApplicationQaInputEventsList events={detail.inputEvents} />
+              <ApplicationQaSessionDetailPanels
+                detail={detail}
+                live={liveStatus === "live"}
+              />
             </div>
           </>
         ) : null}
