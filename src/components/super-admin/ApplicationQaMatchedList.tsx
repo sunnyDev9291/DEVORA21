@@ -15,6 +15,16 @@ function formatConfidence(value?: number): string {
   return String(value);
 }
 
+function MetaChip({ label }: { label: string }) {
+  return (
+    <span
+      className={`${saMono} inline-flex max-w-full break-all rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-600`}
+    >
+      {label}
+    </span>
+  );
+}
+
 export default function ApplicationQaMatchedList({ items }: ApplicationQaMatchedListProps) {
   if (items.length === 0) {
     return (
@@ -26,6 +36,8 @@ export default function ApplicationQaMatchedList({ items }: ApplicationQaMatched
     );
   }
 
+  const showAction = items.some((item) => Boolean(item.actionType?.trim()));
+  const showComponent = items.some((item) => Boolean(item.componentType?.trim()));
   const showConfidence = items.some(
     (item) => typeof item.matchConfidence === "number" && Number.isFinite(item.matchConfidence)
   );
@@ -37,19 +49,21 @@ export default function ApplicationQaMatchedList({ items }: ApplicationQaMatched
           <tr className={`${saMono} text-[10px] uppercase tracking-[0.14em] text-slate-400`}>
             <th className="px-4 py-3 font-medium">Question</th>
             <th className="px-4 py-3 font-medium">Answer</th>
+            {showAction ? <th className="px-4 py-3 font-medium">Action</th> : null}
+            {showComponent ? <th className="px-4 py-3 font-medium">Component</th> : null}
             {showConfidence ? (
               <th className="px-4 py-3 font-medium">Confidence</th>
             ) : null}
-            <th className="px-4 py-3 font-medium">Updated</th>
+            <th className="px-4 py-3 font-medium">Time</th>
           </tr>
         </thead>
         <tbody>
           {items.map((item, index) => {
             const when =
-              (item.updatedAt && formatEstDateTime(item.updatedAt)) ||
               (item.occurredAt && formatEstDateTime(item.occurredAt)) ||
-              item.updatedAt ||
+              (item.updatedAt && formatEstDateTime(item.updatedAt)) ||
               item.occurredAt ||
+              item.updatedAt ||
               "—";
             const confidence = formatConfidence(item.matchConfidence);
             return (
@@ -69,6 +83,24 @@ export default function ApplicationQaMatchedList({ items }: ApplicationQaMatched
                     )}
                   </p>
                 </td>
+                {showAction ? (
+                  <td className="whitespace-nowrap px-4 py-3">
+                    {item.actionType?.trim() ? (
+                      <MetaChip label={item.actionType.trim()} />
+                    ) : (
+                      <span className={`${saMono} text-xs text-slate-400`}>—</span>
+                    )}
+                  </td>
+                ) : null}
+                {showComponent ? (
+                  <td className="whitespace-nowrap px-4 py-3">
+                    {item.componentType?.trim() ? (
+                      <MetaChip label={item.componentType.trim()} />
+                    ) : (
+                      <span className={`${saMono} text-xs text-slate-400`}>—</span>
+                    )}
+                  </td>
+                ) : null}
                 {showConfidence ? (
                   <td className={`${saMono} whitespace-nowrap px-4 py-3 text-xs text-slate-500`}>
                     {confidence || "—"}

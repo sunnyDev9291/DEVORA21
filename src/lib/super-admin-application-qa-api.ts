@@ -44,6 +44,10 @@ export type ApplicationQaInputEvent = {
   elementKey: string;
   value: string;
   eventType?: string;
+  /** User action: input | change | click | … */
+  actionType?: string;
+  /** Control kind: text | radio | checkbox | yesno | dropdown | … */
+  componentType?: string;
   tagName?: string;
   inputType?: string;
   elementId?: string;
@@ -68,9 +72,13 @@ export type ApplicationQaInputEvent = {
 export type ApplicationQaMatchedItem = {
   id: string;
   elementKey: string;
+  /** DeepSeek question — never invent on the FE. */
   question: string;
   answer: string;
+  actionType?: string;
+  componentType?: string;
   matchConfidence?: number;
+  matchStatus?: "matched";
   occurredAt: string;
   updatedAt: string;
 };
@@ -318,6 +326,11 @@ function normalizeInputEvent(raw: unknown, index = 0): ApplicationQaInputEvent |
     elementKey: elementKey || id,
     value,
     eventType: pickString(row, "eventType", "event_type") || undefined,
+    actionType:
+      pickString(row, "actionType", "action_type") ||
+      pickString(row, "eventType", "event_type") ||
+      undefined,
+    componentType: pickString(row, "componentType", "component_type") || undefined,
     tagName: pickString(row, "tagName", "tag_name", "tag") || undefined,
     inputType: pickString(row, "inputType", "input_type") || undefined,
     elementId: pickString(row, "elementId", "element_id") || undefined,
@@ -331,7 +344,9 @@ function normalizeInputEvent(raw: unknown, index = 0): ApplicationQaInputEvent |
     matchedQuestion: pickString(row, "matchedQuestion", "matched_question") || undefined,
     question,
     answer: pickString(row, "answer") || value || undefined,
-    matchConfidence: normalizeConfidence(row.matchConfidence ?? row.match_confidence),
+    matchConfidence: normalizeConfidence(
+      row.matchConfidence ?? row.match_confidence ?? row.confidence
+    ),
     occurredAt,
     updatedAt,
   };
@@ -340,8 +355,10 @@ function normalizeInputEvent(raw: unknown, index = 0): ApplicationQaInputEvent |
 function normalizeMatchedItem(raw: unknown, index = 0): ApplicationQaMatchedItem | null {
   if (!raw || typeof raw !== "object") return null;
   const row = raw as Record<string, unknown>;
+  // Only show DeepSeek/API question text — never invent a placeholder.
   const question =
     pickString(row, "question", "matchedQuestion", "matched_question") || "";
+  if (!question) return null;
   const answer =
     pickString(row, "answer", "value", "a", "response") ||
     (typeof row.value === "number" || typeof row.value === "boolean"
@@ -355,7 +372,6 @@ function normalizeMatchedItem(raw: unknown, index = 0): ApplicationQaMatchedItem
     pickString(row, "id", "_id") ||
     (elementKey ? `matched:${elementKey}` : "") ||
     `matched-${index}`;
-  if (!question && !answer) return null;
   const occurredAt =
     pickString(row, "occurredAt", "occurred_at", "updatedAt", "updated_at") || "";
   const updatedAt =
@@ -363,9 +379,17 @@ function normalizeMatchedItem(raw: unknown, index = 0): ApplicationQaMatchedItem
   return {
     id,
     elementKey: elementKey || id,
-    question: question || "(untitled question)",
+    question,
     answer,
-    matchConfidence: normalizeConfidence(row.matchConfidence ?? row.match_confidence),
+    actionType:
+      pickString(row, "actionType", "action_type") ||
+      pickString(row, "eventType", "event_type") ||
+      undefined,
+    componentType: pickString(row, "componentType", "component_type") || undefined,
+    matchConfidence: normalizeConfidence(
+      row.matchConfidence ?? row.match_confidence ?? row.confidence
+    ),
+    matchStatus: "matched",
     occurredAt,
     updatedAt,
   };
@@ -383,19 +407,42 @@ function sortMatchedChronological(
   });
 }
 
-function eventToMatchedItem(event: ApplicationQaInputEvent): ApplicationQaMatchedItem {
+function eventToMatchedItem(
+  event: ApplicationQaInputEvent
+): ApplicationQaMatchedItem | null {
+  const question = (event.matchedQuestion || event.question || "").trim();
+  if (!question) return null;
   return {
     id: event.id,
     elementKey: event.elementKey,
-    question:
-      event.matchedQuestion ||
-      event.question ||
-      "(untitled question)",
+    question,
     answer: event.answer || event.value || "",
+    actionType: event.actionType || event.eventType,
+    componentType: event.componentType,
     matchConfidence: event.matchConfidence,
+    matchStatus: "matched",
     occurredAt: event.occurredAt,
     updatedAt: event.updatedAt || event.occurredAt,
   };
+}
+
+/** One row per elementKey — keep the latest updatedAt (radio/checkbox re-types). */
+function dedupeByElementKeyPreferLatest<
+  T extends { id: string; elementKey: string; updatedAt: string; occurredAt: string }
+>(items: T[]): T[] {
+  const byKey = new Map<string, T>();
+  for (const item of items) {
+    const key = item.elementKey || item.id;
+    const prior = byKey.get(key);
+    if (!prior) {
+      byKey.set(key, item);
+      continue;
+    }
+    const priorTs = prior.updatedAt || prior.occurredAt || "";
+    const nextTs = item.updatedAt || item.occurredAt || "";
+    if (nextTs.localeCompare(priorTs) >= 0) byKey.set(key, item);
+  }
+  return [...byKey.values()];
 }
 
 function eventToUnmatched(
@@ -467,16 +514,22 @@ export function upsertMatchedQa(
   prev: ApplicationQaMatchedItem[],
   incoming: ApplicationQaMatchedItem[]
 ): ApplicationQaMatchedItem[] {
-  return upsertByIdOrElementKey(prev, incoming, sortMatchedChronological);
+  return sortMatchedChronological(
+    dedupeByElementKeyPreferLatest(
+      upsertByIdOrElementKey(prev, incoming, (items) => items)
+    )
+  );
 }
 
 export function upsertUnmatchedEvents(
   prev: ApplicationQaUnmatchedEvent[],
   incoming: ApplicationQaUnmatchedEvent[]
 ): ApplicationQaUnmatchedEvent[] {
-  return upsertByIdOrElementKey(prev, incoming, (items) =>
-    sortInputEventsChronological(items) as ApplicationQaUnmatchedEvent[]
-  );
+  return sortInputEventsChronological(
+    dedupeByElementKeyPreferLatest(
+      upsertByIdOrElementKey(prev, incoming, (items) => items)
+    )
+  ) as ApplicationQaUnmatchedEvent[];
 }
 
 export function extractInputEvents(session: Record<string, unknown>): ApplicationQaInputEvent[] {
@@ -505,23 +558,33 @@ export function extractMatchedQa(
   const preferred = ownArray(session, "matchedQa", "matched_qa");
   if (preferred) {
     return sortMatchedChronological(
-      preferred
-        .map((row, index) => normalizeMatchedItem(row, index))
-        .filter((item): item is ApplicationQaMatchedItem => Boolean(item))
+      dedupeByElementKeyPreferLatest(
+        preferred
+          .map((row, index) => normalizeMatchedItem(row, index))
+          .filter((item): item is ApplicationQaMatchedItem => Boolean(item))
+      )
     );
   }
 
   const fromEvents = inputEvents.filter((e) => e.matchStatus === "matched");
   if (fromEvents.length || inputEvents.some((e) => e.matchStatus)) {
-    return sortMatchedChronological(fromEvents.map(eventToMatchedItem));
+    return sortMatchedChronological(
+      dedupeByElementKeyPreferLatest(
+        fromEvents
+          .map(eventToMatchedItem)
+          .filter((item): item is ApplicationQaMatchedItem => Boolean(item))
+      )
+    );
   }
 
   const legacyQa = ownArray(session, "questionsAnswers", "questions_answers");
   if (legacyQa) {
     return sortMatchedChronological(
-      legacyQa
-        .map((row, index) => normalizeMatchedItem(row, index))
-        .filter((item): item is ApplicationQaMatchedItem => Boolean(item))
+      dedupeByElementKeyPreferLatest(
+        legacyQa
+          .map((row, index) => normalizeMatchedItem(row, index))
+          .filter((item): item is ApplicationQaMatchedItem => Boolean(item))
+      )
     );
   }
 
@@ -535,18 +598,22 @@ export function extractUnmatchedEvents(
   const preferred = ownArray(session, "unmatchedEvents", "unmatched_events");
   if (preferred) {
     return sortInputEventsChronological(
-      preferred
-        .map((row, index) => {
-          const event = normalizeInputEvent(row, index);
-          return event ? eventToUnmatched(event) : null;
-        })
-        .filter((item): item is ApplicationQaUnmatchedEvent => Boolean(item))
+      dedupeByElementKeyPreferLatest(
+        preferred
+          .map((row, index) => {
+            const event = normalizeInputEvent(row, index);
+            return event ? eventToUnmatched(event) : null;
+          })
+          .filter((item): item is ApplicationQaUnmatchedEvent => Boolean(item))
+      )
     ) as ApplicationQaUnmatchedEvent[];
   }
 
   if (inputEvents.some((e) => e.matchStatus === "matched" || e.matchStatus === "unmatched")) {
     return sortInputEventsChronological(
-      inputEvents.filter((e) => e.matchStatus === "unmatched").map(eventToUnmatched)
+      dedupeByElementKeyPreferLatest(
+        inputEvents.filter((e) => e.matchStatus === "unmatched").map(eventToUnmatched)
+      )
     ) as ApplicationQaUnmatchedEvent[];
   }
 
@@ -556,7 +623,7 @@ export function extractUnmatchedEvents(
     Object.prototype.hasOwnProperty.call(session, "matched_qa");
   if (!hasMatchedKey && inputEvents.length) {
     return sortInputEventsChronological(
-      inputEvents.map(eventToUnmatched)
+      dedupeByElementKeyPreferLatest(inputEvents.map(eventToUnmatched))
     ) as ApplicationQaUnmatchedEvent[];
   }
 
