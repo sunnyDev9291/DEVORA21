@@ -23,7 +23,6 @@ import {
   formatEstYmd,
   isIsoOnEstYmd,
 } from "@/lib/format-est-datetime";
-import { getUserApiKey } from "@/lib/user-api-key";
 import { superAdminApi, type AdminUserSummary } from "@/lib/super-admin-api";
 import {
   resolveApplicationQaCompanyName,
@@ -349,7 +348,6 @@ export default function SuperAdminApplicationQaWorkspace({
 
   const liveStatus = useApplicationQaLive({
     enabled: true,
-    accessToken: typeof window !== "undefined" ? getUserApiKey() : null,
     onEvent: handleLiveEvent,
   });
 

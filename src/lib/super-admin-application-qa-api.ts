@@ -267,23 +267,27 @@ export function parseApplicationQaLiveEvent(
   const row =
     data && typeof data === "object" ? (data as Record<string, unknown>) : {};
   const at = pickString(row, "at") || undefined;
+  // Prefer payload.type (default SSE data frames); fall back to named event.
+  const type =
+    pickString(row, "type") ||
+    (eventName && eventName !== "message" ? eventName.trim() : "");
 
-  if (eventName === "ready") {
+  if (type === "ready") {
     return { kind: "ready", at };
   }
 
-  if (eventName === "session.created" || eventName === "session.updated") {
+  if (type === "session.created" || type === "session.updated") {
     const sessionRaw = row.session ?? row;
     const session = parseApplicationQaSessionPayload(sessionRaw);
     if (!session) return null;
     return {
-      kind: eventName,
+      kind: type,
       at,
       session,
     };
   }
 
-  if (eventName === "session.deleted") {
+  if (type === "session.deleted") {
     const sessionId =
       pickString(row, "sessionId", "session_id", "id") ||
       (row.session && typeof row.session === "object"
@@ -301,7 +305,7 @@ export function parseApplicationQaLiveEvent(
   return null;
 }
 
-/** Build SSE URL — cookies via withCredentials; optional dv21_ as access_token. */
+/** Build SSE URL on the API origin (never a buffering Next/BFF proxy). */
 export function buildApplicationQaStreamUrl(accessToken?: string | null): string {
   const base = `${API_BASE_URL}/admin/application-qa/stream`;
   const token = accessToken?.trim();
@@ -310,6 +314,41 @@ export function buildApplicationQaStreamUrl(accessToken?: string | null): string
   params.set("access_token", token);
   params.set("token", token);
   return `${base}?${params.toString()}`;
+}
+
+export type ApplicationQaStreamTicket = {
+  ticket: string;
+  expiresIn?: number;
+  streamPath: string;
+};
+
+/**
+ * Mint a short-lived SSE ticket using the same cookie/Bearer auth as other /admin calls.
+ * EventSource cannot set Authorization; ticket goes in the stream URL instead.
+ */
+export async function createApplicationQaStreamTicket(): Promise<ApplicationQaStreamTicket> {
+  const data = await adminJson("/admin/application-qa/stream-ticket", {
+    method: "POST",
+  });
+  const ticket =
+    pickString(data, "ticket", "streamTicket", "stream_ticket", "token") || "";
+  const streamPath =
+    pickString(data, "streamPath", "stream_path", "path", "url") ||
+    "/admin/application-qa/stream";
+  if (!ticket) {
+    throw new ApiError("Stream ticket missing from response.", 502);
+  }
+  const path = streamPath.startsWith("http")
+    ? streamPath
+    : streamPath.startsWith("/")
+      ? `${API_BASE_URL}${streamPath}`
+      : `${API_BASE_URL}/${streamPath}`;
+  const joiner = path.includes("?") ? "&" : "?";
+  return {
+    ticket,
+    expiresIn: toNumber(data.expiresIn ?? data.expires_in, 0) || undefined,
+    streamPath: `${path}${joiner}ticket=${encodeURIComponent(ticket)}&access_token=${encodeURIComponent(ticket)}&token=${encodeURIComponent(ticket)}`,
+  };
 }
 
 export const superAdminApplicationQaApi = {
