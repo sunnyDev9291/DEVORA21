@@ -12,6 +12,7 @@ import {
   saLabel,
   saMono,
 } from "@/components/super-admin/resume-dashboard-styles";
+import CopyIconButton from "@/components/ui/CopyIconButton";
 import {
   useApplicationQaLive,
   type ApplicationQaLiveStatus,
@@ -42,13 +43,21 @@ function displayName(user: AdminUserSummary): string {
   );
 }
 
+/** Profiles labeled "... - bidder" (any casing) sort above everyone else. */
+function isBidderProfile(user: AdminUserSummary): boolean {
+  return /(?:^|[\s\-–—])bidder\s*$/i.test(displayName(user));
+}
+
 function sortUsersByName(users: AdminUserSummary[]): AdminUserSummary[] {
-  return [...users].sort((a, b) =>
-    displayName(a).localeCompare(displayName(b), undefined, {
+  return [...users].sort((a, b) => {
+    const aBidder = isBidderProfile(a);
+    const bBidder = isBidderProfile(b);
+    if (aBidder !== bBidder) return aBidder ? -1 : 1;
+    return displayName(a).localeCompare(displayName(b), undefined, {
       sensitivity: "base",
       numeric: true,
-    })
-  );
+    });
+  });
 }
 
 function sortSessionsRecent(sessions: ApplicationQaSessionSummary[]): ApplicationQaSessionSummary[] {
@@ -607,11 +616,6 @@ export default function SuperAdminApplicationQaWorkspace({
                         {recording ? "Live recording" : "Paused"}
                       </span>
                     </div>
-                    {session.tabUrl ? (
-                      <span className={`${saMono} break-all text-[11px] text-slate-400`}>
-                        {session.tabUrl}
-                      </span>
-                    ) : null}
                     <div
                       className={`${saMono} flex flex-wrap gap-x-3 gap-y-1 text-[11px] ${
                         active ? "text-teal-800/80" : "text-slate-500"
@@ -678,14 +682,18 @@ export default function SuperAdminApplicationQaWorkspace({
                     <p className="mt-1 text-sm text-slate-600">{detail.pageTitle}</p>
                   ) : null}
                   {detail.tabUrl ? (
-                    <a
-                      href={detail.tabUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className={`${saMono} mt-2 inline-block break-all text-xs text-teal-700 hover:underline`}
-                    >
-                      {detail.tabUrl}
-                    </a>
+                    <div className="mt-2 flex items-start gap-2">
+                      <p
+                        className={`${saMono} min-w-0 flex-1 break-all text-xs text-slate-600 select-all`}
+                      >
+                        {detail.tabUrl}
+                      </p>
+                      <CopyIconButton
+                        text={detail.tabUrl}
+                        label="Copy job URL"
+                        className="shrink-0"
+                      />
+                    </div>
                   ) : null}
                   <div className={`${saMono} mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500`}>
                     <span
