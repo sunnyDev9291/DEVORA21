@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { API_BASE_URL } from "@/lib/api-base-url";
 import { getUserApiKey } from "@/lib/user-api-key";
 import {
-  buildApplicationQaStreamUrl,
   createApplicationQaStreamTicket,
   parseApplicationQaLiveEvent,
   type ApplicationQaLiveEvent,
@@ -24,7 +23,9 @@ type UseApplicationQaLiveOptions = {
 function parseSseBlocks(
   buffer: string
 ): { events: Array<{ event: string; data: string }>; rest: string } {
-  const parts = buffer.split("\n\n");
+  // Normalize CRLF so blocks split reliably across browsers / proxies.
+  const normalized = buffer.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const parts = normalized.split("\n\n");
   const rest = parts.pop() || "";
   const events: Array<{ event: string; data: string }> = [];
 
@@ -33,7 +34,7 @@ function parseSseBlocks(
     let eventName = "message";
     const dataLines: string[] = [];
     for (const line of block.split("\n")) {
-      if (line.startsWith(":")) continue; // heartbeat comment
+      if (line.startsWith(":")) continue; // heartbeat comment (: ping …)
       if (line.startsWith("event:")) {
         eventName = line.slice(6).trim() || "message";
         continue;
@@ -49,12 +50,17 @@ function parseSseBlocks(
   return { events, rest };
 }
 
+/**
+ * Open GET /admin/application-qa/stream on the API origin (never a Next/BFF proxy).
+ * Prefer fetch + Bearer; fall back to stream-ticket (same auth as working REST); then cookies.
+ */
 async function openLiveStream(signal: AbortSignal): Promise<Response> {
+  const streamUrl = `${API_BASE_URL.replace(/\/$/, "")}/admin/application-qa/stream`;
   const apiKey = getUserApiKey();
 
-  // 1) Preferred: fetch + Bearer when a dv21_ key is available.
+  // 1) Preferred: fetch + Bearer when a dv21_ key is available (EventSource cannot set headers).
   if (apiKey) {
-    const res = await fetch(buildApplicationQaStreamUrl(null), {
+    const res = await fetch(streamUrl, {
       method: "GET",
       headers: {
         Accept: "text/event-stream",
@@ -64,28 +70,32 @@ async function openLiveStream(signal: AbortSignal): Promise<Response> {
       signal,
     });
     if (res.ok && res.body) return res;
-    if (res.status !== 401 && res.status !== 403) {
-      throw new Error(`SSE HTTP ${res.status}`);
-    }
+    if (signal.aborted) throw new DOMException("Aborted", "AbortError");
   }
 
-  // 2) Cookie session: fetch stream with credentials (same as other /admin REST).
-  {
-    const res = await fetch(`${API_BASE_URL}/admin/application-qa/stream`, {
+  // 2) Ticket: POST with normal admin auth (cookies / Bearer via apiAuthFetch), then GET stream.
+  //    This matches REST that already works on refresh — most reliable for cookie sessions.
+  try {
+    const ticket = await createApplicationQaStreamTicket();
+    if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+    const res = await fetch(ticket.streamPath, {
       method: "GET",
-      headers: { Accept: "text/event-stream" },
+      headers: {
+        Accept: "text/event-stream",
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
       credentials: "include",
       signal,
     });
     if (res.ok && res.body) return res;
-    if (res.status !== 401 && res.status !== 403) {
-      throw new Error(`SSE HTTP ${res.status}`);
-    }
+    if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    // fall through to cookie-only
   }
 
-  // 3) Ticket: POST with normal admin auth, then GET stream with ticket query.
-  const ticket = await createApplicationQaStreamTicket();
-  const res = await fetch(ticket.streamPath, {
+  // 3) Cookie session only (credentials include; no Authorization header).
+  const res = await fetch(streamUrl, {
     method: "GET",
     headers: { Accept: "text/event-stream" },
     credentials: "include",
@@ -99,7 +109,7 @@ async function openLiveStream(signal: AbortSignal): Promise<Response> {
 
 /**
  * Super Admin Application Q&A live stream (SSE).
- * Uses fetch + Authorization/cookies (EventSource cannot set Bearer headers).
+ * Uses fetch + Authorization/ticket/cookies (EventSource cannot set Bearer headers).
  * Connects directly to API_BASE_URL — never a buffering Next/BFF proxy.
  */
 export function useApplicationQaLive({
@@ -133,31 +143,20 @@ export function useApplicationQaLive({
     const emitParsed = (eventName: string, dataText: string) => {
       try {
         const raw = JSON.parse(dataText) as unknown;
-        const parsed = parseApplicationQaLiveEvent(eventName, raw);
-        if (!parsed) {
-          // Also try payload.type when named event was "message"
-          const typed =
-            raw && typeof raw === "object"
-              ? parseApplicationQaLiveEvent(
-                  String((raw as { type?: string }).type || ""),
-                  raw
-                )
-              : null;
-          if (!typed) return;
-          if (typed.kind === "ready") {
-            attempt = 0;
-            setStatus("live");
-          }
-          onEventRef.current(typed);
-          return;
+        // Prefer payload.type; also honor named SSE event: lines.
+        let parsed = parseApplicationQaLiveEvent(eventName, raw);
+        if (!parsed && raw && typeof raw === "object") {
+          const type = String((raw as { type?: string }).type || "").trim();
+          if (type) parsed = parseApplicationQaLiveEvent(type, raw);
         }
+        if (!parsed) return;
         if (parsed.kind === "ready") {
           attempt = 0;
           setStatus("live");
         }
         onEventRef.current(parsed);
       } catch {
-        // ignore malformed frames
+        // ignore malformed frames / heartbeats
       }
     };
 
@@ -184,7 +183,9 @@ export function useApplicationQaLive({
         if (stopped) return;
         if (!res.body) throw new Error("No SSE body");
 
+        // Connected — show Live immediately; ready event also confirms.
         setStatus("live");
+        attempt = 0;
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";

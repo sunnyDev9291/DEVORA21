@@ -306,6 +306,26 @@ export default function SuperAdminApplicationQaWorkspace({
     }, 2200);
   }, []);
 
+  const hydrateSessionDetail = useCallback((sessionId: string) => {
+    const sid = sessionId.trim();
+    if (!sid) return;
+    void superAdminApplicationQaApi
+      .getSession(sid)
+      .then((full) => {
+        if (selectedSessionIdRef.current !== sid) return;
+        setDetail(full);
+        setDetailError("");
+        // Keep list row in sync with hydrated counts/timestamps.
+        setSessions((prev) => {
+          if (!prev.some((s) => s.id === sid)) return prev;
+          return upsertSessionList(prev, full);
+        });
+      })
+      .catch(() => {
+        /* keep last good SSE/REST snapshot */
+      });
+  }, []);
+
   const handleLiveEvent = useCallback(
     (event: ApplicationQaLiveEvent) => {
       if (event.kind === "ready") return;
@@ -330,22 +350,44 @@ export default function SuperAdminApplicationQaWorkspace({
       const openDay = dateYmdRef.current;
       const matchesOwner = Boolean(openOwner && ownerId && ownerId === openOwner);
       const matchesDay = sessionMatchesDay(session, openDay);
+      const hasEventRows = session.inputEvents.length > 0;
+      const reportedCount = Math.max(session.eventCount, session.itemCount);
+      const sparsePayload = !hasEventRows && reportedCount > 0;
 
-      // Replace open-session events from payload (dedupe/upsert by id + elementKey).
+      // Always refresh open detail for this session id.
       if (selectedSessionIdRef.current === session.id) {
-        const inputEvents = upsertInputEvents([], session.inputEvents);
-        const eventCount = Math.max(
-          session.eventCount,
-          session.itemCount,
-          inputEvents.length
-        );
-        setDetail({
-          ...session,
-          eventCount,
-          itemCount: eventCount,
-          inputEvents,
+        setDetail((prev) => {
+          // Full event list from SSE → replace (dedupe by id/elementKey).
+          // Sparse summary-only payload → keep prior rows so live typing does not wipe UI.
+          const inputEvents = hasEventRows
+            ? upsertInputEvents([], session.inputEvents)
+            : prev?.id === session.id
+              ? prev.inputEvents
+              : [];
+          const eventCount = Math.max(
+            reportedCount,
+            inputEvents.length,
+            prev?.id === session.id ? prev.eventCount || prev.itemCount : 0
+          );
+          return {
+            ...(prev?.id === session.id ? prev : session),
+            ...session,
+            eventCount,
+            itemCount: eventCount,
+            inputEvents,
+            questionsAnswers: hasEventRows
+              ? session.questionsAnswers
+              : prev?.id === session.id
+                ? prev.questionsAnswers
+                : session.questionsAnswers,
+          };
         });
         setDetailError("");
+
+        // Sparse SSE (summary only) — one REST hydrate (notification channel stays SSE).
+        if (sparsePayload) {
+          hydrateSessionDetail(session.id);
+        }
       }
 
       if (!matchesOwner) {
@@ -365,7 +407,7 @@ export default function SuperAdminApplicationQaWorkspace({
       );
       flashSession(session.id);
     },
-    [flashSession]
+    [flashSession, hydrateSessionDetail]
   );
 
   const liveStatus = useApplicationQaLive({
