@@ -750,34 +750,26 @@ export default function SuperAdminApplicationQaWorkspace({
                   </p>
                 </div>
               ) : (
-                <ol className="space-y-4">
+                <ul className="divide-y divide-slate-100 rounded-2xl border border-slate-100 bg-white">
                   {detail.questionsAnswers.map((item, index) => (
                     <li
                       key={item.id || `${index}-${item.question.slice(0, 24)}`}
-                      className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4 transition-colors duration-200 hover:border-teal-100 hover:bg-teal-50/30"
+                      className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1.2fr)] items-start gap-3 px-4 py-3.5"
                     >
-                      <p className={`${saMono} text-[10px] uppercase tracking-[0.14em] text-slate-400`}>
-                        Question {index + 1}
-                      </p>
-                      <p className="mt-2 whitespace-pre-wrap text-[15px] font-medium leading-relaxed text-slate-900">
+                      <p className="min-w-0 whitespace-pre-wrap break-words text-[15px] font-medium leading-snug text-slate-900">
                         {item.question}
                       </p>
-                      <p className={`${saMono} mt-4 text-[10px] uppercase tracking-[0.14em] text-teal-700/70`}>
-                        Answer
-                      </p>
-                      <p className="mt-1.5 whitespace-pre-wrap text-[15px] leading-relaxed text-slate-700">
+                      <span className={`${saMono} shrink-0 pt-0.5 text-xs text-slate-400`} aria-hidden>
+                        :
+                      </span>
+                      <p className="min-w-0 whitespace-pre-wrap break-words text-[15px] leading-snug text-slate-700">
                         {item.answer || (
                           <span className="text-slate-400">(empty)</span>
                         )}
                       </p>
-                      {item.updatedAt ? (
-                        <p className={`${saMono} mt-3 text-[11px] text-slate-400`}>
-                          Updated · {formatEstDateTime(item.updatedAt) || item.updatedAt}
-                        </p>
-                      ) : null}
                     </li>
                   ))}
-                </ol>
+                </ul>
               )}
             </div>
           </>
