@@ -26,7 +26,7 @@ function ApplicationQaInner() {
     <div className={`${saPage} max-w-[96rem]`}>
       <SuperAdminHeader
         title="Application Q&A"
-        subtitle="Live Profile → date → Apply Page session → questions & answers. Updates stream in as the Chrome extension records."
+        subtitle="Live Profile → date → Apply Page session → DOM input events. Updates stream in as the Chrome extension records."
         onLock={() => router.replace(AUTH_LINKS.superAdmin)}
         aside={<ApplicationQaLiveStatusBadge status={liveStatus} />}
       />

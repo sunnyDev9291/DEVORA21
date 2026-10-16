@@ -12,6 +12,7 @@ import {
   saLabel,
   saMono,
 } from "@/components/super-admin/resume-dashboard-styles";
+import ApplicationQaInputEventsList from "@/components/super-admin/ApplicationQaInputEventsList";
 import CopyIconButton from "@/components/ui/CopyIconButton";
 import {
   useApplicationQaLive,
@@ -29,6 +30,7 @@ import {
   resolveApplicationQaCompanyName,
   sessionActivityIso,
   superAdminApplicationQaApi,
+  upsertInputEvents,
   type ApplicationQaLiveEvent,
   type ApplicationQaSessionDetail,
   type ApplicationQaSessionSummary,
@@ -329,9 +331,20 @@ export default function SuperAdminApplicationQaWorkspace({
       const matchesOwner = Boolean(openOwner && ownerId && ownerId === openOwner);
       const matchesDay = sessionMatchesDay(session, openDay);
 
-      // Always refresh open detail for the same session id.
+      // Replace open-session events from payload (dedupe/upsert by id + elementKey).
       if (selectedSessionIdRef.current === session.id) {
-        setDetail(session);
+        const inputEvents = upsertInputEvents([], session.inputEvents);
+        const eventCount = Math.max(
+          session.eventCount,
+          session.itemCount,
+          inputEvents.length
+        );
+        setDetail({
+          ...session,
+          eventCount,
+          itemCount: eventCount,
+          inputEvents,
+        });
         setDetailError("");
       }
 
@@ -623,7 +636,8 @@ export default function SuperAdminApplicationQaWorkspace({
                     >
                       <span>{timeLabel}</span>
                       <span>
-                        {session.itemCount} Q&amp;A
+                        {session.eventCount || session.itemCount} event
+                        {(session.eventCount || session.itemCount) === 1 ? "" : "s"}
                       </span>
                     </div>
                   </button>
@@ -634,7 +648,7 @@ export default function SuperAdminApplicationQaWorkspace({
         </ul>
       </section>
 
-      {/* Right — Q&A detail */}
+      {/* Right — DOM input events detail */}
       <section className={`${saCard} flex min-w-0 flex-1 flex-col overflow-hidden`}>
         {!selectedUserId ? (
           <div className="flex flex-1 items-center justify-center p-8 text-center">
@@ -644,8 +658,8 @@ export default function SuperAdminApplicationQaWorkspace({
                 Select a profile
               </p>
               <p className={`${saMono} mt-2 max-w-sm text-xs leading-relaxed text-slate-400`}>
-                Pick a profile, choose a date, then open an Apply Page session to read every captured
-                question and answer.
+                Pick a profile, choose a date, then open an Apply Page session to review chronological
+                DOM input events.
               </p>
             </div>
           </div>
@@ -660,7 +674,7 @@ export default function SuperAdminApplicationQaWorkspace({
           </div>
         ) : detailLoading && !detail ? (
           <div className="flex flex-1 items-center justify-center p-8">
-            <p className={`${saMono} text-xs text-slate-400`}>Loading Q&amp;A…</p>
+            <p className={`${saMono} text-xs text-slate-400`}>Loading events…</p>
           </div>
         ) : detailError && !detail ? (
           <div className="p-5">
@@ -710,8 +724,8 @@ export default function SuperAdminApplicationQaWorkspace({
                         "—"}
                     </span>
                     <span>
-                      {detail.questionsAnswers.length} pair
-                      {detail.questionsAnswers.length === 1 ? "" : "s"}
+                      {detail.eventCount || detail.inputEvents.length} event
+                      {(detail.eventCount || detail.inputEvents.length) === 1 ? "" : "s"}
                     </span>
                     {liveStatus === "live" ? (
                       <span className="text-teal-700">Streaming updates</span>
@@ -743,34 +757,19 @@ export default function SuperAdminApplicationQaWorkspace({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
-              {detail.questionsAnswers.length === 0 ? (
-                <div className="flex min-h-[12rem] items-center justify-center text-center">
-                  <p className={`${saMono} text-xs text-slate-400`}>
-                    No question/answer pairs in this session.
-                  </p>
+              <div className="mb-3 flex items-end justify-between gap-3">
+                <div>
+                  <p className={saEyebrow}>Capture</p>
+                  <h3 className={`${saDisplay} mt-1 text-lg font-bold text-slate-900`}>
+                    DOM input events
+                  </h3>
                 </div>
-              ) : (
-                <ul className="divide-y divide-slate-100 rounded-2xl border border-slate-100 bg-white">
-                  {detail.questionsAnswers.map((item, index) => (
-                    <li
-                      key={item.id || `${index}-${item.question.slice(0, 24)}`}
-                      className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1.2fr)] items-start gap-3 px-4 py-3.5"
-                    >
-                      <p className="min-w-0 whitespace-pre-wrap break-words text-[15px] font-medium leading-snug text-slate-900">
-                        {item.question}
-                      </p>
-                      <span className={`${saMono} shrink-0 pt-0.5 text-xs text-slate-400`} aria-hidden>
-                        :
-                      </span>
-                      <p className="min-w-0 whitespace-pre-wrap break-words text-[15px] leading-snug text-slate-700">
-                        {item.answer || (
-                          <span className="text-slate-400">(empty)</span>
-                        )}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              )}
+                <p className={`${saMono} text-[11px] text-slate-400`}>
+                  {detail.eventCount || detail.inputEvents.length} event
+                  {(detail.eventCount || detail.inputEvents.length) === 1 ? "" : "s"}
+                </p>
+              </div>
+              <ApplicationQaInputEventsList events={detail.inputEvents} />
             </div>
           </>
         ) : null}

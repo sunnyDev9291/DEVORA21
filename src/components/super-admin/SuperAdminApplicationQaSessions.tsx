@@ -193,7 +193,7 @@ export default function SuperAdminApplicationQaSessions({
               <th className="px-4 py-3 font-medium">Tab URL</th>
               <th className="px-4 py-3 font-medium">Page title</th>
               <th className="px-4 py-3 font-medium">Status</th>
-              <th className="px-4 py-3 font-medium">Items</th>
+              <th className="px-4 py-3 font-medium">Events</th>
               <th className="px-4 py-3 font-medium">Updated</th>
               <th className="sticky right-0 bg-[#f8fafc] px-4 py-3 font-medium">Actions</th>
             </tr>
@@ -247,7 +247,7 @@ export default function SuperAdminApplicationQaSessions({
                     <span className={statusClass(session.status)}>{session.status}</span>
                   </td>
                   <td className={`${saMono} whitespace-nowrap px-4 py-3 text-xs text-slate-600`}>
-                    {session.itemCount}
+                    {session.eventCount || session.itemCount}
                   </td>
                   <td className={`${saMono} min-w-[9.5rem] px-4 py-3 text-[11px] text-slate-500`}>
                     {whenParts ? (

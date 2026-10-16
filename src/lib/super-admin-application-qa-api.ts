@@ -24,6 +24,9 @@ export type ApplicationQaSessionSummary = {
   /** Prefer backend companyName; FE may derive from title/URL when missing. */
   companyName?: string;
   status: "recording" | "paused" | string;
+  /** DOM input event count (preferred). */
+  eventCount: number;
+  /** Alias of eventCount for older payloads / list UIs. */
   itemCount: number;
   updatedAt?: string;
   lastSyncedAt?: string;
@@ -31,6 +34,26 @@ export type ApplicationQaSessionSummary = {
   owner?: ApplicationQaSessionOwner;
 };
 
+/** Chronological DOM input capture from the Chrome extension. */
+export type ApplicationQaInputEvent = {
+  id: string;
+  elementKey: string;
+  value: string;
+  eventType?: string;
+  tagName?: string;
+  inputType?: string;
+  elementId?: string;
+  name?: string;
+  className?: string;
+  cssSelector?: string;
+  attributes?: Record<string, string>;
+  /** Short element summary — not a scraped "question". */
+  label?: string;
+  occurredAt: string;
+  updatedAt: string;
+};
+
+/** @deprecated Compat shape; prefer ApplicationQaInputEvent. */
 export type ApplicationQaItem = {
   id?: string;
   question: string;
@@ -39,6 +62,8 @@ export type ApplicationQaItem = {
 };
 
 export type ApplicationQaSessionDetail = ApplicationQaSessionSummary & {
+  inputEvents: ApplicationQaInputEvent[];
+  /** Compat alias (question≈label, answer≈value). */
   questionsAnswers: ApplicationQaItem[];
 };
 
@@ -138,6 +163,19 @@ export function normalizeSessionSummary(raw: unknown): ApplicationQaSessionSumma
   const owner = normalizeSessionOwner(row.owner ?? row.user);
   const userId =
     pickString(row, "userId", "user_id") || owner?.id || "";
+  const eventCount = toNumber(
+    row.eventCount ??
+      row.event_count ??
+      row.itemCount ??
+      row.item_count ??
+      row.qaCount ??
+      row.qa_count ??
+      (Array.isArray(row.inputEvents) ? row.inputEvents.length : undefined) ??
+      (Array.isArray(row.input_events) ? row.input_events.length : undefined) ??
+      (Array.isArray(row.questionsAnswers) ? row.questionsAnswers.length : undefined) ??
+      (Array.isArray(row.questions_answers) ? row.questions_answers.length : undefined),
+    0
+  );
   return {
     id,
     userId,
@@ -146,15 +184,8 @@ export function normalizeSessionSummary(raw: unknown): ApplicationQaSessionSumma
     companyName:
       pickString(row, "companyName", "company_name", "company") || undefined,
     status: normalizeStatus(row.status),
-    itemCount: toNumber(
-      row.itemCount ??
-        row.item_count ??
-        row.qaCount ??
-        row.qa_count ??
-        (Array.isArray(row.questionsAnswers) ? row.questionsAnswers.length : undefined) ??
-        (Array.isArray(row.questions_answers) ? row.questions_answers.length : undefined),
-      0
-    ),
+    eventCount,
+    itemCount: eventCount,
     updatedAt: pickString(row, "updatedAt", "updated_at") || undefined,
     lastSyncedAt: pickString(row, "lastSyncedAt", "last_synced_at") || undefined,
     createdAt: pickString(row, "createdAt", "created_at", "recordedAt", "recorded_at") || undefined,
@@ -162,31 +193,152 @@ export function normalizeSessionSummary(raw: unknown): ApplicationQaSessionSumma
   };
 }
 
-function normalizeQaItem(raw: unknown): ApplicationQaItem | null {
+function normalizeAttributes(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === "string") out[key] = value;
+    else if (typeof value === "number" || typeof value === "boolean") out[key] = String(value);
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+function normalizeInputEvent(raw: unknown, index = 0): ApplicationQaInputEvent | null {
   if (!raw || typeof raw !== "object") return null;
   const row = raw as Record<string, unknown>;
-  const question = pickString(row, "question", "q", "prompt");
-  const answer = pickString(row, "answer", "a", "response");
-  if (!question && !answer) return null;
+
+  // Prefer DOM event fields; fall back to Q&A compat (question≈label, answer≈value).
+  const value =
+    pickString(row, "value", "answer", "a", "response") ||
+    (typeof row.value === "number" || typeof row.value === "boolean"
+      ? String(row.value)
+      : "");
+  const label =
+    pickString(row, "label", "question", "q", "prompt") || undefined;
+  const elementKey =
+    pickString(row, "elementKey", "element_key", "key") ||
+    pickString(row, "id", "_id") ||
+    label ||
+    "";
+  const id =
+    pickString(row, "id", "_id") ||
+    (elementKey ? `${elementKey}:${index}` : "") ||
+    `event-${index}`;
+  const occurredAt =
+    pickString(row, "occurredAt", "occurred_at", "updatedAt", "updated_at", "answeredAt", "answered_at") ||
+    "";
+  const updatedAt =
+    pickString(row, "updatedAt", "updated_at", "occurredAt", "occurred_at") || occurredAt;
+
+  if (!value && !label && !elementKey && !pickString(row, "tagName", "tag_name", "cssSelector", "css_selector")) {
+    return null;
+  }
+
   return {
-    id: pickString(row, "id", "_id") || undefined,
-    question: question || "(no question)",
-    answer: answer || "",
-    updatedAt: pickString(row, "updatedAt", "updated_at", "answeredAt", "answered_at") || undefined,
+    id,
+    elementKey: elementKey || id,
+    value,
+    eventType: pickString(row, "eventType", "event_type") || undefined,
+    tagName: pickString(row, "tagName", "tag_name", "tag") || undefined,
+    inputType: pickString(row, "inputType", "input_type") || undefined,
+    elementId: pickString(row, "elementId", "element_id") || undefined,
+    name: pickString(row, "name") || undefined,
+    className: pickString(row, "className", "class_name", "class") || undefined,
+    cssSelector: pickString(row, "cssSelector", "css_selector", "selector") || undefined,
+    attributes: normalizeAttributes(row.attributes),
+    label,
+    occurredAt,
+    updatedAt,
   };
 }
 
-export function extractQaItems(session: Record<string, unknown>): ApplicationQaItem[] {
-  const rawList = Array.isArray(session.questionsAnswers)
-    ? session.questionsAnswers
-    : Array.isArray(session.questions_answers)
-      ? session.questions_answers
-      : Array.isArray(session.items)
-        ? session.items
-        : Array.isArray(session.qa)
-          ? session.qa
-          : [];
-  return rawList.map(normalizeQaItem).filter((item): item is ApplicationQaItem => Boolean(item));
+function sortInputEventsChronological(
+  events: ApplicationQaInputEvent[]
+): ApplicationQaInputEvent[] {
+  return [...events].sort((a, b) => {
+    const byTime = (a.occurredAt || "").localeCompare(b.occurredAt || "");
+    if (byTime) return byTime;
+    return (a.id || "").localeCompare(b.id || "");
+  });
+}
+
+/** Upsert by id, then elementKey — unchanged re-types / radio groups stay one row. */
+export function upsertInputEvents(
+  prev: ApplicationQaInputEvent[],
+  incoming: ApplicationQaInputEvent[]
+): ApplicationQaInputEvent[] {
+  if (!incoming.length) return sortInputEventsChronological(prev);
+  if (!prev.length) return sortInputEventsChronological(incoming);
+
+  const byId = new Map<string, ApplicationQaInputEvent>();
+  const byKey = new Map<string, string>(); // elementKey → id
+
+  for (const event of prev) {
+    byId.set(event.id, event);
+    if (event.elementKey) byKey.set(event.elementKey, event.id);
+  }
+
+  for (const event of incoming) {
+    const existingId =
+      (event.id && byId.has(event.id) ? event.id : undefined) ||
+      (event.elementKey ? byKey.get(event.elementKey) : undefined);
+
+    if (existingId) {
+      const prior = byId.get(existingId);
+      byId.delete(existingId);
+      if (prior?.elementKey) byKey.delete(prior.elementKey);
+    }
+
+    byId.set(event.id, event);
+    if (event.elementKey) byKey.set(event.elementKey, event.id);
+  }
+
+  return sortInputEventsChronological([...byId.values()]);
+}
+
+export function extractInputEvents(session: Record<string, unknown>): ApplicationQaInputEvent[] {
+  const rawList = Array.isArray(session.inputEvents)
+    ? session.inputEvents
+    : Array.isArray(session.input_events)
+      ? session.input_events
+      : Array.isArray(session.questionsAnswers)
+        ? session.questionsAnswers
+        : Array.isArray(session.questions_answers)
+          ? session.questions_answers
+          : Array.isArray(session.items)
+            ? session.items
+            : Array.isArray(session.qa)
+              ? session.qa
+              : [];
+
+  const events = rawList
+    .map((row, index) => normalizeInputEvent(row, index))
+    .filter((item): item is ApplicationQaInputEvent => Boolean(item));
+
+  return sortInputEventsChronological(events);
+}
+
+function inputEventsToQaItems(events: ApplicationQaInputEvent[]): ApplicationQaItem[] {
+  return events.map((event) => ({
+    id: event.id,
+    question: event.label || event.elementKey || event.cssSelector || "(element)",
+    answer: event.value,
+    updatedAt: event.updatedAt || event.occurredAt || undefined,
+  }));
+}
+
+/** Element column: tag + type + #id / [name] / cssSelector (no truncation). */
+export function formatInputEventElement(event: ApplicationQaInputEvent): string {
+  const parts: string[] = [];
+  if (event.tagName?.trim()) parts.push(event.tagName.trim().toLowerCase());
+  if (event.inputType?.trim()) parts.push(event.inputType.trim());
+  if (event.elementId?.trim()) parts.push(`#${event.elementId.trim()}`);
+  if (event.name?.trim()) parts.push(`[name=${event.name.trim()}]`);
+  if (event.cssSelector?.trim()) parts.push(event.cssSelector.trim());
+  if (parts.length) return parts.join(" ");
+  if (event.label?.trim()) return event.label.trim();
+  if (event.elementKey?.trim()) return event.elementKey.trim();
+  return "—";
 }
 
 export function displayApplicationQaOwnerName(
@@ -240,7 +392,7 @@ export function sessionActivityIso(
   return session.lastSyncedAt || session.updatedAt || session.createdAt || "";
 }
 
-/** Parse SSE / detail session blob (summary + Q&A pairs). */
+/** Parse SSE / detail session blob (summary + DOM input events). */
 export function parseApplicationQaSessionPayload(
   raw: unknown
 ): ApplicationQaSessionDetail | null {
@@ -248,9 +400,14 @@ export function parseApplicationQaSessionPayload(
   const row = raw as Record<string, unknown>;
   const summary = normalizeSessionSummary(row);
   if (!summary) return null;
+  const inputEvents = extractInputEvents(row);
+  const eventCount = Math.max(summary.eventCount, inputEvents.length);
   return {
     ...summary,
-    questionsAnswers: extractQaItems(row),
+    eventCount,
+    itemCount: eventCount,
+    inputEvents,
+    questionsAnswers: inputEventsToQaItems(inputEvents),
   };
 }
 
@@ -429,13 +586,9 @@ export const superAdminApplicationQaApi = {
       data.session && typeof data.session === "object"
         ? (data.session as Record<string, unknown>)
         : data;
-    const summary = normalizeSessionSummary(nested);
-    if (!summary) throw new ApiError("Session payload was empty.", 502);
-
-    return {
-      ...summary,
-      questionsAnswers: extractQaItems(nested),
-    };
+    const parsed = parseApplicationQaSessionPayload(nested);
+    if (!parsed) throw new ApiError("Session payload was empty.", 502);
+    return parsed;
   },
 
   async deleteSession(id: string): Promise<void> {
