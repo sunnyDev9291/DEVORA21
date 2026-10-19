@@ -136,6 +136,7 @@ function buildAiStreamBody(
 
   // Resume mode: backend owns the Claude prompt from template structure.
   // FE may send messages:[] — do not invent fake bullet-count system prompts.
+  // jsonObject must be a literal boolean (never the string "true").
   const body: Record<string, unknown> = {
     jobTitle,
     jobDescription,
@@ -143,7 +144,7 @@ function buildAiStreamBody(
     job_description: jobDescription,
     messages,
     maxTokens,
-    jsonObject: options.jsonObject ?? false,
+    jsonObject: options.jsonObject === true,
   };
   if (model) {
     body.model = model;

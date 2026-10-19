@@ -54,7 +54,6 @@ import {
 import {
   normalizeResumeFileBaseName,
   buildExpectedResumeBaseName,
-  extractResumeTitleHeadline,
 } from "@/lib/resume-filename";
 import { loadStoredProfile, resolveUserNames } from "@/lib/user-profile";
 import { resolveWritingPrompt } from "@/lib/writing-prompt";
@@ -242,6 +241,11 @@ export default function ResumeGenerator({
   const generationRunRef = useRef(0);
   const keywordsCacheKeyRef = useRef<string | null>(null);
   const ruleKeepAbortRef = useRef<AbortController | null>(null);
+  /**
+   * Original job-posting title for AI / archive payloads.
+   * Never overwritten by streamed resume JSON `title` (Staff + skills headline).
+   */
+  const postingJobTitleRef = useRef("");
   const reviewRef = useRef<HTMLDivElement>(null);
   const successBannerRef = useRef<HTMLDivElement>(null);
   const reviewScrollTriggerRef = useRef({ step, generationKey });
@@ -380,7 +384,20 @@ export default function ResumeGenerator({
   }, [step, docxBase64]);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    if (name === "jobTitle") {
+      postingJobTitleRef.current = value;
+    }
+    setForm((prev) => ({ ...prev, [name]: value }));
+  }
+
+  /** Posting title only — never the generated Staff + skills resume headline. */
+  function resolvePostingJobTitle(override?: string): string {
+    return (
+      override?.trim() ||
+      postingJobTitleRef.current.trim() ||
+      form.jobTitle.trim()
+    );
   }
 
   async function handleImportJobLink() {
@@ -396,6 +413,7 @@ export default function ResumeGenerator({
     setImportingJob(true);
     try {
       const data = await scrapeJobFromUrl(url);
+      postingJobTitleRef.current = data.jobTitle;
       setForm((prev) => ({
         ...prev,
         jobTitle: data.jobTitle,
@@ -440,6 +458,7 @@ export default function ResumeGenerator({
     abortRef.current?.abort();
     atsAbortRef.current?.abort();
 
+    postingJobTitleRef.current = "";
     setForm((prev) => ({
       ...prev,
       jobLink: "",
@@ -533,7 +552,7 @@ export default function ResumeGenerator({
     try {
       for await (const chunk of iterateJobCheckStream(
         {
-          jobTitle: form.jobTitle,
+          jobTitle: resolvePostingJobTitle(),
           companyName: form.companyName,
           jobDescription: form.jobDescription,
         },
@@ -581,9 +600,10 @@ export default function ResumeGenerator({
   }, [generationKey]); // eslint-disable-line react-hooks/exhaustive-deps -- reset manual name on new generation
 
   function syncKeywordsCacheKey() {
-    if (!form.jobTitle.trim() || !form.companyName.trim()) return;
+    const postingTitle = resolvePostingJobTitle();
+    if (!postingTitle || !form.companyName.trim()) return;
     keywordsCacheKeyRef.current = buildJobKeywordsCacheKey(
-      form.jobTitle,
+      postingTitle,
       form.companyName,
       form.jobDescription
     );
@@ -655,7 +675,7 @@ export default function ResumeGenerator({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          jobTitle: form.jobTitle,
+          jobTitle: resolvePostingJobTitle(),
           companyName: form.companyName,
           jobDescription: form.jobDescription,
           content: resumeContent,
@@ -802,9 +822,14 @@ export default function ResumeGenerator({
         setForm((prev) => ({ ...prev, customPrompt: freshPrompt }));
       }
 
+      const postingJobTitle = resolvePostingJobTitle();
+      postingJobTitleRef.current = postingJobTitle;
+
       const data = await generateResume(
         {
           ...form,
+          // ORIGINAL posting title only — never generated Staff + skills headline.
+          jobTitle: postingJobTitle,
           customPrompt: freshPrompt,
           templateName: templateForRequest.fileName,
           templateId: templateForRequest.templateId,
@@ -832,6 +857,7 @@ export default function ResumeGenerator({
       const durationMs = endedAt - startedAt;
       setLastGenerateDurationMs(durationMs);
       publishResumeGenerateTimer({ active: true, elapsedMs: durationMs });
+      // content.title = AI resume headline; form.jobTitle / postingJobTitleRef stay as posting title.
       setContent(alignContentWithTemplateStructure(data.content, templateStructure));
       setGenerationKey((k) => k + 1);
     } catch (err) {
@@ -890,9 +916,14 @@ export default function ResumeGenerator({
         setForm((prev) => ({ ...prev, customPrompt: freshPrompt }));
       }
 
+      const postingJobTitle = resolvePostingJobTitle();
+      postingJobTitleRef.current = postingJobTitle;
+
       const draft = await generateResume(
         {
           ...form,
+          // Regenerate/retry: still the ORIGINAL posting title, never last AI title.
+          jobTitle: postingJobTitle,
           customPrompt: freshPrompt,
           task: targetedInstruction,
           templateName: templateForRequest.fileName,
@@ -999,7 +1030,7 @@ export default function ResumeGenerator({
       throw new Error("Upload a resume template on your dashboard before generating.");
     }
 
-    const jobTitle = jobOverride?.jobTitle?.trim() || form.jobTitle;
+    const jobTitle = resolvePostingJobTitle(jobOverride?.jobTitle);
     const companyName = jobOverride?.companyName?.trim() || form.companyName;
     const jobDescription = jobOverride?.jobDescription?.trim() || form.jobDescription;
     const customPrompt = jobOverride?.customPrompt?.trim() || form.customPrompt;
@@ -1023,7 +1054,8 @@ export default function ResumeGenerator({
           : templateForRequest.templateBase64,
         templateFileName: templateForRequest.fileName,
         content: renderDraft,
-        jobTitle: extractResumeTitleHeadline(draft.title) || jobTitle,
+        // Always the ORIGINAL posting title — never the AI resume headline (Staff + skills).
+        jobTitle,
         companyName,
         jobDescription,
         customPrompt,
@@ -1296,9 +1328,11 @@ export default function ResumeGenerator({
             companyName={form.companyName}
             disabled={generating || applying}
             onUseJobDescription={(item: SavedResumeArchive) => {
+              const nextTitle = item.jobTitle?.trim() || "";
+              if (nextTitle) postingJobTitleRef.current = nextTitle;
               setForm((current) => ({
                 ...current,
-                jobTitle: item.jobTitle?.trim() || current.jobTitle,
+                jobTitle: nextTitle || current.jobTitle,
                 companyName: item.companyName?.trim() || current.companyName,
                 jobDescription: item.jobDescription?.trim() || current.jobDescription,
               }));
@@ -1317,6 +1351,7 @@ export default function ResumeGenerator({
                 type="button"
                 disabled={generating || applying || importingJob}
                 onClick={() => {
+                  postingJobTitleRef.current = TEST_JOB_FILL.jobTitle;
                   setForm((current) => ({
                     ...current,
                     companyName: TEST_JOB_FILL.companyName,

@@ -62,6 +62,7 @@ export async function generateResume(
   handlers.onPhase?.("starting");
 
   const userId = typeof body.userId === "string" ? body.userId.trim() : "";
+  // ORIGINAL posting title only. Never previousContent.title / generated Staff + skills headline.
   const jobTitle = typeof body.jobTitle === "string" ? body.jobTitle.trim() : "";
   const jobDescription =
     typeof body.jobDescription === "string" ? body.jobDescription.trim() : "";
@@ -122,7 +123,8 @@ export async function generateResume(
   let output = "";
   try {
     for await (const delta of iterateBrowserAiStream(messages, RESUME_MAX_TOKENS, {
-      jsonObject: true,
+      // Literal boolean — string "true" breaks backend resume mode ("messages is required").
+      jsonObject: true as boolean,
       signal: handlers.signal,
       authToken: streamAuthToken,
       userId: userId || undefined,

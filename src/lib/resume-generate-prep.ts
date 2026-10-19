@@ -92,6 +92,7 @@ export type ResumeJobRecord =
 export async function prepareResumeGeneration(
   body: ResumeGenerateRequest
 ): Promise<ResumeGeneratePrep> {
+  // ORIGINAL posting title only — never substitute previousContent.title (AI headline).
   const jobTitle = body.jobTitle?.trim() ?? "";
   const companyName = body.companyName?.trim() ?? "";
   const jobDescription = body.jobDescription?.trim() ?? "";

@@ -1,5 +1,4 @@
 import { archiveResume, type ResumeArchiveResponse } from "@/lib/resume-archive";
-import { extractResumeTitleHeadline } from "@/lib/resume-filename";
 import type { GeneratedResumeContent, ResumeBuildResponse } from "@/lib/resume-types";
 import { notifyTodaysResumeCountChanged } from "@/lib/todays-resume-count";
 
@@ -78,7 +77,8 @@ export async function buildAndArchiveResume(
 ): Promise<BuildAndArchiveResumeResult> {
   const built = await buildResumeDocx(input);
   const archive = await archiveResume({
-    jobTitle: extractResumeTitleHeadline(input.content.title) || input.jobTitle,
+    // Archive under the ORIGINAL posting title — never the AI resume headline.
+    jobTitle: input.jobTitle.trim(),
     companyName: input.companyName,
     jobDescription: input.jobDescription,
     docxBlob: base64ToBlob(built.docxBase64, DOCX_MIME),

@@ -74,7 +74,8 @@ function buildAiBody(
     job_description: jobDescription,
     messages,
     maxTokens: options?.maxTokens ?? maxTokens,
-    jsonObject: options?.jsonObject ?? false,
+    // Literal boolean only — string "true" breaks resume mode ("messages is required").
+    jsonObject: options?.jsonObject === true,
   };
   const model = options?.model?.trim();
   if (model) {

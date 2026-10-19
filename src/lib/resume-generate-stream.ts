@@ -31,7 +31,7 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
         enqueue({ type: "phase", phase });
 
         for await (const delta of iterateDeepSeekStream(messages, RESUME_MAX_TOKENS, {
-          jsonObject: true,
+          jsonObject: true as boolean,
           userId: prep.userId,
           customPrompt: mergeContext.customPrompt,
           jobTitle: prep.jobTitle,
@@ -74,7 +74,7 @@ export function buildResumeNdjsonStream(prep: ResumeGeneratePrep): ReadableStrea
         } catch {
           enqueue({ type: "phase", phase: "finalizing" });
           modelText = await completeDeepSeek(messages, RESUME_MAX_TOKENS, {
-            jsonObject: true,
+            jsonObject: true as boolean,
             userId: prep.userId,
             customPrompt: mergeContext.customPrompt,
             jobTitle: prep.jobTitle,
@@ -107,7 +107,7 @@ export function resumeNdjsonResponse(stream: ReadableStream<Uint8Array>): Respon
 
 export async function runResumeGenerationSync(prep: ResumeGeneratePrep): Promise<string> {
   const modelText = await completeDeepSeek(prep.messages, RESUME_MAX_TOKENS, {
-    jsonObject: true,
+    jsonObject: true as boolean,
     userId: prep.userId,
     customPrompt: prep.mergeContext.customPrompt,
     jobTitle: prep.jobTitle,
