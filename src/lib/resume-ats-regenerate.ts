@@ -4,9 +4,15 @@ import { emptyRuleKeepScore } from "@/lib/resume-rule-keep";
 import { buildUnifiedResumeScore, RESUME_PASS_THRESHOLD, RESUME_SCORE_MAX } from "@/lib/resume-unified-score";
 import { keywordPresentInText } from "@/lib/resume-ats-keywords";
 import { flattenContentExperienceText } from "@/lib/resume-experience-utils";
+import {
+  flattenResumeSkillTerms,
+  normalizeResumeSkills,
+  skillsMapToDisplayString,
+} from "@/lib/resume-skills";
 import type {
   AtsScoreResult,
   GeneratedResumeContent,
+  ResumeSkillsMap,
   ResumeUnifiedScoreResult,
   RuleKeepScoreResult,
 } from "@/lib/resume-types";
@@ -14,6 +20,7 @@ import type {
 function cloneContent(content: GeneratedResumeContent): GeneratedResumeContent {
   return {
     ...content,
+    skills: { ...normalizeResumeSkills(content.skills) },
     experiences: content.experiences.map((e) => ({
       ...e,
       bullets: [...e.bullets],
@@ -26,29 +33,30 @@ function resumePlainText(content: GeneratedResumeContent): string {
   return [
     content.title,
     content.summary,
-    content.skills,
+    skillsMapToDisplayString(normalizeResumeSkills(content.skills)),
     ...content.experiences.flatMap((e) => [e.role, e.company]),
     ...flattenContentExperienceText(content),
   ].join("\n");
 }
 
-function appendKeywordsToSkills(skills: string, keywords: string[]): string {
+function appendKeywordsToSkills(
+  skills: ResumeSkillsMap,
+  keywords: string[]
+): ResumeSkillsMap {
   if (keywords.length === 0) return skills;
-  const append = keywords.map((k) => `**${k}**`).join(", ");
-  const lines = skills
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  if (lines.length === 0) return append;
-
-  const targetIdx = lines.findIndex((line) => line.includes(":"));
-  const idx = targetIdx >= 0 ? targetIdx : 0;
-  const line = lines[idx];
-  lines[idx] = line.includes(":")
-    ? `${line.replace(/\s*,?\s*$/, "")}, ${append}`
-    : `${line}, ${append}`;
-  return lines.join("\n");
+  const next = { ...skills };
+  const entries = Object.entries(next);
+  if (entries.length === 0) {
+    return { Skills: keywords.map((k) => k.replace(/\*\*/g, "").trim()).filter(Boolean) };
+  }
+  const [key, items] = entries[0];
+  const existing = items ?? [];
+  const toAdd = keywords
+    .map((k) => k.replace(/\*\*/g, "").trim())
+    .filter(Boolean)
+    .filter((k) => !existing.some((s) => keywordPresentInText(k, s)));
+  next[key] = [...existing, ...toAdd];
+  return next;
 }
 
 function injectKeywordIntoExperience(content: GeneratedResumeContent, keyword: string): void {
@@ -115,16 +123,12 @@ export function applyDeterministicAtsPatches(
   const missing = feedback.missingKeywords.filter((k) => !keywordPresentInText(k, text));
   if (missing.length === 0) return result;
 
-  const existingSkillTokens = result.skills
-    .replace(/\*\*/g, "")
-    .split(/[,;\n]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const existingSkillTokens = flattenResumeSkillTerms(normalizeResumeSkills(result.skills));
   const toPrepend = missing.filter(
     (k) => !existingSkillTokens.some((s) => keywordPresentInText(k, s))
   );
   if (toPrepend.length > 0) {
-    result.skills = appendKeywordsToSkills(result.skills, toPrepend);
+    result.skills = appendKeywordsToSkills(normalizeResumeSkills(result.skills), toPrepend);
   }
 
   const titleParts = result.title

@@ -2,9 +2,15 @@ import { DEFAULT_CLAUDE_MODEL } from "@/lib/claude-models";
 import { applyResumeContentPostProcess } from "@/lib/resume-content-postprocess";
 import { buildTemplateSkillsPromptBlock } from "@/lib/resume-skills-style";
 import { isProjectLayout, normalizeResumeExperience, normalizeResumeProject } from "@/lib/resume-experience-utils";
+import {
+  isResumeSkillsEmpty,
+  normalizeResumeSkills,
+  resumeSkillsEqual,
+} from "@/lib/resume-skills";
 import type {
   GeneratedResumeContent,
   ResumeProject,
+  ResumeSkillsMap,
   ResumeTemplateLayout,
 } from "@/lib/resume-types";
 
@@ -13,23 +19,22 @@ export const RESUME_AI_MODEL = DEFAULT_CLAUDE_MODEL;
 /** Resume generation streams with this budget (full multi-role JSON needs headroom). */
 export const RESUME_MAX_TOKENS = 16384;
 
+const SKILLS_OBJECT_SHAPE = `{ "Category": ["item", "..."], "Another Category": ["item", "..."] }`;
+
 const BULLETS_JSON_SHAPE = `{
   "title": "string",
   "summary": "string",
-  "skills": "string",
-  "fileName": "string",
-  "education": { "degree": "string", "university": "string", "period": "string" },
   "experiences": [
     { "company": "string", "role": "string", "dates": "string", "location": "string", "bullets": ["string"] }
-  ]
+  ],
+  "skills": ${SKILLS_OBJECT_SHAPE},
+  "fileName": "string",
+  "education": { "degree": "string", "university": "string", "period": "string" }
 }`;
 
 const PROJECTS_JSON_SHAPE = `{
   "title": "string",
   "summary": "string",
-  "skills": "string",
-  "fileName": "string",
-  "education": { "degree": "string", "university": "string", "period": "string" },
   "experiences": [
     {
       "company": "string",
@@ -46,7 +51,10 @@ const PROJECTS_JSON_SHAPE = `{
         }
       ]
     }
-  ]
+  ],
+  "skills": ${SKILLS_OBJECT_SHAPE},
+  "fileName": "string",
+  "education": { "degree": "string", "university": "string", "period": "string" }
 }`;
 
 /** Minimal system prompt — content/style rules come only from the user's instructions. */
@@ -64,8 +72,10 @@ export function buildResumeSystemPrompt(regenerate = false, layout: ResumeTempla
     shape,
     "",
     "Technical output rules (not content style):",
-    "- Use **double asterisks** around skill category labels (e.g. **Languages:**) and tech terms so Word can render bold.",
-    "- skills MUST be one string with lines like \"**Category:** item1, item2\" (not a JSON array).",
+    "- Field order: title → summary → experiences → skills → fileName.",
+    "- skills MUST be a JSON object: { \"Category\": [\"item\", ...], ... } — NOT a newline string and NOT a flat array.",
+    "- Category key count must match the template Skill Category count from Writing instructions / template structure.",
+    "- Item-count rules (e.g. 50–54) apply to the total number of items across all skills arrays.",
     "- STYLE-ONLY TEMPLATES: company, role, dates, location, and bullets/projects MUST come from Writing instructions / career history / job fit — NOT from Word section headers.",
     "- ABSOLUTE: Writing instructions alone control skill category count, category names/order, items per category, bullet count per job, and bullet word counts.",
     "- Include education when Writing instructions or profile imply it.",
@@ -322,7 +332,7 @@ function coerceResumePayload(parsed: unknown): GeneratedResumeContent | null {
 
   const title = String(obj.title ?? obj.jobTitle ?? "").trim();
   const summary = String(obj.summary ?? obj.professionalSummary ?? "").trim();
-  const skills = String(obj.skills ?? obj.skillsets ?? "").trim();
+  const skills = normalizeResumeSkills(obj.skills ?? obj.skillsets);
   const fileName = String(obj.fileName ?? "").trim();
 
   let education: GeneratedResumeContent["education"];
@@ -408,7 +418,7 @@ export function parseResumeJsonContent(
   return {
     title: String(parsed.title).trim(),
     summary: String(parsed.summary).trim(),
-    skills: String(parsed.skills).trim(),
+    skills: normalizeResumeSkills(parsed.skills),
     ...(fileName ? { fileName } : {}),
     ...(education ? { education } : {}),
     layout: projectMode ? "projects" : "bullets",
@@ -434,6 +444,15 @@ export function parseResumeJsonContent(
       )
     ),
   };
+}
+
+function pickRegenerateSkills(
+  aiSkills: ResumeSkillsMap,
+  previousSkills?: ResumeSkillsMap
+): ResumeSkillsMap {
+  if (!isResumeSkillsEmpty(aiSkills)) return aiSkills;
+  if (previousSkills && !isResumeSkillsEmpty(previousSkills)) return previousSkills;
+  return aiSkills;
 }
 
 function normalizeCompareText(text: string): string {
@@ -483,10 +502,21 @@ export function mergeResumeContent(
 
   const education = pickEducation(parsed.education, previous?.education);
 
+  const prevSkills = previous?.skills
+    ? normalizeResumeSkills(previous.skills)
+    : undefined;
+  const nextSkills = pickRegenerateSkills(
+    normalizeResumeSkills(parsed.skills),
+    prevSkills
+  );
+  // Prefer previous wording only when AI returned an identical skills map.
+  const skills =
+    prevSkills && resumeSkillsEqual(nextSkills, prevSkills) ? prevSkills : nextSkills;
+
   return {
     title: pickRegenerateText(parsed.title || fallbackTitle, previous?.title) || fallbackTitle,
     summary: pickRegenerateText(parsed.summary, previous?.summary),
-    skills: pickRegenerateText(parsed.skills, previous?.skills),
+    skills,
     ...(parsed.fileName?.trim()
       ? { fileName: parsed.fileName.trim() }
       : previous?.fileName?.trim()

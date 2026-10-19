@@ -10,6 +10,7 @@ import {
   EnglishTeamRequiredError,
   parseEnglishTeamRequired,
 } from "@/lib/english-team-gate";
+import { isResumeSkillsEmpty, normalizeResumeSkills } from "@/lib/resume-skills";
 import type { GeneratedResumeContent, ResumeExperience } from "@/lib/resume-types";
 
 export type ResumeFromJobStatus =
@@ -166,9 +167,9 @@ export function parseGeneratedResumeContent(raw: unknown): GeneratedResumeConten
   const row = raw as Record<string, unknown>;
   const title = typeof row.title === "string" ? row.title.trim() : "";
   const summary = typeof row.summary === "string" ? row.summary.trim() : "";
-  const skills = typeof row.skills === "string" ? row.skills.trim() : "";
+  const skills = normalizeResumeSkills(row.skills);
   const experiences = parseExperiences(row.experiences);
-  if (!title || !summary || !skills || !experiences) return undefined;
+  if (!title || !summary || isResumeSkillsEmpty(skills) || !experiences) return undefined;
   return {
     title,
     summary,

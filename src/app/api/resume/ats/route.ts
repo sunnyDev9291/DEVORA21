@@ -24,7 +24,14 @@ export async function POST(req: Request) {
   const jobDescription = body.jobDescription?.trim() ?? "";
   const content = body.content;
 
-  if (!content?.title || !content.summary || !content.skills || !Array.isArray(content.experiences)) {
+  if (
+    !content?.title ||
+    !content.summary ||
+    !content.skills ||
+    typeof content.skills !== "object" ||
+    Array.isArray(content.skills) ||
+    !Array.isArray(content.experiences)
+  ) {
     return Response.json({ error: "Resume content is required for ATS evaluation." }, { status: 400 });
   }
 

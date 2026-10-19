@@ -9,6 +9,7 @@ import {
   parseProjectExperiencesFromDocxBuffer,
   type ProjectJobTemplate,
 } from "@/lib/resume-docx-project";
+import { normalizeResumeSkills, skillsMapToDisplayString } from "@/lib/resume-skills";
 import type { GeneratedResumeContent, ResumeTemplateLayout } from "@/lib/resume-types";
 
 const SECTION_HEADERS = {
@@ -1241,6 +1242,7 @@ export function applyContentToDocx(
     );
   }
 
+  const skillsText = skillsMapToDisplayString(normalizeResumeSkills(content.skills));
   const skillTerms = extractSkillTerms(content.skills);
   const boldExpText = (text: string) => boldSkillTermsInText(text, skillTerms);
 
@@ -1260,7 +1262,7 @@ export function applyContentToDocx(
   );
 
   const skillsRegion = sliceSectionRegion(paragraphs, skillsIdx, expIdx);
-  const skillsBody = buildSkillsRegionParagraphs(skillsRegion, content.skills);
+  const skillsBody = buildSkillsRegionParagraphs(skillsRegion, skillsText);
 
   const expEnd = eduIdx === -1 ? paragraphs.length : eduIdx;
   const originalExperienceParagraphs = paragraphs.slice(expIdx + 1, expEnd);

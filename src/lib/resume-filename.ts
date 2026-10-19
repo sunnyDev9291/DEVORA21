@@ -1,4 +1,5 @@
-import type { GeneratedResumeContent } from "@/lib/resume-types";
+import { flattenResumeSkillTerms, normalizeResumeSkills } from "@/lib/resume-skills";
+import type { GeneratedResumeContent, ResumeSkillsMap } from "@/lib/resume-types";
 
 function stripMarkdownBold(value: string): string {
   return value.replace(/\*\*/g, "").trim();
@@ -67,34 +68,20 @@ export function extractResumeFileNamePatternFromPrompt(customPrompt: string): st
   return match?.[1]?.trim() || null;
 }
 
-function parseSkillTokens(skills: string): string[] {
-  const tokens: string[] = [];
-
-  for (const line of skills.split(/\r?\n/)) {
-    const trimmed = stripMarkdownBold(line.trim());
-    if (!trimmed) continue;
-
-    const category = trimmed.match(/^(?:\*\*)?([^*:]+)(?:\*\*)?:\s*(.*)$/);
-    const valuePart = category ? category[2] : trimmed;
-
-    for (const raw of valuePart.split(/[,;]/)) {
-      const skill = stripMarkdownBold(raw)
+function parseSkillTokens(skills: ResumeSkillsMap | string): string[] {
+  return flattenResumeSkillTerms(normalizeResumeSkills(skills))
+    .map((skill) =>
+      stripMarkdownBold(skill)
         .replace(/[\\/:*?"<>|]/g, "")
-        .trim();
-      if (!skill) continue;
-      if (!tokens.some((existing) => existing.toLowerCase() === skill.toLowerCase())) {
-        tokens.push(skill);
-      }
-    }
-  }
-
-  return tokens;
+        .trim()
+    )
+    .filter(Boolean);
 }
 
 /** Up to three main skills — title pipe segments first, then skills field. */
 export function extractMainSkillsFromContent(
   title: string,
-  skills: string
+  skills: ResumeSkillsMap | string
 ): [string, string, string] {
   const pipeParts = title
     .split("|")
@@ -156,7 +143,7 @@ export function resolveResumeFileNameFromPrompt(
 /** Up to three skills from resume title pipes, or from the skills field. */
 export function extractResumeTitleSkills(
   title: string,
-  skills: string,
+  skills: ResumeSkillsMap | string,
   maxSkills = 3
 ): string {
   const pipeParts = title

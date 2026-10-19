@@ -30,11 +30,17 @@ export type ResumeEducation = {
   period?: string;
 };
 
+/** Mode-1 skills JSON: category → items. */
+export type ResumeSkillsMap = Record<string, string[]>;
+
 export type GeneratedResumeContent = {
   title: string;
   summary: string;
-  /** One string — category lines like "Frontend: React, Next.js" (not an array). */
-  skills: string;
+  /**
+   * Canonical AI/render shape: { "Frontend": ["React", ...], "Backend": [...] }.
+   * Legacy string "Category: a, b" is normalized into this map on parse.
+   */
+  skills: ResumeSkillsMap;
   /** AI-resolved resume file base name (no .docx) — frozen after generation. */
   fileName?: string;
   layout?: ResumeTemplateLayout;

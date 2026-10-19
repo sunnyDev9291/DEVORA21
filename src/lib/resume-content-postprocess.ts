@@ -1,4 +1,9 @@
 import { isProjectLayout } from "@/lib/resume-experience-utils";
+import {
+  flattenResumeSkillTerms,
+  normalizeResumeSkills,
+  type ResumeSkillsMap,
+} from "@/lib/resume-skills";
 import { formatSkillsWithTemplateStyle, parseTemplateSkillLines } from "@/lib/resume-skills-style";
 import type { GeneratedResumeContent, ResumeProject, ResumeTemplateLayout } from "@/lib/resume-types";
 
@@ -35,25 +40,16 @@ function shouldKeepSkillTerm(token: string): boolean {
 
 /**
  * Collect tech terms from the skills block for auto-bold in title/summary/experience.
- * Split items ONLY on commas/semicolons — never on "/" or "|" (keeps "A/B Testing").
  */
-export function collectSkillTermsFromSkillsBlock(skills: string): string[] {
-  const plain = skills.replace(/\*\*/g, "");
-  const terms = new Set<string>();
-
-  for (const line of plain.split(/\n+/)) {
-    const segment = line.includes(":") ? line.split(":").slice(1).join(":") : line;
-    for (const part of segment.split(/[,;]/)) {
-      const token = part.trim().replace(/^[-•]+\s*/, "");
-      if (shouldKeepSkillTerm(token)) terms.add(token);
-    }
-  }
-
-  return Array.from(terms).sort((a, b) => b.length - a.length);
+export function collectSkillTermsFromSkillsBlock(
+  skills: ResumeSkillsMap | string
+): string[] {
+  const map = normalizeResumeSkills(skills);
+  return flattenResumeSkillTerms(map).filter(shouldKeepSkillTerm);
 }
 
 /** @deprecated Prefer collectSkillTermsFromSkillsBlock (same behavior). */
-export function extractSkillTerms(skills: string): string[] {
+export function extractSkillTerms(skills: ResumeSkillsMap | string): string[] {
   return collectSkillTermsFromSkillsBlock(skills);
 }
 
@@ -82,23 +78,17 @@ export function boldSkillTermsInText(text: string, terms: string[]): string {
 }
 
 /**
- * Bold category LABELS only. Skill VALUES stay plain (strip any AI ** in values).
- * e.g. **Languages:** Java, Python — not **Java**.
+ * Strip accidental bold from skill item values — category keys stay as-is.
  */
-export function boldSkillCategoryLabels(skills: string): string {
-  return skills
-    .split(/\n+/)
-    .map((line) => {
-      const trimmed = line.trim();
-      if (!trimmed || !trimmed.includes(":")) return trimmed.replace(/\*\*/g, "");
-      const colonIdx = trimmed.indexOf(":");
-      const label = trimmed.slice(0, colonIdx).replace(/\*\*/g, "").trim();
-      const value = trimmed.slice(colonIdx + 1).replace(/\*\*/g, "").trim();
-      if (!label) return trimmed.replace(/\*\*/g, "");
-      return value ? `**${label}:** ${value}` : `**${label}:**`;
-    })
-    .filter(Boolean)
-    .join("\n");
+export function boldSkillCategoryLabels(skills: ResumeSkillsMap | string): ResumeSkillsMap {
+  const map = normalizeResumeSkills(skills);
+  const out: ResumeSkillsMap = {};
+  for (const [category, items] of Object.entries(map)) {
+    out[category.replace(/\*\*/g, "").trim()] = (items ?? []).map((item) =>
+      item.replace(/\*\*/g, "").trim()
+    );
+  }
+  return out;
 }
 
 function boldProjectFields(project: ResumeProject, skillTerms: string[]): ResumeProject {
@@ -112,8 +102,8 @@ function boldProjectFields(project: ResumeProject, skillTerms: string[]): Resume
 }
 
 /**
- * Style formatting only: bold skill terms / category labels.
- * Does not overwrite company, dates, location, or bullets from any template parse.
+ * Style formatting only: bold skill terms in title/summary/experience.
+ * Skills stay as a category→items object.
  */
 export function applyResumeContentPostProcess(
   content: GeneratedResumeContent,
@@ -124,14 +114,14 @@ export function applyResumeContentPostProcess(
   const projectMode = isProjectLayout(layout);
   const alignedSkills = skillsSample?.trim()
     ? formatSkillsWithTemplateStyle(content.skills, skillsSample, layout)
-    : content.skills;
+    : normalizeResumeSkills(content.skills);
   const templateHasCategoryLabels = skillsSample?.trim()
     ? parseTemplateSkillLines(skillsSample).some((line) => Boolean(line.label))
-    : false;
+    : Object.keys(alignedSkills).length > 0;
   const skillsWithTemplateStyle =
     projectMode || templateHasCategoryLabels
       ? boldSkillCategoryLabels(alignedSkills)
-      : alignedSkills.replace(/\*\*/g, "");
+      : alignedSkills;
 
   return {
     ...content,

@@ -58,7 +58,13 @@ export function computeResumeContentDiff(
 
   pushChange(changes, "title", "Resume title", before.title, after.title);
   pushChange(changes, "summary", "Summary", before.summary, after.summary);
-  pushChange(changes, "skills", "Skillsets", before.skills, after.skills);
+  pushChange(
+    changes,
+    "skills",
+    "Skillsets",
+    JSON.stringify(before.skills ?? {}),
+    JSON.stringify(after.skills ?? {})
+  );
 
   const expCount = Math.max(before.experiences.length, after.experiences.length);
   for (let i = 0; i < expCount; i += 1) {

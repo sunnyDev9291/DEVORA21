@@ -15,6 +15,15 @@ And then must seperate this final tech items list to serveral category.
 4th type : Items not in bold, derived from bold items
 5th type : rest unbold initial items
 Output the categorized tech items list.
+
+***********4. SKILLS***********
+Return skills as a JSON object only:
+{ "Category": ["item", "..."], "Another Category": ["item", "..."] }
+Do NOT return skills as a newline string of "Category: item, item" lines.
+Do NOT use "Format each line: Category: item, item".
+Category key count must match the template Skill Category count.
+Item-count rules (50–54) apply to the TOTAL number of items across all skills arrays.
+
 ************Company Meta information***********
 - Teracrunch (11/2025 - 05/2026)
 Job title : Staff Software Engineer

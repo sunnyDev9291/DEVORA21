@@ -20,7 +20,14 @@ export async function POST(req: Request) {
   const content = body.content;
   const customPrompt = body.customPrompt?.trim() ?? "";
 
-  if (!content?.title || !content.summary || !content.skills || !Array.isArray(content.experiences)) {
+  if (
+    !content?.title ||
+    !content.summary ||
+    !content.skills ||
+    typeof content.skills !== "object" ||
+    Array.isArray(content.skills) ||
+    !Array.isArray(content.experiences)
+  ) {
     return Response.json({ error: "Resume content is required for rule scoring." }, { status: 400 });
   }
 

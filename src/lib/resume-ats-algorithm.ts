@@ -1,6 +1,13 @@
-import type { AtsPassGate, AtsScoreBreakdown, AtsScoreResult, GeneratedResumeContent } from "@/lib/resume-types";
+import type {
+  AtsPassGate,
+  AtsScoreBreakdown,
+  AtsScoreResult,
+  GeneratedResumeContent,
+  ResumeSkillsMap,
+} from "@/lib/resume-types";
 import { flattenContentExperienceText } from "@/lib/resume-experience-utils";
 import { keywordPresentInText, normalizeForMatch, type JobKeywords } from "@/lib/resume-ats-keywords";
+import { normalizeResumeSkills, skillsMapToDisplayString } from "@/lib/resume-skills";
 
 /** Hard cap for displayed and stored ATS scores. */
 export const ATS_SCORE_MAX = 100;
@@ -57,7 +64,7 @@ function resumePlainText(content: GeneratedResumeContent): string {
   return [
     content.title,
     content.summary,
-    content.skills,
+    skillsMapToDisplayString(normalizeResumeSkills(content.skills)),
     ...content.experiences.flatMap((e) => [e.role, e.company]),
     ...experienceText,
   ].join("\n");
@@ -156,24 +163,29 @@ function scoreTitleAlignment(
   };
 }
 
-function scoreSkillsLine(keywords: JobKeywords, skills: string): { score: number; notes: string } {
+function scoreSkillsLine(
+  keywords: JobKeywords,
+  skills: ResumeSkillsMap | string
+): { score: number; notes: string } {
   const max = SCORE_MAX.skills;
   const must = keywords.mustHave;
-  if (must.length === 0) return { score: max, notes: "Skills line present." };
+  if (must.length === 0) return { score: max, notes: "Skills present." };
 
-  const inSkills = must.filter((k) => keywordPresentInText(k, skills));
+  const skillsText = skillsMapToDisplayString(normalizeResumeSkills(skills));
+
+  const inSkills = must.filter((k) => keywordPresentInText(k, skillsText));
   const coverage = pct(inSkills.length, must.length);
 
   let score = coverage * max;
   if (coverage >= 0.85) score = Math.min(max, score + 1);
   if (coverage < 0.55) score = Math.min(score, max - 4);
-  if (!skills.includes(",") && skills.split(/\s+/).length > 6) {
+  if (!skillsText.includes(",") && skillsText.split(/\s+/).length > 6) {
     score = Math.max(0, score - 1);
   }
 
   return {
     score: clamp(score, 0, max),
-    notes: `${inSkills.length}/${must.length} must-have skills in skillsets line (${Math.round(coverage * 100)}%).`,
+    notes: `${inSkills.length}/${must.length} must-have skills in skillsets (${Math.round(coverage * 100)}%).`,
   };
 }
 

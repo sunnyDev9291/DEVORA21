@@ -31,7 +31,14 @@ export async function POST(req: Request) {
   const content = body.content;
   const keywordsCacheKey = body.keywordsCacheKey?.trim() || undefined;
 
-  if (!content?.title || !content.summary || !content.skills || !Array.isArray(content.experiences)) {
+  if (
+    !content?.title ||
+    !content.summary ||
+    !content.skills ||
+    typeof content.skills !== "object" ||
+    Array.isArray(content.skills) ||
+    !Array.isArray(content.experiences)
+  ) {
     return Response.json({ error: "Resume content is required for scoring." }, { status: 400 });
   }
 

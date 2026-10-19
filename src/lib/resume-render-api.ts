@@ -7,6 +7,7 @@ import {
   resumeBuilderAccessDeniedMessage,
 } from "@/lib/resume-access";
 import { fetchSavedResumeFile } from "@/lib/saved-resumes-api";
+import { normalizeResumeSkills } from "@/lib/resume-skills";
 import type { GeneratedResumeContent } from "@/lib/resume-types";
 
 /**
@@ -42,14 +43,9 @@ export function resumeRenderErrorMessage(error: unknown): string {
   return getApiErrorMessage(error, "Failed to render resume.");
 }
 
-/** Shape content for POST /resume/render (skills string + experience fields backend maps to styles). */
+/** Shape content for POST /resume/render — skills as canonical category→items object. */
 export function toResumeRenderContent(content: GeneratedResumeContent): Record<string, unknown> {
-  const skills =
-    typeof content.skills === "string"
-      ? content.skills
-      : Array.isArray(content.skills)
-        ? (content.skills as string[]).join("\n")
-        : String(content.skills ?? "");
+  const skills = normalizeResumeSkills(content.skills);
 
   return {
     title: content.title ?? "",

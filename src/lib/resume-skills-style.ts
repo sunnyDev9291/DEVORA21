@@ -1,3 +1,4 @@
+import { normalizeResumeSkills, type ResumeSkillsMap } from "@/lib/resume-skills";
 import type { ResumeTemplateLayout } from "@/lib/resume-types";
 
 /** One skill category line from the uploaded template (labels + markdown bold pattern). */
@@ -36,36 +37,7 @@ export function parseTemplateSkillLines(templateSkills: string): TemplateSkillLi
     });
 }
 
-function parseSkillLine(line: string): { label: string; value: string } | null {
-  const trimmed = line.trim();
-  if (!trimmed) return null;
-
-  const markdown = trimmed.match(/^\*\*([^*:]+):\*\*\s*(.*)$/);
-  if (markdown) {
-    const label = normalizeSkillLabel(markdown[1]);
-    const value = markdown[2].replace(/\*\*/g, "").trim();
-    return label ? { label, value } : null;
-  }
-
-  // Colon outside bold: **Frontend**: values
-  const boldLabel = trimmed.match(/^\*\*([^*]+)\*\*\s*:\s*(.*)$/);
-  if (boldLabel) {
-    const label = normalizeSkillLabel(boldLabel[1]);
-    const value = boldLabel[2].replace(/\*\*/g, "").trim();
-    return label ? { label, value } : null;
-  }
-
-  const plain = trimmed.match(/^([^:]+):\s*(.*)$/);
-  if (plain) {
-    const label = normalizeSkillLabel(plain[1]);
-    const value = plain[2].replace(/\*\*/g, "").trim();
-    return label ? { label, value } : null;
-  }
-
-  return null;
-}
-
-/** Format one category line using the template line's bold/colon pattern. */
+/** Format one category line using the template line's bold/colon pattern (legacy string path). */
 export function formatSkillLineLikeTemplate(
   label: string,
   value: string,
@@ -83,80 +55,49 @@ export function formatSkillLineLikeTemplate(
   return trimmedValue ? `${label}: ${trimmedValue}` : `${label}:`;
 }
 
-function pickFormattingSample(templateLines: TemplateSkillLine[]): string {
-  return (
-    templateLines.find((line) => line.label)?.sampleLine ??
-    templateLines[0]?.sampleLine ??
-    "**Label:** values"
-  );
-}
-
 /**
- * Keep AI/Writing-instructions category labels, order, and line count.
- * Template only supplies bold/colon formatting — never caps or remaps categories.
- */
-function formatCategorySkillsFromAi(aiSkills: string, templateSkills: string): string | null {
-  const templateLines = parseTemplateSkillLines(templateSkills);
-  const sampleLine = pickFormattingSample(templateLines);
-
-  const aiCategoryLines: Array<{ label: string; value: string }> = [];
-  for (const line of aiSkills.split(/\n+/)) {
-    const parsed = parseSkillLine(line.trim());
-    if (!parsed?.label) continue;
-    if (!parsed.value.trim()) continue;
-    aiCategoryLines.push(parsed);
-  }
-
-  if (aiCategoryLines.length === 0) return null;
-
-  return aiCategoryLines
-    .map(({ label, value }) => formatSkillLineLikeTemplate(label, value, sampleLine))
-    .join("\n");
-}
-
-/**
- * Apply template bold/colon style only. Never cap category count, item count,
- * or remap onto template sample labels — Writing instructions are absolute.
+ * Keep AI category keys/order/items. Template sample is ignored for content —
+ * Mode-1 skills are already a map.
  */
 export function formatSkillsWithTemplateStyle(
-  aiSkills: string,
-  templateSkills: string,
+  aiSkills: ResumeSkillsMap | string,
+  _templateSkills: string,
   _layout: ResumeTemplateLayout = "bullets"
-): string {
-  const trimmed = aiSkills.trim();
-  if (!trimmed) return trimmed;
-  if (!templateSkills.trim()) return trimmed;
-
-  const fromAi = formatCategorySkillsFromAi(trimmed, templateSkills);
-  if (fromAi) return fromAi;
-
-  // Flat / non-category skills from the model — keep exactly as returned.
-  return trimmed;
+): ResumeSkillsMap {
+  return normalizeResumeSkills(aiSkills);
 }
 
 /** @deprecated Use formatSkillsWithTemplateStyle. */
-export function alignSkillsToTemplate(aiSkills: string, templateSkills: string): string {
+export function alignSkillsToTemplate(
+  aiSkills: ResumeSkillsMap | string,
+  templateSkills: string
+): ResumeSkillsMap {
   return formatSkillsWithTemplateStyle(aiSkills, templateSkills);
 }
 
 /**
- * Visual format hint only. Counts, category names, and items come solely from
- * Writing instructions (profile prompt) — not from the template sample.
+ * Visual format hint only. Skills must be returned as a JSON object.
+ * Counts, category names, and items come solely from Writing instructions.
  */
 export function buildTemplateSkillsPromptBlock(
   templateSkills: string,
   _layout: ResumeTemplateLayout = "bullets"
 ): string {
-  if (!templateSkills.trim()) return "";
+  if (!templateSkills.trim()) {
+    return [
+      "skills MUST be a JSON object: { \"Category\": [\"item\", ...], ... }.",
+      "Do NOT return skills as a newline string of \"Category: item, item\" lines.",
+      "Category key count must match the template Skill Category count.",
+      "Item-count rules apply to the total number of items across all arrays.",
+    ].join("\n");
+  }
 
   return [
-    "Template skillsets FORMAT (visual only — NOT a content or count limit):",
-    "Each category line should look like: **Category:** tech, tech, tech (bold label, colon, then skills).",
-    "Keep a TAB-style gap after each category colon when the template uses one.",
-    "ABSOLUTE RULE: Writing instructions alone decide category count, category names/order, and how many items per category.",
-    "Do NOT use the template sample labels, line count, or item lists as limits or defaults.",
-    "Do NOT force Frontend/Backend/Tooling/Monitoring (or any template sample) unless Writing instructions say so.",
-    "Template formatting example (samples only — ignore these labels/counts for content):",
+    "skills MUST be a JSON object: { \"Category\": [\"item\", ...], ... }.",
+    "Do NOT return skills as a newline string of \"Category: item, item\" lines.",
+    "Category key count must match the template Skill Category count from Writing instructions / template structure.",
+    "Item-count rules (e.g. 50–54) apply to the TOTAL number of items across all skills arrays.",
+    "Template skillsets sample below is FORMAT/category-count hint only — not a content source:",
     templateSkills.trim(),
   ].join("\n");
 }

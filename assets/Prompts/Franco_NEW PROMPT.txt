@@ -23,6 +23,14 @@ Make final list with 1st type item(Max 4), 2nd type item(Max 4), 3rd type item(A
 Add 1st,2nd tech items at first of final list. 
 Output final list.
 
+***********4. SKILLS***********
+Return skills as a JSON object only:
+{ "Category": ["item", "..."], "Another Category": ["item", "..."] }
+Do NOT return skills as a newline string of "Category: item, item" lines.
+Do NOT use "Format each line: Category: item, item".
+Category key count must match the template Skill Category count.
+Item-count rules (50–54) apply to the TOTAL number of items across all skills arrays.
+
 ************Company Meta information***********
 - HMSHost (08/2023 - 02/2026)
 Job title : Senior Software Engineer

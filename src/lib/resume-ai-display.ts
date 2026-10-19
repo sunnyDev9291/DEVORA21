@@ -96,7 +96,7 @@ function formatExperiences(value: unknown): string {
     .join("\n\n");
 }
 
-const SECTION_ORDER = ["title", "summary", "skills", "fileName", "layout", "experiences"] as const;
+const SECTION_ORDER = ["title", "summary", "experiences", "skills", "fileName", "layout"] as const;
 
 /** Build key/value display sections from streamed or complete resume JSON. */
 export function parseResumeAiDisplaySections(raw: string): ResumeAiDisplaySection[] | null {
@@ -130,6 +130,17 @@ export function parseResumeAiDisplaySections(raw: string): ResumeAiDisplaySectio
     if (key === "experiences") {
       const formatted = formatExperiences(value);
       if (formatted) sections.push({ key, value: formatted });
+      continue;
+    }
+
+    if (key === "skills" && value && typeof value === "object" && !Array.isArray(value)) {
+      const lines = Object.entries(value as Record<string, unknown>).map(([category, items]) => {
+        const list = Array.isArray(items)
+          ? items.map((item) => String(item)).filter(Boolean).join(", ")
+          : String(items ?? "");
+        return list ? `${category}: ${list}` : `${category}:`;
+      });
+      if (lines.length) sections.push({ key, value: lines.join("\n") });
       continue;
     }
 

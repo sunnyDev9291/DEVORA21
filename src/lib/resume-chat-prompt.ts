@@ -13,7 +13,7 @@ export function formatResumeContentForChat(content: GeneratedResumeContent): str
     "",
     `SUMMARY: ${content.summary.trim()}`,
     "",
-    `SKILLS: ${content.skills.trim()}`,
+    `SKILLS: ${JSON.stringify(content.skills)}`,
     "",
     "EXPERIENCE:",
   ];
@@ -45,10 +45,15 @@ export function formatProfileForChat(profile?: ResumeChatProfileContext): string
 export function isUsableResumeChatContent(
   content?: GeneratedResumeContent | null
 ): content is GeneratedResumeContent {
+  const skills = content?.skills;
+  const hasSkills =
+    skills &&
+    typeof skills === "object" &&
+    Object.values(skills).some((items) => Array.isArray(items) && items.length > 0);
   return Boolean(
     content?.title?.trim() &&
       content.summary?.trim() &&
-      content.skills?.trim() &&
+      hasSkills &&
       Array.isArray(content.experiences)
   );
 }
@@ -72,7 +77,7 @@ export function resolveResumeChatContent({
     title,
     summary:
       "Structured resume draft was not returned for this generation. Use only the personal profile and target job context. Do not invent work history, skills, employers, or dates.",
-    skills: "Not provided in a structured draft.",
+    skills: { Skills: ["Not provided in a structured draft."] },
     experiences: [],
   };
 }

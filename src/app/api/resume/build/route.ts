@@ -8,6 +8,7 @@ import { buildExpectedResumeFileName } from "@/lib/resume-filename";
 import { getCachedTemplateParse } from "@/lib/resume-template-cache";
 
 import { resolveTemplateBuffer } from "@/lib/resume-template-resolve";
+import { isResumeSkillsEmpty, normalizeResumeSkills } from "@/lib/resume-skills";
 import type { GeneratedResumeContent } from "@/lib/resume-types";
 
 
@@ -38,7 +39,8 @@ function validateContent(
   content: GeneratedResumeContent,
   layout: GeneratedResumeContent["layout"] = "bullets"
 ): GeneratedResumeContent {
-  if (!content.title?.trim() || !content.summary?.trim() || !content.skills?.trim()) {
+  const skills = normalizeResumeSkills(content.skills);
+  if (!content.title?.trim() || !content.summary?.trim() || isResumeSkillsEmpty(skills)) {
     throw new Error("Resume title, summary, and skills are required.");
   }
   if (!Array.isArray(content.experiences) || content.experiences.length === 0) {
@@ -50,7 +52,7 @@ function validateContent(
   return {
     title: content.title.trim(),
     summary: content.summary.trim(),
-    skills: content.skills.trim(),
+    skills,
     ...(content.fileName?.trim()
       ? { fileName: content.fileName.trim() }
       : {}),

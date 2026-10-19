@@ -2,6 +2,7 @@ import type { GeneratedResumeContent, AtsScoreResult } from "@/lib/resume-types"
 import { flattenContentExperienceText } from "@/lib/resume-experience-utils";
 import { getCachedJobKeywords } from "@/lib/resume-keywords-cache";
 import { evaluateAtsWithKeywords } from "@/lib/resume-score";
+import { normalizeResumeSkills, skillsMapToDisplayString } from "@/lib/resume-skills";
 
 export { ATS_PASS_THRESHOLD, ATS_SCORE_MAX } from "@/lib/resume-ats-algorithm";
 export { buildJobKeywordsCacheKey } from "@/lib/resume-keywords-cache";
@@ -35,7 +36,7 @@ export function resumeContentToPlainText(content: GeneratedResumeContent): strin
   return [
     content.title,
     content.summary,
-    content.skills,
+    skillsMapToDisplayString(normalizeResumeSkills(content.skills)),
     ...content.experiences.flatMap((exp) => [
       `${exp.role} ${exp.company} ${exp.dates}`,
     ]),

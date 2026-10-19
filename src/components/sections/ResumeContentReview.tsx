@@ -10,6 +10,13 @@ import {
   replaceRoleInResumeFileBaseName,
 } from "@/lib/resume-title-sync";
 import {
+  countResumeSkillCategories,
+  countResumeSkillItems,
+  isResumeSkillsEmpty,
+  normalizeResumeSkills,
+  type ResumeSkillsMap,
+} from "@/lib/resume-skills";
+import {
   countTemplateSkillCategories,
   templateJobBulletSlotCount,
   type ResumeTemplateStructureJob,
@@ -215,7 +222,7 @@ export default function ResumeContentReview({
   if (!content.summary.trim()) {
     applyBlockers.push("Add a professional summary");
   }
-  if (!content.skills.trim()) {
+  if (isResumeSkillsEmpty(content.skills)) {
     applyBlockers.push("Add skillsets before applying");
   }
   const invalidExperienceIndexes = content.experiences
@@ -240,9 +247,41 @@ export default function ResumeContentReview({
     changedFieldIds?.has(fieldId)
       ? "ring-2 ring-amber-400/50 border-amber-400/40"
       : "";
-  const skillLineCount = content.skills.split(/\n+/).filter((line) => line.trim()).length;
+  const skillsMap = normalizeResumeSkills(content.skills);
+  const skillCategoryCount = countResumeSkillCategories(skillsMap);
+  const skillItemCount = countResumeSkillItems(skillsMap);
+  const skillEntries = Object.entries(skillsMap);
   const templateSkillSlots = countTemplateSkillCategories(templateSkillsSample);
   const summaryWordCount = content.summary.split(/\s+/).filter(Boolean).length;
+
+  const updateSkillsMap = (next: ResumeSkillsMap) => {
+    onChange({ ...content, skills: normalizeResumeSkills(next) });
+  };
+
+  const renameSkillCategory = (oldKey: string, nextKeyRaw: string) => {
+    const nextKey = nextKeyRaw.trim();
+    if (!nextKey || nextKey === oldKey) return;
+    const next: ResumeSkillsMap = {};
+    for (const [key, items] of Object.entries(skillsMap)) {
+      if (key === oldKey) next[nextKey] = items;
+      else next[key] = items;
+    }
+    updateSkillsMap(next);
+  };
+
+  const updateSkillItemsText = (category: string, text: string) => {
+    const items = text
+      .split(/[,;\n]/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+    updateSkillsMap({ ...skillsMap, [category]: items });
+  };
+
+  const removeSkillItem = (category: string, index: number) => {
+    const items = [...(skillsMap[category] ?? [])];
+    items.splice(index, 1);
+    updateSkillsMap({ ...skillsMap, [category]: items });
+  };
 
   const applyBarInner = (
     <>
@@ -332,31 +371,64 @@ export default function ResumeContentReview({
         </div>
 
         <div className={`${embedded ? "" : "lg:col-span-2"} rounded-2xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.02] p-5`}>
-          <label htmlFor="resume-skills" className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white mb-2">
+          <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white mb-2">
             <span className="w-6 h-6 rounded-md bg-violet-500/15 text-violet-600 dark:text-violet-400 flex items-center justify-center text-xs">S</span>
             Skillsets
-          </label>
+          </div>
           <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
             <span>
               {templateSkillSlots > 0
-                ? `${skillLineCount} / ${templateSkillSlots} template categor${templateSkillSlots === 1 ? "y" : "ies"}`
-                : `${skillLineCount} categor${skillLineCount === 1 ? "y" : "ies"}`}
+                ? `${skillCategoryCount} / ${templateSkillSlots} template categor${templateSkillSlots === 1 ? "y" : "ies"}`
+                : `${skillCategoryCount} categor${skillCategoryCount === 1 ? "y" : "ies"}`}
             </span>
-            <span>One category per line works best</span>
-            <span>Use Ctrl/Cmd+B for bold</span>
+            <span>{skillItemCount} items total</span>
           </div>
-          <MarkdownBoldTextarea
-            id="resume-skills"
-            value={content.skills}
-            onChange={(skills) => onChange({ ...content, skills })}
-            className={`${fieldClass} min-h-[180px] resize-y leading-relaxed ${changedRing("skills")}`}
-            rows={6}
-            minHeight={180}
-            maxHeight={420}
-            placeholder={"Languages: C#, TypeScript\nBackend: .NET, ASP.NET Core, Web APIs\nFrontend: React"}
-          />
+          <div className={`space-y-4 ${changedRing("skills")}`}>
+            {skillEntries.length === 0 ? (
+              <p className="text-sm text-slate-400">No skill categories yet — regenerate or wait for the AI draft.</p>
+            ) : (
+              skillEntries.map(([category, items]) => (
+                <div
+                  key={category}
+                  className="rounded-xl border border-slate-200/80 dark:border-white/[0.08] bg-white/60 dark:bg-white/[0.03] px-4 py-3"
+                >
+                  <input
+                    type="text"
+                    aria-label={`Skill category ${category}`}
+                    defaultValue={category}
+                    key={`cat-${category}`}
+                    onBlur={(event) => renameSkillCategory(category, event.target.value)}
+                    className="mb-2 w-full bg-transparent text-sm font-semibold text-slate-900 dark:text-white outline-none border-b border-transparent focus:border-orange-500/40 pb-1"
+                  />
+                  <div className="mb-2 flex flex-wrap gap-1.5">
+                    {(items ?? []).map((item, itemIndex) => (
+                      <button
+                        key={`${category}-${item}-${itemIndex}`}
+                        type="button"
+                        title="Remove skill"
+                        onClick={() => removeSkillItem(category, itemIndex)}
+                        className="inline-flex items-center gap-1 rounded-md bg-violet-500/10 text-violet-800 dark:text-violet-200 px-2 py-0.5 text-xs hover:bg-violet-500/20 transition-colors"
+                      >
+                        {item}
+                        <span aria-hidden className="opacity-50">×</span>
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="text"
+                    aria-label={`Edit items for ${category}`}
+                    defaultValue={(items ?? []).join(", ")}
+                    key={`${category}-${(items ?? []).join("|")}`}
+                    onBlur={(event) => updateSkillItemsText(category, event.target.value)}
+                    placeholder="TypeScript, React, Next.js"
+                    className={`${fieldClass} text-xs py-2`}
+                  />
+                </div>
+              ))
+            )}
+          </div>
           <p className="mt-2 text-xs text-slate-400">
-            Keep categories JD-specific. Template styling is applied later.
+            Categories come from the AI skills object keys. Edit labels or comma-separated items as needed.
           </p>
         </div>
 
