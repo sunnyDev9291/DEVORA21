@@ -284,7 +284,7 @@ export const APP_FEATURES = {
     href: "/application-captures",
     label: "Application Captures",
     shortLabel: "Captures",
-    description: "Screenshot sessions from Capture and Submit",
+    description: "Auto-uploaded screenshots from Capture and Submit",
     accent: "emerald",
   },
 } as const;

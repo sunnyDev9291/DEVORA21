@@ -16,7 +16,8 @@ export type ApplicationCaptureSession = {
   id: string;
   clientCaptureId?: string;
   tabUrl: string;
-  pageTitle: string;
+  /** Backend may return null when the tab had no document title. */
+  pageTitle: string | null;
   status: string;
   sliceCount: number;
   capturedAt: string;
@@ -89,13 +90,17 @@ function parseSession(raw: unknown): ApplicationCaptureSession | null {
     .filter((img): img is ApplicationCaptureImage => Boolean(img))
     .sort((a, b) => a.sortOrder - b.sortOrder);
 
+  const titleRaw = row.pageTitle ?? row.page_title ?? row.title;
+  const pageTitle =
+    typeof titleRaw === "string" && titleRaw.trim() ? titleRaw.trim() : null;
+
   return {
     id,
     ...(pickString(row, "clientCaptureId", "client_capture_id")
       ? { clientCaptureId: pickString(row, "clientCaptureId", "client_capture_id") }
       : {}),
     tabUrl: pickString(row, "tabUrl", "tab_url", "url"),
-    pageTitle: pickString(row, "pageTitle", "page_title", "title") || "Untitled page",
+    pageTitle,
     status: pickString(row, "status") || "uploaded",
     sliceCount: pickNumber(row, "sliceCount", "slice_count") || images.length,
     capturedAt:
@@ -209,6 +214,16 @@ export function hostnameFromCaptureUrl(url: string): string {
   } catch {
     return url.replace(/^https?:\/\//i, "").split("/")[0] || url;
   }
+}
+
+/** Display label when pageTitle is null/empty. */
+export function captureSessionTitle(
+  session: Pick<ApplicationCaptureSession, "pageTitle" | "tabUrl">
+): string {
+  const title = session.pageTitle?.trim();
+  if (title) return title;
+  const host = hostnameFromCaptureUrl(session.tabUrl);
+  return host !== "Unknown host" ? host : "Untitled page";
 }
 
 export function formatCaptureTime(iso: string): string {

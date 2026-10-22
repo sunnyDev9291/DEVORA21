@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Button from "@/components/ui/Button";
 import { getApiErrorMessage } from "@/lib/auth-api";
 import {
+  captureSessionTitle,
   deleteApplicationCapture,
   formatCaptureTime,
   getApplicationCapture,
@@ -35,16 +36,21 @@ function CaptureThumb({
   alt,
   className = "",
   fit = "cover",
+  onExpire,
 }: {
   src?: string;
   alt: string;
   className?: string;
   fit?: "cover" | "contain";
+  /** Signed URL may 403 — parent should re-fetch session detail once. */
+  onExpire?: () => void;
 }) {
   const [broken, setBroken] = useState(false);
+  const expireCalledRef = useRef(false);
 
   useEffect(() => {
     setBroken(false);
+    expireCalledRef.current = false;
   }, [src]);
 
   if (!src || broken) {
@@ -72,7 +78,13 @@ function CaptureThumb({
       alt={alt}
       className={`${fit === "contain" ? "object-contain" : "object-cover object-top"} grayscale ${className}`}
       loading="lazy"
-      onError={() => setBroken(true)}
+      onError={() => {
+        setBroken(true);
+        if (!expireCalledRef.current && onExpire) {
+          expireCalledRef.current = true;
+          onExpire();
+        }
+      }}
     />
   );
 }
@@ -82,11 +94,13 @@ function Lightbox({
   index,
   onClose,
   onIndexChange,
+  onImageExpire,
 }: {
   images: ApplicationCaptureImage[];
   index: number;
   onClose: () => void;
   onIndexChange: (next: number) => void;
+  onImageExpire?: () => void;
 }) {
   const image = images[index];
   const titleId = useId();
@@ -138,6 +152,7 @@ function Lightbox({
             alt={`Capture slice ${index + 1}`}
             fit="contain"
             className="max-h-[75dvh] w-auto max-w-full rounded-lg"
+            onExpire={onImageExpire}
           />
         </div>
         {images.length > 1 ? (
@@ -173,6 +188,7 @@ function DetailDrawer({
   onClose,
   onDelete,
   onOpenLightbox,
+  onImageExpire,
 }: {
   session: ApplicationCaptureSession | null;
   loading: boolean;
@@ -181,6 +197,7 @@ function DetailDrawer({
   onClose: () => void;
   onDelete: () => void;
   onOpenLightbox: (index: number) => void;
+  onImageExpire?: () => void;
 }) {
   const titleId = useId();
 
@@ -214,7 +231,11 @@ function DetailDrawer({
         <div className="flex items-start justify-between gap-3 border-b border-orange-200/50 px-5 py-4 dark:border-white/[0.08]">
           <div className="min-w-0">
             <h2 id={titleId} className={`${ui.headingMd} truncate`}>
-              {session?.pageTitle ?? (loading ? "Loading…" : "Capture")}
+              {session
+                ? captureSessionTitle(session)
+                : loading
+                  ? "Loading…"
+                  : "Capture"}
             </h2>
             {session?.tabUrl ? (
               <a
@@ -278,9 +299,10 @@ function DetailDrawer({
                   </div>
                   <CaptureThumb
                     src={image.imageUrl}
-                    alt={`${session?.pageTitle ?? "Capture"} slice ${index + 1}`}
+                    alt={`${session ? captureSessionTitle(session) : "Capture"} slice ${index + 1}`}
                     fit="contain"
                     className="max-h-[70vh] w-full bg-stone-100 dark:bg-black/30"
+                    onExpire={onImageExpire}
                   />
                 </button>
               ))}
@@ -320,10 +342,13 @@ export default function ApplicationCapturesGallery() {
   const [detailError, setDetailError] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  /** Avoid re-fetch loops when signed URLs stay expired. */
+  const urlRefreshAttemptedRef = useRef<Set<string>>(new Set());
 
   const loadList = useCallback(async (nextPage: number) => {
     setListLoading(true);
     setListError("");
+    urlRefreshAttemptedRef.current.clear();
     try {
       const result = await listApplicationCaptures({ page: nextPage, limit: PAGE_LIMIT });
       setSessions(result.sessions);
@@ -348,6 +373,7 @@ export default function ApplicationCapturesGallery() {
     setDetailError("");
     setDetailLoading(true);
     setLightboxIndex(null);
+    urlRefreshAttemptedRef.current.delete(id);
     try {
       const session = await getApplicationCapture(id);
       setDetail(session);
@@ -355,6 +381,31 @@ export default function ApplicationCapturesGallery() {
       setDetailError(getApiErrorMessage(err, "Could not load capture detail."));
     } finally {
       setDetailLoading(false);
+    }
+  }, []);
+
+  /** Re-fetch detail once to refresh expired Backblaze signed URLs (no loading wipe). */
+  const refreshSignedUrls = useCallback(async (id: string) => {
+    if (urlRefreshAttemptedRef.current.has(id)) return;
+    urlRefreshAttemptedRef.current.add(id);
+    try {
+      const session = await getApplicationCapture(id);
+      setDetail((prev) => (prev?.id === id ? session : prev));
+      setSessions((prev) =>
+        prev.map((row) =>
+          row.id === id
+            ? {
+                ...row,
+                images: session.images.slice(0, 1),
+                sliceCount: session.sliceCount,
+                status: session.status,
+                pageTitle: session.pageTitle,
+              }
+            : row
+        )
+      );
+    } catch {
+      // Keep placeholder; user can Refresh manually.
     }
   }, []);
 
@@ -367,7 +418,7 @@ export default function ApplicationCapturesGallery() {
 
   const handleDelete = useCallback(async () => {
     if (!selectedId || !detail) return;
-    const label = detail.pageTitle || "this capture";
+    const label = captureSessionTitle(detail);
     if (!window.confirm(`Delete “${label}”? This cannot be undone from the gallery.`)) {
       return;
     }
@@ -393,7 +444,7 @@ export default function ApplicationCapturesGallery() {
           <div>
             <h1 className={ui.headingLg}>Application Captures</h1>
             <p className={`mt-2 max-w-xl ${ui.muted}`}>
-              Screenshot sessions from Capture and Submit in the Chrome extension — ordered grayscale slices of the page you applied on.
+              Grayscale page slices auto-uploaded after Capture and Submit in the Devora21 Chrome extension.
             </p>
           </div>
           <Button
@@ -423,7 +474,9 @@ export default function ApplicationCapturesGallery() {
           <div className="mt-10 rounded-2xl border border-dashed border-orange-300/50 bg-orange-50/40 px-6 py-12 text-center dark:border-orange-500/20 dark:bg-orange-500/[0.04]">
             <p className={`${ui.headingSm} text-stone-800 dark:text-stone-100`}>No captures yet</p>
             <p className={`mx-auto mt-3 max-w-md ${ui.mutedSm}`}>
-              Use the Devora21 Chrome extension on an application page, then choose <strong className="font-semibold">Capture and Submit</strong>. Sessions appear here after upload — refresh this page to see new ones.
+              Install or enable the Devora21 Capture extension. On an apply page, click{" "}
+              <strong className="font-semibold">Capture and Submit</strong> — the extension scrolls,
+              captures grayscale slices, and auto-uploads them. Refresh this page to see new sessions.
             </p>
           </div>
         ) : (
@@ -431,6 +484,7 @@ export default function ApplicationCapturesGallery() {
             {sessions.map((session) => {
               const thumb = session.images[0]?.imageUrl;
               const host = hostnameFromCaptureUrl(session.tabUrl);
+              const title = captureSessionTitle(session);
               return (
                 <li key={session.id}>
                   <button
@@ -442,11 +496,12 @@ export default function ApplicationCapturesGallery() {
                       src={thumb}
                       alt=""
                       className="h-20 w-28 shrink-0 rounded-xl"
+                      onExpire={() => void refreshSignedUrls(session.id)}
                     />
                     <div className="min-w-0 flex-1 py-0.5">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="truncate font-semibold text-stone-900 dark:text-stone-50">
-                          {session.pageTitle}
+                          {title}
                         </p>
                         <span
                           className={`rounded-md px-2 py-0.5 text-[11px] font-medium capitalize ${statusBadgeClass(session.status)}`}
@@ -507,6 +562,9 @@ export default function ApplicationCapturesGallery() {
           onClose={closeDetail}
           onDelete={() => void handleDelete()}
           onOpenLightbox={(index) => setLightboxIndex(index)}
+          onImageExpire={
+            selectedId ? () => void refreshSignedUrls(selectedId) : undefined
+          }
         />
       )}
 
@@ -516,6 +574,9 @@ export default function ApplicationCapturesGallery() {
           index={lightboxIndex}
           onClose={() => setLightboxIndex(null)}
           onIndexChange={setLightboxIndex}
+          onImageExpire={
+            selectedId ? () => void refreshSignedUrls(selectedId) : undefined
+          }
         />
       ) : null}
     </div>

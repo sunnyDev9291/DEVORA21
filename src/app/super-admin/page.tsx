@@ -36,6 +36,13 @@ const modules = [
     body: "Three-panel review: profile → date → Apply Page session → questions & answers from the Chrome extension.",
     delay: "sa-animate-in-delay-2",
   },
+  {
+    href: `${AUTH_LINKS.superAdmin}/application-captures`,
+    eyebrow: "Module 04",
+    title: "Application Captures",
+    body: "Gallery of grayscale apply-page screenshots auto-uploaded by the Capture extension — filter by owner, preview slices, delete.",
+    delay: "sa-animate-in-delay-2",
+  },
 ] as const;
 
 export default function SuperAdminPage() {
@@ -46,7 +53,7 @@ export default function SuperAdminPage() {
       <div className={saPage}>
         <SuperAdminHeader
           title="Super Admin"
-          subtitle="Quiet ops workspace for profiles, resume analytics, and extension Application Q&A. Sign in to Devora21 with a super-admin account before calling /admin APIs."
+          subtitle="Quiet ops workspace for profiles, resume analytics, Application Q&A, and Application Captures. Sign in to Devora21 with a super-admin account before calling /admin APIs."
           onLock={() => router.replace(AUTH_LINKS.superAdmin)}
         />
 
