@@ -46,6 +46,12 @@ function DashboardContent() {
       href: APP_FEATURES.realTimeInterview.href,
       accent: "border-violet-500/20 hover:border-violet-500/40 bg-violet-500/[0.06]",
     },
+    {
+      title: APP_FEATURES.applicationCaptures.label,
+      description: APP_FEATURES.applicationCaptures.description,
+      href: APP_FEATURES.applicationCaptures.href,
+      accent: "border-emerald-500/20 hover:border-emerald-500/40 bg-emerald-500/[0.06]",
+    },
   ];
 
   const handleLogout = async () => {

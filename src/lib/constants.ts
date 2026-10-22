@@ -280,11 +280,19 @@ export const APP_FEATURES = {
     description: "Live coaching support",
     accent: "violet",
   },
+  applicationCaptures: {
+    href: "/application-captures",
+    label: "Application Captures",
+    shortLabel: "Captures",
+    description: "Screenshot sessions from Capture and Submit",
+    accent: "emerald",
+  },
 } as const;
 
 export const APP_LINKS = {
   resume: APP_FEATURES.resume.href,
   realTimeInterview: APP_FEATURES.realTimeInterview.href,
+  applicationCaptures: APP_FEATURES.applicationCaptures.href,
 } as const;
 
 export const AUTH_LINKS = {
