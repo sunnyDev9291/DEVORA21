@@ -41,6 +41,17 @@ const nextConfig: NextConfig = {
         destination: "/super-admin",
         permanent: true,
       },
+      // Application Captures (screenshots) replaced by rrweb session replay.
+      {
+        source: "/super-admin/application-captures",
+        destination: "/super-admin/rrweb-sessions",
+        permanent: false,
+      },
+      {
+        source: "/super-admin/application-captures/:path*",
+        destination: "/super-admin/rrweb-sessions",
+        permanent: false,
+      },
     ];
   },
   // Ship the resume templates folder with the serverless functions so the
