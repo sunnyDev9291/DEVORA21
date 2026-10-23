@@ -291,11 +291,35 @@ export default function SuperAdminApplicationCapturesWorkspace({
   const [detailError, setDetailError] = useState("");
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   const [deletingImageId, setDeletingImageId] = useState<string | null>(null);
+  const [bulkDeletingSessions, setBulkDeletingSessions] = useState(false);
+  const [bulkDeletingImages, setBulkDeletingImages] = useState(false);
+  /** Multi-select for bulk session delete (independent of focused/open session). */
+  const [checkedSessionIds, setCheckedSessionIds] = useState<Set<string>>(() => new Set());
+  /** Multi-select for bulk screenshot delete within the open session. */
+  const [checkedImageIds, setCheckedImageIds] = useState<Set<string>>(() => new Set());
   const [toast, setToast] = useState("");
   const [outsideFilterHint, setOutsideFilterHint] = useState("");
   const [flashIds, setFlashIds] = useState<Record<string, number>>({});
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const urlRefreshAttemptedRef = useRef<Set<string>>(new Set());
+
+  function toggleCheckedSession(sessionId: string) {
+    setCheckedSessionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(sessionId)) next.delete(sessionId);
+      else next.add(sessionId);
+      return next;
+    });
+  }
+
+  function toggleCheckedImage(imageId: string) {
+    setCheckedImageIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(imageId)) next.delete(imageId);
+      else next.add(imageId);
+      return next;
+    });
+  }
 
   const selectedUserIdRef = useRef(selectedUserId);
   const dateYmdRef = useRef(dateYmd);
@@ -430,10 +454,38 @@ export default function SuperAdminApplicationCapturesWorkspace({
       setSelectedSessionId(null);
       setDetail(null);
       setLightboxIndex(null);
+      setCheckedSessionIds(new Set());
+      setCheckedImageIds(new Set());
       return;
     }
+    setCheckedSessionIds(new Set());
     void loadSessions(selectedUserId, dateYmd, timezone);
   }, [selectedUserId, dateYmd, timezone, loadSessions]);
+
+  // Drop stale session checks when the list changes (live deletes / reloads).
+  useEffect(() => {
+    setCheckedSessionIds((prev) => {
+      if (prev.size === 0) return prev;
+      const alive = new Set(sessions.map((s) => s.id));
+      const next = new Set([...prev].filter((id) => alive.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [sessions]);
+
+  // Clear image multi-select when opening a different session.
+  useEffect(() => {
+    setCheckedImageIds(new Set());
+  }, [selectedSessionId]);
+
+  // Drop stale image checks when detail images change.
+  useEffect(() => {
+    const alive = new Set((detail?.images ?? []).map((img) => img.id));
+    setCheckedImageIds((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Set([...prev].filter((id) => alive.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [detail]);
 
   useEffect(() => {
     if (!selectedSessionId) {
@@ -710,6 +762,12 @@ export default function SuperAdminApplicationCapturesWorkspace({
     try {
       await superAdminApplicationCapturesApi.deleteSession(session.id);
       applySessionRemoved(session.id, "Capture deleted.");
+      setCheckedSessionIds((prev) => {
+        if (!prev.has(session.id)) return prev;
+        const next = new Set(prev);
+        next.delete(session.id);
+        return next;
+      });
     } catch (err) {
       const message = getApiErrorMessage(err, "Could not delete capture session.");
       if (selectedSessionIdRef.current === session.id) {
@@ -719,6 +777,77 @@ export default function SuperAdminApplicationCapturesWorkspace({
       }
     } finally {
       setDeletingSessionId(null);
+    }
+  }
+
+  async function handleDeleteCheckedSessions() {
+    const ids = sessions.map((s) => s.id).filter((id) => checkedSessionIds.has(id));
+    if (ids.length === 0) return;
+    if (
+      !window.confirm(
+        `Delete ${ids.length} URL session${ids.length === 1 ? "" : "s"}? This removes each capture and all of its screenshot slices.`
+      )
+    ) {
+      return;
+    }
+
+    setBulkDeletingSessions(true);
+    setToast("");
+    setSessionsError("");
+    let ok = 0;
+    let fail = 0;
+    for (const id of ids) {
+      setDeletingSessionId(id);
+      try {
+        await superAdminApplicationCapturesApi.deleteSession(id);
+        applySessionRemoved(id);
+        ok += 1;
+      } catch {
+        fail += 1;
+      }
+    }
+    setDeletingSessionId(null);
+    setCheckedSessionIds(new Set());
+    setBulkDeletingSessions(false);
+    if (fail === 0) {
+      setToast(
+        ok === 1 ? "Capture deleted." : `${ok} captures deleted.`
+      );
+    } else {
+      setSessionsError(
+        `Deleted ${ok}, failed ${fail}. Some URL sessions could not be removed.`
+      );
+    }
+  }
+
+  async function deleteOneImage(
+    sessionId: string,
+    image: ApplicationCaptureImage
+  ): Promise<"ok" | "session-gone" | "error"> {
+    try {
+      const result = await superAdminApplicationCapturesApi.deleteImage(
+        sessionId,
+        image.id
+      );
+      if (result.sessionDeleted) {
+        applySessionRemoved(sessionId, "Capture deleted.");
+        setCheckedImageIds(new Set());
+        return "session-gone";
+      }
+      if (result.session) {
+        applyImageRemovedLocally(sessionId, image.id, result.session);
+      } else {
+        applyImageRemovedLocally(sessionId, image.id);
+      }
+      setCheckedImageIds((prev) => {
+        if (!prev.has(image.id)) return prev;
+        const next = new Set(prev);
+        next.delete(image.id);
+        return next;
+      });
+      return "ok";
+    } catch {
+      return "error";
     }
   }
 
@@ -735,27 +864,56 @@ export default function SuperAdminApplicationCapturesWorkspace({
     setDeletingImageId(image.id);
     setToast("");
     setDetailError("");
-    try {
-      const result = await superAdminApplicationCapturesApi.deleteImage(
-        selectedSessionId,
-        image.id
+    const status = await deleteOneImage(selectedSessionId, image);
+    if (status === "ok") setToast("Screenshot deleted.");
+    if (status === "error") {
+      setDetailError("Could not delete screenshot.");
+    }
+    setDeletingImageId(null);
+  }
+
+  async function handleDeleteCheckedImages() {
+    if (!selectedSessionId || !detail) return;
+    const images = [...detail.images].sort((a, b) => a.sortOrder - b.sortOrder);
+    const targets = images.filter((img) => checkedImageIds.has(img.id));
+    if (targets.length === 0) return;
+    if (
+      !window.confirm(
+        `Delete ${targets.length} screenshot${targets.length === 1 ? "" : "s"}? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    setBulkDeletingImages(true);
+    setToast("");
+    setDetailError("");
+    let ok = 0;
+    let fail = 0;
+    // Delete bottom-up so lightbox indices stay stable for remaining opens.
+    const ordered = [...targets].sort((a, b) => b.sortOrder - a.sortOrder);
+    for (const image of ordered) {
+      setDeletingImageId(image.id);
+      const status = await deleteOneImage(selectedSessionId, image);
+      if (status === "session-gone") {
+        setBulkDeletingImages(false);
+        setDeletingImageId(null);
+        return;
+      }
+      if (status === "ok") ok += 1;
+      else fail += 1;
+    }
+    setDeletingImageId(null);
+    setCheckedImageIds(new Set());
+    setBulkDeletingImages(false);
+    if (fail === 0) {
+      setToast(
+        ok === 1 ? "Screenshot deleted." : `${ok} screenshots deleted.`
       );
-      if (result.sessionDeleted) {
-        applySessionRemoved(selectedSessionId, "Capture deleted.");
-        return;
-      }
-      if (result.session) {
-        applyImageRemovedLocally(selectedSessionId, image.id, result.session);
-        setToast("Screenshot deleted.");
-        return;
-      }
-      // No session body — strip locally; clears selection if that was the last slice.
-      applyImageRemovedLocally(selectedSessionId, image.id);
-      setToast("Screenshot deleted.");
-    } catch (err) {
-      setDetailError(getApiErrorMessage(err, "Could not delete screenshot."));
-    } finally {
-      setDeletingImageId(null);
+    } else {
+      setDetailError(
+        `Deleted ${ok}, failed ${fail}. Some screenshots could not be removed.`
+      );
     }
   }
 
@@ -947,16 +1105,74 @@ export default function SuperAdminApplicationCapturesWorkspace({
           className={`${saCard} flex w-full shrink-0 flex-col overflow-hidden xl:w-[320px] 2xl:w-[360px]`}
         >
           <div className="border-b border-slate-100 p-4">
-            <p className={saEyebrow}>Sessions</p>
-            <p className={`${saMono} mt-2 text-[11px] text-slate-400`}>
-              {selectedOwner
-                ? displayCaptureOwnerName(selectedOwner)
-                : "Select a profile"}{" "}
-              · {dateLabel}
-              {sessionsLoading
-                ? " · loading…"
-                : ` · ${sessions.length} session${sessions.length === 1 ? "" : "s"}`}
-            </p>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className={saEyebrow}>Sessions</p>
+                <p className={`${saMono} mt-2 text-[11px] text-slate-400`}>
+                  {selectedOwner
+                    ? displayCaptureOwnerName(selectedOwner)
+                    : "Select a profile"}{" "}
+                  · {dateLabel}
+                  {sessionsLoading
+                    ? " · loading…"
+                    : ` · ${sessions.length} session${sessions.length === 1 ? "" : "s"}`}
+                </p>
+              </div>
+              {sessions.length > 0 ? (
+                <label
+                  className={`${saMono} flex shrink-0 cursor-pointer items-center gap-1.5 pt-0.5 text-[10px] text-slate-500`}
+                >
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
+                    checked={
+                      sessions.length > 0 &&
+                      sessions.every((s) => checkedSessionIds.has(s.id))
+                    }
+                    ref={(el) => {
+                      if (!el) return;
+                      const some = sessions.some((s) => checkedSessionIds.has(s.id));
+                      const all =
+                        sessions.length > 0 &&
+                        sessions.every((s) => checkedSessionIds.has(s.id));
+                      el.indeterminate = some && !all;
+                    }}
+                    onChange={() => {
+                      const all =
+                        sessions.length > 0 &&
+                        sessions.every((s) => checkedSessionIds.has(s.id));
+                      setCheckedSessionIds(
+                        all ? new Set() : new Set(sessions.map((s) => s.id))
+                      );
+                    }}
+                    aria-label="Select all sessions"
+                  />
+                  All
+                </label>
+              ) : null}
+            </div>
+            {checkedSessionIds.size > 0 ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={bulkDeletingSessions || Boolean(deletingSessionId)}
+                  onClick={() => void handleDeleteCheckedSessions()}
+                  className={`${saBtnGhost} border-rose-200 text-rose-700 hover:bg-rose-50`}
+                >
+                  {bulkDeletingSessions
+                    ? "Deleting…"
+                    : `Delete selected (${checkedSessionIds.size})`}
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkDeletingSessions}
+                  onClick={() => setCheckedSessionIds(new Set())}
+                  className={saBtnGhost}
+                >
+                  Clear
+                </button>
+              </div>
+            ) : null}
           </div>
 
           {sessionsError ? (
@@ -981,18 +1197,33 @@ export default function SuperAdminApplicationCapturesWorkspace({
             ) : (
               sessions.map((session) => {
                 const active = session.id === selectedSessionId;
+                const checked = checkedSessionIds.has(session.id);
                 const flashing = Boolean(flashIds[session.id]);
                 const thumb = session.images[0]?.imageUrl;
                 const deletingThis = deletingSessionId === session.id;
+                const busy = bulkDeletingSessions || Boolean(deletingSessionId);
                 return (
                   <li key={session.id}>
                     <div
                       className={`flex gap-2 px-2 py-2 transition-colors duration-200 ${
                         active
                           ? "bg-teal-50 text-slate-900"
-                          : "text-slate-700 hover:bg-slate-50"
+                          : checked
+                            ? "bg-slate-50 text-slate-900"
+                            : "text-slate-700 hover:bg-slate-50"
                       } ${flashing ? "sa-live-flash" : ""}`}
                     >
+                      <label className="flex shrink-0 items-start pt-2">
+                        <input
+                          type="checkbox"
+                          className="h-3.5 w-3.5 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
+                          checked={checked}
+                          disabled={busy}
+                          onChange={() => toggleCheckedSession(session.id)}
+                          onClick={(event) => event.stopPropagation()}
+                          aria-label={`Select ${captureSessionTitle(session)}`}
+                        />
+                      </label>
                       <button
                         type="button"
                         role="option"
@@ -1031,7 +1262,7 @@ export default function SuperAdminApplicationCapturesWorkspace({
                       </button>
                       <button
                         type="button"
-                        disabled={deletingThis || Boolean(deletingSessionId)}
+                        disabled={busy}
                         title="Delete URL session"
                         aria-label={`Delete URL session ${captureSessionTitle(session)}`}
                         onClick={(event) => {
@@ -1053,28 +1284,84 @@ export default function SuperAdminApplicationCapturesWorkspace({
         {/* Right — screenshots */}
         <section className={`${saCard} flex min-w-0 flex-1 flex-col overflow-hidden`}>
           <div className="border-b border-slate-100 p-4">
-            <div className="min-w-0">
-              <p className={saEyebrow}>Screenshots</p>
-              <h2 className={`${saDisplay} mt-2 truncate text-lg font-bold text-slate-900`}>
-                {detail
-                  ? captureSessionTitle(detail)
-                  : detailLoading
-                    ? "Loading…"
-                    : selectedSessionId
-                      ? "Capture"
-                      : "Select a session"}
-              </h2>
-              {detail?.tabUrl ? (
-                <a
-                  href={detail.tabUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`${saMono} mt-1 block truncate text-xs text-teal-700 hover:underline`}
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className={saEyebrow}>Screenshots</p>
+                <h2 className={`${saDisplay} mt-2 truncate text-lg font-bold text-slate-900`}>
+                  {detail
+                    ? captureSessionTitle(detail)
+                    : detailLoading
+                      ? "Loading…"
+                      : selectedSessionId
+                        ? "Capture"
+                        : "Select a session"}
+                </h2>
+                {detail?.tabUrl ? (
+                  <a
+                    href={detail.tabUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`${saMono} mt-1 block truncate text-xs text-teal-700 hover:underline`}
+                  >
+                    {detail.tabUrl}
+                  </a>
+                ) : null}
+              </div>
+              {detailImages.length > 0 ? (
+                <label
+                  className={`${saMono} flex shrink-0 cursor-pointer items-center gap-1.5 pt-1 text-[10px] text-slate-500`}
                 >
-                  {detail.tabUrl}
-                </a>
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
+                    checked={
+                      detailImages.length > 0 &&
+                      detailImages.every((img) => checkedImageIds.has(img.id))
+                    }
+                    ref={(el) => {
+                      if (!el) return;
+                      const some = detailImages.some((img) => checkedImageIds.has(img.id));
+                      const all =
+                        detailImages.length > 0 &&
+                        detailImages.every((img) => checkedImageIds.has(img.id));
+                      el.indeterminate = some && !all;
+                    }}
+                    onChange={() => {
+                      const all =
+                        detailImages.length > 0 &&
+                        detailImages.every((img) => checkedImageIds.has(img.id));
+                      setCheckedImageIds(
+                        all ? new Set() : new Set(detailImages.map((img) => img.id))
+                      );
+                    }}
+                    aria-label="Select all screenshots"
+                  />
+                  All
+                </label>
               ) : null}
             </div>
+            {checkedImageIds.size > 0 ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={bulkDeletingImages || Boolean(deletingImageId)}
+                  onClick={() => void handleDeleteCheckedImages()}
+                  className={`${saBtnGhost} border-rose-200 text-rose-700 hover:bg-rose-50`}
+                >
+                  {bulkDeletingImages
+                    ? "Deleting…"
+                    : `Delete selected (${checkedImageIds.size})`}
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkDeletingImages}
+                  onClick={() => setCheckedImageIds(new Set())}
+                  className={saBtnGhost}
+                >
+                  Clear
+                </button>
+              </div>
+            ) : null}
           </div>
 
           {detail ? (
@@ -1117,27 +1404,43 @@ export default function SuperAdminApplicationCapturesWorkspace({
               <div className="space-y-4">
                 {detailImages.map((image, index) => {
                   const deletingThis = deletingImageId === image.id;
+                  const checked = checkedImageIds.has(image.id);
+                  const busy = bulkDeletingImages || Boolean(deletingImageId);
                   return (
                     <div
                       key={image.id}
-                      className="group overflow-hidden rounded-xl border border-slate-200 bg-white transition hover:border-teal-300"
+                      className={`group overflow-hidden rounded-xl border bg-white transition ${
+                        checked
+                          ? "border-teal-300 ring-1 ring-teal-100"
+                          : "border-slate-200 hover:border-teal-300"
+                      }`}
                     >
                       <div
                         className={`${saMono} flex items-center justify-between gap-2 px-3 py-2 text-[11px] text-slate-400`}
                       >
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <input
+                            type="checkbox"
+                            className="h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
+                            checked={checked}
+                            disabled={busy}
+                            onChange={() => toggleCheckedImage(image.id)}
+                            aria-label={`Select slice ${index + 1}`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setLightboxIndex(index)}
+                            className="min-w-0 flex-1 text-left"
+                          >
+                            <span>Slice {index + 1}</span>
+                            <span className="ml-2 text-teal-700 opacity-0 transition group-hover:opacity-100">
+                              Open full size
+                            </span>
+                          </button>
+                        </div>
                         <button
                           type="button"
-                          onClick={() => setLightboxIndex(index)}
-                          className="min-w-0 flex-1 text-left"
-                        >
-                          <span>Slice {index + 1}</span>
-                          <span className="ml-2 text-teal-700 opacity-0 transition group-hover:opacity-100">
-                            Open full size
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          disabled={deletingThis || Boolean(deletingImageId)}
+                          disabled={busy}
                           onClick={() => void handleDeleteImage(image, index)}
                           className={`${saBtnGhost} h-7 shrink-0 border-rose-200 px-2 text-[10px] text-rose-700 hover:bg-rose-50`}
                         >
@@ -1176,7 +1479,7 @@ export default function SuperAdminApplicationCapturesWorkspace({
             detail ? () => void refreshSignedUrls(detail.id) : undefined
           }
           onDeleteImage={(image, index) => void handleDeleteImage(image, index)}
-          deleting={Boolean(deletingImageId)}
+          deleting={bulkDeletingImages || Boolean(deletingImageId)}
         />
       ) : null}
     </div>
