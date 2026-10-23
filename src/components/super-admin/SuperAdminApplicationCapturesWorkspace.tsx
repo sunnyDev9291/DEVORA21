@@ -41,6 +41,8 @@ import {
   captureSessionActivityIso,
   displayCaptureOwnerName,
   mergeCaptureSession,
+  nearestLightboxIndex,
+  removeCaptureImageFromSession,
   sortCaptureSessionsRecent,
   superAdminApplicationCapturesApi,
   upsertCaptureSessionList,
@@ -136,12 +138,16 @@ function Lightbox({
   onClose,
   onIndexChange,
   onImageExpire,
+  onDeleteImage,
+  deleting,
 }: {
   images: ApplicationCaptureImage[];
   index: number;
   onClose: () => void;
   onIndexChange: (next: number) => void;
   onImageExpire?: () => void;
+  onDeleteImage?: (image: ApplicationCaptureImage, index: number) => void;
+  deleting?: boolean;
 }) {
   const image = images[index];
   const titleId = useId();
@@ -179,9 +185,21 @@ function Lightbox({
               </span>
             ) : null}
           </p>
-          <button type="button" onClick={onClose} className={saBtnGhost}>
-            Close
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {onDeleteImage ? (
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => onDeleteImage(image, index)}
+                className={`${saBtnGhost} border-rose-200 text-rose-700 hover:bg-rose-50`}
+              >
+                {deleting ? "Deleting…" : "Delete screenshot"}
+              </button>
+            ) : null}
+            <button type="button" onClick={onClose} className={saBtnGhost}>
+              Close
+            </button>
+          </div>
         </div>
         <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-slate-50 p-3">
           <CaptureThumb
@@ -196,7 +214,7 @@ function Lightbox({
           <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-4 py-3">
             <button
               type="button"
-              disabled={index <= 0}
+              disabled={index <= 0 || deleting}
               onClick={() => onIndexChange(index - 1)}
               className={saBtnGhost}
             >
@@ -204,7 +222,7 @@ function Lightbox({
             </button>
             <button
               type="button"
-              disabled={index >= images.length - 1}
+              disabled={index >= images.length - 1 || deleting}
               onClick={() => onIndexChange(index + 1)}
               className={saBtnGhost}
             >
@@ -271,7 +289,8 @@ export default function SuperAdminApplicationCapturesWorkspace({
   const [detail, setDetail] = useState<AdminApplicationCaptureSession | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
-  const [deleting, setDeleting] = useState(false);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
+  const [deletingImageId, setDeletingImageId] = useState<string | null>(null);
   const [toast, setToast] = useState("");
   const [outsideFilterHint, setOutsideFilterHint] = useState("");
   const [flashIds, setFlashIds] = useState<Record<string, number>>({});
@@ -283,11 +302,13 @@ export default function SuperAdminApplicationCapturesWorkspace({
   const timezoneRef = useRef(timezone);
   const selectedSessionIdRef = useRef(selectedSessionId);
   const lightboxIndexRef = useRef(lightboxIndex);
+  const detailRef = useRef(detail);
   selectedUserIdRef.current = selectedUserId;
   dateYmdRef.current = dateYmd;
   timezoneRef.current = timezone;
   selectedSessionIdRef.current = selectedSessionId;
   lightboxIndexRef.current = lightboxIndex;
+  detailRef.current = detail;
 
   const filteredOwners = useMemo(() => {
     const q = ownerQ.trim().toLowerCase();
@@ -515,22 +536,100 @@ export default function SuperAdminApplicationCapturesWorkspace({
       });
   }, []);
 
+  const clearSelectedSessionLocally = useCallback((message?: string) => {
+    setSelectedSessionId(null);
+    setDetail(null);
+    setLightboxIndex(null);
+    if (message) setToast(message);
+  }, []);
+
+  const applySessionRemoved = useCallback(
+    (sessionId: string, message?: string) => {
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      if (selectedSessionIdRef.current === sessionId) {
+        clearSelectedSessionLocally(message ?? "Capture deleted.");
+      }
+    },
+    [clearSelectedSessionLocally]
+  );
+
+  const applyImageRemovedLocally = useCallback(
+    (sessionId: string, imageId: string, nextSession?: AdminApplicationCaptureSession | null) => {
+      const isSelected = selectedSessionIdRef.current === sessionId;
+
+      if (nextSession === null) {
+        applySessionRemoved(sessionId, "Capture deleted.");
+        return;
+      }
+
+      setSessions((prev) => {
+        const existing = prev.find((s) => s.id === sessionId);
+        // Unrelated session not in the open profile/day list — leave list alone.
+        if (!existing && !isSelected) return prev;
+        const next =
+          nextSession ??
+          (existing ? removeCaptureImageFromSession(existing, imageId) : null);
+        if (!next) return prev.filter((s) => s.id !== sessionId);
+        return upsertCaptureSessionList(
+          prev.filter((s) => s.id !== sessionId),
+          next
+        );
+      });
+
+      if (!isSelected) return;
+
+      const fromDetail =
+        detailRef.current?.id === sessionId ? detailRef.current : null;
+      const updated =
+        nextSession ??
+        (fromDetail ? removeCaptureImageFromSession(fromDetail, imageId) : null);
+
+      if (updated === null && fromDetail) {
+        // Last image removed locally → session is gone.
+        clearSelectedSessionLocally("Capture deleted.");
+        return;
+      }
+
+      if (updated) {
+        const deletedIndex =
+          fromDetail?.images.findIndex((img) => img.id === imageId) ?? -1;
+        const openIdx = lightboxIndexRef.current;
+        setDetail(updated);
+        setDetailError("");
+        if (openIdx != null) {
+          const base = deletedIndex >= 0 ? deletedIndex : openIdx;
+          setLightboxIndex(nearestLightboxIndex(base, updated.images.length));
+        }
+        return;
+      }
+
+      // Selected but no local detail rows yet — refetch; do not steal selection.
+      hydrateSessionDetail(sessionId);
+    },
+    [applySessionRemoved, clearSelectedSessionLocally, hydrateSessionDetail]
+  );
+
   const handleLiveEvent = useCallback(
     (event: ApplicationCapturesLiveEvent) => {
       if (event.kind === "ready") return;
 
       if (event.kind === "session.deleted") {
         const { sessionId, userId } = event;
-        setSessions((prev) => prev.filter((s) => s.id !== sessionId));
-        if (selectedSessionIdRef.current === sessionId) {
-          setSelectedSessionId(null);
-          setDetail(null);
-          setLightboxIndex(null);
-          setToast("Capture deleted.");
-        }
+        applySessionRemoved(sessionId, "Capture deleted.");
         if (userId && userId === selectedUserIdRef.current) {
           setOutsideFilterHint("");
         }
+        return;
+      }
+
+      if (event.kind === "image.deleted") {
+        const { sessionId, imageId, session, sessionDeleted } = event;
+        if (sessionDeleted || session === null) {
+          applySessionRemoved(sessionId, "Capture deleted.");
+          return;
+        }
+        applyImageRemovedLocally(sessionId, imageId, session);
+        flashSession(sessionId);
         return;
       }
 
@@ -543,13 +642,14 @@ export default function SuperAdminApplicationCapturesWorkspace({
       const matchesDay = sessionMatchesDay(session, openDay, openTz);
       const sparsePayload = session.images.length === 0 && session.sliceCount > 0;
 
-      // Always refresh open detail for this session id; keep lightbox selection.
+      // Only touch open detail when this session is selected — never steal selection.
       if (selectedSessionIdRef.current === session.id) {
         setDetail((prev) => mergeCaptureSession(prev, session));
         setDetailError("");
-        if (session.images.length > 0) {
+        if (session.images.length > 0 || session.sliceCount === 0) {
           setLightboxIndex((idx) => {
             if (idx == null) return null;
+            if (session.images.length === 0) return null;
             return Math.min(idx, session.images.length - 1);
           });
         }
@@ -577,7 +677,7 @@ export default function SuperAdminApplicationCapturesWorkspace({
       );
       flashSession(session.id);
     },
-    [flashSession, hydrateSessionDetail]
+    [applyImageRemovedLocally, applySessionRemoved, flashSession, hydrateSessionDetail]
   );
 
   const liveStatus = useApplicationCapturesLive({
@@ -594,22 +694,68 @@ export default function SuperAdminApplicationCapturesWorkspace({
     setOwnerQ(draftOwnerQ.trim());
   }
 
-  async function handleDeleteSelected() {
-    if (!selectedSessionId || !detail) return;
-    const label = captureSessionTitle(detail);
-    if (!window.confirm(`Delete “${label}”? Soft-deletes this capture session.`)) return;
+  async function handleDeleteSession(session: AdminApplicationCaptureSession) {
+    const label = captureSessionTitle(session);
+    if (
+      !window.confirm(
+        `Delete URL session “${label}”? This removes the capture and all screenshot slices.`
+      )
+    ) {
+      return;
+    }
 
-    setDeleting(true);
+    setDeletingSessionId(session.id);
     setToast("");
+    setSessionsError("");
     try {
-      await superAdminApplicationCapturesApi.deleteSession(selectedSessionId);
-      setToast("Capture deleted.");
-      setLightboxIndex(null);
-      await loadSessions(selectedUserId || "", dateYmd, timezone);
+      await superAdminApplicationCapturesApi.deleteSession(session.id);
+      applySessionRemoved(session.id, "Capture deleted.");
     } catch (err) {
-      setDetailError(getApiErrorMessage(err, "Could not delete capture."));
+      const message = getApiErrorMessage(err, "Could not delete capture session.");
+      if (selectedSessionIdRef.current === session.id) {
+        setDetailError(message);
+      } else {
+        setSessionsError(message);
+      }
     } finally {
-      setDeleting(false);
+      setDeletingSessionId(null);
+    }
+  }
+
+  async function handleDeleteImage(image: ApplicationCaptureImage, index: number) {
+    if (!selectedSessionId || !detail) return;
+    if (
+      !window.confirm(
+        `Delete screenshot slice ${index + 1}? This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    setDeletingImageId(image.id);
+    setToast("");
+    setDetailError("");
+    try {
+      const result = await superAdminApplicationCapturesApi.deleteImage(
+        selectedSessionId,
+        image.id
+      );
+      if (result.sessionDeleted) {
+        applySessionRemoved(selectedSessionId, "Capture deleted.");
+        return;
+      }
+      if (result.session) {
+        applyImageRemovedLocally(selectedSessionId, image.id, result.session);
+        setToast("Screenshot deleted.");
+        return;
+      }
+      // No session body — strip locally; clears selection if that was the last slice.
+      applyImageRemovedLocally(selectedSessionId, image.id);
+      setToast("Screenshot deleted.");
+    } catch (err) {
+      setDetailError(getApiErrorMessage(err, "Could not delete screenshot."));
+    } finally {
+      setDeletingImageId(null);
     }
   }
 
@@ -837,48 +983,66 @@ export default function SuperAdminApplicationCapturesWorkspace({
                 const active = session.id === selectedSessionId;
                 const flashing = Boolean(flashIds[session.id]);
                 const thumb = session.images[0]?.imageUrl;
+                const deletingThis = deletingSessionId === session.id;
                 return (
                   <li key={session.id}>
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected={active}
-                      onClick={() => {
-                        setSelectedSessionId(session.id);
-                        setToast("");
-                      }}
-                      className={`flex w-full gap-3 px-3 py-3 text-left transition-colors duration-200 ${
+                    <div
+                      className={`flex gap-2 px-2 py-2 transition-colors duration-200 ${
                         active
                           ? "bg-teal-50 text-slate-900"
                           : "text-slate-700 hover:bg-slate-50"
                       } ${flashing ? "sa-live-flash" : ""}`}
                     >
-                      <CaptureThumb
-                        src={thumb}
-                        alt=""
-                        className="h-14 w-20 shrink-0 rounded-lg"
-                        onExpire={() => void refreshSignedUrls(session.id)}
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span
-                          className={`block truncate text-sm font-medium ${
-                            active ? "text-teal-900" : "text-slate-900"
-                          }`}
-                        >
-                          {captureSessionTitle(session)}
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        onClick={() => {
+                          setSelectedSessionId(session.id);
+                          setToast("");
+                        }}
+                        className="flex min-w-0 flex-1 gap-3 px-1 py-1 text-left"
+                      >
+                        <CaptureThumb
+                          src={thumb}
+                          alt=""
+                          className="h-14 w-20 shrink-0 rounded-lg"
+                          onExpire={() => void refreshSignedUrls(session.id)}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span
+                            className={`block truncate text-sm font-medium ${
+                              active ? "text-teal-900" : "text-slate-900"
+                            }`}
+                          >
+                            {captureSessionTitle(session)}
+                          </span>
+                          <span className={`${saMono} mt-0.5 block truncate text-[11px] text-slate-400`}>
+                            {hostnameFromCaptureUrl(session.tabUrl)}
+                          </span>
+                          <span className={`${saMono} mt-1 block text-[11px] text-slate-400`}>
+                            {formatEstTime(captureSessionActivityIso(session)) ||
+                              formatEstDateTime(captureSessionActivityIso(session)) ||
+                              "—"}
+                            <span className="mx-1.5 opacity-40">·</span>
+                            {session.sliceCount} slice{session.sliceCount === 1 ? "" : "s"}
+                          </span>
                         </span>
-                        <span className={`${saMono} mt-0.5 block truncate text-[11px] text-slate-400`}>
-                          {hostnameFromCaptureUrl(session.tabUrl)}
-                        </span>
-                        <span className={`${saMono} mt-1 block text-[11px] text-slate-400`}>
-                          {formatEstTime(captureSessionActivityIso(session)) ||
-                            formatEstDateTime(captureSessionActivityIso(session)) ||
-                            "—"}
-                          <span className="mx-1.5 opacity-40">·</span>
-                          {session.sliceCount} slice{session.sliceCount === 1 ? "" : "s"}
-                        </span>
-                      </span>
-                    </button>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deletingThis || Boolean(deletingSessionId)}
+                        title="Delete URL session"
+                        aria-label={`Delete URL session ${captureSessionTitle(session)}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleDeleteSession(session);
+                        }}
+                        className={`${saBtnGhost} h-8 shrink-0 self-start border-rose-200 px-2 text-[10px] text-rose-700 hover:bg-rose-50`}
+                      >
+                        {deletingThis ? "…" : "Delete"}
+                      </button>
+                    </div>
                   </li>
                 );
               })
@@ -888,7 +1052,7 @@ export default function SuperAdminApplicationCapturesWorkspace({
 
         {/* Right — screenshots */}
         <section className={`${saCard} flex min-w-0 flex-1 flex-col overflow-hidden`}>
-          <div className="flex items-start justify-between gap-3 border-b border-slate-100 p-4">
+          <div className="border-b border-slate-100 p-4">
             <div className="min-w-0">
               <p className={saEyebrow}>Screenshots</p>
               <h2 className={`${saDisplay} mt-2 truncate text-lg font-bold text-slate-900`}>
@@ -911,16 +1075,6 @@ export default function SuperAdminApplicationCapturesWorkspace({
                 </a>
               ) : null}
             </div>
-            {detail ? (
-              <button
-                type="button"
-                disabled={deleting}
-                onClick={() => void handleDeleteSelected()}
-                className={`${saBtnGhost} shrink-0 border-rose-200 text-rose-700 hover:bg-rose-50`}
-              >
-                {deleting ? "Deleting…" : "Delete"}
-              </button>
-            ) : null}
           </div>
 
           {detail ? (
@@ -961,30 +1115,51 @@ export default function SuperAdminApplicationCapturesWorkspace({
               </p>
             ) : (
               <div className="space-y-4">
-                {detailImages.map((image, index) => (
-                  <button
-                    key={image.id}
-                    type="button"
-                    onClick={() => setLightboxIndex(index)}
-                    className="group block w-full overflow-hidden rounded-xl border border-slate-200 bg-white text-left transition hover:border-teal-300"
-                  >
+                {detailImages.map((image, index) => {
+                  const deletingThis = deletingImageId === image.id;
+                  return (
                     <div
-                      className={`${saMono} flex items-center justify-between px-3 py-2 text-[11px] text-slate-400`}
+                      key={image.id}
+                      className="group overflow-hidden rounded-xl border border-slate-200 bg-white transition hover:border-teal-300"
                     >
-                      <span>Slice {index + 1}</span>
-                      <span className="text-teal-700 opacity-0 transition group-hover:opacity-100">
-                        Open full size
-                      </span>
+                      <div
+                        className={`${saMono} flex items-center justify-between gap-2 px-3 py-2 text-[11px] text-slate-400`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setLightboxIndex(index)}
+                          className="min-w-0 flex-1 text-left"
+                        >
+                          <span>Slice {index + 1}</span>
+                          <span className="ml-2 text-teal-700 opacity-0 transition group-hover:opacity-100">
+                            Open full size
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={deletingThis || Boolean(deletingImageId)}
+                          onClick={() => void handleDeleteImage(image, index)}
+                          className={`${saBtnGhost} h-7 shrink-0 border-rose-200 px-2 text-[10px] text-rose-700 hover:bg-rose-50`}
+                        >
+                          {deletingThis ? "Deleting…" : "Delete"}
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setLightboxIndex(index)}
+                        className="block w-full text-left"
+                      >
+                        <CaptureThumb
+                          src={image.imageUrl}
+                          alt={`${captureSessionTitle(detail!)} slice ${index + 1}`}
+                          fit="contain"
+                          className="max-h-[70vh] w-full bg-slate-50"
+                          onExpire={() => void refreshSignedUrls(detail!.id)}
+                        />
+                      </button>
                     </div>
-                    <CaptureThumb
-                      src={image.imageUrl}
-                      alt={`${captureSessionTitle(detail!)} slice ${index + 1}`}
-                      fit="contain"
-                      className="max-h-[70vh] w-full bg-slate-50"
-                      onExpire={() => void refreshSignedUrls(detail!.id)}
-                    />
-                  </button>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1000,6 +1175,8 @@ export default function SuperAdminApplicationCapturesWorkspace({
           onImageExpire={
             detail ? () => void refreshSignedUrls(detail.id) : undefined
           }
+          onDeleteImage={(image, index) => void handleDeleteImage(image, index)}
+          deleting={Boolean(deletingImageId)}
         />
       ) : null}
     </div>

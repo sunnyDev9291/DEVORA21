@@ -262,6 +262,54 @@ export const superAdminApplicationCapturesApi = {
       method: "DELETE",
     });
   },
+
+  /**
+   * Delete one screenshot slice.
+   * When the last image is removed the backend may soft-delete the session
+   * (`sessionDeleted: true` or `session: null`).
+   */
+  async deleteImage(
+    sessionId: string,
+    imageId: string
+  ): Promise<DeleteCaptureImageResult> {
+    const sid = sessionId.trim();
+    const iid = imageId.trim();
+    if (!sid) throw new ApiError("Missing capture id.", 400);
+    if (!iid) throw new ApiError("Missing image id.", 400);
+
+    const data = await adminJson(
+      `/admin/application-captures/${encodeURIComponent(sid)}/images/${encodeURIComponent(iid)}`,
+      { method: "DELETE" }
+    );
+
+    const sessionDeleted =
+      data.sessionDeleted === true ||
+      data.session_deleted === true ||
+      data.deletedSession === true ||
+      data.session === null;
+
+    if (sessionDeleted) {
+      return { sessionDeleted: true, session: null };
+    }
+
+    const sessionRaw = data.session ?? data.capture ?? null;
+    const session =
+      sessionRaw && typeof sessionRaw === "object"
+        ? parseAdminCaptureSession(sessionRaw)
+        : null;
+
+    if (session) {
+      return { sessionDeleted: false, session };
+    }
+
+    // No session payload — treat as image-only delete; caller removes locally.
+    return { sessionDeleted: false, session: null };
+  },
+};
+
+export type DeleteCaptureImageResult = {
+  sessionDeleted: boolean;
+  session: AdminApplicationCaptureSession | null;
 };
 
 export function captureSessionActivityIso(
@@ -292,25 +340,65 @@ export function mergeCaptureSession(
   incoming: AdminApplicationCaptureSession
 ): AdminApplicationCaptureSession {
   if (!prev || prev.id !== incoming.id) return incoming;
+  // Keep prior images only when the update is summary-only (sliceCount > 0, no rows).
   const images =
-    incoming.images.length > 0
+    incoming.images.length > 0 || incoming.sliceCount === 0
       ? incoming.images
       : prev.images;
   return {
     ...prev,
     ...incoming,
     images,
-    sliceCount: Math.max(incoming.sliceCount, images.length, prev.sliceCount),
+    sliceCount:
+      incoming.images.length > 0 || incoming.sliceCount === 0
+        ? Math.max(incoming.sliceCount, images.length)
+        : Math.max(incoming.sliceCount, images.length, prev.sliceCount),
     owner: incoming.owner ?? prev.owner,
     pageTitle: incoming.pageTitle ?? prev.pageTitle,
   };
+}
+
+/** Remove one image from a session snapshot; returns null if nothing left. */
+export function removeCaptureImageFromSession(
+  session: AdminApplicationCaptureSession,
+  imageId: string
+): AdminApplicationCaptureSession | null {
+  const images = session.images
+    .filter((img) => img.id !== imageId)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+  if (images.length === 0) return null;
+  return {
+    ...session,
+    images,
+    sliceCount: images.length,
+  };
+}
+
+/** After deleting the image at `deletedIndex`, stay on nearest remaining slice. */
+export function nearestLightboxIndex(
+  deletedIndex: number,
+  remainingCount: number
+): number | null {
+  if (remainingCount <= 0) return null;
+  if (deletedIndex < 0) return 0;
+  return Math.min(deletedIndex, remainingCount - 1);
 }
 
 export type ApplicationCapturesLiveEvent =
   | { kind: "ready"; at?: string }
   | { kind: "session.created"; at?: string; session: AdminApplicationCaptureSession }
   | { kind: "session.updated"; at?: string; session: AdminApplicationCaptureSession }
-  | { kind: "session.deleted"; at?: string; sessionId: string; userId?: string };
+  | { kind: "session.deleted"; at?: string; sessionId: string; userId?: string }
+  | {
+      kind: "image.deleted";
+      at?: string;
+      sessionId: string;
+      imageId: string;
+      userId?: string;
+      /** Present when backend also sends the remaining session (or null if session gone). */
+      session?: AdminApplicationCaptureSession | null;
+      sessionDeleted?: boolean;
+    };
 
 export function parseApplicationCapturesLiveEvent(
   eventName: string,
@@ -347,6 +435,40 @@ export function parseApplicationCapturesLiveEvent(
         : "") ||
       undefined;
     return { kind: "session.deleted", at, sessionId, ...(userId ? { userId } : {}) };
+  }
+
+  if (type === "image.deleted") {
+    const sessionId =
+      pickString(row, "sessionId", "session_id") ||
+      (row.session && typeof row.session === "object"
+        ? pickString(row.session as Record<string, unknown>, "id")
+        : "");
+    const imageId =
+      pickString(row, "imageId", "image_id", "id") ||
+      (row.image && typeof row.image === "object"
+        ? pickString(row.image as Record<string, unknown>, "id")
+        : "");
+    if (!sessionId || !imageId) return null;
+    const userId = pickString(row, "userId", "user_id") || undefined;
+    const sessionDeleted =
+      row.sessionDeleted === true ||
+      row.session_deleted === true ||
+      row.session === null;
+    let session: AdminApplicationCaptureSession | null | undefined;
+    if (sessionDeleted) {
+      session = null;
+    } else if (row.session && typeof row.session === "object") {
+      session = parseAdminCaptureSession(row.session);
+    }
+    return {
+      kind: "image.deleted",
+      at,
+      sessionId,
+      imageId,
+      ...(userId ? { userId } : {}),
+      ...(session !== undefined ? { session } : {}),
+      ...(sessionDeleted ? { sessionDeleted: true } : {}),
+    };
   }
 
   return null;
