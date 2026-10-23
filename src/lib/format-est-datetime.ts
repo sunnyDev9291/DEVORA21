@@ -78,11 +78,32 @@ export function formatEstYmd(date: Date = new Date()): string {
   return EST_YMD_FORMATTER.format(date);
 }
 
+/** Calendar date in an IANA timezone as `YYYY-MM-DD`. */
+export function formatYmdInTimezone(date: Date = new Date(), timeZone: string = EST_TZ): string {
+  const tz = timeZone.trim() || EST_TZ;
+  if (tz === EST_TZ) return formatEstYmd(date);
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+  } catch {
+    return formatEstYmd(date);
+  }
+}
+
 /** True when the ISO timestamp falls on the given Eastern calendar day (`YYYY-MM-DD`). */
 export function isIsoOnEstYmd(iso: string, ymd: string): boolean {
+  return isIsoOnYmd(iso, ymd, EST_TZ);
+}
+
+/** True when the ISO timestamp falls on `ymd` in the given IANA timezone. */
+export function isIsoOnYmd(iso: string, ymd: string, timeZone: string = EST_TZ): boolean {
   const date = parseIso(iso);
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return false;
-  return formatEstYmd(date) === ymd;
+  return formatYmdInTimezone(date, timeZone) === ymd;
 }
 
 /** Compact Eastern time only, e.g. `3:30 PM EDT`. */

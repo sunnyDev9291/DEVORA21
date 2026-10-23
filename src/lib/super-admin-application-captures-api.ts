@@ -115,7 +115,7 @@ function parseSessionOwner(raw: unknown): ApplicationCaptureSessionOwner | undef
   };
 }
 
-function parseSession(raw: unknown): AdminApplicationCaptureSession | null {
+export function parseAdminCaptureSession(raw: unknown): AdminApplicationCaptureSession | null {
   if (!raw || typeof raw !== "object") return null;
   const row = raw as Record<string, unknown>;
   const id = pickString(row, "id");
@@ -206,6 +206,8 @@ export const superAdminApplicationCapturesApi = {
   async listSessions(params: {
     userId?: string;
     q?: string;
+    date?: string;
+    timezone?: string;
     page?: number;
     limit?: number;
   } = {}): Promise<AdminApplicationCaptureListResponse> {
@@ -216,6 +218,8 @@ export const superAdminApplicationCapturesApi = {
     search.set("limit", String(limit));
     if (params.userId?.trim()) search.set("userId", params.userId.trim());
     if (params.q?.trim()) search.set("q", params.q.trim());
+    if (params.date?.trim()) search.set("date", params.date.trim());
+    if (params.timezone?.trim()) search.set("timezone", params.timezone.trim());
 
     const data = await adminJson(`/admin/application-captures?${search.toString()}`);
     const sessionsRaw = Array.isArray(data.sessions)
@@ -225,7 +229,7 @@ export const superAdminApplicationCapturesApi = {
         : [];
 
     const sessions = sessionsRaw
-      .map(parseSession)
+      .map(parseAdminCaptureSession)
       .filter((s): s is AdminApplicationCaptureSession => Boolean(s));
 
     const total = toNumber(data.total, sessions.length);
@@ -246,7 +250,7 @@ export const superAdminApplicationCapturesApi = {
     const sid = id.trim();
     if (!sid) throw new ApiError("Missing capture id.", 400);
     const data = await adminJson(`/admin/application-captures/${encodeURIComponent(sid)}`);
-    const session = parseSession(data.session ?? data);
+    const session = parseAdminCaptureSession(data.session ?? data);
     if (!session) throw new ApiError("Capture session not found.", 404, { message: "Capture session not found." });
     return session;
   },
@@ -259,3 +263,126 @@ export const superAdminApplicationCapturesApi = {
     });
   },
 };
+
+export function captureSessionActivityIso(
+  session: Pick<AdminApplicationCaptureSession, "capturedAt" | "updatedAt" | "createdAt">
+): string {
+  return session.capturedAt || session.updatedAt || session.createdAt || "";
+}
+
+export function sortCaptureSessionsRecent(
+  sessions: AdminApplicationCaptureSession[]
+): AdminApplicationCaptureSession[] {
+  return [...sessions].sort((a, b) =>
+    captureSessionActivityIso(b).localeCompare(captureSessionActivityIso(a))
+  );
+}
+
+export function upsertCaptureSessionList(
+  prev: AdminApplicationCaptureSession[],
+  session: AdminApplicationCaptureSession
+): AdminApplicationCaptureSession[] {
+  const without = prev.filter((s) => s.id !== session.id);
+  return sortCaptureSessionsRecent([session, ...without]);
+}
+
+/** Merge SSE/REST snapshots without wiping images when the payload is sparse. */
+export function mergeCaptureSession(
+  prev: AdminApplicationCaptureSession | null | undefined,
+  incoming: AdminApplicationCaptureSession
+): AdminApplicationCaptureSession {
+  if (!prev || prev.id !== incoming.id) return incoming;
+  const images =
+    incoming.images.length > 0
+      ? incoming.images
+      : prev.images;
+  return {
+    ...prev,
+    ...incoming,
+    images,
+    sliceCount: Math.max(incoming.sliceCount, images.length, prev.sliceCount),
+    owner: incoming.owner ?? prev.owner,
+    pageTitle: incoming.pageTitle ?? prev.pageTitle,
+  };
+}
+
+export type ApplicationCapturesLiveEvent =
+  | { kind: "ready"; at?: string }
+  | { kind: "session.created"; at?: string; session: AdminApplicationCaptureSession }
+  | { kind: "session.updated"; at?: string; session: AdminApplicationCaptureSession }
+  | { kind: "session.deleted"; at?: string; sessionId: string; userId?: string };
+
+export function parseApplicationCapturesLiveEvent(
+  eventName: string,
+  data: unknown
+): ApplicationCapturesLiveEvent | null {
+  const row =
+    data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+  const at = pickString(row, "at") || undefined;
+  const type =
+    pickString(row, "type") ||
+    (eventName && eventName !== "message" ? eventName.trim() : "");
+
+  if (type === "ready") {
+    return { kind: "ready", at };
+  }
+
+  if (type === "session.created" || type === "session.updated") {
+    const session = parseAdminCaptureSession(row.session ?? row);
+    if (!session) return null;
+    return { kind: type, at, session };
+  }
+
+  if (type === "session.deleted") {
+    const sessionId =
+      pickString(row, "sessionId", "session_id", "id") ||
+      (row.session && typeof row.session === "object"
+        ? pickString(row.session as Record<string, unknown>, "id")
+        : "");
+    if (!sessionId) return null;
+    const userId =
+      pickString(row, "userId", "user_id") ||
+      (row.session && typeof row.session === "object"
+        ? pickString(row.session as Record<string, unknown>, "userId", "user_id")
+        : "") ||
+      undefined;
+    return { kind: "session.deleted", at, sessionId, ...(userId ? { userId } : {}) };
+  }
+
+  return null;
+}
+
+export type ApplicationCapturesStreamTicket = {
+  ticket: string;
+  expiresIn?: number;
+  streamPath: string;
+};
+
+/**
+ * Mint a short-lived SSE ticket using the same cookie/Bearer auth as other /admin calls.
+ * EventSource cannot set Authorization; ticket goes in the stream URL instead.
+ */
+export async function createApplicationCapturesStreamTicket(): Promise<ApplicationCapturesStreamTicket> {
+  const data = await adminJson("/admin/application-captures/stream-ticket", {
+    method: "POST",
+  });
+  const ticket =
+    pickString(data, "ticket", "streamTicket", "stream_ticket", "token") || "";
+  const streamPath =
+    pickString(data, "streamPath", "stream_path", "path", "url") ||
+    "/admin/application-captures/stream";
+  if (!ticket) {
+    throw new ApiError("Stream ticket missing from response.", 502);
+  }
+  const path = streamPath.startsWith("http")
+    ? streamPath
+    : streamPath.startsWith("/")
+      ? `${API_BASE_URL}${streamPath}`
+      : `${API_BASE_URL}/${streamPath}`;
+  const joiner = path.includes("?") ? "&" : "?";
+  return {
+    ticket,
+    expiresIn: toNumber(data.expiresIn ?? data.expires_in, 0) || undefined,
+    streamPath: `${path}${joiner}ticket=${encodeURIComponent(ticket)}&access_token=${encodeURIComponent(ticket)}&token=${encodeURIComponent(ticket)}`,
+  };
+}

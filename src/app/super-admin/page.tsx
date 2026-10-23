@@ -33,7 +33,7 @@ const modules = [
     href: `${AUTH_LINKS.superAdmin}/application-captures`,
     eyebrow: "Module 03",
     title: "Application Captures",
-    body: "Gallery of grayscale apply-page screenshots auto-uploaded by the Capture extension — filter by owner, preview slices, delete.",
+    body: "Live three-panel review: profile → date → capture session → screenshot slices from the Capture extension.",
     delay: "sa-animate-in-delay-2",
   },
 ] as const;
