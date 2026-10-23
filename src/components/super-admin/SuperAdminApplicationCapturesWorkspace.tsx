@@ -61,6 +61,9 @@ const TIMEZONE_OPTIONS = [
 
 const DEFAULT_TZ = EST_TZ;
 
+/** Screenshots panel shows one slice per page (full-height captures). */
+const SCREENSHOTS_PER_PAGE = 1;
+
 function statusBadgeClass(status: string): string {
   const key = status.toLowerCase();
   if (key === "uploaded" || key === "ready" || key === "complete") {
@@ -301,6 +304,7 @@ export default function SuperAdminApplicationCapturesWorkspace({
   const [outsideFilterHint, setOutsideFilterHint] = useState("");
   const [flashIds, setFlashIds] = useState<Record<string, number>>({});
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [screenshotPage, setScreenshotPage] = useState(1);
   const urlRefreshAttemptedRef = useRef<Set<string>>(new Set());
 
   function toggleCheckedSession(sessionId: string) {
@@ -472,9 +476,10 @@ export default function SuperAdminApplicationCapturesWorkspace({
     });
   }, [sessions]);
 
-  // Clear image multi-select when opening a different session.
+  // Clear image multi-select / screenshot page when opening a different session.
   useEffect(() => {
     setCheckedImageIds(new Set());
+    setScreenshotPage(1);
   }, [selectedSessionId]);
 
   // Drop stale image checks when detail images change.
@@ -922,7 +927,29 @@ export default function SuperAdminApplicationCapturesWorkspace({
     return dateYmd;
   }, [dateYmd, timezone]);
 
-  const detailImages = [...(detail?.images ?? [])].sort((a, b) => a.sortOrder - b.sortOrder);
+  const detailImages = useMemo(
+    () => [...(detail?.images ?? [])].sort((a, b) => a.sortOrder - b.sortOrder),
+    [detail?.images]
+  );
+
+  const screenshotTotalPages = Math.max(
+    1,
+    Math.ceil(detailImages.length / SCREENSHOTS_PER_PAGE)
+  );
+
+  const pagedScreenshotImages = useMemo(() => {
+    const page = Math.min(Math.max(1, screenshotPage), screenshotTotalPages);
+    const start = (page - 1) * SCREENSHOTS_PER_PAGE;
+    return detailImages.slice(start, start + SCREENSHOTS_PER_PAGE).map((image, offset) => ({
+      image,
+      index: start + offset,
+    }));
+  }, [detailImages, screenshotPage, screenshotTotalPages]);
+
+  // Keep screenshot page in range when images shrink (delete / live).
+  useEffect(() => {
+    setScreenshotPage((prev) => Math.min(Math.max(1, prev), screenshotTotalPages));
+  }, [screenshotTotalPages]);
 
   // Clamp lightbox if images shrink while open.
   useEffect(() => {
@@ -937,9 +964,9 @@ export default function SuperAdminApplicationCapturesWorkspace({
   }, [detailImages.length, lightboxIndex]);
 
   return (
-    <div className="mt-8 flex min-h-[74vh] flex-col gap-4">
+    <div className="mt-8 flex h-[calc(100vh-10.5rem)] min-h-[36rem] flex-col gap-4">
       {/* Top — date + timezone */}
-      <div className={`${saCard} flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-end`}>
+      <div className={`${saCard} flex shrink-0 flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-end`}>
         <div className="min-w-[11rem]">
           <label htmlFor="sa-cap-date" className={saLabel}>
             Capture date
@@ -997,7 +1024,7 @@ export default function SuperAdminApplicationCapturesWorkspace({
 
       {toast ? (
         <p
-          className={`${saMono} rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-[11px] text-teal-900`}
+          className={`${saMono} shrink-0 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-[11px] text-teal-900`}
           role="status"
         >
           {toast}
@@ -1006,7 +1033,7 @@ export default function SuperAdminApplicationCapturesWorkspace({
 
       {outsideFilterHint ? (
         <p
-          className={`${saMono} rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900`}
+          className={`${saMono} shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900`}
           role="status"
         >
           {outsideFilterHint}
@@ -1016,9 +1043,9 @@ export default function SuperAdminApplicationCapturesWorkspace({
       <div className="flex min-h-0 flex-1 flex-col gap-4 xl:flex-row xl:items-stretch">
         {/* Left — profiles / owners */}
         <aside
-          className={`${saCard} flex w-full shrink-0 flex-col overflow-hidden xl:w-[260px] 2xl:w-[300px]`}
+          className={`${saCard} flex min-h-0 w-full shrink-0 flex-col overflow-hidden max-xl:max-h-[40%] xl:h-full xl:w-[260px] 2xl:w-[300px]`}
         >
-          <div className="border-b border-slate-100 p-4">
+          <div className="shrink-0 border-b border-slate-100 p-4">
             <form onSubmit={handleOwnerSearch} className="space-y-2">
               <label htmlFor="sa-cap-owner-search" className={saLabel}>
                 Profiles
@@ -1044,12 +1071,16 @@ export default function SuperAdminApplicationCapturesWorkspace({
           </div>
 
           {ownersError ? (
-            <div className={`${saMono} ${saAlert} m-3 px-3 py-2 text-[11px]`} role="alert">
+            <div className={`${saMono} ${saAlert} m-3 shrink-0 px-3 py-2 text-[11px]`} role="alert">
               {ownersError}
             </div>
           ) : null}
 
-          <ul className="min-h-0 flex-1 overflow-y-auto py-1" role="listbox" aria-label="Capture owners">
+          <ul
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-1"
+            role="listbox"
+            aria-label="Capture owners"
+          >
             {ownersLoading && owners.length === 0 ? (
               <li className={`${saMono} px-4 py-8 text-center text-xs text-slate-400`}>
                 Loading…
@@ -1102,9 +1133,9 @@ export default function SuperAdminApplicationCapturesWorkspace({
 
         {/* Middle — sessions */}
         <section
-          className={`${saCard} flex w-full shrink-0 flex-col overflow-hidden xl:w-[320px] 2xl:w-[360px]`}
+          className={`${saCard} flex min-h-0 w-full shrink-0 flex-col overflow-hidden max-xl:max-h-[40%] xl:h-full xl:w-[320px] 2xl:w-[360px]`}
         >
-          <div className="border-b border-slate-100 p-4">
+          <div className="shrink-0 border-b border-slate-100 p-4">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className={saEyebrow}>Sessions</p>
@@ -1176,12 +1207,16 @@ export default function SuperAdminApplicationCapturesWorkspace({
           </div>
 
           {sessionsError ? (
-            <div className={`${saMono} ${saAlert} m-3 px-3 py-2 text-[11px]`} role="alert">
+            <div className={`${saMono} ${saAlert} m-3 shrink-0 px-3 py-2 text-[11px]`} role="alert">
               {sessionsError}
             </div>
           ) : null}
 
-          <ul className="min-h-0 flex-1 overflow-y-auto py-1" role="listbox" aria-label="Capture sessions">
+          <ul
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-1"
+            role="listbox"
+            aria-label="Capture sessions"
+          >
             {!selectedUserId ? (
               <li className={`${saMono} px-4 py-8 text-center text-xs text-slate-400`}>
                 Select a profile to load sessions.
@@ -1281,9 +1316,9 @@ export default function SuperAdminApplicationCapturesWorkspace({
           </ul>
         </section>
 
-        {/* Right — screenshots */}
-        <section className={`${saCard} flex min-w-0 flex-1 flex-col overflow-hidden`}>
-          <div className="border-b border-slate-100 p-4">
+        {/* Right — screenshots (paginated) */}
+        <section className={`${saCard} flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden xl:h-full`}>
+          <div className="shrink-0 border-b border-slate-100 p-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className={saEyebrow}>Screenshots</p>
@@ -1366,7 +1401,7 @@ export default function SuperAdminApplicationCapturesWorkspace({
 
           {detail ? (
             <div
-              className={`${saMono} flex flex-wrap gap-x-4 gap-y-1 border-b border-slate-100 px-4 py-3 text-[11px] text-slate-500`}
+              className={`${saMono} flex shrink-0 flex-wrap gap-x-4 gap-y-1 border-b border-slate-100 px-4 py-3 text-[11px] text-slate-500`}
             >
               <span>
                 {formatEstDateTime(detail.capturedAt) || detail.capturedAt || "—"}
@@ -1382,14 +1417,13 @@ export default function SuperAdminApplicationCapturesWorkspace({
             </div>
           ) : null}
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">
             {detailError ? (
               <p className={`${saAlert} ${saMono} px-4 py-3 text-xs`} role="alert">
                 {detailError}
               </p>
             ) : detailLoading && !detail ? (
               <div className="space-y-4 animate-pulse" aria-busy="true">
-                <div className="h-48 rounded-xl bg-slate-200" />
                 <div className="h-48 rounded-xl bg-slate-200" />
               </div>
             ) : !selectedSessionId ? (
@@ -1402,7 +1436,7 @@ export default function SuperAdminApplicationCapturesWorkspace({
               </p>
             ) : (
               <div className="space-y-4">
-                {detailImages.map((image, index) => {
+                {pagedScreenshotImages.map(({ image, index }) => {
                   const deletingThis = deletingImageId === image.id;
                   const checked = checkedImageIds.has(image.id);
                   const busy = bulkDeletingImages || Boolean(deletingImageId);
@@ -1432,7 +1466,9 @@ export default function SuperAdminApplicationCapturesWorkspace({
                             onClick={() => setLightboxIndex(index)}
                             className="min-w-0 flex-1 text-left"
                           >
-                            <span>Slice {index + 1}</span>
+                            <span>
+                              Slice {index + 1} of {detailImages.length}
+                            </span>
                             <span className="ml-2 text-teal-700 opacity-0 transition group-hover:opacity-100">
                               Open full size
                             </span>
@@ -1456,7 +1492,7 @@ export default function SuperAdminApplicationCapturesWorkspace({
                           src={image.imageUrl}
                           alt={`${captureSessionTitle(detail!)} slice ${index + 1}`}
                           fit="contain"
-                          className="max-h-[70vh] w-full bg-slate-50"
+                          className="max-h-[min(70vh,36rem)] w-full bg-slate-50"
                           onExpire={() => void refreshSignedUrls(detail!.id)}
                         />
                       </button>
@@ -1466,6 +1502,36 @@ export default function SuperAdminApplicationCapturesWorkspace({
               </div>
             )}
           </div>
+
+          {detailImages.length > 0 ? (
+            <div
+              className={`${saMono} flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-3 text-[11px] text-slate-500`}
+            >
+              <span>
+                Page {Math.min(screenshotPage, screenshotTotalPages)} of {screenshotTotalPages}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className={saBtnGhost}
+                  disabled={screenshotPage <= 1}
+                  onClick={() => setScreenshotPage((p) => Math.max(1, p - 1))}
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  className={saBtnGhost}
+                  disabled={screenshotPage >= screenshotTotalPages}
+                  onClick={() =>
+                    setScreenshotPage((p) => Math.min(screenshotTotalPages, p + 1))
+                  }
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          ) : null}
         </section>
       </div>
 
