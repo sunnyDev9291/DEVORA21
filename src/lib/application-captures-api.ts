@@ -10,6 +10,11 @@ export type ApplicationCaptureImage = {
   height: number;
   byteSize?: number;
   createdAt?: string;
+  /**
+   * Super Admin review flag. `false` = unread/new.
+   * Omitted/true = already reviewed (or legacy payload).
+   */
+  reviewed?: boolean;
 };
 
 export type ApplicationCaptureSession = {
@@ -20,6 +25,8 @@ export type ApplicationCaptureSession = {
   pageTitle: string | null;
   status: string;
   sliceCount: number;
+  /** Unreviewed screenshot count for Super Admin badges. */
+  uncheckedCount?: number;
   capturedAt: string;
   createdAt?: string;
   updatedAt?: string;
@@ -63,6 +70,16 @@ function parseImage(raw: unknown): ApplicationCaptureImage | null {
   const id = pickString(row, "id");
   const imageUrl = pickString(row, "imageUrl", "image_url", "url");
   if (!imageUrl) return null;
+  const reviewedRaw = row.reviewed ?? row.isReviewed ?? row.is_reviewed;
+  const reviewed =
+    typeof reviewedRaw === "boolean"
+      ? reviewedRaw
+      : reviewedRaw === "false" || reviewedRaw === 0
+        ? false
+        : reviewedRaw === "true" || reviewedRaw === 1
+          ? true
+          : undefined;
+
   return {
     id: id || `${pickNumber(row, "sortOrder", "sort_order")}-${imageUrl.slice(-24)}`,
     sortOrder: pickNumber(row, "sortOrder", "sort_order"),
@@ -75,6 +92,7 @@ function parseImage(raw: unknown): ApplicationCaptureImage | null {
     ...(pickString(row, "createdAt", "created_at")
       ? { createdAt: pickString(row, "createdAt", "created_at") }
       : {}),
+    ...(reviewed === undefined ? {} : { reviewed }),
   };
 }
 
@@ -103,6 +121,11 @@ function parseSession(raw: unknown): ApplicationCaptureSession | null {
     pageTitle,
     status: pickString(row, "status") || "uploaded",
     sliceCount: pickNumber(row, "sliceCount", "slice_count") || images.length,
+    ...(row.uncheckedCount != null || row.unchecked_count != null
+      ? {
+          uncheckedCount: pickNumber(row, "uncheckedCount", "unchecked_count"),
+        }
+      : {}),
     capturedAt:
       pickString(row, "capturedAt", "captured_at") ||
       pickString(row, "createdAt", "created_at"),

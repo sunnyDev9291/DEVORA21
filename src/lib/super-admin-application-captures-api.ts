@@ -12,6 +12,8 @@ export type ApplicationCaptureOwner = {
   name?: string;
   captureCount: number;
   lastCapturedAt?: string;
+  /** Sessions with at least one unreviewed screenshot. Hide badge when 0. */
+  uncheckedSessionCount: number;
 };
 
 export type ApplicationCaptureSessionOwner = {
@@ -79,6 +81,13 @@ async function adminJson(path: string, options: RequestInit = {}): Promise<Recor
   return data;
 }
 
+function parseReviewedFlag(raw: unknown): boolean | undefined {
+  if (typeof raw === "boolean") return raw;
+  if (raw === "false" || raw === 0) return false;
+  if (raw === "true" || raw === 1) return true;
+  return undefined;
+}
+
 function parseImage(raw: unknown): ApplicationCaptureImage | null {
   if (!raw || typeof raw !== "object") return null;
   const row = raw as Record<string, unknown>;
@@ -86,6 +95,7 @@ function parseImage(raw: unknown): ApplicationCaptureImage | null {
   if (!imageUrl) return null;
   const id = pickString(row, "id");
   const sortOrder = toNumber(row.sortOrder ?? row.sort_order, 0);
+  const reviewed = parseReviewedFlag(row.reviewed ?? row.isReviewed ?? row.is_reviewed);
   return {
     id: id || `${sortOrder}-${imageUrl.slice(-24)}`,
     sortOrder,
@@ -98,6 +108,7 @@ function parseImage(raw: unknown): ApplicationCaptureImage | null {
     ...(pickString(row, "createdAt", "created_at")
       ? { createdAt: pickString(row, "createdAt", "created_at") }
       : {}),
+    ...(reviewed === undefined ? {} : { reviewed }),
   };
 }
 
@@ -135,6 +146,14 @@ export function parseAdminCaptureSession(raw: unknown): AdminApplicationCaptureS
   const userId =
     pickString(row, "userId", "user_id") || owner?.userId || "";
 
+  const uncheckedFromImages = images.filter((img) => img.reviewed === false).length;
+  const uncheckedCount =
+    row.uncheckedCount != null || row.unchecked_count != null
+      ? toNumber(row.uncheckedCount ?? row.unchecked_count, uncheckedFromImages)
+      : images.length > 0
+        ? uncheckedFromImages
+        : undefined;
+
   return {
     id,
     userId,
@@ -145,6 +164,7 @@ export function parseAdminCaptureSession(raw: unknown): AdminApplicationCaptureS
     pageTitle,
     status: pickString(row, "status") || "uploaded",
     sliceCount: toNumber(row.sliceCount ?? row.slice_count, images.length),
+    ...(uncheckedCount === undefined ? {} : { uncheckedCount }),
     capturedAt:
       pickString(row, "capturedAt", "captured_at") ||
       pickString(row, "createdAt", "created_at"),
@@ -171,6 +191,10 @@ function parseOwner(raw: unknown): ApplicationCaptureOwner | null {
     captureCount: toNumber(row.captureCount ?? row.capture_count ?? row.count, 0),
     lastCapturedAt:
       pickString(row, "lastCapturedAt", "last_captured_at") || undefined,
+    uncheckedSessionCount: toNumber(
+      row.uncheckedSessionCount ?? row.unchecked_session_count,
+      0
+    ),
   };
 }
 
@@ -305,6 +329,32 @@ export const superAdminApplicationCapturesApi = {
     // No session payload — treat as image-only delete; caller removes locally.
     return { sessionDeleted: false, session: null };
   },
+
+  /**
+   * Mark one screenshot as reviewed (Super Admin).
+   * Returns the updated session (with uncheckedCount / image.reviewed).
+   */
+  async reviewImage(
+    sessionId: string,
+    imageId: string
+  ): Promise<AdminApplicationCaptureSession> {
+    const sid = sessionId.trim();
+    const iid = imageId.trim();
+    if (!sid) throw new ApiError("Missing capture id.", 400);
+    if (!iid) throw new ApiError("Missing image id.", 400);
+
+    const data = await adminJson(
+      `/admin/application-captures/${encodeURIComponent(sid)}/images/${encodeURIComponent(iid)}/review`,
+      { method: "POST" }
+    );
+    const session = parseAdminCaptureSession(data.session ?? data);
+    if (!session) {
+      throw new ApiError("Review response missing session.", 502, {
+        message: "Review response missing session.",
+      });
+    }
+    return session;
+  },
 };
 
 export type DeleteCaptureImageResult = {
@@ -345,6 +395,13 @@ export function mergeCaptureSession(
     incoming.images.length > 0 || incoming.sliceCount === 0
       ? incoming.images
       : prev.images;
+  const uncheckedCount =
+    incoming.uncheckedCount !== undefined
+      ? incoming.uncheckedCount
+      : incoming.images.length > 0
+        ? images.filter((img) => img.reviewed === false).length
+        : prev.uncheckedCount;
+
   return {
     ...prev,
     ...incoming,
@@ -353,9 +410,35 @@ export function mergeCaptureSession(
       incoming.images.length > 0 || incoming.sliceCount === 0
         ? Math.max(incoming.sliceCount, images.length)
         : Math.max(incoming.sliceCount, images.length, prev.sliceCount),
+    ...(uncheckedCount === undefined ? {} : { uncheckedCount }),
     owner: incoming.owner ?? prev.owner,
     pageTitle: incoming.pageTitle ?? prev.pageTitle,
   };
+}
+
+/** Adjust owner uncheckedSessionCount when a session's uncheckedCount crosses zero. */
+export function adjustOwnerUncheckedSessionCount(
+  owners: ApplicationCaptureOwner[],
+  userId: string,
+  prevUnchecked: number | undefined,
+  nextUnchecked: number | undefined
+): ApplicationCaptureOwner[] {
+  if (!userId) return owners;
+  const prevHas = (prevUnchecked ?? 0) > 0;
+  const nextHas = (nextUnchecked ?? 0) > 0;
+  if (prevHas === nextHas) return owners;
+  const delta = nextHas ? 1 : -1;
+  return owners.map((owner) => {
+    if (owner.userId !== userId) return owner;
+    return {
+      ...owner,
+      uncheckedSessionCount: Math.max(0, (owner.uncheckedSessionCount || 0) + delta),
+    };
+  });
+}
+
+export function isCaptureImageUnread(image: Pick<ApplicationCaptureImage, "reviewed">): boolean {
+  return image.reviewed === false;
 }
 
 /** Remove one image from a session snapshot; returns null if nothing left. */
@@ -371,6 +454,7 @@ export function removeCaptureImageFromSession(
     ...session,
     images,
     sliceCount: images.length,
+    uncheckedCount: images.filter((img) => img.reviewed === false).length,
   };
 }
 
@@ -398,6 +482,14 @@ export type ApplicationCapturesLiveEvent =
       /** Present when backend also sends the remaining session (or null if session gone). */
       session?: AdminApplicationCaptureSession | null;
       sessionDeleted?: boolean;
+    }
+  | {
+      kind: "image.reviewed";
+      at?: string;
+      sessionId: string;
+      imageId: string;
+      userId?: string;
+      session?: AdminApplicationCaptureSession;
     };
 
 export function parseApplicationCapturesLiveEvent(
@@ -468,6 +560,33 @@ export function parseApplicationCapturesLiveEvent(
       ...(userId ? { userId } : {}),
       ...(session !== undefined ? { session } : {}),
       ...(sessionDeleted ? { sessionDeleted: true } : {}),
+    };
+  }
+
+  if (type === "image.reviewed") {
+    const sessionId =
+      pickString(row, "sessionId", "session_id") ||
+      (row.session && typeof row.session === "object"
+        ? pickString(row.session as Record<string, unknown>, "id")
+        : "");
+    const imageId =
+      pickString(row, "imageId", "image_id") ||
+      (row.image && typeof row.image === "object"
+        ? pickString(row.image as Record<string, unknown>, "id")
+        : "");
+    if (!sessionId || !imageId) return null;
+    const userId = pickString(row, "userId", "user_id") || undefined;
+    const session =
+      row.session && typeof row.session === "object"
+        ? parseAdminCaptureSession(row.session)
+        : undefined;
+    return {
+      kind: "image.reviewed",
+      at,
+      sessionId,
+      imageId,
+      ...(userId ? { userId } : {}),
+      ...(session ? { session } : {}),
     };
   }
 
