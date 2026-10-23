@@ -28,6 +28,21 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // Retired Super Admin Application Q&A UI — keep bookmarks working.
+  async redirects() {
+    return [
+      {
+        source: "/super-admin/application-qa",
+        destination: "/super-admin",
+        permanent: true,
+      },
+      {
+        source: "/super-admin/application-qa/:path*",
+        destination: "/super-admin",
+        permanent: true,
+      },
+    ];
+  },
   // Ship the resume templates folder with the serverless functions so the
   // /api/templates routes can read it at runtime (e.g. on Netlify).
   outputFileTracingIncludes: {
