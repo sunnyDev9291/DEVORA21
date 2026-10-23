@@ -83,12 +83,15 @@ function CaptureThumb({
   alt,
   className = "",
   fit = "cover",
+  /** Scale image to parent bounds without overflowing (no scroll). */
+  fill = false,
   onExpire,
 }: {
   src?: string;
   alt: string;
   className?: string;
   fit?: "cover" | "contain";
+  fill?: boolean;
   onExpire?: () => void;
 }) {
   const [broken, setBroken] = useState(false);
@@ -99,10 +102,15 @@ function CaptureThumb({
     expireCalledRef.current = false;
   }, [src]);
 
+  const fitClass = fit === "contain" ? "object-contain" : "object-cover object-top";
+  const fillClass = fill
+    ? "absolute inset-0 m-auto h-full w-full max-h-full max-w-full"
+    : "";
+
   if (!src || broken) {
     return (
       <div
-        className={`flex items-center justify-center bg-slate-100 text-slate-400 ${className}`}
+        className={`flex items-center justify-center bg-slate-100 text-slate-400 ${fill ? "absolute inset-0" : ""} ${className}`}
         aria-hidden
       >
         <svg className="h-7 w-7 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -122,7 +130,7 @@ function CaptureThumb({
     <img
       src={src}
       alt={alt}
-      className={`${fit === "contain" ? "object-contain" : "object-cover object-top"} grayscale ${className}`}
+      className={`${fitClass} ${fillClass} grayscale ${className}`}
       loading="lazy"
       onError={() => {
         setBroken(true);
@@ -167,6 +175,9 @@ function Lightbox({
 
   if (!image) return null;
 
+  const canPrev = index > 0;
+  const canNext = index < images.length - 1;
+
   return (
     <div
       className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-sm"
@@ -176,10 +187,10 @@ function Lightbox({
       onClick={onClose}
     >
       <div
-        className="relative flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+        className="relative flex h-[min(92dvh,56rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
           <p id={titleId} className={`${saMono} text-xs text-slate-600`}>
             Slice {index + 1} of {images.length}
             {image.width && image.height ? (
@@ -204,35 +215,61 @@ function Lightbox({
             </button>
           </div>
         </div>
-        <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-slate-50 p-3">
+
+        <div className="relative min-h-0 flex-1 overflow-hidden bg-slate-50 p-3">
+          {images.length > 1 ? (
+            <button
+              type="button"
+              disabled={!canPrev || deleting}
+              aria-label="Previous screenshot"
+              onClick={() => onIndexChange(index - 1)}
+              className={`${saBtnGhost} absolute left-3 top-1/2 z-10 -translate-y-1/2 px-3 py-2 disabled:opacity-40`}
+            >
+              ← Prev
+            </button>
+          ) : null}
           <CaptureThumb
             src={image.imageUrl}
             alt={`Capture slice ${index + 1}`}
             fit="contain"
-            className="max-h-[75dvh] w-auto max-w-full rounded-lg"
+            fill
+            className="rounded-lg"
             onExpire={onImageExpire}
           />
-        </div>
-        {images.length > 1 ? (
-          <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-4 py-3">
+          {images.length > 1 ? (
             <button
               type="button"
-              disabled={index <= 0 || deleting}
-              onClick={() => onIndexChange(index - 1)}
-              className={saBtnGhost}
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              disabled={index >= images.length - 1 || deleting}
+              disabled={!canNext || deleting}
+              aria-label="Next screenshot"
               onClick={() => onIndexChange(index + 1)}
-              className={saBtnGhost}
+              className={`${saBtnGhost} absolute right-3 top-1/2 z-10 -translate-y-1/2 px-3 py-2 disabled:opacity-40`}
             >
-              Next
+              Next →
             </button>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
+
+        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-100 px-4 py-3">
+          <button
+            type="button"
+            disabled={!canPrev || deleting || images.length <= 1}
+            onClick={() => onIndexChange(index - 1)}
+            className={saBtnGhost}
+          >
+            Previous
+          </button>
+          <p className={`${saMono} text-[11px] text-slate-500`}>
+            {index + 1} / {images.length}
+          </p>
+          <button
+            type="button"
+            disabled={!canNext || deleting || images.length <= 1}
+            onClick={() => onIndexChange(index + 1)}
+            className={saBtnGhost}
+          >
+            Next
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1417,15 +1454,13 @@ export default function SuperAdminApplicationCapturesWorkspace({
             </div>
           ) : null}
 
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-4">
             {detailError ? (
               <p className={`${saAlert} ${saMono} px-4 py-3 text-xs`} role="alert">
                 {detailError}
               </p>
             ) : detailLoading && !detail ? (
-              <div className="space-y-4 animate-pulse" aria-busy="true">
-                <div className="h-48 rounded-xl bg-slate-200" />
-              </div>
+              <div className="min-h-0 flex-1 animate-pulse rounded-xl bg-slate-200" aria-busy="true" />
             ) : !selectedSessionId ? (
               <p className={`${saMono} text-xs text-slate-500`}>
                 Pick a session to review grayscale screenshot slices.
@@ -1435,7 +1470,7 @@ export default function SuperAdminApplicationCapturesWorkspace({
                 No screenshot slices on this session.
               </p>
             ) : (
-              <div className="space-y-4">
+              <div className="flex min-h-0 flex-1 flex-col gap-3">
                 {pagedScreenshotImages.map(({ image, index }) => {
                   const deletingThis = deletingImageId === image.id;
                   const checked = checkedImageIds.has(image.id);
@@ -1443,14 +1478,14 @@ export default function SuperAdminApplicationCapturesWorkspace({
                   return (
                     <div
                       key={image.id}
-                      className={`group overflow-hidden rounded-xl border bg-white transition ${
+                      className={`group flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-white transition ${
                         checked
                           ? "border-teal-300 ring-1 ring-teal-100"
                           : "border-slate-200 hover:border-teal-300"
                       }`}
                     >
                       <div
-                        className={`${saMono} flex items-center justify-between gap-2 px-3 py-2 text-[11px] text-slate-400`}
+                        className={`${saMono} flex shrink-0 items-center justify-between gap-2 px-3 py-2 text-[11px] text-slate-400`}
                       >
                         <div className="flex min-w-0 flex-1 items-center gap-2">
                           <input
@@ -1486,13 +1521,13 @@ export default function SuperAdminApplicationCapturesWorkspace({
                       <button
                         type="button"
                         onClick={() => setLightboxIndex(index)}
-                        className="block w-full text-left"
+                        className="relative min-h-0 flex-1 overflow-hidden bg-slate-50 p-2"
                       >
                         <CaptureThumb
                           src={image.imageUrl}
                           alt={`${captureSessionTitle(detail!)} slice ${index + 1}`}
                           fit="contain"
-                          className="max-h-[min(70vh,36rem)] w-full bg-slate-50"
+                          fill
                           onExpire={() => void refreshSignedUrls(detail!.id)}
                         />
                       </button>
