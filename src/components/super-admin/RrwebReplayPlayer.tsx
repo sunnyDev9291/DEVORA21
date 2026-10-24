@@ -30,17 +30,22 @@ export type RrwebReplayPlayerProps = {
   /** Fired on each controller/host interaction (e.g. refetch while recording). */
   onPlay?: () => void | Promise<void>;
   className?: string;
+  /** Empty / blocked / loading message inside the TV screen. */
+  overlayMessage?: string;
+  busy?: boolean;
 };
 
 /**
- * Mounts rrweb-player for one frame stream (never concatenates iframes).
- * Controllers: built-in scrubber + play/pause; extra 1x/2x/4x + fullscreen.
+ * TV-framed rrweb player — outer chassis + inner screen.
+ * Direct inline play only (no fullscreen).
  */
 export default function RrwebReplayPlayer({
   frames,
   frameKey,
   onPlay,
   className = "",
+  overlayMessage,
+  busy = false,
 }: RrwebReplayPlayerProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<RrwebPlayerInstance | null>(null);
@@ -57,23 +62,23 @@ export default function RrwebReplayPlayer({
     frames[0] ||
     null;
 
+  const canMount = Boolean(frame && Array.isArray(frame.events) && frame.events.length >= 2);
+
   useEffect(() => {
     let cancelled = false;
     let removePointer: (() => void) | undefined;
     const host = hostRef.current;
-    if (!host || !frame) {
+    if (!host || !canMount || !frame) {
       setReady(false);
-      setError(frame ? "" : "No frame selected.");
+      if (!overlayMessage && !busy) {
+        setError(frame ? "This frame has too few events to replay." : "");
+      } else {
+        setError("");
+      }
       return;
     }
 
     const events = Array.isArray(frame.events) ? frame.events : [];
-    if (events.length < 2) {
-      setReady(false);
-      setError("This frame has too few events to replay.");
-      return;
-    }
-
     setError("");
     setReady(false);
 
@@ -84,7 +89,6 @@ export default function RrwebReplayPlayer({
         };
         if (cancelled || !hostRef.current) return;
 
-        // Tear down previous instance
         try {
           playerRef.current?.$destroy?.();
         } catch {
@@ -108,7 +112,6 @@ export default function RrwebReplayPlayer({
         playerRef.current = player;
         setReady(true);
 
-        // Each play interaction — parent may refetch events via eventsPath while recording.
         const onPointer = () => {
           void onPlayRef.current?.();
         };
@@ -136,9 +139,8 @@ export default function RrwebReplayPlayer({
       playerRef.current = null;
       if (hostRef.current) hostRef.current.innerHTML = "";
     };
-    // Recreate when frame identity / event count changes; speed via setSpeed effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: avoid re-mount on array identity
-  }, [frame?.frameKey, frame?.events?.length]);
+  }, [frame?.frameKey, frame?.events?.length, canMount]);
 
   useEffect(() => {
     const player = playerRef.current;
@@ -150,90 +152,83 @@ export default function RrwebReplayPlayer({
     }
   }, [speed, ready]);
 
-  function enterFullscreen() {
-    const el = hostRef.current?.closest("[data-rrweb-player-shell]") as HTMLElement | null;
-    const target = el || hostRef.current;
-    if (!target) return;
-    const req =
-      target.requestFullscreen ||
-      (target as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> })
-        .webkitRequestFullscreen;
-    void req?.call(target);
-  }
-
-  if (!frame) {
-    return (
-      <div className={`${saMono} flex min-h-[20rem] items-center justify-center text-xs text-slate-400 ${className}`}>
-        Select a frame to replay.
-      </div>
-    );
-  }
+  const screenMessage =
+    error ||
+    overlayMessage ||
+    (!canMount && !busy ? "Select a session URL to watch." : null);
 
   return (
     <div
       data-rrweb-player-shell
-      className={`flex min-h-0 flex-1 flex-col overflow-hidden ${className}`}
+      className={`rrweb-tv-outer flex min-h-0 w-full flex-col ${className}`}
     >
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-2">
-        <span className={`${saMono} text-[10px] uppercase tracking-[0.14em] text-slate-400`}>
-          Speed
-        </span>
-        {SPEED_OPTIONS.map((opt) => (
-          <button
-            key={opt}
-            type="button"
-            disabled={!ready}
-            onClick={() => {
-              setSpeed(opt);
-              onPlayRef.current?.();
-            }}
-            className={`${saBtnGhost} px-2.5 py-1 text-[11px] ${
-              speed === opt ? "border-teal-300 bg-teal-50 text-teal-900" : ""
-            }`}
-          >
-            {opt}x
-          </button>
-        ))}
-        <button
-          type="button"
-          disabled={!ready}
-          onClick={enterFullscreen}
-          className={`${saBtnGhost} ml-auto px-2.5 py-1 text-[11px]`}
-        >
-          Fullscreen
-        </button>
-      </div>
+      {/* Outer chassis */}
+      <div className="rrweb-tv-chassis relative flex min-h-0 flex-1 flex-col">
+        <div className="rrweb-tv-bezel flex min-h-0 flex-1 flex-col p-3 sm:p-4">
+          {/* Inner screen */}
+          <div className="rrweb-tv-screen relative flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div
+              className="rrweb-tv-glass relative min-h-0 flex-1 overflow-auto"
+              style={{ filter: canMount ? "grayscale(1)" : undefined }}
+            >
+              <div
+                ref={hostRef}
+                className="rrweb-player-host mx-auto h-full w-full max-w-full"
+              />
+              {(busy || screenMessage) && !ready ? (
+                <p
+                  className={`${saMono} absolute inset-0 z-10 flex items-center justify-center bg-[#0b0f14]/88 px-4 text-center text-xs text-slate-300`}
+                  role={error ? "alert" : "status"}
+                  aria-busy={busy || undefined}
+                >
+                  {busy && !screenMessage ? "Loading…" : screenMessage}
+                </p>
+              ) : null}
+              {error && ready ? (
+                <p
+                  className={`${saMono} absolute bottom-2 left-2 right-2 z-10 rounded-lg border border-rose-400/40 bg-rose-950/80 px-3 py-2 text-[11px] text-rose-100`}
+                  role="alert"
+                >
+                  {error}
+                </p>
+              ) : null}
+            </div>
+          </div>
 
-      {error ? (
-        <div
-          className={`${saMono} m-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-800`}
-          role="alert"
-        >
-          {error}
+          {/* TV chin / controls */}
+          <div className="rrweb-tv-chin mt-3 flex shrink-0 items-center gap-2 px-1">
+            <span className="rrweb-tv-led" aria-hidden />
+            <span className={`${saMono} text-[10px] uppercase tracking-[0.16em] text-slate-400`}>
+              Direct play
+            </span>
+            <div className="ml-auto flex flex-wrap items-center gap-1.5">
+              {SPEED_OPTIONS.map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  disabled={!ready}
+                  onClick={() => {
+                    setSpeed(opt);
+                    void onPlayRef.current?.();
+                  }}
+                  className={`${saBtnGhost} border-slate-600/40 bg-slate-900/40 px-2 py-0.5 text-[10px] text-slate-200 ${
+                    speed === opt ? "border-teal-400/60 text-teal-200" : ""
+                  }`}
+                >
+                  {opt}x
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
-      ) : null}
-
-      <div
-        className="relative min-h-0 flex-1 overflow-auto bg-slate-950/95 p-2"
-        style={{ filter: "grayscale(1)" }}
-      >
-        <div ref={hostRef} className="rrweb-player-host mx-auto w-full max-w-full" />
-        {!ready && !error ? (
-          <p
-            className={`${saMono} absolute inset-0 flex items-center justify-center text-xs text-slate-400`}
-            aria-busy="true"
-          >
-            Loading player…
-          </p>
-        ) : null}
       </div>
 
-      <p className={`${saMono} shrink-0 truncate border-t border-slate-100 px-3 py-1.5 text-[10px] text-slate-400`}>
-        {frame.isTop ? "Top frame" : "Iframe"} · {frame.frameKey}
-        {frame.href ? ` · ${frame.href}` : ""}
-        <span className="mx-1.5 opacity-40">·</span>
-        Sensitive PII — passwords masked at record time
-      </p>
+      {frame && canMount ? (
+        <p className={`${saMono} mt-2 truncate px-1 text-[10px] text-slate-400`}>
+          {frame.isTop ? "Top frame" : "Iframe"} · {frame.frameKey}
+          {frame.href ? ` · ${frame.href}` : ""}
+        </p>
+      ) : null}
     </div>
   );
 }

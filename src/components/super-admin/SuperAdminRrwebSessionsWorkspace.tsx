@@ -27,7 +27,6 @@ import {
 import { getApiErrorMessage } from "@/lib/auth-api";
 import {
   EST_TZ,
-  formatEstDateTime,
   formatEstTime,
   formatYmdInTimezone,
   isIsoOnYmd,
@@ -36,7 +35,6 @@ import {
   adjustOwnerUncheckedCount,
   displayRrwebOwnerName,
   formatDurationMs,
-  hostnameFromRrwebUrl,
   isRrwebSessionRecording,
   isRrwebSessionReplayable,
   isRrwebSessionUnread,
@@ -766,12 +764,42 @@ export default function SuperAdminRrwebSessionsWorkspace({
     );
   }, [sessions, statusFilter]);
 
+  const listTotals = useMemo(() => {
+    let durationMs = 0;
+    let eventCount = 0;
+    for (const s of filteredSessions) {
+      durationMs += s.durationMs || 0;
+      eventCount += s.eventCount || 0;
+    }
+    return {
+      count: filteredSessions.length,
+      durationMs,
+      eventCount,
+    };
+  }, [filteredSessions]);
+
   const showFrameSwitcher = (detail?.frameCount ?? frames.length) > 1 && frames.length > 1;
   const detailReplayable = detail ? isRrwebSessionReplayable(detail) : false;
   const detailBlockedReason = detail ? rrwebReplayBlockedReason(detail) : null;
   // Prefer backend status only — never replayHints.liveReplay for Recording UI.
   const detailIsRecording = isRrwebSessionRecording(detail);
   const detailIsPartialLive = detailIsRecording && detailReplayable;
+
+  const playerOverlayMessage = !selectedSessionId
+    ? "Select a session URL above to watch."
+    : detail && !detailReplayable
+      ? detailBlockedReason || "Waiting for first upload sync…"
+      : detailLoading
+        ? "Loading session…"
+        : eventsLoading
+          ? "Downloading events…"
+          : eventsError
+            ? eventsError
+            : detailError
+              ? detailError
+              : frames.length === 0
+                ? detailBlockedReason || "No replay events for this session yet."
+                : undefined;
 
   return (
     <div className="flex min-h-[min(78vh,52rem)] flex-col gap-4 xl:h-[min(78vh,52rem)]">
@@ -850,9 +878,9 @@ export default function SuperAdminRrwebSessionsWorkspace({
       ) : null}
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 xl:flex-row xl:items-stretch">
-        {/* Left — owners */}
+        {/* Left — profile selector */}
         <aside
-          className={`${saCard} flex min-h-0 w-full shrink-0 flex-col overflow-hidden max-xl:max-h-[40%] xl:h-full xl:w-[260px] 2xl:w-[300px]`}
+          className={`${saCard} flex min-h-0 w-full shrink-0 flex-col overflow-hidden max-xl:max-h-[36%] xl:h-full xl:w-[240px] 2xl:w-[280px]`}
         >
           <div className="shrink-0 border-b border-slate-100 p-4">
             <form onSubmit={handleOwnerSearch} className="space-y-2">
@@ -874,7 +902,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
               </div>
             </form>
             <p className={`${saMono} mt-2 text-[11px] text-slate-400`}>
-              {filteredOwners.length} owner{filteredOwners.length === 1 ? "" : "s"}
+              {filteredOwners.length} profile{filteredOwners.length === 1 ? "" : "s"}
               {ownersLoading ? " · loading…" : ""}
             </p>
           </div>
@@ -888,7 +916,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
           <ul
             className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-1"
             role="listbox"
-            aria-label="Replay session owners"
+            aria-label="Replay session profiles"
           >
             {ownersLoading && owners.length === 0 ? (
               <li className={`${saMono} px-4 py-8 text-center text-xs text-slate-400`}>
@@ -896,7 +924,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
               </li>
             ) : filteredOwners.length === 0 ? (
               <li className={`${saMono} px-4 py-8 text-center text-xs text-slate-400`}>
-                No owners{ownerQ ? ` for “${ownerQ}”` : ""}.
+                No profiles{ownerQ ? ` for “${ownerQ}”` : ""}.
               </li>
             ) : (
               filteredOwners.map((owner) => {
@@ -927,9 +955,6 @@ export default function SuperAdminRrwebSessionsWorkspace({
                       </span>
                       <span className={`${saMono} truncate text-[11px] text-slate-400`}>
                         {owner.email || owner.userId}
-                        {owner.sessionCount
-                          ? ` · ${owner.sessionCount} session${owner.sessionCount === 1 ? "" : "s"}`
-                          : ""}
                       </span>
                     </button>
                   </li>
@@ -939,374 +964,225 @@ export default function SuperAdminRrwebSessionsWorkspace({
           </ul>
         </aside>
 
-        {/* Center — apply attempts */}
-        <section
-          className={`${saCard} flex min-h-0 w-full shrink-0 flex-col overflow-hidden max-xl:max-h-[40%] xl:h-full xl:w-[320px] 2xl:w-[360px]`}
-        >
-          <div className="shrink-0 border-b border-slate-100 p-4">
-            <p className={saEyebrow}>Apply attempts</p>
-            <p className={`${saMono} mt-2 text-[11px] text-slate-400`}>
-              {selectedOwner ? displayRrwebOwnerName(selectedOwner) : "Select a profile"} ·{" "}
-              {dateLabel}
-              {sessionsLoading
-                ? " · loading…"
-                : ` · ${sessions.length} attempt${sessions.length === 1 ? "" : "s"}`}
-            </p>
-            <form onSubmit={handleSessionSearch} className="mt-3 flex gap-2">
-              <input
-                value={draftSessionQ}
-                onChange={(e) => setDraftSessionQ(e.target.value)}
-                className={saField}
-                placeholder="Search URL or title…"
-                spellCheck={false}
-                aria-label="Search apply attempts"
-              />
-              <button type="submit" className={`${saBtnPrimary} shrink-0 px-3`}>
-                Go
-              </button>
-            </form>
-            <div className="mt-3 flex flex-wrap gap-1.5" role="tablist" aria-label="Status filter">
-              {(
-                [
-                  { id: "all", label: "All" },
-                  { id: "recording", label: "Recording" },
-                  { id: "uploaded", label: "Finished" },
-                ] as const
-              ).map((opt) => {
-                const active = statusFilter === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    onClick={() => setStatusFilter(opt.id)}
-                    className={`${saBtnGhost} px-2.5 py-1 text-[11px] ${
-                      active ? "border-teal-300 bg-teal-50 text-teal-900" : ""
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {sessionsError ? (
-            <div className={`${saMono} ${saAlert} m-3 shrink-0 px-3 py-2 text-[11px]`} role="alert">
-              {sessionsError}
-            </div>
-          ) : null}
-
-          <ul
-            className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-1"
-            role="listbox"
-            aria-label="rrweb apply attempts"
-          >
-            {!selectedUserId ? (
-              <li className={`${saMono} px-4 py-8 text-center text-xs text-slate-400`}>
-                Select a profile to load attempts.
-              </li>
-            ) : sessionsLoading && sessions.length === 0 ? (
-              <li className={`${saMono} px-4 py-8 text-center text-xs text-slate-400`}>
-                Loading…
-              </li>
-            ) : filteredSessions.length === 0 ? (
-              <li className={`${saMono} px-4 py-8 text-center text-xs text-slate-400`}>
-                No apply attempts
-                {statusFilter !== "all" ? ` (${statusFilter})` : " for this day"}.
-              </li>
-            ) : (
-              filteredSessions.map((session) => {
-                const active = session.id === selectedSessionId;
-                const flashing = Boolean(flashIds[session.id]);
-                const deletingThis = deletingSessionId === session.id;
-                const statusBadge = rrwebStatusBadgeLabel(session.status);
-                return (
-                  <li key={session.id}>
-                    <div
-                      className={`flex gap-2 px-2 py-2 transition-colors duration-200 ${
-                        active
-                          ? "bg-teal-50 text-slate-900"
-                          : "text-slate-700 hover:bg-slate-50"
-                      } ${flashing ? "sa-live-flash" : ""}`}
-                    >
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={active}
-                        onClick={() => {
-                          setSelectedSessionId(session.id);
-                          setToast("");
-                        }}
-                        className="flex min-w-0 flex-1 flex-col gap-0.5 px-2 py-1 text-left"
-                      >
-                        <span
-                          className={`truncate text-sm font-medium ${
-                            active ? "text-teal-900" : "text-slate-900"
-                          }`}
-                        >
-                          {rrwebSessionTitle(session)}
-                        </span>
-                        <span className={`${saMono} truncate text-[11px] text-slate-400`}>
-                          {hostnameFromRrwebUrl(session.primaryUrl)}
-                        </span>
-                        <span className={`${saMono} mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400`}>
-                          {statusBadge === "Recording" ? (
-                            <span
-                              className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${statusBadgeClass("Recording")}`}
-                            >
-                              Recording
-                            </span>
-                          ) : statusBadge === "Uploaded" ? (
-                            <span
-                              className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${statusBadgeClass("Uploaded")}`}
-                            >
-                              Uploaded
-                            </span>
-                          ) : null}
-                          <span>
-                            {formatEstTime(rrwebSessionActivityIso(session)) ||
-                              formatEstDateTime(rrwebSessionActivityIso(session)) ||
-                              "—"}
-                          </span>
-                          <span className="opacity-40">·</span>
-                          <span>{formatDurationMs(session.durationMs)}</span>
-                          {session.frameCount > 1 ? (
-                            <>
-                              <span className="opacity-40">·</span>
-                              <span>{session.frameCount} frames</span>
-                            </>
-                          ) : null}
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        disabled={Boolean(deletingSessionId)}
-                        title="Delete apply attempt"
-                        aria-label={`Delete ${rrwebSessionTitle(session)}`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void handleDeleteSession(session);
-                        }}
-                        className={`${saBtnGhost} h-8 shrink-0 self-start border-rose-200 px-2 text-[10px] text-rose-700 hover:bg-rose-50`}
-                      >
-                        {deletingThis ? "…" : "Delete"}
-                      </button>
-                    </div>
-                  </li>
-                );
-              })
-            )}
-          </ul>
-        </section>
-
-        {/* Right — metadata + player */}
+        {/* Right — URL list (with totals) + TV watch player */}
         <section className={`${saCard} flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden xl:h-full`}>
-          <div className="shrink-0 border-b border-slate-100 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className={saEyebrow}>Session replay</p>
-                <h2 className={`${saDisplay} mt-2 truncate text-lg font-bold text-slate-900`}>
-                  {detail
-                    ? rrwebSessionTitle(detail)
-                    : detailLoading
-                      ? "Loading…"
-                      : selectedSessionId
-                        ? "Apply attempt"
-                        : "Select an attempt"}
-                </h2>
-                {detail?.primaryUrl ? (
-                  <a
-                    href={detail.primaryUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`${saMono} mt-1 block truncate text-xs text-teal-700 hover:underline`}
-                  >
-                    {detail.primaryUrl}
-                  </a>
-                ) : null}
-                {detail ? (
-                  <p className={`${saMono} mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400`}>
-                    {detailIsRecording ? (
-                      <span
-                        className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${statusBadgeClass("Recording")}`}
-                        title="Tab still open — events syncing to server"
+          <div className="flex min-h-0 flex-1 flex-col gap-0 lg:flex-row">
+            {/* Session URL list */}
+            <div className="flex min-h-0 w-full shrink-0 flex-col border-b border-slate-100 lg:w-[min(100%,22rem)] lg:border-b-0 lg:border-r">
+              <div className="shrink-0 border-b border-slate-100 p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className={saEyebrow}>Session URLs</p>
+                    <p className={`${saDisplay} mt-1 text-base font-bold text-slate-900`}>
+                      {selectedOwner ? displayRrwebOwnerName(selectedOwner) : "Select a profile"}
+                    </p>
+                  </div>
+                  <div className={`${saMono} shrink-0 rounded-xl bg-slate-50 px-2.5 py-1.5 text-right text-[10px] text-slate-500`}>
+                    <div className="font-semibold text-slate-800">
+                      {listTotals.count} session{listTotals.count === 1 ? "" : "s"}
+                    </div>
+                    <div>
+                      {formatDurationMs(listTotals.durationMs)} · {listTotals.eventCount} evt
+                    </div>
+                  </div>
+                </div>
+
+                <form onSubmit={handleSessionSearch} className="mt-3 flex gap-2">
+                  <input
+                    value={draftSessionQ}
+                    onChange={(e) => setDraftSessionQ(e.target.value)}
+                    className={saField}
+                    placeholder="Filter URL…"
+                    spellCheck={false}
+                    aria-label="Filter session URLs"
+                  />
+                  <button type="submit" className={`${saBtnPrimary} shrink-0 px-3`}>
+                    Go
+                  </button>
+                </form>
+
+                <div className="mt-3 flex flex-wrap gap-1.5" role="tablist" aria-label="Status filter">
+                  {(
+                    [
+                      { id: "all", label: "All" },
+                      { id: "recording", label: "Recording" },
+                      { id: "uploaded", label: "Finished" },
+                    ] as const
+                  ).map((opt) => {
+                    const active = statusFilter === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={active}
+                        onClick={() => setStatusFilter(opt.id)}
+                        className={`${saBtnGhost} px-2.5 py-1 text-[11px] ${
+                          active ? "border-teal-300 bg-teal-50 text-teal-900" : ""
+                        }`}
                       >
-                        Recording
-                      </span>
-                    ) : rrwebStatusBadgeLabel(detail.status) === "Uploaded" ? (
-                      <span
-                        className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${statusBadgeClass("Uploaded")}`}
-                        title="Session finalized on server"
-                      >
-                        Uploaded
-                      </span>
-                    ) : null}
-                    <span>{formatDurationMs(detail.durationMs)}</span>
-                    <span className="opacity-40">·</span>
-                    <span>{detail.eventCount} events</span>
-                    <span className="opacity-40">·</span>
-                    <span>
-                      {detail.frameCount || frames.length || 1} frame
-                      {(detail.frameCount || frames.length || 1) === 1 ? "" : "s"}
-                    </span>
-                    <span className="opacity-40">·</span>
-                    <span className={detail.reviewed ? "text-teal-700" : "text-rose-700"}>
-                      {detail.reviewed ? "Reviewed" : "Unreviewed"}
-                    </span>
-                  </p>
-                ) : null}
-                {detailIsPartialLive ? (
-                  <p className={`${saMono} mt-2 text-[11px] text-amber-800`}>
-                    Partial replay — more events may appear; refresh to update.
-                  </p>
-                ) : null}
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              {detail ? (
-                <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+
+              {sessionsError ? (
+                <div className={`${saMono} ${saAlert} m-3 shrink-0 px-3 py-2 text-[11px]`} role="alert">
+                  {sessionsError}
+                </div>
+              ) : null}
+
+              <ul
+                className="min-h-0 max-h-[40vh] flex-1 overflow-y-auto overscroll-contain py-1 lg:max-h-none"
+                role="listbox"
+                aria-label="Session URL list"
+              >
+                {!selectedUserId ? (
+                  <li className={`${saMono} px-4 py-8 text-center text-xs text-slate-400`}>
+                    Select a profile to load session URLs.
+                  </li>
+                ) : sessionsLoading && sessions.length === 0 ? (
+                  <li className={`${saMono} px-4 py-8 text-center text-xs text-slate-400`}>
+                    Loading…
+                  </li>
+                ) : filteredSessions.length === 0 ? (
+                  <li className={`${saMono} px-4 py-8 text-center text-xs text-slate-400`}>
+                    No session URLs
+                    {statusFilter !== "all" ? ` (${statusFilter})` : " for this day"}.
+                  </li>
+                ) : (
+                  filteredSessions.map((session) => {
+                    const active = session.id === selectedSessionId;
+                    const flashing = Boolean(flashIds[session.id]);
+                    const deletingThis = deletingSessionId === session.id;
+                    const statusBadge = rrwebStatusBadgeLabel(session.status);
+                    const urlLabel =
+                      session.primaryUrl?.trim() ||
+                      rrwebSessionTitle(session) ||
+                      "—";
+                    return (
+                      <li key={session.id}>
+                        <div
+                          className={`flex gap-1 px-1.5 py-1 transition-colors duration-200 ${
+                            active ? "bg-teal-50" : "hover:bg-slate-50"
+                          } ${flashing ? "sa-live-flash" : ""}`}
+                        >
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected={active}
+                            onClick={() => {
+                              setSelectedSessionId(session.id);
+                              setToast("");
+                            }}
+                            className="flex min-w-0 flex-1 flex-col gap-0.5 px-2 py-1.5 text-left"
+                            title={urlLabel}
+                          >
+                            <span
+                              className={`${saMono} truncate text-[12px] ${
+                                active ? "font-medium text-teal-900" : "text-slate-800"
+                              }`}
+                            >
+                              {urlLabel}
+                            </span>
+                            <span className={`${saMono} flex flex-wrap items-center gap-1.5 text-[10px] text-slate-400`}>
+                              {statusBadge === "Recording" ? (
+                                <span
+                                  className={`rounded-full px-1.5 py-0.5 font-medium ${statusBadgeClass("Recording")}`}
+                                >
+                                  Recording
+                                </span>
+                              ) : null}
+                              <span>
+                                {formatEstTime(rrwebSessionActivityIso(session)) || "—"}
+                              </span>
+                              <span className="opacity-40">·</span>
+                              <span>{formatDurationMs(session.durationMs)}</span>
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            disabled={Boolean(deletingSessionId)}
+                            title="Delete session"
+                            aria-label={`Delete ${urlLabel}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleDeleteSession(session);
+                            }}
+                            className={`${saBtnGhost} h-7 shrink-0 self-center border-rose-200 px-1.5 text-[10px] text-rose-700 hover:bg-rose-50`}
+                          >
+                            {deletingThis ? "…" : "×"}
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })
+                )}
+              </ul>
+            </div>
+
+            {/* TV watch player — direct play */}
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col p-4">
+              <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className={saEyebrow}>Watch</p>
+                  {detailIsPartialLive ? (
+                    <p className={`${saMono} mt-1 text-[11px] text-amber-800`}>
+                      Partial replay — refresh to update.
+                    </p>
+                  ) : (
+                    <p className={`${saMono} mt-1 text-[11px] text-slate-400`}>
+                      TV direct play · no fullscreen
+                    </p>
+                  )}
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-1.5">
                   {detailIsPartialLive ? (
                     <button
                       type="button"
                       disabled={eventsLoading}
                       onClick={() => void refreshEventsFromApi()}
-                      className={`${saBtnGhost} shrink-0`}
-                      title="Reload partial events from server"
+                      className={`${saBtnGhost} text-[11px]`}
                     >
-                      {eventsLoading ? "Refreshing…" : "Refresh replay"}
+                      {eventsLoading ? "Refreshing…" : "Refresh"}
                     </button>
                   ) : null}
-                  <button
-                    type="button"
-                    disabled={Boolean(deletingSessionId)}
-                    onClick={() => void handleDeleteSession(detail)}
-                    className={`${saBtnGhost} shrink-0 border-rose-200 text-rose-700 hover:bg-rose-50`}
-                  >
-                    {deletingSessionId === detail.id ? "Deleting…" : "Delete"}
-                  </button>
+                  {showFrameSwitcher
+                    ? frames.map((frame) => {
+                        const active = frame.frameKey === activeFrameKey;
+                        return (
+                          <button
+                            key={frame.frameKey}
+                            type="button"
+                            onClick={() => setActiveFrameKey(frame.frameKey)}
+                            className={`${saBtnGhost} max-w-[10rem] truncate px-2 py-1 text-[10px] ${
+                              active ? "border-teal-300 bg-teal-50 text-teal-900" : ""
+                            }`}
+                            title={frame.href || frame.frameKey}
+                          >
+                            {frame.isTop ? "Top" : "Iframe"}
+                          </button>
+                        );
+                      })
+                    : null}
                 </div>
-              ) : null}
-            </div>
-
-            {showFrameSwitcher ? (
-              <div className="mt-3 flex flex-wrap gap-1.5" role="tablist" aria-label="Replay frames">
-                {frames.map((frame) => {
-                  const active = frame.frameKey === activeFrameKey;
-                  return (
-                    <button
-                      key={frame.frameKey}
-                      type="button"
-                      role="tab"
-                      aria-selected={active}
-                      onClick={() => setActiveFrameKey(frame.frameKey)}
-                      className={`${saBtnGhost} max-w-[14rem] truncate px-2.5 py-1 text-[11px] ${
-                        active ? "border-teal-300 bg-teal-50 text-teal-900" : ""
-                      }`}
-                      title={frame.href || frame.frameKey}
-                    >
-                      {frame.isTop ? "Top" : "Iframe"}
-                      {frame.href ? ` · ${hostnameFromRrwebUrl(frame.href)}` : ""}
-                    </button>
-                  );
-                })}
               </div>
-            ) : null}
-          </div>
 
-          {detailError ? (
-            <div className={`${saMono} ${saAlert} m-3 shrink-0 px-3 py-2 text-[11px]`} role="alert">
-              {detailError}
-            </div>
-          ) : null}
-          {eventsError ? (
-            <div className={`${saMono} ${saAlert} m-3 shrink-0 px-3 py-2 text-[11px]`} role="alert">
-              {eventsError}
-            </div>
-          ) : null}
-
-          <div className="flex min-h-0 flex-1 flex-col">
-            {!selectedSessionId ? (
-              <p className={`${saMono} flex flex-1 items-center justify-center px-4 text-center text-xs text-slate-400`}>
-                Select an apply attempt to watch the DOM replay.
-              </p>
-            ) : detail && !detailReplayable ? (
-              <div
-                data-rrweb-player-shell
-                className="flex min-h-[20rem] flex-1 flex-col overflow-hidden"
-                title={detailBlockedReason || "Waiting for first upload sync…"}
-              >
-                <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-2 opacity-50">
-                  <span className={`${saMono} text-[10px] uppercase tracking-[0.14em] text-slate-400`}>
-                    Speed
-                  </span>
-                  <span className={`${saMono} px-2.5 py-1 text-[11px] text-slate-300`}>1x</span>
-                  <span className={`${saMono} px-2.5 py-1 text-[11px] text-slate-300`}>2x</span>
-                  <span className={`${saMono} px-2.5 py-1 text-[11px] text-slate-300`}>4x</span>
-                  <span className={`${saMono} ml-auto px-2.5 py-1 text-[11px] text-slate-400`}>
-                    Play disabled
-                  </span>
-                </div>
-                <div
-                  className="relative min-h-0 flex-1 overflow-auto bg-slate-950/95 p-2"
-                  style={{ filter: "grayscale(1)" }}
-                >
-                  <p
-                    className={`${saMono} absolute inset-0 flex items-center justify-center px-4 text-center text-xs text-slate-400`}
-                    role="status"
-                  >
-                    {detailBlockedReason || "Waiting for first upload sync…"}
-                  </p>
-                </div>
-                <p className={`${saMono} shrink-0 truncate border-t border-slate-100 px-3 py-1.5 text-[10px] text-slate-400`}>
-                  {detailIsRecording
-                    ? "Recording — waiting for first upload sync"
-                    : "Play disabled"}
-                </p>
-              </div>
-            ) : frames.length > 0 ? (
               <RrwebReplayPlayer
-                frames={frames}
+                className="min-h-[16rem] flex-1"
+                frames={frames.length > 0 && detailReplayable ? frames : []}
                 frameKey={activeFrameKey}
+                busy={Boolean(selectedSessionId) && (detailLoading || eventsLoading)}
+                overlayMessage={
+                  frames.length > 0 && detailReplayable ? undefined : playerOverlayMessage
+                }
                 onPlay={() => {
                   void refreshRecordingEventsOnPlay();
                 }}
               />
-            ) : detailLoading || eventsLoading ? (
-              <div
-                data-rrweb-player-shell
-                className="flex min-h-[20rem] flex-1 flex-col overflow-hidden"
-                aria-busy="true"
-              >
-                <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-2">
-                  <span className={`${saMono} text-[10px] uppercase tracking-[0.14em] text-slate-400`}>
-                    Speed
-                  </span>
-                  <span className={`${saMono} px-2.5 py-1 text-[11px] text-slate-300`}>1x</span>
-                  <span className={`${saMono} px-2.5 py-1 text-[11px] text-slate-300`}>2x</span>
-                  <span className={`${saMono} px-2.5 py-1 text-[11px] text-slate-300`}>4x</span>
-                </div>
-                <div
-                  className="relative min-h-0 flex-1 overflow-auto bg-slate-950/95 p-2"
-                  style={{ filter: "grayscale(1)" }}
-                >
-                  <p
-                    className={`${saMono} absolute inset-0 flex items-center justify-center text-xs text-slate-400`}
-                  >
-                    {detailLoading ? "Loading session…" : "Downloading events…"}
-                  </p>
-                </div>
-                <p className={`${saMono} shrink-0 truncate border-t border-slate-100 px-3 py-1.5 text-[10px] text-slate-400`}>
-                  Player ready · waiting for events
-                </p>
-              </div>
-            ) : (
-              <p className={`${saMono} flex flex-1 items-center justify-center px-4 text-center text-xs text-slate-400`}>
-                {detailBlockedReason ||
-                  `No replay events for this session yet${
-                    detail?.status === "recording" ? " (still recording)." : "."
-                  }`}
-              </p>
-            )}
+            </div>
           </div>
         </section>
       </div>
