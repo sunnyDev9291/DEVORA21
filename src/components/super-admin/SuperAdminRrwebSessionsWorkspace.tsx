@@ -82,10 +82,14 @@ function UncheckedBadge({ count, label }: { count: number; label: string }) {
   );
 }
 
-function statusBadgeClass(label: "Recording" | "Finished"): string {
-  if (label === "Recording") return "bg-amber-100 text-amber-900";
-  return "bg-teal-100 text-teal-800";
+function statusBadgeClass(label: "Recording" | "Uploaded"): string {
+  if (label === "Recording") {
+    return "bg-rose-600 text-white shadow-sm shadow-rose-300/50 animate-pulse";
+  }
+  return "bg-slate-100 text-slate-600";
 }
+
+type StatusFilter = "all" | "recording" | "uploaded";
 
 function applyFramesFromPayload(
   payload: { frames: RrwebEventFrame[] },
@@ -151,6 +155,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
   );
 
   const [sessionQ, setSessionQ] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [draftSessionQ, setDraftSessionQ] = useState("");
 
   const [sessions, setSessions] = useState<AdminRrwebSession[]>([]);
@@ -421,17 +426,24 @@ export default function SuperAdminRrwebSessionsWorkspace({
         const nextDetail = mergeRrwebSession(prevDetail, incoming);
         setDetail(nextDetail);
 
+        const prevStatus = (prevDetail?.status || "").toLowerCase();
+        const nextStatus = nextDetail.status.toLowerCase();
+        if (prevStatus === "recording" && nextStatus === "uploaded") {
+          setToast(`“${rrwebSessionTitle(nextDetail)}” finished uploading — full replay ready.`);
+        }
+
         const wasReplayable = prevDetail
           ? isRrwebSessionReplayable(prevDetail)
           : false;
         const nowReplayable = isRrwebSessionReplayable(nextDetail);
-        const recording = nextDetail.status.toLowerCase() === "recording";
+        const recording = nextStatus === "recording";
         const syncAdvanced =
           (nextDetail.eventCount || 0) > (prevDetail?.eventCount || 0) ||
+          (nextDetail.eventsPath || "") !== (prevDetail?.eventsPath || "") ||
           (nextDetail.eventsUrl || "") !== (prevDetail?.eventsUrl || "") ||
           nextDetail.replayable !== prevDetail?.replayable;
 
-        if (nowReplayable && (!wasReplayable || (recording && syncAdvanced))) {
+        if (nowReplayable && (!wasReplayable || (recording && syncAdvanced) || (prevStatus === "recording" && nextStatus === "uploaded"))) {
           void (async () => {
             try {
               const fresh = await superAdminRrwebSessionsApi.getSession(
@@ -541,10 +553,25 @@ export default function SuperAdminRrwebSessionsWorkspace({
     };
   }, [selectedSessionId, markSessionReviewed, loadEventsIntoPlayer]);
 
+  const refreshEventsFromApi = useCallback(async () => {
+    const current = detailRef.current;
+    if (!current) return;
+    if (selectedSessionId) void markSessionReviewed(selectedSessionId);
+    try {
+      const fresh = await superAdminRrwebSessionsApi.getSession(current.id);
+      setDetail((prev) => mergeRrwebSession(prev, fresh));
+      if (!isRrwebSessionReplayable(fresh)) return;
+      await loadEventsIntoPlayer(fresh, () => false);
+    } catch {
+      /* keep last frames */
+    }
+  }, [selectedSessionId, markSessionReviewed, loadEventsIntoPlayer]);
+
   const refreshRecordingEventsOnPlay = useCallback(async () => {
     const current = detailRef.current;
     if (!current) return;
     if (selectedSessionId) void markSessionReviewed(selectedSessionId);
+    // Recording: refetch events on each play (partial/live, no long cache).
     if (current.status.toLowerCase() !== "recording") return;
     try {
       const fresh = await superAdminRrwebSessionsApi.getSession(current.id);
@@ -685,6 +712,21 @@ export default function SuperAdminRrwebSessionsWorkspace({
     onLiveStatusChange?.(liveStatus);
   }, [liveStatus, onLiveStatusChange]);
 
+  // Polling fallback while SSE is down (list from backend, not extension).
+  useEffect(() => {
+    if (!selectedUserId) return;
+    if (liveStatus === "live" || liveStatus === "connecting") return;
+    const timer = window.setInterval(() => {
+      void loadSessions(
+        selectedUserIdRef.current || selectedUserId,
+        dateYmdRef.current,
+        timezoneRef.current,
+        sessionQRef.current
+      );
+    }, 20_000);
+    return () => window.clearInterval(timer);
+  }, [selectedUserId, liveStatus, loadSessions]);
+
   async function handleDeleteSession(session: AdminRrwebSession) {
     const title = rrwebSessionTitle(session);
     if (
@@ -715,9 +757,19 @@ export default function SuperAdminRrwebSessionsWorkspace({
     setSessionQ(draftSessionQ.trim());
   }
 
+  const filteredSessions = useMemo(() => {
+    if (statusFilter === "all") return sessions;
+    return sessions.filter(
+      (s) => s.status.toLowerCase() === statusFilter
+    );
+  }, [sessions, statusFilter]);
+
   const showFrameSwitcher = (detail?.frameCount ?? frames.length) > 1 && frames.length > 1;
   const detailReplayable = detail ? isRrwebSessionReplayable(detail) : false;
   const detailBlockedReason = detail ? rrwebReplayBlockedReason(detail) : null;
+  const detailIsRecording = (detail?.status || "").toLowerCase() === "recording";
+  const detailIsPartialLive =
+    detailIsRecording && detailReplayable;
 
   return (
     <div className="flex min-h-[min(78vh,52rem)] flex-col gap-4 xl:h-[min(78vh,52rem)]">
@@ -918,6 +970,31 @@ export default function SuperAdminRrwebSessionsWorkspace({
                 Go
               </button>
             </form>
+            <div className="mt-3 flex flex-wrap gap-1.5" role="tablist" aria-label="Status filter">
+              {(
+                [
+                  { id: "all", label: "All" },
+                  { id: "recording", label: "Recording" },
+                  { id: "uploaded", label: "Finished" },
+                ] as const
+              ).map((opt) => {
+                const active = statusFilter === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setStatusFilter(opt.id)}
+                    className={`${saBtnGhost} px-2.5 py-1 text-[11px] ${
+                      active ? "border-teal-300 bg-teal-50 text-teal-900" : ""
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {sessionsError ? (
@@ -939,12 +1016,13 @@ export default function SuperAdminRrwebSessionsWorkspace({
               <li className={`${saMono} px-4 py-8 text-center text-xs text-slate-400`}>
                 Loading…
               </li>
-            ) : sessions.length === 0 ? (
+            ) : filteredSessions.length === 0 ? (
               <li className={`${saMono} px-4 py-8 text-center text-xs text-slate-400`}>
-                No apply attempts for this day.
+                No apply attempts
+                {statusFilter !== "all" ? ` (${statusFilter})` : " for this day"}.
               </li>
             ) : (
-              sessions.map((session) => {
+              filteredSessions.map((session) => {
                 const active = session.id === selectedSessionId;
                 const flashing = Boolean(flashIds[session.id]);
                 const deletingThis = deletingSessionId === session.id;
@@ -1064,8 +1142,13 @@ export default function SuperAdminRrwebSessionsWorkspace({
                       return (
                         <span
                           className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${statusBadgeClass(badge)}`}
+                          title={
+                            badge === "Recording"
+                              ? "Tab still open — events syncing to server"
+                              : "Session finalized on server"
+                          }
                         >
-                          {badge}
+                          {badge === "Recording" ? "Recording" : "Uploaded"}
                         </span>
                       );
                     })()}
@@ -1083,16 +1166,34 @@ export default function SuperAdminRrwebSessionsWorkspace({
                     </span>
                   </p>
                 ) : null}
+                {detailIsPartialLive ? (
+                  <p className={`${saMono} mt-2 text-[11px] text-amber-800`}>
+                    Partial replay — more events may appear; refresh to update.
+                  </p>
+                ) : null}
               </div>
               {detail ? (
-                <button
-                  type="button"
-                  disabled={Boolean(deletingSessionId)}
-                  onClick={() => void handleDeleteSession(detail)}
-                  className={`${saBtnGhost} shrink-0 border-rose-200 text-rose-700 hover:bg-rose-50`}
-                >
-                  {deletingSessionId === detail.id ? "Deleting…" : "Delete"}
-                </button>
+                <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+                  {detailIsPartialLive ? (
+                    <button
+                      type="button"
+                      disabled={eventsLoading}
+                      onClick={() => void refreshEventsFromApi()}
+                      className={`${saBtnGhost} shrink-0`}
+                      title="Reload partial events from server"
+                    >
+                      {eventsLoading ? "Refreshing…" : "Refresh replay"}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={Boolean(deletingSessionId)}
+                    onClick={() => void handleDeleteSession(detail)}
+                    className={`${saBtnGhost} shrink-0 border-rose-200 text-rose-700 hover:bg-rose-50`}
+                  >
+                    {deletingSessionId === detail.id ? "Deleting…" : "Delete"}
+                  </button>
+                </div>
               ) : null}
             </div>
 
@@ -1141,6 +1242,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
               <div
                 data-rrweb-player-shell
                 className="flex min-h-[20rem] flex-1 flex-col overflow-hidden"
+                title={detailBlockedReason || "Waiting for first upload sync…"}
               >
                 <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-2 opacity-50">
                   <span className={`${saMono} text-[10px] uppercase tracking-[0.14em] text-slate-400`}>
@@ -1149,6 +1251,9 @@ export default function SuperAdminRrwebSessionsWorkspace({
                   <span className={`${saMono} px-2.5 py-1 text-[11px] text-slate-300`}>1x</span>
                   <span className={`${saMono} px-2.5 py-1 text-[11px] text-slate-300`}>2x</span>
                   <span className={`${saMono} px-2.5 py-1 text-[11px] text-slate-300`}>4x</span>
+                  <span className={`${saMono} ml-auto px-2.5 py-1 text-[11px] text-slate-400`}>
+                    Play disabled
+                  </span>
                 </div>
                 <div
                   className="relative min-h-0 flex-1 overflow-auto bg-slate-950/95 p-2"
@@ -1158,11 +1263,13 @@ export default function SuperAdminRrwebSessionsWorkspace({
                     className={`${saMono} absolute inset-0 flex items-center justify-center px-4 text-center text-xs text-slate-400`}
                     role="status"
                   >
-                    {detailBlockedReason || "Waiting for first sync…"}
+                    {detailBlockedReason || "Waiting for first upload sync…"}
                   </p>
                 </div>
                 <p className={`${saMono} shrink-0 truncate border-t border-slate-100 px-3 py-1.5 text-[10px] text-slate-400`}>
-                  Play disabled until backend sync
+                  {detailIsRecording
+                    ? "Recording — waiting for first upload sync"
+                    : "Play disabled"}
                 </p>
               </div>
             ) : frames.length > 0 ? (

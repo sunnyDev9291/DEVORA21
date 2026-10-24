@@ -108,7 +108,7 @@ export default function RrwebReplayPlayer({
         playerRef.current = player;
         setReady(true);
 
-        // Each play interaction — parent may refetch eventsUrl while recording.
+        // Each play interaction — parent may refetch events via eventsPath while recording.
         const onPointer = () => {
           void onPlayRef.current?.();
         };

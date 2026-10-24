@@ -36,14 +36,20 @@ export type AdminRrwebSession = {
   eventCount: number;
   durationMs: number;
   frameCount: number;
+  /**
+   * Signed B2 URL — metadata only. NEVER fetch from the browser (CORS).
+   * Load bytes via `eventsPath` instead.
+   */
   eventsUrl?: string;
-  /** Present on detail; `gzip` when eventsUrl points at `.json.gz`. */
+  /** Same-origin admin path, e.g. `/admin/rrweb-sessions/:id/events`. Prefer this. */
+  eventsPath?: string;
+  /** Present on detail; `gzip` when payload is compressed. */
   eventsEncoding?: "gzip" | "json" | string | null;
   /** Optional backend hints for replay (frame order, etc.). */
-  replayHints?: Record<string, unknown> | null;
+  replayHints?: RrwebReplayHints | null;
   /**
-   * Backend: partial B2 sync available. Recording sessions need this true
-   * before play; uploaded usually true when eventsUrl is set.
+   * Backend: partial/full B2 sync available. Recording needs this true
+   * before play; uploaded usually true when events exist.
    */
   replayable?: boolean;
   reviewed: boolean;
@@ -64,6 +70,14 @@ export type RrwebSessionEventsPayload = {
   version: number;
   clientSessionId?: string;
   frames: RrwebEventFrame[];
+};
+
+export type RrwebReplayHints = {
+  skipInactive?: boolean;
+  preferTopFrame?: boolean;
+  grayscaleOk?: boolean;
+  liveReplay?: boolean;
+  [key: string]: unknown;
 };
 
 export type AdminRrwebSessionDetail = AdminRrwebSession & {
@@ -207,6 +221,13 @@ export function parseAdminRrwebSession(raw: unknown): AdminRrwebSession | null {
     row.replayable ?? row.isReplayable ?? row.is_replayable
   );
 
+  const replayHintsRaw =
+    row.replayHints && typeof row.replayHints === "object"
+      ? (row.replayHints as RrwebReplayHints)
+      : row.replay_hints && typeof row.replay_hints === "object"
+        ? (row.replay_hints as RrwebReplayHints)
+        : null;
+
   return {
     id,
     userId,
@@ -222,6 +243,9 @@ export function parseAdminRrwebSession(raw: unknown): AdminRrwebSession | null {
     ...(pickString(row, "eventsUrl", "events_url")
       ? { eventsUrl: pickString(row, "eventsUrl", "events_url") }
       : {}),
+    ...(pickString(row, "eventsPath", "events_path")
+      ? { eventsPath: pickString(row, "eventsPath", "events_path") }
+      : {}),
     ...(pickString(row, "eventsEncoding", "events_encoding")
       ? {
           eventsEncoding: pickString(
@@ -233,11 +257,7 @@ export function parseAdminRrwebSession(raw: unknown): AdminRrwebSession | null {
       : row.eventsEncoding === null || row.events_encoding === null
         ? { eventsEncoding: null }
         : {}),
-    ...(row.replayHints && typeof row.replayHints === "object"
-      ? { replayHints: row.replayHints as Record<string, unknown> }
-      : row.replay_hints && typeof row.replay_hints === "object"
-        ? { replayHints: row.replay_hints as Record<string, unknown> }
-        : {}),
+    ...(replayHintsRaw ? { replayHints: replayHintsRaw } : {}),
     ...(replayable !== undefined ? { replayable } : {}),
     reviewed,
     reviewedAt: pickString(row, "reviewedAt", "reviewed_at") || null,
@@ -268,6 +288,11 @@ export function parseAdminRrwebSessionDetail(
     base.eventsUrl ||
     undefined;
 
+  const eventsPath =
+    pickString(row, "eventsPath", "events_path") ||
+    base.eventsPath ||
+    undefined;
+
   const encodingRaw =
     pickString(row, "eventsEncoding", "events_encoding") ||
     base.eventsEncoding ||
@@ -282,10 +307,10 @@ export function parseAdminRrwebSessionDetail(
 
   const replayHints =
     (row.replayHints && typeof row.replayHints === "object"
-      ? (row.replayHints as Record<string, unknown>)
+      ? (row.replayHints as RrwebReplayHints)
       : null) ||
     (row.replay_hints && typeof row.replay_hints === "object"
-      ? (row.replay_hints as Record<string, unknown>)
+      ? (row.replay_hints as RrwebReplayHints)
       : null) ||
     base.replayHints ||
     null;
@@ -293,6 +318,7 @@ export function parseAdminRrwebSessionDetail(
   return {
     ...base,
     ...(eventsUrl ? { eventsUrl } : {}),
+    ...(eventsPath ? { eventsPath } : {}),
     ...(eventsEncoding !== undefined ? { eventsEncoding } : {}),
     ...(replayHints ? { replayHints } : {}),
     ...(events ? { events } : { events: null }),
@@ -461,35 +487,29 @@ export const superAdminRrwebSessionsApi = {
   },
 };
 
-/**
- * Fetch signed events JSON (plain or gzip). Prefer `eventsUrl` — detail no longer
- * embeds full events by default (avoid `?includeEvents=1` in production).
- */
-export async function loadRrwebPayload(
-  eventsUrl: string,
-  encoding?: string | null
+/** Resolve same-origin admin events path (never B2 `eventsUrl`). */
+export function resolveRrwebEventsPath(
+  session: Pick<AdminRrwebSession, "id" | "eventsPath">
+): string {
+  const raw = session.eventsPath?.trim();
+  if (raw) {
+    if (/^https?:\/\//i.test(raw)) return raw;
+    return raw.startsWith("/") ? raw : `/${raw}`;
+  }
+  const sid = session.id?.trim();
+  if (!sid) {
+    throw new ApiError("Missing session id for events path.", 400);
+  }
+  return `/admin/rrweb-sessions/${encodeURIComponent(sid)}/events`;
+}
+
+async function decodeRrwebEventsBuffer(
+  buf: Uint8Array,
+  encodingHint?: string | null
 ): Promise<RrwebSessionEventsPayload> {
-  const url = eventsUrl.trim();
-  if (!url) {
-    throw new ApiError("No replay events available for this session.", 404, {
-      message: "No replay events available for this session.",
-    });
-  }
-
-  const res = await fetch(url, { method: "GET", credentials: "omit" });
-  if (!res.ok) {
-    throw new ApiError(
-      `Could not download replay events (${res.status}).`,
-      res.status
-    );
-  }
-
-  const buf = new Uint8Array(await res.arrayBuffer());
-  const headerEncoding = (res.headers.get("content-encoding") || "").toLowerCase();
+  const hint = (encodingHint || "").toLowerCase();
   const isGzip =
-    encoding === "gzip" ||
-    headerEncoding === "gzip" ||
-    url.includes(".json.gz") ||
+    hint === "gzip" ||
     (buf.length >= 2 && buf[0] === 0x1f && buf[1] === 0x8b);
 
   let jsonText: string;
@@ -502,7 +522,9 @@ export async function loadRrwebPayload(
       );
     }
     const ds = new DecompressionStream("gzip");
-    const stream = new Blob([buf]).stream().pipeThrough(ds);
+    const copy = new Uint8Array(buf.byteLength);
+    copy.set(buf);
+    const stream = new Blob([copy]).stream().pipeThrough(ds);
     jsonText = await new Response(stream).text();
   } else {
     jsonText = new TextDecoder("utf-8").decode(buf);
@@ -527,21 +549,67 @@ export async function loadRrwebPayload(
 }
 
 /**
- * Prefer signed `eventsUrl` (gzip|json); fall back to rare inlined `events`.
+ * Load events via authenticated GET /admin/rrweb-sessions/:id/events.
+ * Never browser-fetch B2 `eventsUrl` (CORS). Avoid `?includeEvents=1`.
+ */
+export async function loadRrwebPayloadFromApi(
+  session: Pick<AdminRrwebSession, "id" | "eventsPath" | "eventsEncoding">
+): Promise<RrwebSessionEventsPayload> {
+  const path = resolveRrwebEventsPath(session);
+  const url = /^https?:\/\//i.test(path)
+    ? path
+    : `${API_BASE_URL.replace(/\/$/, "")}${path}`;
+
+  const res = await apiAuthFetch(url, {
+    method: "GET",
+    headers: { Accept: "*/*" },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const data = await parseJson(res).catch(() => ({}));
+    throwAdminError(res, data);
+  }
+
+  const buf = new Uint8Array(await res.arrayBuffer());
+  const headerEnc =
+    res.headers.get("X-Events-Encoding") ||
+    res.headers.get("x-events-encoding") ||
+    "";
+  const contentType = (res.headers.get("content-type") || "").toLowerCase();
+  const encodingHint =
+    headerEnc ||
+    session.eventsEncoding ||
+    (contentType.includes("gzip") ? "gzip" : contentType.includes("json") ? "json" : null);
+
+  return decodeRrwebEventsBuffer(buf, encodingHint);
+}
+
+/** @deprecated Use loadRrwebPayloadFromApi — browser must not fetch B2 eventsUrl. */
+export async function loadRrwebPayload(
+  _eventsUrl: string,
+  _encoding?: string | null
+): Promise<RrwebSessionEventsPayload> {
+  throw new ApiError(
+    "Do not fetch eventsUrl from the browser (CORS). Use GET /admin/rrweb-sessions/:id/events.",
+    400,
+    {
+      message:
+        "Do not fetch eventsUrl from the browser (CORS). Use GET /admin/rrweb-sessions/:id/events.",
+    }
+  );
+}
+
+/**
+ * Prefer same-origin events API; fall back to rare inlined `events` only.
+ * Never fetches `eventsUrl`.
  */
 export async function loadRrwebEventsPayload(
   detail: AdminRrwebSessionDetail
 ): Promise<RrwebSessionEventsPayload> {
-  const url = detail.eventsUrl?.trim();
-  if (url) {
-    return loadRrwebPayload(url, detail.eventsEncoding);
-  }
   if (detail.events?.frames?.length) {
     return detail.events;
   }
-  throw new ApiError("No replay events available for this session.", 404, {
-    message: "No replay events available for this session.",
-  });
+  return loadRrwebPayloadFromApi(detail);
 }
 
 export function pickDefaultRrwebFrame(
@@ -557,12 +625,16 @@ export function rrwebSessionActivityIso(
   return session.startedAt || session.endedAt || "";
 }
 
+/** Recording first, then startedAt desc. */
 export function sortRrwebSessionsRecent(
   sessions: AdminRrwebSession[]
 ): AdminRrwebSession[] {
-  return [...sessions].sort((a, b) =>
-    rrwebSessionActivityIso(b).localeCompare(rrwebSessionActivityIso(a))
-  );
+  return [...sessions].sort((a, b) => {
+    const aRec = a.status.toLowerCase() === "recording" ? 0 : 1;
+    const bRec = b.status.toLowerCase() === "recording" ? 0 : 1;
+    if (aRec !== bRec) return aRec - bRec;
+    return rrwebSessionActivityIso(b).localeCompare(rrwebSessionActivityIso(a));
+  });
 }
 
 export function upsertRrwebSessionList(
@@ -592,6 +664,7 @@ export function mergeRrwebSession(
     ...nextDetail,
     events,
     eventsUrl: nextDetail.eventsUrl || prevDetail.eventsUrl,
+    eventsPath: nextDetail.eventsPath || prevDetail.eventsPath,
     eventsEncoding:
       nextDetail.eventsEncoding !== undefined
         ? nextDetail.eventsEncoding
@@ -637,44 +710,48 @@ export function isRrwebSessionUnread(
 /** List/detail badge copy — only recording / uploaded get a badge. */
 export function rrwebStatusBadgeLabel(
   status: string
-): "Recording" | "Finished" | null {
+): "Recording" | "Uploaded" | null {
   const key = (status || "").toLowerCase();
   if (key === "recording") return "Recording";
-  if (key === "uploaded") return "Finished";
+  if (key === "uploaded") return "Uploaded";
   return null;
 }
 
 /**
  * Play enabled when backend says so:
  * - recording → replayable === true (partial B2 sync)
- * - uploaded → eventsUrl (or explicit replayable)
+ * - uploaded → replayable !== false (events via eventsPath)
  * - failed/deleted → never
  */
 export function isRrwebSessionReplayable(
-  session: Pick<AdminRrwebSession, "status" | "replayable" | "eventsUrl">
+  session: Pick<
+    AdminRrwebSession,
+    "status" | "replayable" | "eventsUrl" | "eventsPath" | "id"
+  >
 ): boolean {
   const status = (session.status || "").toLowerCase();
   if (status === "failed" || status === "deleted") return false;
   if (status === "recording") return session.replayable === true;
   if (status === "uploaded") {
     if (session.replayable === false) return false;
-    if (session.replayable === true) return true;
-    return Boolean(session.eventsUrl?.trim());
+    return true;
   }
   if (session.replayable === true) return true;
   if (session.replayable === false) return false;
-  return Boolean(session.eventsUrl?.trim());
+  return Boolean(session.eventsPath?.trim() || session.id?.trim());
 }
 
 export function rrwebReplayBlockedReason(
-  session: Pick<AdminRrwebSession, "status" | "replayable" | "eventsUrl">
+  session: Pick<
+    AdminRrwebSession,
+    "status" | "replayable" | "eventsUrl" | "eventsPath" | "id"
+  >
 ): string | null {
   if (isRrwebSessionReplayable(session)) return null;
   const status = (session.status || "").toLowerCase();
   if (status === "failed") return "Replay unavailable (failed).";
   if (status === "deleted") return "Replay unavailable (deleted).";
-  if (status === "recording") return "Waiting for first sync…";
-  if (!session.eventsUrl?.trim()) return "No events URL for this session yet.";
+  if (status === "recording") return "Waiting for first upload sync…";
   return "Replay not available yet.";
 }
 
