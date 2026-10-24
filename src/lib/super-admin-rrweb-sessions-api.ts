@@ -659,9 +659,16 @@ export function mergeRrwebSession(
       ? nextDetail.events
       : prevDetail.events ?? nextDetail.events ?? null;
 
+  // Prefer incoming status always (never keep local "recording" after backend uploads).
+  const incomingStatus =
+    typeof incoming.status === "string" && incoming.status.trim()
+      ? incoming.status.trim()
+      : "";
+
   return {
     ...prevDetail,
     ...nextDetail,
+    status: incomingStatus || nextDetail.status || prevDetail.status,
     events,
     eventsUrl: nextDetail.eventsUrl || prevDetail.eventsUrl,
     eventsPath: nextDetail.eventsPath || prevDetail.eventsPath,
@@ -669,7 +676,16 @@ export function mergeRrwebSession(
       nextDetail.eventsEncoding !== undefined
         ? nextDetail.eventsEncoding
         : prevDetail.eventsEncoding,
-    replayHints: nextDetail.replayHints ?? prevDetail.replayHints ?? null,
+    // Prefer backend status over stale liveReplay hints on older payloads.
+    replayHints: (() => {
+      const hints = nextDetail.replayHints ?? prevDetail.replayHints ?? null;
+      if (!hints) return null;
+      const status = (incomingStatus || nextDetail.status || prevDetail.status || "").toLowerCase();
+      if (status !== "recording" && hints.liveReplay) {
+        return { ...hints, liveReplay: false };
+      }
+      return hints;
+    })(),
     replayable:
       nextDetail.replayable !== undefined
         ? nextDetail.replayable
@@ -707,14 +723,24 @@ export function isRrwebSessionUnread(
   return session.reviewed === false;
 }
 
-/** List/detail badge copy — only recording / uploaded get a badge. */
+/**
+ * List/detail badge copy — Recording ONLY when status === "recording".
+ * Prefer status over replayHints.liveReplay (callers must pass status).
+ */
 export function rrwebStatusBadgeLabel(
   status: string
 ): "Recording" | "Uploaded" | null {
-  const key = (status || "").toLowerCase();
+  const key = (status || "").trim().toLowerCase();
   if (key === "recording") return "Recording";
   if (key === "uploaded") return "Uploaded";
   return null;
+}
+
+/** Strict: partial/live UI only while backend says recording. */
+export function isRrwebSessionRecording(
+  session: Pick<AdminRrwebSession, "status"> | null | undefined
+): boolean {
+  return (session?.status || "").trim().toLowerCase() === "recording";
 }
 
 /**

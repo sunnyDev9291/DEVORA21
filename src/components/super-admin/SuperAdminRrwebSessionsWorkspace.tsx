@@ -37,6 +37,7 @@ import {
   displayRrwebOwnerName,
   formatDurationMs,
   hostnameFromRrwebUrl,
+  isRrwebSessionRecording,
   isRrwebSessionReplayable,
   isRrwebSessionUnread,
   loadRrwebEventsPayload,
@@ -68,19 +69,6 @@ const DEFAULT_TZ = EST_TZ;
 
 /** Prefer uploaded sessions; allow in-progress recording. */
 const LISTABLE_STATUSES = new Set(["uploaded", "recording"]);
-
-function UncheckedBadge({ count, label }: { count: number; label: string }) {
-  if (count <= 0) return null;
-  return (
-    <span
-      className={`${saMono} inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white`}
-      title={label}
-      aria-label={label}
-    >
-      {count > 99 ? "99+" : count}
-    </span>
-  );
-}
 
 function statusBadgeClass(label: "Recording" | "Uploaded"): string {
   if (label === "Recording") {
@@ -314,6 +302,20 @@ export default function SuperAdminRrwebSessionsWorkspace({
         );
 
         setSessions(filtered);
+        // Keep open detail badges in sync with list status (poll/SSE → uploaded).
+        const selectedId = selectedSessionIdRef.current;
+        if (selectedId) {
+          const row = filtered.find((s) => s.id === selectedId);
+          if (row) {
+            setDetail((prev) => {
+              if (!prev || prev.id !== row.id) return prev;
+              if (prev.status === row.status && prev.replayable === row.replayable) {
+                return prev;
+              }
+              return mergeRrwebSession(prev, row);
+            });
+          }
+        }
         setSelectedSessionId((prev) => {
           if (prev && filtered.some((s) => s.id === prev)) return prev;
           if (initialSessionId && filtered.some((s) => s.id === initialSessionId)) {
@@ -767,9 +769,9 @@ export default function SuperAdminRrwebSessionsWorkspace({
   const showFrameSwitcher = (detail?.frameCount ?? frames.length) > 1 && frames.length > 1;
   const detailReplayable = detail ? isRrwebSessionReplayable(detail) : false;
   const detailBlockedReason = detail ? rrwebReplayBlockedReason(detail) : null;
-  const detailIsRecording = (detail?.status || "").toLowerCase() === "recording";
-  const detailIsPartialLive =
-    detailIsRecording && detailReplayable;
+  // Prefer backend status only — never replayHints.liveReplay for Recording UI.
+  const detailIsRecording = isRrwebSessionRecording(detail);
+  const detailIsPartialLive = detailIsRecording && detailReplayable;
 
   return (
     <div className="flex min-h-[min(78vh,52rem)] flex-col gap-4 xl:h-[min(78vh,52rem)]">
@@ -899,7 +901,6 @@ export default function SuperAdminRrwebSessionsWorkspace({
             ) : (
               filteredOwners.map((owner) => {
                 const active = owner.userId === selectedUserId;
-                const unchecked = owner.uncheckedCount || 0;
                 return (
                   <li key={owner.userId}>
                     <button
@@ -917,18 +918,12 @@ export default function SuperAdminRrwebSessionsWorkspace({
                           : "text-slate-700 hover:bg-slate-50"
                       }`}
                     >
-                      <span className="flex items-center gap-2">
-                        <span
-                          className={`min-w-0 flex-1 truncate text-sm font-medium ${
-                            active ? "text-teal-900" : "text-slate-900"
-                          }`}
-                        >
-                          {displayRrwebOwnerName(owner)}
-                        </span>
-                        <UncheckedBadge
-                          count={unchecked}
-                          label={`${unchecked} unreviewed apply attempt${unchecked === 1 ? "" : "s"}`}
-                        />
+                      <span
+                        className={`truncate text-sm font-medium ${
+                          active ? "text-teal-900" : "text-slate-900"
+                        }`}
+                      >
+                        {displayRrwebOwnerName(owner)}
                       </span>
                       <span className={`${saMono} truncate text-[11px] text-slate-400`}>
                         {owner.email || owner.userId}
@@ -1026,7 +1021,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
                 const active = session.id === selectedSessionId;
                 const flashing = Boolean(flashIds[session.id]);
                 const deletingThis = deletingSessionId === session.id;
-                const unread = isRrwebSessionUnread(session);
+                const statusBadge = rrwebStatusBadgeLabel(session.status);
                 return (
                   <li key={session.id}>
                     <div
@@ -1046,33 +1041,30 @@ export default function SuperAdminRrwebSessionsWorkspace({
                         }}
                         className="flex min-w-0 flex-1 flex-col gap-0.5 px-2 py-1 text-left"
                       >
-                        <span className="flex items-center gap-2">
-                          <span
-                            className={`min-w-0 flex-1 truncate text-sm font-medium ${
-                              active ? "text-teal-900" : "text-slate-900"
-                            }`}
-                          >
-                            {rrwebSessionTitle(session)}
-                          </span>
-                          {unread ? (
-                            <UncheckedBadge count={1} label="Unreviewed apply attempt" />
-                          ) : null}
+                        <span
+                          className={`truncate text-sm font-medium ${
+                            active ? "text-teal-900" : "text-slate-900"
+                          }`}
+                        >
+                          {rrwebSessionTitle(session)}
                         </span>
                         <span className={`${saMono} truncate text-[11px] text-slate-400`}>
                           {hostnameFromRrwebUrl(session.primaryUrl)}
                         </span>
                         <span className={`${saMono} mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400`}>
-                          {(() => {
-                            const badge = rrwebStatusBadgeLabel(session.status);
-                            if (!badge) return null;
-                            return (
-                              <span
-                                className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${statusBadgeClass(badge)}`}
-                              >
-                                {badge}
-                              </span>
-                            );
-                          })()}
+                          {statusBadge === "Recording" ? (
+                            <span
+                              className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${statusBadgeClass("Recording")}`}
+                            >
+                              Recording
+                            </span>
+                          ) : statusBadge === "Uploaded" ? (
+                            <span
+                              className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${statusBadgeClass("Uploaded")}`}
+                            >
+                              Uploaded
+                            </span>
+                          ) : null}
                           <span>
                             {formatEstTime(rrwebSessionActivityIso(session)) ||
                               formatEstDateTime(rrwebSessionActivityIso(session)) ||
@@ -1136,22 +1128,21 @@ export default function SuperAdminRrwebSessionsWorkspace({
                 ) : null}
                 {detail ? (
                   <p className={`${saMono} mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400`}>
-                    {(() => {
-                      const badge = rrwebStatusBadgeLabel(detail.status);
-                      if (!badge) return null;
-                      return (
-                        <span
-                          className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${statusBadgeClass(badge)}`}
-                          title={
-                            badge === "Recording"
-                              ? "Tab still open — events syncing to server"
-                              : "Session finalized on server"
-                          }
-                        >
-                          {badge === "Recording" ? "Recording" : "Uploaded"}
-                        </span>
-                      );
-                    })()}
+                    {detailIsRecording ? (
+                      <span
+                        className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${statusBadgeClass("Recording")}`}
+                        title="Tab still open — events syncing to server"
+                      >
+                        Recording
+                      </span>
+                    ) : rrwebStatusBadgeLabel(detail.status) === "Uploaded" ? (
+                      <span
+                        className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${statusBadgeClass("Uploaded")}`}
+                        title="Session finalized on server"
+                      >
+                        Uploaded
+                      </span>
+                    ) : null}
                     <span>{formatDurationMs(detail.durationMs)}</span>
                     <span className="opacity-40">·</span>
                     <span>{detail.eventCount} events</span>
