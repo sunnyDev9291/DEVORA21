@@ -27,7 +27,8 @@ export type RrwebReplayPlayerProps = {
   frames: RrwebEventFrame[];
   /** Active frame key — parent owns frame switcher. */
   frameKey: string;
-  onPlay?: () => void;
+  /** Fired on each controller/host interaction (e.g. refetch while recording). */
+  onPlay?: () => void | Promise<void>;
   className?: string;
 };
 
@@ -58,6 +59,7 @@ export default function RrwebReplayPlayer({
 
   useEffect(() => {
     let cancelled = false;
+    let removePointer: (() => void) | undefined;
     const host = hostRef.current;
     if (!host || !frame) {
       setReady(false);
@@ -106,11 +108,13 @@ export default function RrwebReplayPlayer({
         playerRef.current = player;
         setReady(true);
 
-        // Detect first play via click on controller / host
+        // Each play interaction — parent may refetch eventsUrl while recording.
         const onPointer = () => {
-          onPlayRef.current?.();
+          void onPlayRef.current?.();
         };
-        host.addEventListener("pointerdown", onPointer, { once: true });
+        host.addEventListener("pointerdown", onPointer);
+        removePointer = () => host.removeEventListener("pointerdown", onPointer);
+        if (cancelled) removePointer();
       } catch (err) {
         if (!cancelled) {
           setError(
@@ -123,6 +127,7 @@ export default function RrwebReplayPlayer({
 
     return () => {
       cancelled = true;
+      removePointer?.();
       try {
         playerRef.current?.$destroy?.();
       } catch {

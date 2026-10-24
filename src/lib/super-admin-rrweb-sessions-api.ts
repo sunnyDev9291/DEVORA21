@@ -41,6 +41,11 @@ export type AdminRrwebSession = {
   eventsEncoding?: "gzip" | "json" | string | null;
   /** Optional backend hints for replay (frame order, etc.). */
   replayHints?: Record<string, unknown> | null;
+  /**
+   * Backend: partial B2 sync available. Recording sessions need this true
+   * before play; uploaded usually true when eventsUrl is set.
+   */
+  replayable?: boolean;
   reviewed: boolean;
   reviewedAt?: string | null;
   startedAt: string;
@@ -99,6 +104,10 @@ function parseReviewedFlag(raw: unknown): boolean | undefined {
   if (raw === "false" || raw === 0) return false;
   if (raw === "true" || raw === 1) return true;
   return undefined;
+}
+
+function parseBoolFlag(raw: unknown): boolean | undefined {
+  return parseReviewedFlag(raw);
 }
 
 function throwAdminError(res: Response, data: Record<string, unknown>): never {
@@ -194,6 +203,9 @@ export function parseAdminRrwebSession(raw: unknown): AdminRrwebSession | null {
 
   const reviewedRaw = parseReviewedFlag(row.reviewed ?? row.isReviewed ?? row.is_reviewed);
   const reviewed = reviewedRaw === true;
+  const replayable = parseBoolFlag(
+    row.replayable ?? row.isReplayable ?? row.is_replayable
+  );
 
   return {
     id,
@@ -226,6 +238,7 @@ export function parseAdminRrwebSession(raw: unknown): AdminRrwebSession | null {
       : row.replay_hints && typeof row.replay_hints === "object"
         ? { replayHints: row.replay_hints as Record<string, unknown> }
         : {}),
+    ...(replayable !== undefined ? { replayable } : {}),
     reviewed,
     reviewedAt: pickString(row, "reviewedAt", "reviewed_at") || null,
     startedAt:
@@ -584,6 +597,10 @@ export function mergeRrwebSession(
         ? nextDetail.eventsEncoding
         : prevDetail.eventsEncoding,
     replayHints: nextDetail.replayHints ?? prevDetail.replayHints ?? null,
+    replayable:
+      nextDetail.replayable !== undefined
+        ? nextDetail.replayable
+        : prevDetail.replayable,
     pageTitle: nextDetail.pageTitle ?? prevDetail.pageTitle,
     user: nextDetail.user ?? prevDetail.user,
     frameCount: Math.max(nextDetail.frameCount || 0, events?.frames.length || 0, prevDetail.frameCount || 0),
@@ -615,6 +632,50 @@ export function isRrwebSessionUnread(
   session: Pick<AdminRrwebSession, "reviewed">
 ): boolean {
   return session.reviewed === false;
+}
+
+/** List/detail badge copy — only recording / uploaded get a badge. */
+export function rrwebStatusBadgeLabel(
+  status: string
+): "Recording" | "Finished" | null {
+  const key = (status || "").toLowerCase();
+  if (key === "recording") return "Recording";
+  if (key === "uploaded") return "Finished";
+  return null;
+}
+
+/**
+ * Play enabled when backend says so:
+ * - recording → replayable === true (partial B2 sync)
+ * - uploaded → eventsUrl (or explicit replayable)
+ * - failed/deleted → never
+ */
+export function isRrwebSessionReplayable(
+  session: Pick<AdminRrwebSession, "status" | "replayable" | "eventsUrl">
+): boolean {
+  const status = (session.status || "").toLowerCase();
+  if (status === "failed" || status === "deleted") return false;
+  if (status === "recording") return session.replayable === true;
+  if (status === "uploaded") {
+    if (session.replayable === false) return false;
+    if (session.replayable === true) return true;
+    return Boolean(session.eventsUrl?.trim());
+  }
+  if (session.replayable === true) return true;
+  if (session.replayable === false) return false;
+  return Boolean(session.eventsUrl?.trim());
+}
+
+export function rrwebReplayBlockedReason(
+  session: Pick<AdminRrwebSession, "status" | "replayable" | "eventsUrl">
+): string | null {
+  if (isRrwebSessionReplayable(session)) return null;
+  const status = (session.status || "").toLowerCase();
+  if (status === "failed") return "Replay unavailable (failed).";
+  if (status === "deleted") return "Replay unavailable (deleted).";
+  if (status === "recording") return "Waiting for first sync…";
+  if (!session.eventsUrl?.trim()) return "No events URL for this session yet.";
+  return "Replay not available yet.";
 }
 
 export type RrwebSessionsLiveEvent =

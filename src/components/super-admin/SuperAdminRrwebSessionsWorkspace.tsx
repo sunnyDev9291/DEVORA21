@@ -37,12 +37,15 @@ import {
   displayRrwebOwnerName,
   formatDurationMs,
   hostnameFromRrwebUrl,
+  isRrwebSessionReplayable,
   isRrwebSessionUnread,
   loadRrwebEventsPayload,
   mergeRrwebSession,
   pickDefaultRrwebFrame,
+  rrwebReplayBlockedReason,
   rrwebSessionActivityIso,
   rrwebSessionTitle,
+  rrwebStatusBadgeLabel,
   sortRrwebSessionsRecent,
   superAdminRrwebSessionsApi,
   upsertRrwebSessionList,
@@ -79,13 +82,28 @@ function UncheckedBadge({ count, label }: { count: number; label: string }) {
   );
 }
 
-function statusBadgeClass(status: string): string {
-  const key = status.toLowerCase();
-  if (key === "uploaded") return "bg-teal-100 text-teal-800";
-  if (key === "recording") return "bg-amber-100 text-amber-800";
-  if (key === "deleted") return "bg-slate-100 text-slate-500";
-  if (key === "failed" || key === "error") return "bg-rose-100 text-rose-800";
-  return "bg-slate-100 text-slate-600";
+function statusBadgeClass(label: "Recording" | "Finished"): string {
+  if (label === "Recording") return "bg-amber-100 text-amber-900";
+  return "bg-teal-100 text-teal-800";
+}
+
+function applyFramesFromPayload(
+  payload: { frames: RrwebEventFrame[] },
+  setFrames: (frames: RrwebEventFrame[]) => void,
+  setActiveFrameKey: (key: string) => void,
+  onLazyAll?: (all: RrwebEventFrame[]) => void
+): boolean {
+  const allFrames = payload.frames;
+  const top = pickDefaultRrwebFrame(allFrames);
+  if (!top) return false;
+  setFrames([top]);
+  setActiveFrameKey(top.frameKey);
+  if (allFrames.length > 1) {
+    onLazyAll?.(allFrames);
+  } else {
+    setFrames(allFrames);
+  }
+  return true;
 }
 
 type SuperAdminRrwebSessionsWorkspaceProps = {
@@ -327,6 +345,55 @@ export default function SuperAdminRrwebSessionsWorkspace({
     setActiveFrameKey("top");
   }, [selectedSessionId]);
 
+  const loadEventsIntoPlayer = useCallback(
+    async (
+      session: AdminRrwebSessionDetail,
+      cancelled: () => boolean
+    ): Promise<boolean> => {
+      if (!isRrwebSessionReplayable(session)) {
+        if (!cancelled()) {
+          setFrames([]);
+          setEventsError("");
+          setEventsLoading(false);
+        }
+        return false;
+      }
+      if (!cancelled()) setEventsLoading(true);
+      try {
+        const payload = await loadRrwebEventsPayload(session);
+        if (cancelled()) return false;
+        const ok = applyFramesFromPayload(
+          payload,
+          setFrames,
+          setActiveFrameKey,
+          (all) => {
+            window.setTimeout(() => {
+              if (!cancelled()) setFrames(all);
+            }, 0);
+          }
+        );
+        if (!ok) {
+          setFrames([]);
+          setEventsError("No replay frames in events payload.");
+          return false;
+        }
+        setEventsError("");
+        return true;
+      } catch (err) {
+        if (!cancelled()) {
+          setFrames([]);
+          setEventsError(
+            getApiErrorMessage(err, "Could not load replay events.")
+          );
+        }
+        return false;
+      } finally {
+        if (!cancelled()) setEventsLoading(false);
+      }
+    },
+    []
+  );
+
   const applySessionReviewUpdate = useCallback(
     (incoming: AdminRrwebSession | AdminRrwebSessionDetail) => {
       const existing =
@@ -350,7 +417,37 @@ export default function SuperAdminRrwebSessionsWorkspace({
       });
 
       if (selectedSessionIdRef.current === incoming.id) {
-        setDetail((prev) => mergeRrwebSession(prev, incoming));
+        const prevDetail = detailRef.current;
+        const nextDetail = mergeRrwebSession(prevDetail, incoming);
+        setDetail(nextDetail);
+
+        const wasReplayable = prevDetail
+          ? isRrwebSessionReplayable(prevDetail)
+          : false;
+        const nowReplayable = isRrwebSessionReplayable(nextDetail);
+        const recording = nextDetail.status.toLowerCase() === "recording";
+        const syncAdvanced =
+          (nextDetail.eventCount || 0) > (prevDetail?.eventCount || 0) ||
+          (nextDetail.eventsUrl || "") !== (prevDetail?.eventsUrl || "") ||
+          nextDetail.replayable !== prevDetail?.replayable;
+
+        if (nowReplayable && (!wasReplayable || (recording && syncAdvanced))) {
+          void (async () => {
+            try {
+              const fresh = await superAdminRrwebSessionsApi.getSession(
+                nextDetail.id
+              );
+              if (selectedSessionIdRef.current !== nextDetail.id) return;
+              setDetail((prev) => mergeRrwebSession(prev, fresh));
+              if (!isRrwebSessionReplayable(fresh)) return;
+              await loadEventsIntoPlayer(fresh, () =>
+                selectedSessionIdRef.current !== nextDetail.id
+              );
+            } catch {
+              /* keep shell */
+            }
+          })();
+        }
       }
 
       setOwners((prev) => {
@@ -368,7 +465,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
         return prev;
       });
     },
-    []
+    [loadEventsIntoPlayer]
   );
 
   const markSessionReviewed = useCallback(
@@ -407,11 +504,11 @@ export default function SuperAdminRrwebSessionsWorkspace({
     }
 
     let cancelled = false;
-    let lazyFramesTimer = 0;
+    const isCancelled = () => cancelled;
     (async () => {
       setDetailLoading(true);
       setDetailError("");
-      setEventsLoading(true);
+      setEventsLoading(false);
       setEventsError("");
       setFrames([]);
       try {
@@ -422,36 +519,12 @@ export default function SuperAdminRrwebSessionsWorkspace({
         setDetailLoading(false);
         void markSessionReviewed(next.id);
 
-        try {
-          const payload = await loadRrwebEventsPayload(next);
-          if (cancelled) return;
-          const allFrames = payload.frames;
-          const top = pickDefaultRrwebFrame(allFrames);
-          if (!top) {
-            setFrames([]);
-            setEventsError("No replay frames in events payload.");
-            return;
-          }
-          // Top frame first → player can paint; other frames after first paint.
-          setFrames([top]);
-          setActiveFrameKey(top.frameKey);
+        if (!isRrwebSessionReplayable(next)) {
+          setFrames([]);
           setEventsLoading(false);
-          if (allFrames.length > 1) {
-            lazyFramesTimer = window.setTimeout(() => {
-              if (cancelled) return;
-              setFrames(allFrames);
-            }, 0);
-          }
-        } catch (err) {
-          if (!cancelled) {
-            setFrames([]);
-            setEventsError(
-              getApiErrorMessage(err, "Could not load replay events.")
-            );
-          }
-        } finally {
-          if (!cancelled) setEventsLoading(false);
+          return;
         }
+        await loadEventsIntoPlayer(next, isCancelled);
       } catch (err) {
         if (!cancelled) {
           setDetail(null);
@@ -465,9 +538,23 @@ export default function SuperAdminRrwebSessionsWorkspace({
 
     return () => {
       cancelled = true;
-      if (lazyFramesTimer) window.clearTimeout(lazyFramesTimer);
     };
-  }, [selectedSessionId, markSessionReviewed]);
+  }, [selectedSessionId, markSessionReviewed, loadEventsIntoPlayer]);
+
+  const refreshRecordingEventsOnPlay = useCallback(async () => {
+    const current = detailRef.current;
+    if (!current) return;
+    if (selectedSessionId) void markSessionReviewed(selectedSessionId);
+    if (current.status.toLowerCase() !== "recording") return;
+    try {
+      const fresh = await superAdminRrwebSessionsApi.getSession(current.id);
+      setDetail((prev) => mergeRrwebSession(prev, fresh));
+      if (!isRrwebSessionReplayable(fresh)) return;
+      await loadEventsIntoPlayer(fresh, () => false);
+    } catch {
+      /* keep last frames */
+    }
+  }, [selectedSessionId, markSessionReviewed, loadEventsIntoPlayer]);
 
   const flashSession = useCallback((sessionId: string) => {
     const token = Date.now();
@@ -629,6 +716,8 @@ export default function SuperAdminRrwebSessionsWorkspace({
   }
 
   const showFrameSwitcher = (detail?.frameCount ?? frames.length) > 1 && frames.length > 1;
+  const detailReplayable = detail ? isRrwebSessionReplayable(detail) : false;
+  const detailBlockedReason = detail ? rrwebReplayBlockedReason(detail) : null;
 
   return (
     <div className="flex min-h-[min(78vh,52rem)] flex-col gap-4 xl:h-[min(78vh,52rem)]">
@@ -895,11 +984,17 @@ export default function SuperAdminRrwebSessionsWorkspace({
                           {hostnameFromRrwebUrl(session.primaryUrl)}
                         </span>
                         <span className={`${saMono} mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400`}>
-                          <span
-                            className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${statusBadgeClass(session.status)}`}
-                          >
-                            {session.status}
-                          </span>
+                          {(() => {
+                            const badge = rrwebStatusBadgeLabel(session.status);
+                            if (!badge) return null;
+                            return (
+                              <span
+                                className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${statusBadgeClass(badge)}`}
+                              >
+                                {badge}
+                              </span>
+                            );
+                          })()}
                           <span>
                             {formatEstTime(rrwebSessionActivityIso(session)) ||
                               formatEstDateTime(rrwebSessionActivityIso(session)) ||
@@ -962,14 +1057,27 @@ export default function SuperAdminRrwebSessionsWorkspace({
                   </a>
                 ) : null}
                 {detail ? (
-                  <p className={`${saMono} mt-2 text-[11px] text-slate-400`}>
-                    {formatDurationMs(detail.durationMs)}
-                    <span className="mx-1.5 opacity-40">·</span>
-                    {detail.eventCount} events
-                    <span className="mx-1.5 opacity-40">·</span>
-                    {detail.frameCount || frames.length || 1} frame
-                    {(detail.frameCount || frames.length || 1) === 1 ? "" : "s"}
-                    <span className="mx-1.5 opacity-40">·</span>
+                  <p className={`${saMono} mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400`}>
+                    {(() => {
+                      const badge = rrwebStatusBadgeLabel(detail.status);
+                      if (!badge) return null;
+                      return (
+                        <span
+                          className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${statusBadgeClass(badge)}`}
+                        >
+                          {badge}
+                        </span>
+                      );
+                    })()}
+                    <span>{formatDurationMs(detail.durationMs)}</span>
+                    <span className="opacity-40">·</span>
+                    <span>{detail.eventCount} events</span>
+                    <span className="opacity-40">·</span>
+                    <span>
+                      {detail.frameCount || frames.length || 1} frame
+                      {(detail.frameCount || frames.length || 1) === 1 ? "" : "s"}
+                    </span>
+                    <span className="opacity-40">·</span>
                     <span className={detail.reviewed ? "text-teal-700" : "text-rose-700"}>
                       {detail.reviewed ? "Reviewed" : "Unreviewed"}
                     </span>
@@ -1029,12 +1137,40 @@ export default function SuperAdminRrwebSessionsWorkspace({
               <p className={`${saMono} flex flex-1 items-center justify-center px-4 text-center text-xs text-slate-400`}>
                 Select an apply attempt to watch the DOM replay.
               </p>
+            ) : detail && !detailReplayable ? (
+              <div
+                data-rrweb-player-shell
+                className="flex min-h-[20rem] flex-1 flex-col overflow-hidden"
+              >
+                <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-2 opacity-50">
+                  <span className={`${saMono} text-[10px] uppercase tracking-[0.14em] text-slate-400`}>
+                    Speed
+                  </span>
+                  <span className={`${saMono} px-2.5 py-1 text-[11px] text-slate-300`}>1x</span>
+                  <span className={`${saMono} px-2.5 py-1 text-[11px] text-slate-300`}>2x</span>
+                  <span className={`${saMono} px-2.5 py-1 text-[11px] text-slate-300`}>4x</span>
+                </div>
+                <div
+                  className="relative min-h-0 flex-1 overflow-auto bg-slate-950/95 p-2"
+                  style={{ filter: "grayscale(1)" }}
+                >
+                  <p
+                    className={`${saMono} absolute inset-0 flex items-center justify-center px-4 text-center text-xs text-slate-400`}
+                    role="status"
+                  >
+                    {detailBlockedReason || "Waiting for first sync…"}
+                  </p>
+                </div>
+                <p className={`${saMono} shrink-0 truncate border-t border-slate-100 px-3 py-1.5 text-[10px] text-slate-400`}>
+                  Play disabled until backend sync
+                </p>
+              </div>
             ) : frames.length > 0 ? (
               <RrwebReplayPlayer
                 frames={frames}
                 frameKey={activeFrameKey}
                 onPlay={() => {
-                  if (selectedSessionId) void markSessionReviewed(selectedSessionId);
+                  void refreshRecordingEventsOnPlay();
                 }}
               />
             ) : detailLoading || eventsLoading ? (
@@ -1067,8 +1203,10 @@ export default function SuperAdminRrwebSessionsWorkspace({
               </div>
             ) : (
               <p className={`${saMono} flex flex-1 items-center justify-center px-4 text-center text-xs text-slate-400`}>
-                No replay events for this session yet
-                {detail?.status === "recording" ? " (still recording)." : "."}
+                {detailBlockedReason ||
+                  `No replay events for this session yet${
+                    detail?.status === "recording" ? " (still recording)." : "."
+                  }`}
               </p>
             )}
           </div>
