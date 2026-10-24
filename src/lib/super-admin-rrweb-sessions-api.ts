@@ -36,6 +36,8 @@ export type AdminRrwebSession = {
   eventCount: number;
   durationMs: number;
   frameCount: number;
+  /** Gzip/events payload size in bytes (from list/detail API). */
+  eventsBytes?: number;
   /**
    * Signed B2 URL — metadata only. NEVER fetch from the browser (CORS).
    * Load bytes via `eventsPath` instead.
@@ -240,6 +242,33 @@ export function parseAdminRrwebSession(raw: unknown): AdminRrwebSession | null {
     eventCount: toNumber(row.eventCount ?? row.event_count, 0),
     durationMs: toNumber(row.durationMs ?? row.duration_ms, 0),
     frameCount: toNumber(row.frameCount ?? row.frame_count, 0),
+    ...(toNumber(
+      row.eventsBytes ??
+        row.events_bytes ??
+        row.byteSize ??
+        row.byte_size ??
+        row.sizeBytes ??
+        row.size_bytes ??
+        row.gzipBytes ??
+        row.gzip_bytes ??
+        row.size,
+      0
+    )
+      ? {
+          eventsBytes: toNumber(
+            row.eventsBytes ??
+              row.events_bytes ??
+              row.byteSize ??
+              row.byte_size ??
+              row.sizeBytes ??
+              row.size_bytes ??
+              row.gzipBytes ??
+              row.gzip_bytes ??
+              row.size,
+            0
+          ),
+        }
+      : {}),
     ...(pickString(row, "eventsUrl", "events_url")
       ? { eventsUrl: pickString(row, "eventsUrl", "events_url") }
       : {}),
@@ -382,6 +411,22 @@ export function formatDurationMs(ms: number): string {
   const s = totalSec % 60;
   if (m <= 0) return `${s}s`;
   return `${m}m ${String(s).padStart(2, "0")}s`;
+}
+
+/** Compact payload size for Super Admin list (e.g. 150 KB). */
+export function formatRrwebBytes(bytes: number | undefined | null): string {
+  if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes <= 0) {
+    return "";
+  }
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) {
+    const rounded = kb >= 100 ? Math.round(kb) : Math.round(kb * 10) / 10;
+    return `${rounded} KB`;
+  }
+  const mb = kb / 1024;
+  const rounded = mb >= 10 ? Math.round(mb) : Math.round(mb * 10) / 10;
+  return `${rounded} MB`;
 }
 
 export const superAdminRrwebSessionsApi = {
@@ -548,13 +593,19 @@ async function decodeRrwebEventsBuffer(
   return parsed;
 }
 
+export type RrwebEventsLoadResult = {
+  payload: RrwebSessionEventsPayload;
+  /** Wire size of the downloaded events body (gzip bytes when compressed). */
+  eventsBytes: number;
+};
+
 /**
  * Load events via authenticated GET /admin/rrweb-sessions/:id/events.
  * Never browser-fetch B2 `eventsUrl` (CORS). Avoid `?includeEvents=1`.
  */
 export async function loadRrwebPayloadFromApi(
   session: Pick<AdminRrwebSession, "id" | "eventsPath" | "eventsEncoding">
-): Promise<RrwebSessionEventsPayload> {
+): Promise<RrwebEventsLoadResult> {
   const path = resolveRrwebEventsPath(session);
   const url = /^https?:\/\//i.test(path)
     ? path
@@ -571,6 +622,9 @@ export async function loadRrwebPayloadFromApi(
   }
 
   const buf = new Uint8Array(await res.arrayBuffer());
+  const headerLen = Number(res.headers.get("content-length") || 0);
+  const eventsBytes =
+    (Number.isFinite(headerLen) && headerLen > 0 ? headerLen : 0) || buf.byteLength;
   const headerEnc =
     res.headers.get("X-Events-Encoding") ||
     res.headers.get("x-events-encoding") ||
@@ -581,7 +635,10 @@ export async function loadRrwebPayloadFromApi(
     session.eventsEncoding ||
     (contentType.includes("gzip") ? "gzip" : contentType.includes("json") ? "json" : null);
 
-  return decodeRrwebEventsBuffer(buf, encodingHint);
+  return {
+    payload: await decodeRrwebEventsBuffer(buf, encodingHint),
+    eventsBytes,
+  };
 }
 
 /** @deprecated Use loadRrwebPayloadFromApi — browser must not fetch B2 eventsUrl. */
@@ -605,9 +662,12 @@ export async function loadRrwebPayload(
  */
 export async function loadRrwebEventsPayload(
   detail: AdminRrwebSessionDetail
-): Promise<RrwebSessionEventsPayload> {
+): Promise<RrwebEventsLoadResult> {
   if (detail.events?.frames?.length) {
-    return detail.events;
+    return {
+      payload: detail.events,
+      eventsBytes: detail.eventsBytes || 0,
+    };
   }
   return loadRrwebPayloadFromApi(detail);
 }
@@ -693,6 +753,10 @@ export function mergeRrwebSession(
     pageTitle: nextDetail.pageTitle ?? prevDetail.pageTitle,
     user: nextDetail.user ?? prevDetail.user,
     frameCount: Math.max(nextDetail.frameCount || 0, events?.frames.length || 0, prevDetail.frameCount || 0),
+    eventsBytes: Math.max(
+      nextDetail.eventsBytes || 0,
+      prevDetail.eventsBytes || 0
+    ) || nextDetail.eventsBytes || prevDetail.eventsBytes,
   };
 }
 

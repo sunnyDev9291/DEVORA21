@@ -35,6 +35,7 @@ import {
   adjustOwnerUncheckedCount,
   displayRrwebOwnerName,
   formatDurationMs,
+  formatRrwebBytes,
   isRrwebSessionRecording,
   isRrwebSessionReplayable,
   isRrwebSessionUnread,
@@ -365,8 +366,25 @@ export default function SuperAdminRrwebSessionsWorkspace({
       }
       if (!cancelled()) setEventsLoading(true);
       try {
-        const payload = await loadRrwebEventsPayload(session);
+        const { payload, eventsBytes } = await loadRrwebEventsPayload(session);
         if (cancelled()) return false;
+        if (eventsBytes > 0) {
+          setDetail((prev) =>
+            prev && prev.id === session.id
+              ? { ...prev, eventsBytes: Math.max(prev.eventsBytes || 0, eventsBytes) }
+              : prev
+          );
+          setSessions((prev) =>
+            prev.map((row) =>
+              row.id === session.id
+                ? {
+                    ...row,
+                    eventsBytes: Math.max(row.eventsBytes || 0, eventsBytes),
+                  }
+                : row
+            )
+          );
+        }
         const ok = applyFramesFromPayload(
           payload,
           setFrames,
@@ -767,14 +785,18 @@ export default function SuperAdminRrwebSessionsWorkspace({
   const listTotals = useMemo(() => {
     let durationMs = 0;
     let eventCount = 0;
+    let eventsBytes = 0;
     for (const s of filteredSessions) {
       durationMs += s.durationMs || 0;
       eventCount += s.eventCount || 0;
+      eventsBytes += s.eventsBytes || 0;
     }
     return {
       count: filteredSessions.length,
       durationMs,
       eventCount,
+      eventsBytes,
+      sizeLabel: formatRrwebBytes(eventsBytes),
     };
   }, [filteredSessions]);
 
@@ -982,7 +1004,9 @@ export default function SuperAdminRrwebSessionsWorkspace({
                       {listTotals.count} session{listTotals.count === 1 ? "" : "s"}
                     </div>
                     <div>
-                      {formatDurationMs(listTotals.durationMs)} · {listTotals.eventCount} evt
+                      {listTotals.sizeLabel || "—"}
+                      <span className="mx-1 opacity-40">·</span>
+                      {formatDurationMs(listTotals.durationMs)}
                     </div>
                   </div>
                 </div>
@@ -1093,6 +1117,11 @@ export default function SuperAdminRrwebSessionsWorkspace({
                                   className={`rounded-full px-1.5 py-0.5 font-medium ${statusBadgeClass("Recording")}`}
                                 >
                                   Recording
+                                </span>
+                              ) : null}
+                              {formatRrwebBytes(session.eventsBytes) ? (
+                                <span className="font-medium text-slate-600">
+                                  {formatRrwebBytes(session.eventsBytes)}
                                 </span>
                               ) : null}
                               <span>

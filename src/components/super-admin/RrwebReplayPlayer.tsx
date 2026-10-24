@@ -22,6 +22,8 @@ type RrwebPlayerCtor = new (opts: {
 }) => RrwebPlayerInstance;
 
 const SPEED_OPTIONS = [1, 2, 4] as const;
+/** rrweb-player controller chrome height approx. */
+const CONTROLLER_H = 80;
 
 export type RrwebReplayPlayerProps = {
   frames: RrwebEventFrame[];
@@ -37,7 +39,7 @@ export type RrwebReplayPlayerProps = {
 
 /**
  * TV-framed rrweb player — outer chassis + inner screen.
- * Direct inline play only (no fullscreen).
+ * Direct inline play only (no fullscreen). Player fits TV; no screen scrollbar.
  */
 export default function RrwebReplayPlayer({
   frames,
@@ -47,6 +49,7 @@ export default function RrwebReplayPlayer({
   overlayMessage,
   busy = false,
 }: RrwebReplayPlayerProps) {
+  const glassRef = useRef<HTMLDivElement | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<RrwebPlayerInstance | null>(null);
   const onPlayRef = useRef(onPlay);
@@ -65,6 +68,20 @@ export default function RrwebReplayPlayer({
   const canMount = Boolean(frame && Array.isArray(frame.events) && frame.events.length >= 2);
 
   useEffect(() => {
+    const el = glassRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      try {
+        playerRef.current?.triggerResize?.();
+      } catch {
+        /* ignore */
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ready]);
+
+  useEffect(() => {
     let cancelled = false;
     let removePointer: (() => void) | undefined;
     const host = hostRef.current;
@@ -81,6 +98,11 @@ export default function RrwebReplayPlayer({
     const events = Array.isArray(frame.events) ? frame.events : [];
     setError("");
     setReady(false);
+
+    const glass = glassRef.current;
+    const rect = glass?.getBoundingClientRect();
+    const width = Math.max(160, Math.floor(rect?.width || 640));
+    const height = Math.max(120, Math.floor((rect?.height || 400) - CONTROLLER_H));
 
     (async () => {
       try {
@@ -101,6 +123,8 @@ export default function RrwebReplayPlayer({
           target: host,
           props: {
             events,
+            width,
+            height,
             autoPlay: false,
             showController: true,
             speed,
@@ -111,6 +135,13 @@ export default function RrwebReplayPlayer({
         });
         playerRef.current = player;
         setReady(true);
+        requestAnimationFrame(() => {
+          try {
+            player.triggerResize?.();
+          } catch {
+            /* ignore */
+          }
+        });
 
         const onPointer = () => {
           void onPlayRef.current?.();
@@ -139,7 +170,7 @@ export default function RrwebReplayPlayer({
       playerRef.current = null;
       if (hostRef.current) hostRef.current.innerHTML = "";
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: avoid re-mount on array identity
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- remount on frame / events only
   }, [frame?.frameKey, frame?.events?.length, canMount]);
 
   useEffect(() => {
@@ -162,18 +193,17 @@ export default function RrwebReplayPlayer({
       data-rrweb-player-shell
       className={`rrweb-tv-outer flex min-h-0 w-full flex-col ${className}`}
     >
-      {/* Outer chassis */}
       <div className="rrweb-tv-chassis relative flex min-h-0 flex-1 flex-col">
         <div className="rrweb-tv-bezel flex min-h-0 flex-1 flex-col p-3 sm:p-4">
-          {/* Inner screen */}
           <div className="rrweb-tv-screen relative flex min-h-0 flex-1 flex-col overflow-hidden">
             <div
-              className="rrweb-tv-glass relative min-h-0 flex-1 overflow-auto"
+              ref={glassRef}
+              className="rrweb-tv-glass relative min-h-0 flex-1 overflow-hidden"
               style={{ filter: canMount ? "grayscale(1)" : undefined }}
             >
               <div
                 ref={hostRef}
-                className="rrweb-player-host mx-auto h-full w-full max-w-full"
+                className="rrweb-player-host h-full w-full"
               />
               {(busy || screenMessage) && !ready ? (
                 <p
@@ -195,7 +225,6 @@ export default function RrwebReplayPlayer({
             </div>
           </div>
 
-          {/* TV chin / controls */}
           <div className="rrweb-tv-chin mt-3 flex shrink-0 items-center gap-2 px-1">
             <span className="rrweb-tv-led" aria-hidden />
             <span className={`${saMono} text-[10px] uppercase tracking-[0.16em] text-slate-400`}>
@@ -222,13 +251,6 @@ export default function RrwebReplayPlayer({
           </div>
         </div>
       </div>
-
-      {frame && canMount ? (
-        <p className={`${saMono} mt-2 truncate px-1 text-[10px] text-slate-400`}>
-          {frame.isTop ? "Top frame" : "Iframe"} · {frame.frameKey}
-          {frame.href ? ` · ${frame.href}` : ""}
-        </p>
-      ) : null}
     </div>
   );
 }

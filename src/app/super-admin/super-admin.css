@@ -395,6 +395,15 @@
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 28%),
     #0b0f14;
+  overflow: hidden !important;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.rrweb-tv-glass::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .rrweb-tv-chin {
@@ -411,10 +420,44 @@
   flex-shrink: 0;
 }
 
-.rrweb-tv-chassis .rrweb-player-host,
-.rrweb-tv-chassis .rr-player,
-.rrweb-tv-chassis .replayer-wrapper {
+/* Fit rrweb-player to TV screen — no inner scrollbars */
+.rrweb-tv-chassis .rrweb-player-host {
+  width: 100% !important;
+  height: 100% !important;
   max-width: 100% !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+}
+
+.rrweb-tv-chassis .rr-player {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+  float: none !important;
+}
+
+.rrweb-tv-chassis .rr-player__frame,
+.rrweb-tv-chassis .replayer-wrapper,
+.rrweb-tv-chassis .rr-controller {
+  max-width: 100% !important;
+}
+
+.rrweb-tv-chassis .replayer-wrapper {
+  overflow: hidden !important;
+}
+
+.rrweb-tv-chassis .rr-player,
+.rrweb-tv-chassis .rr-player * {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.rrweb-tv-chassis .rr-player *::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
