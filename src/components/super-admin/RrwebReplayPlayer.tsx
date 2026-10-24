@@ -199,7 +199,6 @@ export default function RrwebReplayPlayer({
             <div
               ref={glassRef}
               className="rrweb-tv-glass relative min-h-0 flex-1 overflow-hidden"
-              style={{ filter: canMount ? "grayscale(1)" : undefined }}
             >
               <div
                 ref={hostRef}
