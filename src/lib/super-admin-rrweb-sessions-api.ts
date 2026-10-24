@@ -37,6 +37,10 @@ export type AdminRrwebSession = {
   durationMs: number;
   frameCount: number;
   eventsUrl?: string;
+  /** Present on detail; `gzip` when eventsUrl points at `.json.gz`. */
+  eventsEncoding?: "gzip" | "json" | string | null;
+  /** Optional backend hints for replay (frame order, etc.). */
+  replayHints?: Record<string, unknown> | null;
   reviewed: boolean;
   reviewedAt?: string | null;
   startedAt: string;
@@ -58,6 +62,7 @@ export type RrwebSessionEventsPayload = {
 };
 
 export type AdminRrwebSessionDetail = AdminRrwebSession & {
+  /** Only present when caller used `?includeEvents=1` (avoid in production). */
   events?: RrwebSessionEventsPayload | null;
 };
 
@@ -205,6 +210,22 @@ export function parseAdminRrwebSession(raw: unknown): AdminRrwebSession | null {
     ...(pickString(row, "eventsUrl", "events_url")
       ? { eventsUrl: pickString(row, "eventsUrl", "events_url") }
       : {}),
+    ...(pickString(row, "eventsEncoding", "events_encoding")
+      ? {
+          eventsEncoding: pickString(
+            row,
+            "eventsEncoding",
+            "events_encoding"
+          ) as AdminRrwebSession["eventsEncoding"],
+        }
+      : row.eventsEncoding === null || row.events_encoding === null
+        ? { eventsEncoding: null }
+        : {}),
+    ...(row.replayHints && typeof row.replayHints === "object"
+      ? { replayHints: row.replayHints as Record<string, unknown> }
+      : row.replay_hints && typeof row.replay_hints === "object"
+        ? { replayHints: row.replay_hints as Record<string, unknown> }
+        : {}),
     reviewed,
     reviewedAt: pickString(row, "reviewedAt", "reviewed_at") || null,
     startedAt:
@@ -234,9 +255,33 @@ export function parseAdminRrwebSessionDetail(
     base.eventsUrl ||
     undefined;
 
+  const encodingRaw =
+    pickString(row, "eventsEncoding", "events_encoding") ||
+    base.eventsEncoding ||
+    "";
+  const eventsEncoding =
+    encodingRaw ||
+    (row.eventsEncoding === null ||
+    row.events_encoding === null ||
+    base.eventsEncoding === null
+      ? null
+      : undefined);
+
+  const replayHints =
+    (row.replayHints && typeof row.replayHints === "object"
+      ? (row.replayHints as Record<string, unknown>)
+      : null) ||
+    (row.replay_hints && typeof row.replay_hints === "object"
+      ? (row.replay_hints as Record<string, unknown>)
+      : null) ||
+    base.replayHints ||
+    null;
+
   return {
     ...base,
     ...(eventsUrl ? { eventsUrl } : {}),
+    ...(eventsEncoding !== undefined ? { eventsEncoding } : {}),
+    ...(replayHints ? { replayHints } : {}),
     ...(events ? { events } : { events: null }),
   };
 }
@@ -404,25 +449,61 @@ export const superAdminRrwebSessionsApi = {
 };
 
 /**
- * Prefer inlined events; fall back to signed B2 JSON URL.
+ * Fetch signed events JSON (plain or gzip). Prefer `eventsUrl` — detail no longer
+ * embeds full events by default (avoid `?includeEvents=1` in production).
  */
-export async function loadRrwebEventsPayload(
-  detail: AdminRrwebSessionDetail
+export async function loadRrwebPayload(
+  eventsUrl: string,
+  encoding?: string | null
 ): Promise<RrwebSessionEventsPayload> {
-  if (detail.events?.frames?.length) {
-    return detail.events;
-  }
-  const url = detail.eventsUrl?.trim();
+  const url = eventsUrl.trim();
   if (!url) {
     throw new ApiError("No replay events available for this session.", 404, {
       message: "No replay events available for this session.",
     });
   }
+
   const res = await fetch(url, { method: "GET", credentials: "omit" });
   if (!res.ok) {
-    throw new ApiError(`Could not download replay events (${res.status}).`, res.status);
+    throw new ApiError(
+      `Could not download replay events (${res.status}).`,
+      res.status
+    );
   }
-  const raw = (await res.json().catch(() => null)) as unknown;
+
+  const buf = new Uint8Array(await res.arrayBuffer());
+  const headerEncoding = (res.headers.get("content-encoding") || "").toLowerCase();
+  const isGzip =
+    encoding === "gzip" ||
+    headerEncoding === "gzip" ||
+    url.includes(".json.gz") ||
+    (buf.length >= 2 && buf[0] === 0x1f && buf[1] === 0x8b);
+
+  let jsonText: string;
+  if (isGzip) {
+    if (typeof DecompressionStream === "undefined") {
+      throw new ApiError(
+        "Gzip replay requires DecompressionStream (modern browser).",
+        500,
+        { message: "Gzip replay requires DecompressionStream (modern browser)." }
+      );
+    }
+    const ds = new DecompressionStream("gzip");
+    const stream = new Blob([buf]).stream().pipeThrough(ds);
+    jsonText = await new Response(stream).text();
+  } else {
+    jsonText = new TextDecoder("utf-8").decode(buf);
+  }
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(jsonText) as unknown;
+  } catch {
+    throw new ApiError("Replay events JSON was invalid.", 502, {
+      message: "Replay events JSON was invalid.",
+    });
+  }
+
   const parsed = parseRrwebEventsPayload(raw);
   if (!parsed) {
     throw new ApiError("Replay events JSON was invalid.", 502, {
@@ -430,6 +511,24 @@ export async function loadRrwebEventsPayload(
     });
   }
   return parsed;
+}
+
+/**
+ * Prefer signed `eventsUrl` (gzip|json); fall back to rare inlined `events`.
+ */
+export async function loadRrwebEventsPayload(
+  detail: AdminRrwebSessionDetail
+): Promise<RrwebSessionEventsPayload> {
+  const url = detail.eventsUrl?.trim();
+  if (url) {
+    return loadRrwebPayload(url, detail.eventsEncoding);
+  }
+  if (detail.events?.frames?.length) {
+    return detail.events;
+  }
+  throw new ApiError("No replay events available for this session.", 404, {
+    message: "No replay events available for this session.",
+  });
 }
 
 export function pickDefaultRrwebFrame(
@@ -480,6 +579,11 @@ export function mergeRrwebSession(
     ...nextDetail,
     events,
     eventsUrl: nextDetail.eventsUrl || prevDetail.eventsUrl,
+    eventsEncoding:
+      nextDetail.eventsEncoding !== undefined
+        ? nextDetail.eventsEncoding
+        : prevDetail.eventsEncoding,
+    replayHints: nextDetail.replayHints ?? prevDetail.replayHints ?? null,
     pageTitle: nextDetail.pageTitle ?? prevDetail.pageTitle,
     user: nextDetail.user ?? prevDetail.user,
     frameCount: Math.max(nextDetail.frameCount || 0, events?.frames.length || 0, prevDetail.frameCount || 0),

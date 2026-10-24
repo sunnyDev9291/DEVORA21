@@ -208,7 +208,10 @@ export default function RrwebReplayPlayer({
         </div>
       ) : null}
 
-      <div className="relative min-h-0 flex-1 overflow-auto bg-slate-950/95 p-2">
+      <div
+        className="relative min-h-0 flex-1 overflow-auto bg-slate-950/95 p-2"
+        style={{ filter: "grayscale(1)" }}
+      >
         <div ref={hostRef} className="rrweb-player-host mx-auto w-full max-w-full" />
         {!ready && !error ? (
           <p

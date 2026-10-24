@@ -402,27 +402,46 @@ export default function SuperAdminRrwebSessionsWorkspace({
       setDetail(null);
       setDetailError("");
       setFrames([]);
+      setEventsLoading(false);
       return;
     }
 
     let cancelled = false;
+    let lazyFramesTimer = 0;
     (async () => {
       setDetailLoading(true);
       setDetailError("");
       setEventsLoading(true);
       setEventsError("");
+      setFrames([]);
       try {
+        // Metadata only — do not use ?includeEvents=1 (slow).
         const next = await superAdminRrwebSessionsApi.getSession(selectedSessionId);
         if (cancelled) return;
         setDetail(next);
+        setDetailLoading(false);
         void markSessionReviewed(next.id);
 
         try {
           const payload = await loadRrwebEventsPayload(next);
           if (cancelled) return;
-          setFrames(payload.frames);
-          const def = pickDefaultRrwebFrame(payload.frames);
-          setActiveFrameKey(def?.frameKey || "top");
+          const allFrames = payload.frames;
+          const top = pickDefaultRrwebFrame(allFrames);
+          if (!top) {
+            setFrames([]);
+            setEventsError("No replay frames in events payload.");
+            return;
+          }
+          // Top frame first → player can paint; other frames after first paint.
+          setFrames([top]);
+          setActiveFrameKey(top.frameKey);
+          setEventsLoading(false);
+          if (allFrames.length > 1) {
+            lazyFramesTimer = window.setTimeout(() => {
+              if (cancelled) return;
+              setFrames(allFrames);
+            }, 0);
+          }
         } catch (err) {
           if (!cancelled) {
             setFrames([]);
@@ -439,14 +458,14 @@ export default function SuperAdminRrwebSessionsWorkspace({
           setFrames([]);
           setDetailError(getApiErrorMessage(err, "Could not load session detail."));
           setEventsLoading(false);
+          setDetailLoading(false);
         }
-      } finally {
-        if (!cancelled) setDetailLoading(false);
       }
     })();
 
     return () => {
       cancelled = true;
+      if (lazyFramesTimer) window.clearTimeout(lazyFramesTimer);
     };
   }, [selectedSessionId, markSessionReviewed]);
 
@@ -1010,13 +1029,6 @@ export default function SuperAdminRrwebSessionsWorkspace({
               <p className={`${saMono} flex flex-1 items-center justify-center px-4 text-center text-xs text-slate-400`}>
                 Select an apply attempt to watch the DOM replay.
               </p>
-            ) : detailLoading || eventsLoading ? (
-              <p
-                className={`${saMono} flex flex-1 items-center justify-center text-xs text-slate-400`}
-                aria-busy="true"
-              >
-                Loading replay…
-              </p>
             ) : frames.length > 0 ? (
               <RrwebReplayPlayer
                 frames={frames}
@@ -1025,6 +1037,34 @@ export default function SuperAdminRrwebSessionsWorkspace({
                   if (selectedSessionId) void markSessionReviewed(selectedSessionId);
                 }}
               />
+            ) : detailLoading || eventsLoading ? (
+              <div
+                data-rrweb-player-shell
+                className="flex min-h-[20rem] flex-1 flex-col overflow-hidden"
+                aria-busy="true"
+              >
+                <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-2">
+                  <span className={`${saMono} text-[10px] uppercase tracking-[0.14em] text-slate-400`}>
+                    Speed
+                  </span>
+                  <span className={`${saMono} px-2.5 py-1 text-[11px] text-slate-300`}>1x</span>
+                  <span className={`${saMono} px-2.5 py-1 text-[11px] text-slate-300`}>2x</span>
+                  <span className={`${saMono} px-2.5 py-1 text-[11px] text-slate-300`}>4x</span>
+                </div>
+                <div
+                  className="relative min-h-0 flex-1 overflow-auto bg-slate-950/95 p-2"
+                  style={{ filter: "grayscale(1)" }}
+                >
+                  <p
+                    className={`${saMono} absolute inset-0 flex items-center justify-center text-xs text-slate-400`}
+                  >
+                    {detailLoading ? "Loading session…" : "Downloading events…"}
+                  </p>
+                </div>
+                <p className={`${saMono} shrink-0 truncate border-t border-slate-100 px-3 py-1.5 text-[10px] text-slate-400`}>
+                  Player ready · waiting for events
+                </p>
+              </div>
             ) : (
               <p className={`${saMono} flex flex-1 items-center justify-center px-4 text-center text-xs text-slate-400`}>
                 No replay events for this session yet
