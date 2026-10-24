@@ -548,33 +548,7 @@ export function resolveRrwebEventsPath(
   return `/admin/rrweb-sessions/${encodeURIComponent(sid)}/events`;
 }
 
-async function decodeRrwebEventsBuffer(
-  buf: Uint8Array,
-  encodingHint?: string | null
-): Promise<RrwebSessionEventsPayload> {
-  const hint = (encodingHint || "").toLowerCase();
-  const isGzip =
-    hint === "gzip" ||
-    (buf.length >= 2 && buf[0] === 0x1f && buf[1] === 0x8b);
-
-  let jsonText: string;
-  if (isGzip) {
-    if (typeof DecompressionStream === "undefined") {
-      throw new ApiError(
-        "Gzip replay requires DecompressionStream (modern browser).",
-        500,
-        { message: "Gzip replay requires DecompressionStream (modern browser)." }
-      );
-    }
-    const ds = new DecompressionStream("gzip");
-    const copy = new Uint8Array(buf.byteLength);
-    copy.set(buf);
-    const stream = new Blob([copy]).stream().pipeThrough(ds);
-    jsonText = await new Response(stream).text();
-  } else {
-    jsonText = new TextDecoder("utf-8").decode(buf);
-  }
-
+function parseEventsJsonText(jsonText: string): RrwebSessionEventsPayload {
   let raw: unknown;
   try {
     raw = JSON.parse(jsonText) as unknown;
@@ -583,7 +557,6 @@ async function decodeRrwebEventsBuffer(
       message: "Replay events JSON was invalid.",
     });
   }
-
   const parsed = parseRrwebEventsPayload(raw);
   if (!parsed) {
     throw new ApiError("Replay events JSON was invalid.", 502, {
@@ -593,19 +566,70 @@ async function decodeRrwebEventsBuffer(
   return parsed;
 }
 
+async function gunzipToText(source: ReadableStream<Uint8Array>): Promise<string> {
+  if (typeof DecompressionStream === "undefined") {
+    throw new ApiError(
+      "Gzip replay requires DecompressionStream (modern browser).",
+      500,
+      { message: "Gzip replay requires DecompressionStream (modern browser)." }
+    );
+  }
+  // Cast: DOM lib typings for DecompressionStream vs ReadableStream generics mismatch.
+  const stream = source.pipeThrough(
+    new DecompressionStream("gzip") as unknown as ReadableWritablePair<
+      Uint8Array,
+      Uint8Array
+    >
+  );
+  return new Response(stream).text();
+}
+
 export type RrwebEventsLoadResult = {
   payload: RrwebSessionEventsPayload;
   /** Wire size of the downloaded events body (gzip bytes when compressed). */
   eventsBytes: number;
 };
 
+/** In-memory cache — avoids re-downloading finished sessions in the same page session. */
+const rrwebEventsMemoryCache = new Map<
+  string,
+  { result: RrwebEventsLoadResult; eventCount: number; status: string }
+>();
+
+export function clearRrwebEventsMemoryCache(sessionId?: string): void {
+  if (!sessionId) {
+    rrwebEventsMemoryCache.clear();
+    return;
+  }
+  rrwebEventsMemoryCache.delete(sessionId.trim());
+}
+
+function eventsCacheKey(sessionId: string): string {
+  return sessionId.trim();
+}
+
 /**
  * Load events via authenticated GET /admin/rrweb-sessions/:id/events.
+ * Streams gzip decode while downloading when possible (faster than buffer→copy→gunzip).
  * Never browser-fetch B2 `eventsUrl` (CORS). Avoid `?includeEvents=1`.
  */
 export async function loadRrwebPayloadFromApi(
-  session: Pick<AdminRrwebSession, "id" | "eventsPath" | "eventsEncoding">
+  session: Pick<
+    AdminRrwebSession,
+    "id" | "eventsPath" | "eventsEncoding" | "status" | "eventCount"
+  >,
+  opts?: { bypassCache?: boolean }
 ): Promise<RrwebEventsLoadResult> {
+  const sid = session.id?.trim() || "";
+  const status = (session.status || "").toLowerCase();
+  const cacheKey = eventsCacheKey(sid);
+  if (!opts?.bypassCache && sid && status === "uploaded") {
+    const hit = rrwebEventsMemoryCache.get(cacheKey);
+    if (hit && hit.status === "uploaded") {
+      return hit.result;
+    }
+  }
+
   const path = resolveRrwebEventsPath(session);
   const url = /^https?:\/\//i.test(path)
     ? path
@@ -613,32 +637,71 @@ export async function loadRrwebPayloadFromApi(
 
   const res = await apiAuthFetch(url, {
     method: "GET",
-    headers: { Accept: "*/*" },
-    cache: "no-store",
+    headers: {
+      Accept: "application/gzip, application/json, */*",
+    },
+    // Finished sessions may be cached by the browser briefly; recording always fresh.
+    cache: status === "recording" ? "no-store" : "default",
   });
   if (!res.ok) {
     const data = await parseJson(res).catch(() => ({}));
     throwAdminError(res, data);
   }
 
-  const buf = new Uint8Array(await res.arrayBuffer());
   const headerLen = Number(res.headers.get("content-length") || 0);
-  const eventsBytes =
-    (Number.isFinite(headerLen) && headerLen > 0 ? headerLen : 0) || buf.byteLength;
-  const headerEnc =
+  const headerEnc = (
     res.headers.get("X-Events-Encoding") ||
     res.headers.get("x-events-encoding") ||
-    "";
+    ""
+  ).toLowerCase();
   const contentType = (res.headers.get("content-type") || "").toLowerCase();
   const encodingHint =
     headerEnc ||
-    session.eventsEncoding ||
-    (contentType.includes("gzip") ? "gzip" : contentType.includes("json") ? "json" : null);
+    (session.eventsEncoding || "").toLowerCase() ||
+    (contentType.includes("gzip")
+      ? "gzip"
+      : contentType.includes("json")
+        ? "json"
+        : "");
 
-  return {
-    payload: await decodeRrwebEventsBuffer(buf, encodingHint),
-    eventsBytes,
+  const looksGzipHeader =
+    encodingHint === "gzip" || contentType.includes("gzip");
+
+  let jsonText: string;
+  let eventsBytes =
+    Number.isFinite(headerLen) && headerLen > 0 ? headerLen : 0;
+
+  // Stream gunzip while bytes arrive (avoids full-buffer + extra copy).
+  if (looksGzipHeader && res.body) {
+    jsonText = await gunzipToText(res.body);
+  } else {
+    const buf = new Uint8Array(await res.arrayBuffer());
+    if (!eventsBytes) eventsBytes = buf.byteLength;
+    const magicGzip = buf.length >= 2 && buf[0] === 0x1f && buf[1] === 0x8b;
+    if (magicGzip || encodingHint === "gzip") {
+      const copy = new Uint8Array(buf.byteLength);
+      copy.set(buf);
+      jsonText = await gunzipToText(new Blob([copy]).stream());
+    } else {
+      jsonText = new TextDecoder("utf-8").decode(buf);
+    }
+  }
+
+  const payload = parseEventsJsonText(jsonText);
+  const result: RrwebEventsLoadResult = {
+    payload,
+    eventsBytes: eventsBytes || 0,
   };
+
+  if (sid && status === "uploaded") {
+    rrwebEventsMemoryCache.set(cacheKey, {
+      result,
+      eventCount: session.eventCount || 0,
+      status: "uploaded",
+    });
+  }
+
+  return result;
 }
 
 /** @deprecated Use loadRrwebPayloadFromApi — browser must not fetch B2 eventsUrl. */
@@ -661,7 +724,8 @@ export async function loadRrwebPayload(
  * Never fetches `eventsUrl`.
  */
 export async function loadRrwebEventsPayload(
-  detail: AdminRrwebSessionDetail
+  detail: AdminRrwebSessionDetail,
+  opts?: { bypassCache?: boolean }
 ): Promise<RrwebEventsLoadResult> {
   if (detail.events?.frames?.length) {
     return {
@@ -669,7 +733,7 @@ export async function loadRrwebEventsPayload(
       eventsBytes: detail.eventsBytes || 0,
     };
   }
-  return loadRrwebPayloadFromApi(detail);
+  return loadRrwebPayloadFromApi(detail, opts);
 }
 
 export function pickDefaultRrwebFrame(

@@ -354,7 +354,8 @@ export default function SuperAdminRrwebSessionsWorkspace({
   const loadEventsIntoPlayer = useCallback(
     async (
       session: AdminRrwebSessionDetail,
-      cancelled: () => boolean
+      cancelled: () => boolean,
+      opts?: { bypassCache?: boolean }
     ): Promise<boolean> => {
       if (!isRrwebSessionReplayable(session)) {
         if (!cancelled()) {
@@ -366,7 +367,10 @@ export default function SuperAdminRrwebSessionsWorkspace({
       }
       if (!cancelled()) setEventsLoading(true);
       try {
-        const { payload, eventsBytes } = await loadRrwebEventsPayload(session);
+        const recording = (session.status || "").toLowerCase() === "recording";
+        const { payload, eventsBytes } = await loadRrwebEventsPayload(session, {
+          bypassCache: opts?.bypassCache ?? recording,
+        });
         if (cancelled()) return false;
         if (eventsBytes > 0) {
           setDetail((prev) =>
@@ -538,9 +542,25 @@ export default function SuperAdminRrwebSessionsWorkspace({
     (async () => {
       setDetailLoading(true);
       setDetailError("");
-      setEventsLoading(false);
       setEventsError("");
       setFrames([]);
+
+      // Kick off events download immediately from list row (don't wait for detail).
+      // Path is /admin/rrweb-sessions/:id/events — only needs id (+ replayable).
+      const listRow = sessionsRef.current.find((s) => s.id === selectedSessionId);
+      const earlySeed: AdminRrwebSessionDetail | null =
+        listRow && isRrwebSessionReplayable(listRow)
+          ? { ...listRow, events: null }
+          : null;
+      const earlyEventsPromise = earlySeed
+        ? loadEventsIntoPlayer(earlySeed, isCancelled)
+        : null;
+      if (earlyEventsPromise) {
+        setEventsLoading(true);
+      } else {
+        setEventsLoading(false);
+      }
+
       try {
         // Metadata only — do not use ?includeEvents=1 (slow).
         const next = await superAdminRrwebSessionsApi.getSession(selectedSessionId);
@@ -548,6 +568,11 @@ export default function SuperAdminRrwebSessionsWorkspace({
         setDetail(next);
         setDetailLoading(false);
         void markSessionReviewed(next.id);
+
+        if (earlyEventsPromise) {
+          await earlyEventsPromise;
+          return;
+        }
 
         if (!isRrwebSessionReplayable(next)) {
           setFrames([]);
@@ -576,10 +601,11 @@ export default function SuperAdminRrwebSessionsWorkspace({
     if (!current) return;
     if (selectedSessionId) void markSessionReviewed(selectedSessionId);
     try {
-      const fresh = await superAdminRrwebSessionsApi.getSession(current.id);
+      const [fresh] = await Promise.all([
+        superAdminRrwebSessionsApi.getSession(current.id),
+        loadEventsIntoPlayer(current, () => false, { bypassCache: true }),
+      ]);
       setDetail((prev) => mergeRrwebSession(prev, fresh));
-      if (!isRrwebSessionReplayable(fresh)) return;
-      await loadEventsIntoPlayer(fresh, () => false);
     } catch {
       /* keep last frames */
     }
@@ -589,13 +615,10 @@ export default function SuperAdminRrwebSessionsWorkspace({
     const current = detailRef.current;
     if (!current) return;
     if (selectedSessionId) void markSessionReviewed(selectedSessionId);
-    // Recording: refetch events on each play (partial/live, no long cache).
+    // Recording: refetch events on each play (partial/live).
     if (current.status.toLowerCase() !== "recording") return;
     try {
-      const fresh = await superAdminRrwebSessionsApi.getSession(current.id);
-      setDetail((prev) => mergeRrwebSession(prev, fresh));
-      if (!isRrwebSessionReplayable(fresh)) return;
-      await loadEventsIntoPlayer(fresh, () => false);
+      await loadEventsIntoPlayer(current, () => false, { bypassCache: true });
     } catch {
       /* keep last frames */
     }
