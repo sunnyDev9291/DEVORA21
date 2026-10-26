@@ -1223,6 +1223,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
               </div>
 
               <RrwebReplayPlayer
+                key={`rrweb-tv-${activeFrameKey}`}
                 className="min-h-[16rem] flex-1"
                 frames={frames.length > 0 && detailReplayable ? frames : []}
                 frameKey={activeFrameKey}

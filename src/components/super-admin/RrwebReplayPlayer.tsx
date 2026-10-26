@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import "rrweb-player/dist/style.css";
 import { saBtnGhost, saMono } from "@/components/super-admin/resume-dashboard-styles";
 import type { RrwebEventFrame } from "@/lib/super-admin-rrweb-sessions-api";
@@ -14,6 +14,11 @@ type RrwebPlayerInstance = {
   goto?: (timeOffset: number, play?: boolean) => void;
   triggerResize?: () => void;
   getMetaData?: () => { totalTime?: number };
+  addEventListener?: (event: string, handler: (params: unknown) => unknown) => void;
+  getReplayer?: () => {
+    on?: (event: string, handler: (...args: unknown[]) => void) => void;
+    off?: (event: string, handler: (...args: unknown[]) => void) => void;
+  };
 };
 
 type RrwebPlayerCtor = new (opts: {
@@ -22,14 +27,14 @@ type RrwebPlayerCtor = new (opts: {
 }) => RrwebPlayerInstance;
 
 const SPEED_OPTIONS = [1, 2, 4] as const;
-/** rrweb-player controller chrome height approx. */
+/** rrweb-player built-in controller chrome height. */
 const CONTROLLER_H = 80;
 
 export type RrwebReplayPlayerProps = {
   frames: RrwebEventFrame[];
   /** Active frame key — parent owns frame switcher. */
   frameKey: string;
-  /** Fired on each controller/host interaction (e.g. refetch while recording). */
+  /** Fired on each play / controller interaction (e.g. refetch while recording). */
   onPlay?: () => void | Promise<void>;
   className?: string;
   /** Empty / blocked / loading message inside the TV screen. */
@@ -37,9 +42,28 @@ export type RrwebReplayPlayerProps = {
   busy?: boolean;
 };
 
+function isPlayingPayload(raw: unknown): boolean | null {
+  if (raw == null) return null;
+  if (typeof raw === "string") {
+    const s = raw.toLowerCase();
+    if (s === "playing" || s === "play" || s === "running") return true;
+    if (s === "paused" || s === "pause" || s === "stopped" || s === "ended") return false;
+    return null;
+  }
+  if (typeof raw === "boolean") return raw;
+  if (typeof raw === "object") {
+    const row = raw as Record<string, unknown>;
+    for (const key of ["payload", "state", "playerState", "status", "value"]) {
+      const nested = isPlayingPayload(row[key]);
+      if (nested !== null) return nested;
+    }
+  }
+  return null;
+}
+
 /**
  * TV-framed rrweb player — outer chassis + inner screen.
- * Direct inline play only (no fullscreen). Player fits TV; no screen scrollbar.
+ * Built-in scrubber stays; Play/Pause always lives in our chin (never an empty hole).
  */
 export default function RrwebReplayPlayer({
   frames,
@@ -54,10 +78,14 @@ export default function RrwebReplayPlayer({
   const playerRef = useRef<RrwebPlayerInstance | null>(null);
   const onPlayRef = useRef(onPlay);
   onPlayRef.current = onPlay;
+  const playBtnId = useId();
 
   const [speed, setSpeed] = useState<number>(1);
   const [error, setError] = useState("");
   const [ready, setReady] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  /** Bumps on every frame remount so chin controls remount with the player. */
+  const [chromeKey, setChromeKey] = useState(0);
 
   const frame =
     frames.find((f) => f.frameKey === frameKey) ||
@@ -65,7 +93,34 @@ export default function RrwebReplayPlayer({
     frames[0] ||
     null;
 
-  const canMount = Boolean(frame && Array.isArray(frame.events) && frame.events.length >= 2);
+  const eventCount = Array.isArray(frame?.events) ? frame!.events.length : 0;
+  const canMount = Boolean(frame && eventCount >= 2);
+  /** Show Play chrome whenever we intend to mount / have mounted a player. */
+  const showPlayChrome = canMount || busy;
+
+  const bindPlayerState = useCallback((player: RrwebPlayerInstance) => {
+    const apply = (raw: unknown) => {
+      const next = isPlayingPayload(raw);
+      if (next !== null) setPlaying(next);
+    };
+
+    player.addEventListener?.("ui-update-player-state", apply);
+    player.addEventListener?.("ui-update-current-state", apply);
+
+    const replayer = player.getReplayer?.();
+    const onStart = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+    const onFinish = () => setPlaying(false);
+    replayer?.on?.("start", onStart);
+    replayer?.on?.("pause", onPause);
+    replayer?.on?.("finish", onFinish);
+
+    return () => {
+      replayer?.off?.("start", onStart);
+      replayer?.off?.("pause", onPause);
+      replayer?.off?.("finish", onFinish);
+    };
+  }, []);
 
   useEffect(() => {
     const el = glassRef.current;
@@ -79,12 +134,16 @@ export default function RrwebReplayPlayer({
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [ready]);
+  }, [ready, chromeKey]);
 
   useEffect(() => {
     let cancelled = false;
+    let unbindState: (() => void) | undefined;
     let removePointer: (() => void) | undefined;
     const host = hostRef.current;
+
+    setPlaying(false);
+
     if (!host || !canMount || !frame) {
       setReady(false);
       if (!overlayMessage && !busy) {
@@ -128,13 +187,16 @@ export default function RrwebReplayPlayer({
             autoPlay: false,
             showController: true,
             speed,
+            // Hide built-in speed pills — we use chin chips. Keep scrubber + times.
             speedOption: [...SPEED_OPTIONS],
             skipInactive: true,
             showWarning: true,
           },
         });
         playerRef.current = player;
+        unbindState = bindPlayerState(player);
         setReady(true);
+        setChromeKey((k) => k + 1);
         requestAnimationFrame(() => {
           try {
             player.triggerResize?.();
@@ -162,6 +224,7 @@ export default function RrwebReplayPlayer({
     return () => {
       cancelled = true;
       removePointer?.();
+      unbindState?.();
       try {
         playerRef.current?.$destroy?.();
       } catch {
@@ -170,8 +233,9 @@ export default function RrwebReplayPlayer({
       playerRef.current = null;
       if (hostRef.current) hostRef.current.innerHTML = "";
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- remount on frame / events only
-  }, [frame?.frameKey, frame?.events?.length, canMount]);
+    // Remount on frame identity / event count (iframe switch, live refresh).
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- speed via separate effect
+  }, [frame?.frameKey, eventCount, canMount, bindPlayerState]);
 
   useEffect(() => {
     const player = playerRef.current;
@@ -183,10 +247,41 @@ export default function RrwebReplayPlayer({
     }
   }, [speed, ready]);
 
+  const togglePlayPause = useCallback(() => {
+    const player = playerRef.current;
+    if (!player || !canMount) return;
+    void onPlayRef.current?.();
+    try {
+      if (playing) {
+        player.pause?.();
+        setPlaying(false);
+      } else {
+        player.play?.();
+        setPlaying(true);
+      }
+    } catch {
+      try {
+        player.toggle?.();
+        setPlaying((p) => !p);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [playing, canMount]);
+
   const screenMessage =
     error ||
     overlayMessage ||
     (!canMount && !busy ? "Select a session URL to watch." : null);
+
+  const playDisabled = !canMount || !ready || Boolean(busy && !ready);
+  const playTitle = !canMount
+    ? "No replayable events for this frame"
+    : busy && !ready
+      ? "Loading events…"
+      : playing
+        ? "Pause"
+        : "Play";
 
   return (
     <div
@@ -203,6 +298,7 @@ export default function RrwebReplayPlayer({
               <div
                 ref={hostRef}
                 className="rrweb-player-host h-full w-full"
+                data-frame-key={frame?.frameKey || ""}
               />
               {(busy || screenMessage) && !ready ? (
                 <p
@@ -224,20 +320,64 @@ export default function RrwebReplayPlayer({
             </div>
           </div>
 
-          <div className="rrweb-tv-chin mt-3 flex shrink-0 items-center gap-2 px-1">
+          {/* Custom chin chrome — Play/Pause always rendered in the left slot */}
+          <div
+            key={`chin-${frame?.frameKey || "none"}-${chromeKey}`}
+            className="rrweb-tv-chin mt-3 flex shrink-0 items-center gap-2 px-1"
+          >
+            {showPlayChrome ? (
+              <button
+                id={playBtnId}
+                type="button"
+                disabled={playDisabled}
+                title={playTitle}
+                aria-label={playTitle}
+                aria-pressed={playing}
+                onClick={togglePlayPause}
+                className={`rrweb-tv-play-btn ${saBtnGhost} inline-flex h-8 min-w-[4.5rem] shrink-0 items-center justify-center gap-1.5 border-slate-600/50 bg-slate-900/60 px-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-100 disabled:cursor-not-allowed disabled:opacity-45`}
+              >
+                {busy && !ready ? (
+                  <span className="rrweb-tv-play-spinner" aria-hidden />
+                ) : playing ? (
+                  <>
+                    <PauseIcon />
+                    Pause
+                  </>
+                ) : (
+                  <>
+                    <PlayIcon />
+                    Play
+                  </>
+                )}
+              </button>
+            ) : (
+              <span
+                className={`${saMono} inline-flex h-8 min-w-[4.5rem] shrink-0 items-center justify-center px-2 text-[10px] text-slate-500`}
+                title="Nothing to replay"
+              >
+                —
+              </span>
+            )}
+
             <span className="rrweb-tv-led" aria-hidden />
             <span className={`${saMono} text-[10px] uppercase tracking-[0.16em] text-slate-400`}>
               Direct play
             </span>
+
             <div className="ml-auto flex flex-wrap items-center gap-1.5">
               {SPEED_OPTIONS.map((opt) => (
                 <button
                   key={opt}
                   type="button"
-                  disabled={!ready}
+                  disabled={!ready || !canMount}
                   onClick={() => {
                     setSpeed(opt);
                     void onPlayRef.current?.();
+                    try {
+                      playerRef.current?.setSpeed?.(opt);
+                    } catch {
+                      /* ignore */
+                    }
                   }}
                   className={`${saBtnGhost} border-slate-600/40 bg-slate-900/40 px-2 py-0.5 text-[10px] text-slate-200 ${
                     speed === opt ? "border-teal-400/60 text-teal-200" : ""
@@ -251,5 +391,21 @@ export default function RrwebReplayPlayer({
         </div>
       </div>
     </div>
+  );
+}
+
+function PlayIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M8 5v14l11-7z" />
+    </svg>
+  );
+}
+
+function PauseIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M6 5h4v14H6zm8 0h4v14h-4z" />
+    </svg>
   );
 }
