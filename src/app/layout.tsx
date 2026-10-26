@@ -72,7 +72,11 @@ export default function RootLayout({
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem("theme");if(t==="light")document.documentElement.classList.remove("dark");else document.documentElement.classList.add("dark");}catch(e){}})();`,
+            // Theme flash + harden against extensions that rewrite text nodes
+            // (IPA Annotator, Grammarly, translators). Those mutations make React
+            // throw NotFoundError on removeChild/insertBefore and blank the app.
+            __html: `(function(){try{var t=localStorage.getItem("theme");if(t==="light")document.documentElement.classList.remove("dark");else document.documentElement.classList.add("dark");}catch(e){}}
+(function(){try{if(typeof Node==="undefined"||!Node.prototype)return;var rc=Node.prototype.removeChild;Node.prototype.removeChild=function(n){if(n&&n.parentNode!==this){if(n.parentNode)try{return rc.call(n.parentNode,n);}catch(e){}return n;}return rc.call(this,n);};var ib=Node.prototype.insertBefore;Node.prototype.insertBefore=function(n,r){if(r&&r.parentNode!==this){if(typeof this.appendChild==="function")try{return this.appendChild(n);}catch(e){}return n;}return ib.call(this,n,r);};}catch(e){}})();`,
           }}
         />
       </head>

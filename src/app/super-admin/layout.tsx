@@ -6,6 +6,7 @@ import "@fontsource/syne/800.css";
 import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
 import "@fontsource/ibm-plex-mono/600.css";
+import SuperAdminErrorBoundary from "@/components/super-admin/SuperAdminErrorBoundary";
 import "./super-admin.css";
 
 export const metadata: Metadata = {
@@ -35,7 +36,9 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
         className="pointer-events-none absolute -right-16 top-[20%] h-[18rem] w-[18rem] rounded-full bg-sky-100/50 blur-3xl"
         aria-hidden
       />
-      <div className="relative z-10">{children}</div>
+      <div className="relative z-10">
+        <SuperAdminErrorBoundary>{children}</SuperAdminErrorBoundary>
+      </div>
     </div>
   );
 }
