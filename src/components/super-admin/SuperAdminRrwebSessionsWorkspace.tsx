@@ -39,7 +39,7 @@ import {
   isRrwebSessionRecording,
   isRrwebSessionReplayable,
   isRrwebSessionUnread,
-  formatRrwebEventsPhase,
+  formatRrwebLoadStatus,
   loadRrwebEventsPayload,
   mergeRrwebSession,
   pickTopFrame,
@@ -55,7 +55,7 @@ import {
   type AdminRrwebSession,
   type AdminRrwebSessionDetail,
   type RrwebEventFrame,
-  type RrwebEventsLoadPhase,
+  type RrwebLoadProgress,
   type RrwebSessionOwner,
   type RrwebSessionsLiveEvent,
 } from "@/lib/super-admin-rrweb-sessions-api";
@@ -170,11 +170,13 @@ export default function SuperAdminRrwebSessionsWorkspace({
   /** All frames from the events payload (in memory for this session). */
   const [sessionFrames, setSessionFrames] = useState<RrwebEventFrame[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
-  const [eventsPhase, setEventsPhase] = useState<RrwebEventsLoadPhase>("idle");
-  const [eventsPhaseDetail, setEventsPhaseDetail] = useState("");
   const [eventsError, setEventsError] = useState("");
+  const [loadProgress, setLoadProgress] = useState<RrwebLoadProgress>({
+    phase: "idle",
+  });
   const [activeFrameKey, setActiveFrameKey] = useState<string>("top");
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
+  const loadAbortRef = useRef<AbortController | null>(null);
   const [toast, setToast] = useState("");
   /** Calm one-shot note when the open session is on another calendar day. */
   const [crossDayNote, setCrossDayNote] = useState<{
@@ -368,11 +370,20 @@ export default function SuperAdminRrwebSessionsWorkspace({
     reviewPostedRef.current.clear();
     setSessionFrames([]);
     setEventsError("");
-    setEventsPhase("idle");
-    setEventsPhaseDetail("");
     setActiveFrameKey("top");
     setCrossDayNote(null);
+    setLoadProgress({ phase: "idle" });
+    loadAbortRef.current?.abort();
+    loadAbortRef.current = null;
   }, [selectedSessionId]);
+
+  const reportLoadProgress = useCallback(
+    (progress: RrwebLoadProgress, cancelled: () => boolean) => {
+      if (cancelled()) return;
+      setLoadProgress(progress);
+    },
+    []
+  );
 
   const loadEventsIntoPlayer = useCallback(
     async (
@@ -385,27 +396,30 @@ export default function SuperAdminRrwebSessionsWorkspace({
           setSessionFrames([]);
           setEventsError("");
           setEventsLoading(false);
-          setEventsPhase("idle");
-          setEventsPhaseDetail("");
+          setLoadProgress({ phase: "waiting" });
         }
         return false;
       }
+
+      loadAbortRef.current?.abort();
+      const abort = new AbortController();
+      loadAbortRef.current = abort;
+
       if (!cancelled()) {
         setEventsLoading(true);
-        setEventsPhase("requesting");
-        setEventsPhaseDetail("");
+        setEventsError("");
+        setLoadProgress({ phase: "download", receivedBytes: 0 });
       }
+
       try {
         const recording = (session.status || "").toLowerCase() === "recording";
         const { payload, eventsBytes } = await loadRrwebEventsPayload(session, {
           bypassCache: opts?.bypassCache ?? recording,
-          onProgress: (progress) => {
-            if (cancelled()) return;
-            setEventsPhase(progress.phase);
-            setEventsPhaseDetail(progress.detail || "");
-          },
+          signal: abort.signal,
+          onProgress: (progress) => reportLoadProgress(progress, cancelled),
         });
-        if (cancelled()) return false;
+        if (cancelled() || abort.signal.aborted) return false;
+
         if (eventsBytes > 0) {
           setDetail((prev) =>
             prev && prev.id === session.id
@@ -423,11 +437,14 @@ export default function SuperAdminRrwebSessionsWorkspace({
             )
           );
         }
-        if (!cancelled()) {
-          setEventsPhase("preparing");
-          setEventsPhaseDetail("TOP frame");
-        }
-        // One gzip download → all frames stay in memory; TOP selected for first mount.
+
+        reportLoadProgress({ phase: "prepare" }, cancelled);
+        // Yield so "Preparing player…" paints before frame state updates.
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 0);
+        });
+        if (cancelled() || abort.signal.aborted) return false;
+
         const ok = applyFramesFromPayload(
           payload,
           setSessionFrames,
@@ -435,30 +452,57 @@ export default function SuperAdminRrwebSessionsWorkspace({
         );
         if (!ok) {
           setSessionFrames([]);
-          setEventsError("No replay frames in events payload.");
-          setEventsPhase("error");
+          setEventsError("No replay events for this frame");
+          setLoadProgress({
+            phase: "error",
+            errorKind: "empty",
+            message: "No replay events for this frame",
+          });
+          return false;
+        }
+        const top = pickTopFrame(payload.frames);
+        const topEvents = Array.isArray(top?.events) ? top!.events.length : 0;
+        if (topEvents < 2) {
+          setEventsError("No replay events for this frame");
+          setLoadProgress({
+            phase: "error",
+            errorKind: "empty",
+            message: "No replay events for this frame",
+          });
           return false;
         }
         setEventsError("");
-        if (!cancelled()) {
-          setEventsPhase("ready");
-          setEventsPhaseDetail("");
-        }
+        // Mount stage is reported by the player; stay on prepare until then.
+        reportLoadProgress({ phase: "prepare" }, cancelled);
         return true;
       } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return false;
+        }
         if (!cancelled()) {
           setSessionFrames([]);
-          setEventsPhase("error");
-          setEventsError(
-            getApiErrorMessage(err, "Could not load replay events.")
-          );
+          const message = getApiErrorMessage(err, "Download failed — Retry");
+          setEventsError(message);
+          const lower = message.toLowerCase();
+          const errorKind = lower.includes("decompress")
+            ? "gunzip"
+            : lower.includes("invalid") || lower.includes("parse")
+              ? "parse"
+              : "download";
+          setLoadProgress({
+            phase: "error",
+            errorKind,
+            message,
+          });
         }
         return false;
       } finally {
-        if (!cancelled()) setEventsLoading(false);
+        if (!cancelled() && !abort.signal.aborted) {
+          setEventsLoading(false);
+        }
       }
     },
-    []
+    [reportLoadProgress]
   );
 
   const applySessionReviewUpdate = useCallback(
@@ -611,6 +655,8 @@ export default function SuperAdminRrwebSessionsWorkspace({
       setDetailError("");
       setSessionFrames([]);
       setEventsLoading(false);
+      setLoadProgress({ phase: "idle" });
+      loadAbortRef.current?.abort();
       return;
     }
 
@@ -622,8 +668,6 @@ export default function SuperAdminRrwebSessionsWorkspace({
       setEventsError("");
       setSessionFrames([]);
 
-      // Kick off events download immediately from list row (don't wait for detail).
-      // Path is /admin/rrweb-sessions/:id/events — only needs id (+ replayable).
       const listRow = sessionsRef.current.find((s) => s.id === selectedSessionId);
       const earlySeed: AdminRrwebSessionDetail | null =
         listRow && isRrwebSessionReplayable(listRow)
@@ -632,10 +676,11 @@ export default function SuperAdminRrwebSessionsWorkspace({
       const earlyEventsPromise = earlySeed
         ? loadEventsIntoPlayer(earlySeed, isCancelled)
         : null;
-      if (earlyEventsPromise) {
-        setEventsLoading(true);
-      } else {
+      if (!earlyEventsPromise) {
         setEventsLoading(false);
+        if (listRow && !isRrwebSessionReplayable(listRow)) {
+          setLoadProgress({ phase: "waiting" });
+        }
       }
 
       try {
@@ -654,6 +699,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
         if (!isRrwebSessionReplayable(next)) {
           setSessionFrames([]);
           setEventsLoading(false);
+          setLoadProgress({ phase: "waiting" });
           return;
         }
         await loadEventsIntoPlayer(next, isCancelled);
@@ -664,14 +710,26 @@ export default function SuperAdminRrwebSessionsWorkspace({
           setDetailError(getApiErrorMessage(err, "Could not load session detail."));
           setEventsLoading(false);
           setDetailLoading(false);
+          setLoadProgress({
+            phase: "error",
+            errorKind: "other",
+            message: getApiErrorMessage(err, "Could not load session detail."),
+          });
         }
       }
     })();
 
     return () => {
       cancelled = true;
+      loadAbortRef.current?.abort();
     };
   }, [selectedSessionId, markSessionReviewed, loadEventsIntoPlayer]);
+
+  const retryEventsLoad = useCallback(() => {
+    const current = detailRef.current;
+    if (!current || !selectedSessionId) return;
+    void loadEventsIntoPlayer(current, () => false, { bypassCache: true });
+  }, [selectedSessionId, loadEventsIntoPlayer]);
 
   const refreshEventsFromApi = useCallback(async () => {
     const current = detailRef.current;
@@ -949,37 +1007,48 @@ export default function SuperAdminRrwebSessionsWorkspace({
     return [activeFrame];
   }, [detailReplayable, activeFrame]);
 
-  const eventsPhaseLabel = eventsLoading
-    ? formatRrwebEventsPhase(
-        eventsPhase === "idle" || eventsPhase === "ready"
-          ? "requesting"
-          : eventsPhase,
-        eventsPhaseDetail
-      ) || "Loading events…"
-    : "";
+  const loadStatusText = formatRrwebLoadStatus(loadProgress);
+  const loadBusy =
+    loadProgress.phase === "download" ||
+    loadProgress.phase === "gunzip" ||
+    loadProgress.phase === "parse" ||
+    loadProgress.phase === "prepare" ||
+    loadProgress.phase === "mount" ||
+    eventsLoading;
 
   const playerOverlayMessage = !selectedSessionId
     ? "Select a session URL above to watch."
     : detail && !detailReplayable
       ? detailBlockedReason ||
         (detailIsRecording ? "Waiting for first sync…" : "Replay not available yet.")
-      : detailLoading && !eventsLoading
-        ? "Loading session…"
-        : eventsLoading
-          ? eventsPhaseLabel || "Downloading events…"
-          : eventsError
-            ? eventsError
-            : detailError
-              ? detailError
-              : sessionFrames.length === 0
-                ? detailIsRecording && !detailReplayable
-                  ? "Waiting for first sync…"
-                  : detailBlockedReason || "Replay not available yet."
-                : activeFrame && (!Array.isArray(activeFrame.events) || activeFrame.events.length < 2)
-                  ? activeFrame.events?.length === 0
-                    ? "This frame has no events."
-                    : "This frame has too few events to replay."
-                  : undefined;
+      : loadProgress.phase === "error"
+        ? loadStatusText || eventsError || "Failed — Retry"
+        : loadBusy
+          ? loadStatusText || "Loading…"
+          : detailLoading
+            ? "Loading session…"
+            : eventsError
+              ? eventsError
+              : detailError
+                ? detailError
+                : sessionFrames.length === 0
+                  ? detailIsRecording && !detailReplayable
+                    ? "Waiting for first sync…"
+                    : detailBlockedReason || "Replay not available yet."
+                  : activeFrame &&
+                      (!Array.isArray(activeFrame.events) ||
+                        activeFrame.events.length < 2)
+                    ? activeFrame.events?.length === 0
+                      ? "No replay events for this frame"
+                      : "This frame has too few events to replay."
+                    : undefined;
+
+  const playerStatusSecondary =
+    activeFrame && detailReplayable
+      ? rrwebFrameLabel(activeFrame)
+      : detail
+        ? rrwebSessionTitle(detail)
+        : undefined;
 
   return (
     <div className="flex min-h-[min(78vh,52rem)] flex-col gap-4 xl:h-[min(78vh,52rem)]">
@@ -1345,15 +1414,6 @@ export default function SuperAdminRrwebSessionsWorkspace({
                       TV direct play · no fullscreen
                     </p>
                   )}
-                  {eventsPhaseLabel ? (
-                    <p
-                      className={`${saMono} mt-1 text-[11px] text-teal-800`}
-                      role="status"
-                      aria-live="polite"
-                    >
-                      {eventsPhaseLabel}
-                    </p>
-                  ) : null}
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-1.5">
                   {detailIsPartialLive ? (
@@ -1363,9 +1423,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
                       onClick={() => void refreshEventsFromApi()}
                       className={`${saBtnGhost} text-[11px]`}
                     >
-                      {eventsLoading
-                        ? eventsPhaseLabel || "Refreshing…"
-                        : "Refresh"}
+                      {eventsLoading ? "Refreshing…" : "Refresh"}
                     </button>
                   ) : null}
                   {showFrameSwitcher
@@ -1405,14 +1463,45 @@ export default function SuperAdminRrwebSessionsWorkspace({
                 frames={playerFrames}
                 frameKey={activeFrameKey}
                 skipInactive={skipInactive}
-                busy={Boolean(selectedSessionId) && (detailLoading || eventsLoading)}
+                busy={
+                  Boolean(selectedSessionId) &&
+                  (detailLoading || loadBusy || loadProgress.phase === "waiting")
+                }
+                statusLabel={
+                  loadProgress.phase === "ready"
+                    ? ""
+                    : loadBusy ||
+                        loadProgress.phase === "waiting" ||
+                        loadProgress.phase === "error"
+                      ? loadStatusText
+                      : playerOverlayMessage
+                }
+                statusSecondary={playerStatusSecondary}
+                showRetry={loadProgress.phase === "error"}
+                onRetry={retryEventsLoad}
                 overlayMessage={
                   playerFrames.length > 0 &&
                   Array.isArray(activeFrame?.events) &&
-                  (activeFrame?.events.length ?? 0) >= 2
+                  (activeFrame?.events.length ?? 0) >= 2 &&
+                  !loadBusy &&
+                  loadProgress.phase !== "error"
                     ? undefined
                     : playerOverlayMessage
                 }
+                onMountPhase={(phase) => {
+                  if (phase === "mount") {
+                    setLoadProgress({ phase: "mount" });
+                  } else if (phase === "ready") {
+                    setEventsLoading(false);
+                    setLoadProgress({ phase: "ready" });
+                  } else if (phase === "error") {
+                    setLoadProgress({
+                      phase: "error",
+                      errorKind: "other",
+                      message: "Loading player failed — Retry",
+                    });
+                  }
+                }}
                 onPlay={() => {
                   void refreshRecordingEventsOnPlay();
                 }}

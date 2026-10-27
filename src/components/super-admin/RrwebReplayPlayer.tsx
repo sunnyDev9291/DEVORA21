@@ -43,6 +43,14 @@ export type RrwebReplayPlayerProps = {
   className?: string;
   /** Empty / blocked / loading message inside the TV screen. */
   overlayMessage?: string;
+  /** Primary load-stage line (download / gunzip / parse / mount…). */
+  statusLabel?: string;
+  /** Optional secondary line (frame label / session title). */
+  statusSecondary?: string;
+  showRetry?: boolean;
+  onRetry?: () => void;
+  /** Notify parent when rrweb-player construct starts/finishes. */
+  onMountPhase?: (phase: "mount" | "ready" | "error") => void;
   busy?: boolean;
   /** From replayHints.skipInactive — default true. */
   skipInactive?: boolean;
@@ -77,6 +85,11 @@ export default function RrwebReplayPlayer({
   onPlay,
   className = "",
   overlayMessage,
+  statusLabel,
+  statusSecondary,
+  showRetry = false,
+  onRetry,
+  onMountPhase,
   busy = false,
   skipInactive = true,
 }: RrwebReplayPlayerProps) {
@@ -85,6 +98,8 @@ export default function RrwebReplayPlayer({
   const playerRef = useRef<RrwebPlayerInstance | null>(null);
   const onPlayRef = useRef(onPlay);
   onPlayRef.current = onPlay;
+  const onMountPhaseRef = useRef(onMountPhase);
+  onMountPhaseRef.current = onMountPhase;
   const playBtnId = useId();
 
   const [speed, setSpeed] = useState<number>(1);
@@ -171,6 +186,7 @@ export default function RrwebReplayPlayer({
     const events = Array.isArray(frame.events) ? frame.events : [];
     setError("");
     setReady(false);
+    onMountPhaseRef.current?.("mount");
 
     const glass = glassRef.current;
     const rect = glass?.getBoundingClientRect();
@@ -212,6 +228,7 @@ export default function RrwebReplayPlayer({
         unbindState = bindPlayerState(player);
         setReady(true);
         setChromeKey((k) => k + 1);
+        onMountPhaseRef.current?.("ready");
         requestAnimationFrame(() => {
           try {
             player.triggerResize?.();
@@ -233,6 +250,7 @@ export default function RrwebReplayPlayer({
             err instanceof Error ? err.message : "Could not start rrweb player."
           );
           setReady(false);
+          onMountPhaseRef.current?.("error");
         }
       }
     })();
@@ -289,13 +307,14 @@ export default function RrwebReplayPlayer({
   }, [playing, canMount]);
 
   const screenMessage =
+    statusLabel ||
     error ||
     overlayMessage ||
     (!frame && !busy
       ? "Select a session URL to watch."
       : frame && !canMount && !busy
         ? eventCount === 0
-          ? "This frame has no events."
+          ? "No replay events for this frame"
           : "This frame has too few events to replay."
         : null);
 
@@ -303,7 +322,7 @@ export default function RrwebReplayPlayer({
   const playTitle = !canMount
     ? "No replayable events for this frame"
     : busy && !ready
-      ? "Loading events…"
+      ? statusLabel || "Loading…"
       : playing
         ? "Pause"
         : "Play";
@@ -326,13 +345,29 @@ export default function RrwebReplayPlayer({
                 data-frame-key={frame?.frameKey || ""}
               />
               {(busy || screenMessage) && !ready ? (
-                <p
-                  className={`${saMono} absolute inset-0 z-10 flex items-center justify-center bg-[#0b0f14]/88 px-4 text-center text-xs text-slate-300`}
-                  role={error ? "alert" : "status"}
+                <div
+                  className={`${saMono} absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-[#0b0f14]/88 px-4 text-center`}
+                  role={error || showRetry ? "alert" : "status"}
                   aria-busy={busy || undefined}
                 >
-                  {busy && !screenMessage ? "Loading…" : screenMessage}
-                </p>
+                  <p className="text-xs text-slate-200">
+                    {screenMessage || (busy ? "Loading…" : "")}
+                  </p>
+                  {statusSecondary ? (
+                    <p className="max-w-full truncate text-[10px] text-slate-500">
+                      {statusSecondary}
+                    </p>
+                  ) : null}
+                  {showRetry && onRetry ? (
+                    <button
+                      type="button"
+                      onClick={onRetry}
+                      className={`${saBtnGhost} mt-1 border-slate-500/50 px-3 py-1 text-[11px] text-slate-100`}
+                    >
+                      Retry
+                    </button>
+                  ) : null}
+                </div>
               ) : null}
               {error && ready ? (
                 <p
