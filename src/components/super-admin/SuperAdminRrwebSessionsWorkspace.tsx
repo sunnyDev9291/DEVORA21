@@ -44,9 +44,11 @@ import {
   mergeRrwebSession,
   pickTopFrame,
   rrwebBlockedLoadProgress,
+  rrwebEventsTimelineDurationMs,
   rrwebFrameLabel,
   rrwebReplayBlockedReason,
   rrwebSessionActivityIso,
+  rrwebSessionDisplayDurationMs,
   rrwebSessionStartedAtIso,
   rrwebSessionTitle,
   rrwebStatusBadgeLabel,
@@ -323,7 +325,17 @@ export default function SuperAdminRrwebSessionsWorkspace({
           })
         );
 
-        setSessions(filtered);
+        // Merge with prior rows so a stale list poll cannot restore "Recording"
+        // after SSE already applied status: "uploaded".
+        setSessions((prev) => {
+          const prior = new Map(prev.map((s) => [s.id, s]));
+          return sortRrwebSessionsRecent(
+            filtered.map((row) => {
+              const old = prior.get(row.id);
+              return old ? mergeRrwebSession(old, row) : row;
+            })
+          );
+        });
         // Keep open detail badges in sync with list status (poll/SSE → uploaded).
         const selectedId = selectedSessionIdRef.current;
         if (selectedId) {
@@ -331,9 +343,6 @@ export default function SuperAdminRrwebSessionsWorkspace({
           if (row) {
             setDetail((prev) => {
               if (!prev || prev.id !== row.id) return prev;
-              if (prev.status === row.status && prev.replayable === row.replayable) {
-                return prev;
-              }
               return mergeRrwebSession(prev, row);
             });
           }
@@ -422,24 +431,6 @@ export default function SuperAdminRrwebSessionsWorkspace({
         });
         if (cancelled() || abort.signal.aborted) return false;
 
-        if (eventsBytes > 0) {
-          setDetail((prev) =>
-            prev && prev.id === session.id
-              ? { ...prev, eventsBytes: Math.max(prev.eventsBytes || 0, eventsBytes) }
-              : prev
-          );
-          setSessions((prev) =>
-            prev.map((row) =>
-              row.id === session.id
-                ? {
-                    ...row,
-                    eventsBytes: Math.max(row.eventsBytes || 0, eventsBytes),
-                  }
-                : row
-            )
-          );
-        }
-
         reportLoadProgress({ phase: "prepare" }, cancelled);
         // Yield so "Preparing player…" paints before frame state updates.
         await new Promise<void>((resolve) => {
@@ -463,8 +454,8 @@ export default function SuperAdminRrwebSessionsWorkspace({
           return false;
         }
         const top = pickTopFrame(payload.frames);
-        const topEvents = Array.isArray(top?.events) ? top!.events.length : 0;
-        if (topEvents < 2) {
+        const topEvents = Array.isArray(top?.events) ? top!.events : [];
+        if (topEvents.length < 2) {
           setEventsError("No replay events for this frame");
           setLoadProgress({
             phase: "error",
@@ -473,6 +464,62 @@ export default function SuperAdminRrwebSessionsWorkspace({
           });
           return false;
         }
+
+        // Align list/detail duration with player scrubber (event timeline).
+        // Never use endedAt − startedAt wall-clock.
+        const timelineMs = rrwebEventsTimelineDurationMs(topEvents);
+        const patchDuration = timelineMs > 0 ? timelineMs : 0;
+        if (eventsBytes > 0 || patchDuration > 0) {
+          setDetail((prev) =>
+            prev && prev.id === session.id
+              ? {
+                  ...prev,
+                  ...(eventsBytes > 0
+                    ? {
+                        eventsBytes: Math.max(
+                          prev.eventsBytes || 0,
+                          eventsBytes
+                        ),
+                      }
+                    : {}),
+                  ...(patchDuration > 0
+                    ? {
+                        durationMs: Math.max(
+                          prev.durationMs || 0,
+                          patchDuration
+                        ),
+                      }
+                    : {}),
+                }
+              : prev
+          );
+          setSessions((prev) =>
+            prev.map((row) =>
+              row.id === session.id
+                ? {
+                    ...row,
+                    ...(eventsBytes > 0
+                      ? {
+                          eventsBytes: Math.max(
+                            row.eventsBytes || 0,
+                            eventsBytes
+                          ),
+                        }
+                      : {}),
+                    ...(patchDuration > 0
+                      ? {
+                          durationMs: Math.max(
+                            row.durationMs || 0,
+                            patchDuration
+                          ),
+                        }
+                      : {}),
+                  }
+                : row
+            )
+          );
+        }
+
         setEventsError("");
         // Mount stage is reported by the player; stay on prepare until then.
         reportLoadProgress({ phase: "prepare" }, cancelled);
@@ -532,6 +579,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
       if (selectedSessionIdRef.current === incoming.id) {
         const prevDetail = detailRef.current;
         const nextDetail = mergeRrwebSession(prevDetail, incoming);
+        // Patch open detail in the same tick as the list upsert (badge + copy).
         setDetail(nextDetail);
 
         const prevStatus = (prevDetail?.status || "").toLowerCase();
@@ -544,8 +592,10 @@ export default function SuperAdminRrwebSessionsWorkspace({
         const statusFlippedOffRecording =
           prevStatus === "recording" &&
           (nextStatus === "uploaded" || nextStatus === "failed");
+        const eventCountUp =
+          (nextDetail.eventCount || 0) > (prevDetail?.eventCount || 0);
         const syncAdvanced =
-          (nextDetail.eventCount || 0) > (prevDetail?.eventCount || 0) ||
+          eventCountUp ||
           (nextDetail.eventsPath || "") !== (prevDetail?.eventsPath || "") ||
           (nextDetail.eventsUrl || "") !== (prevDetail?.eventsUrl || "") ||
           nextDetail.replayable !== prevDetail?.replayable ||
@@ -563,28 +613,42 @@ export default function SuperAdminRrwebSessionsWorkspace({
           }
         }
 
-        // When replayable flips true (or sync advances), refresh detail + load events.
-        if (
+        const shouldAutoLoad =
           nowReplayable &&
           (!wasReplayable ||
-            syncAdvanced ||
-            (prevStatus === "recording" && nextStatus === "uploaded"))
+            statusFlippedOffRecording ||
+            (prevStatus === "recording" && nextStatus === "uploaded"));
+
+        // Live recording already playing: more events → offer refresh (don't interrupt).
+        if (
+          nowReplayable &&
+          wasReplayable &&
+          recording &&
+          eventCountUp &&
+          !statusFlippedOffRecording
         ) {
+          setToast("More events synced — Refresh to update.");
+        }
+
+        // First sync while recording, or finish → load partial/full events (don't wait for tab close).
+        if (shouldAutoLoad) {
           if (!wasReplayable && nowReplayable) {
             setToast(
               recording
                 ? "Ready — first sync landed. You can Play."
                 : `“${rrwebSessionTitle(nextDetail)}” is ready to replay.`
             );
-          } else if (
-            prevStatus === "recording" &&
-            nextStatus === "uploaded" &&
-            nowReplayable
-          ) {
+          } else if (statusFlippedOffRecording && nowReplayable) {
             setToast(
               `“${rrwebSessionTitle(nextDetail)}” finished uploading — full replay ready.`
             );
           }
+          // Load immediately from SSE-merged detail (partial OK while recording).
+          void loadEventsIntoPlayer(nextDetail, () =>
+            selectedSessionIdRef.current !== nextDetail.id
+          ).catch(() => {
+            /* keep shell */
+          });
           void (async () => {
             try {
               const fresh = await superAdminRrwebSessionsApi.getSession(
@@ -598,27 +662,28 @@ export default function SuperAdminRrwebSessionsWorkspace({
                 setLoadProgress(rrwebBlockedLoadProgress(mergedFresh));
                 return;
               }
-              await loadEventsIntoPlayer(mergedFresh, () =>
-                selectedSessionIdRef.current !== nextDetail.id
-              );
-            } catch {
-              if (isRrwebSessionReplayable(nextDetail)) {
-                await loadEventsIntoPlayer(nextDetail, () =>
+              // Reload only if finish/new URLs — avoid double mount on first sync.
+              if (
+                statusFlippedOffRecording ||
+                (mergedFresh.eventsPath || "") !==
+                  (nextDetail.eventsPath || "") ||
+                (mergedFresh.eventsUrl || "") !== (nextDetail.eventsUrl || "")
+              ) {
+                await loadEventsIntoPlayer(mergedFresh, () =>
                   selectedSessionIdRef.current !== nextDetail.id
-                ).catch(() => {
-                  /* keep shell */
-                });
-              } else {
-                setLoadProgress(rrwebBlockedLoadProgress(nextDetail));
+                );
               }
+            } catch {
+              /* already tried SSE payload */
             }
           })();
         } else if (
           selectedSessionIdRef.current === incoming.id &&
           (recording || statusFlippedOffRecording) &&
-          syncAdvanced
+          syncAdvanced &&
+          !nowReplayable
         ) {
-          // Keep metadata fresh (recording wait OR post-close uploaded/failed).
+          // Still waiting for first sync — refresh metadata only.
           void superAdminRrwebSessionsApi
             .getSession(nextDetail.id)
             .then((fresh) => {
@@ -630,11 +695,9 @@ export default function SuperAdminRrwebSessionsWorkspace({
                 setLoadProgress(rrwebBlockedLoadProgress(mergedFresh));
                 return;
               }
-              if (!wasReplayable) {
-                void loadEventsIntoPlayer(mergedFresh, () =>
-                  selectedSessionIdRef.current !== nextDetail.id
-                );
-              }
+              void loadEventsIntoPlayer(mergedFresh, () =>
+                selectedSessionIdRef.current !== nextDetail.id
+              );
             })
             .catch(() => {
               /* ignore */
@@ -877,6 +940,16 @@ export default function SuperAdminRrwebSessionsWorkspace({
         !selectedUserIdRef.current || session.userId === selectedUserIdRef.current;
       if (!matchesUser) return;
 
+      const statusKey = (session.status || "").toLowerCase();
+      if (statusKey === "deleted") {
+        applySessionRemoved(
+          session.id,
+          session.userId,
+          "Session deleted (live)."
+        );
+        return;
+      }
+
       const alreadyInList = sessionsRef.current.some((s) => s.id === session.id);
       const known =
         sessionsRef.current.find((s) => s.id === session.id) ||
@@ -916,7 +989,13 @@ export default function SuperAdminRrwebSessionsWorkspace({
         });
       }
 
-      if (matchesDay) {
+      // Upsert/remove from SSE payload immediately — never wait for a full list refetch.
+      // Terminal status must clear Recording badge in the same tick.
+      const terminalStatus = ["uploaded", "failed", "deleted"].includes(
+        (session.status || "").toLowerCase()
+      );
+
+      if (matchesDay || alreadyInList || terminalStatus) {
         applySessionReviewUpdate(session);
         flashSession(session.id);
         setCrossDayNote((prev) =>
@@ -1012,7 +1091,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
     let eventCount = 0;
     let eventsBytes = 0;
     for (const s of filteredSessions) {
-      durationMs += s.durationMs || 0;
+      durationMs += rrwebSessionDisplayDurationMs(s);
       eventCount += s.eventCount || 0;
       eventsBytes += s.eventsBytes || 0;
     }
@@ -1441,7 +1520,11 @@ export default function SuperAdminRrwebSessionsWorkspace({
                                 {formatEstTime(rrwebSessionActivityIso(session)) || "—"}
                               </span>
                               <span className="opacity-40">·</span>
-                              <span>{formatDurationMs(session.durationMs)}</span>
+                              <span>
+                                {formatDurationMs(
+                                  rrwebSessionDisplayDurationMs(session)
+                                )}
+                              </span>
                             </span>
                           </button>
                           <button
@@ -1472,7 +1555,30 @@ export default function SuperAdminRrwebSessionsWorkspace({
                   <p className={saEyebrow}>Watch</p>
                   {detailIsPartialLive ? (
                     <p className={`${saMono} mt-1 text-[11px] text-amber-800`}>
-                      Partial replay — refresh to update.
+                      Partial replay — more events may appear; refresh to update.
+                    </p>
+                  ) : activeFrame &&
+                    detailReplayable &&
+                    !loadBusy &&
+                    displayLoadProgress.phase === "ready" ? (
+                    <p className={`${saMono} mt-1 text-[11px] text-slate-400`}>
+                      {(() => {
+                        const replayMs = rrwebEventsTimelineDurationMs(
+                          Array.isArray(activeFrame.events)
+                            ? activeFrame.events
+                            : []
+                        );
+                        const label = formatDurationMs(
+                          replayMs ||
+                            rrwebSessionDisplayDurationMs(detail || { durationMs: 0 })
+                        );
+                        if (label === "—") {
+                          return "TV direct play · no fullscreen";
+                        }
+                        return skipInactive
+                          ? `${label} replay · skip idle on`
+                          : `${label} replay`;
+                      })()}
                     </p>
                   ) : (
                     <p className={`${saMono} mt-1 text-[11px] text-slate-400`}>

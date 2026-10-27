@@ -424,6 +424,58 @@ export function formatDurationMs(ms: number): string {
   return `${m}m ${String(s).padStart(2, "0")}s`;
 }
 
+/**
+ * Event-timeline duration (last.timestamp − first.timestamp).
+ * Same basis as the rrweb-player scrubber end — never wall-clock.
+ */
+export function rrwebEventsTimelineDurationMs(events: unknown[]): number {
+  if (!Array.isArray(events) || events.length < 2) return 0;
+  let first: number | null = null;
+  let last: number | null = null;
+  for (const ev of events) {
+    if (!ev || typeof ev !== "object") continue;
+    const ts = (ev as { timestamp?: unknown }).timestamp;
+    if (typeof ts !== "number" || !Number.isFinite(ts)) continue;
+    if (first === null || ts < first) first = ts;
+    if (last === null || ts > last) last = ts;
+  }
+  if (first === null || last === null || last < first) return 0;
+  return last - first;
+}
+
+/**
+ * List/detail duration: API `durationMs` only (backend event-timeline after sync).
+ * Never compute endedAt − startedAt / Date.now() − startedAt on the client.
+ */
+export function rrwebSessionDisplayDurationMs(
+  session: Pick<AdminRrwebSession, "durationMs">
+): number {
+  const ms = session.durationMs;
+  return typeof ms === "number" && Number.isFinite(ms) && ms > 0 ? ms : 0;
+}
+
+/**
+ * Prefer terminal statuses from live SSE over a stale list/detail "recording".
+ * Never invent isLive separate from status.
+ */
+export function preferRrwebSessionStatus(
+  prevStatus: string | undefined | null,
+  incomingStatus: string | undefined | null
+): string {
+  const prev = (prevStatus || "").trim();
+  const next = (incomingStatus || "").trim();
+  if (!next) return prev || "uploaded";
+  const p = prev.toLowerCase();
+  const n = next.toLowerCase();
+  if (
+    (p === "uploaded" || p === "failed" || p === "deleted") &&
+    n === "recording"
+  ) {
+    return prev;
+  }
+  return next;
+}
+
 /** Compact payload size for Super Admin list (e.g. 150 KB). */
 export function formatRrwebBytes(bytes: number | undefined | null): string {
   if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes <= 0) {
@@ -1203,16 +1255,26 @@ export function mergeRrwebSession(
       ? nextDetail.events
       : prevDetail.events ?? nextDetail.events ?? null;
 
-  // Prefer incoming status always (never keep local "recording" after backend uploads).
+  // Prefer incoming status; never regress uploaded/failed → recording (stale poll).
   const incomingStatus =
     typeof incoming.status === "string" && incoming.status.trim()
       ? incoming.status.trim()
       : "";
+  const mergedStatus = preferRrwebSessionStatus(
+    prevDetail.status,
+    incomingStatus || nextDetail.status
+  );
+
+  const nextDuration = nextDetail.durationMs || 0;
+  const prevDuration = prevDetail.durationMs || 0;
 
   return {
     ...prevDetail,
     ...nextDetail,
-    status: incomingStatus || nextDetail.status || prevDetail.status,
+    status: mergedStatus,
+    // Event-timeline duration from API — keep prior positive value if payload omits it.
+    durationMs: nextDuration > 0 ? nextDuration : prevDuration,
+    eventCount: Math.max(nextDetail.eventCount || 0, prevDetail.eventCount || 0),
     events,
     eventsUrl: nextDetail.eventsUrl || prevDetail.eventsUrl,
     eventsPath: nextDetail.eventsPath || prevDetail.eventsPath,
@@ -1224,8 +1286,7 @@ export function mergeRrwebSession(
     replayHints: (() => {
       const hints = nextDetail.replayHints ?? prevDetail.replayHints ?? null;
       if (!hints) return null;
-      const status = (incomingStatus || nextDetail.status || prevDetail.status || "").toLowerCase();
-      if (status !== "recording" && hints.liveReplay) {
+      if (mergedStatus.toLowerCase() !== "recording" && hints.liveReplay) {
         return { ...hints, liveReplay: false };
       }
       return hints;
@@ -1241,6 +1302,7 @@ export function mergeRrwebSession(
       nextDetail.eventsBytes || 0,
       prevDetail.eventsBytes || 0
     ) || nextDetail.eventsBytes || prevDetail.eventsBytes,
+    endedAt: nextDetail.endedAt || prevDetail.endedAt,
   };
 }
 
