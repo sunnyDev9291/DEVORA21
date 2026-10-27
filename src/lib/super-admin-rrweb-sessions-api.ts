@@ -39,11 +39,12 @@ export type AdminRrwebSession = {
   /** Gzip/events payload size in bytes (from list/detail API). */
   eventsBytes?: number;
   /**
-   * Signed B2 URL — metadata only. NEVER fetch from the browser (CORS).
-   * Load bytes via `eventsPath` instead.
+   * Signed B2/S3 presigned GET URL. Prefer browser fetch when
+   * `replayHints.preferDirectEventsUrl` is not false (no Authorization header).
+   * Fall back to `eventsPath` on CORS / network failure.
    */
   eventsUrl?: string;
-  /** Same-origin admin path, e.g. `/admin/rrweb-sessions/:id/events`. Prefer this. */
+  /** Same-origin admin proxy, e.g. `/admin/rrweb-sessions/:id/events` (Bearer auth). */
   eventsPath?: string;
   /** Present on detail; `gzip` when payload is compressed. */
   eventsEncoding?: "gzip" | "json" | string | null;
@@ -83,6 +84,11 @@ export type RrwebReplayHints = {
   playOneFrameAtATime?: boolean;
   /** When false, do not apply CSS grayscale to the player. */
   grayscaleOk?: boolean;
+  /**
+   * Prefer signed `eventsUrl` (B2 direct) over API proxy.
+   * Default true when eventsUrl is present; set false to force proxy.
+   */
+  preferDirectEventsUrl?: boolean;
   liveReplay?: boolean;
   [key: string]: unknown;
 };
@@ -537,7 +543,7 @@ export const superAdminRrwebSessionsApi = {
   },
 };
 
-/** Resolve same-origin admin events path (never B2 `eventsUrl`). */
+/** Resolve same-origin admin events proxy path (fallback when direct B2 fails). */
 export function resolveRrwebEventsPath(
   session: Pick<AdminRrwebSession, "id" | "eventsPath">
 ): string {
@@ -620,6 +626,8 @@ export type RrwebLoadProgress = {
   totalBytes?: number;
   message?: string;
   errorKind?: RrwebLoadErrorKind;
+  /** Which hop is serving the events body. */
+  downloadVia?: "direct" | "proxy";
 };
 
 export type RrwebEventsLoadOptions = {
@@ -653,6 +661,12 @@ function throwIfAborted(signal?: AbortSignal): void {
 }
 
 export function formatRrwebLoadStatus(progress: RrwebLoadProgress): string {
+  const via =
+    progress.downloadVia === "direct"
+      ? " (direct)"
+      : progress.downloadVia === "proxy"
+        ? " (proxy)"
+        : "";
   switch (progress.phase) {
     case "idle":
       return progress.message || "Select a session";
@@ -661,16 +675,17 @@ export function formatRrwebLoadStatus(progress: RrwebLoadProgress): string {
     case "download": {
       const received = progress.receivedBytes || 0;
       const total = progress.totalBytes || 0;
+      const prefix = `Downloading events…${via}`;
       if (total > 0) {
         const pct = Math.min(100, Math.round((received / total) * 100));
         const left = formatRrwebBytes(received) || "0 B";
         const right = formatRrwebBytes(total) || "—";
-        return `Downloading events… ${left} / ${right} (${pct}%)`;
+        return `${prefix} ${left} / ${right} (${pct}%)`;
       }
       if (received > 0) {
-        return `Downloading events… ${formatRrwebBytes(received)}`;
+        return `${prefix} ${formatRrwebBytes(received)}`;
       }
-      return "Downloading events…";
+      return prefix;
     }
     case "gunzip":
       return "Decompressing…";
@@ -738,29 +753,214 @@ async function readBodyWithProgress(
   return out;
 }
 
+type EventsDownloadSession = Pick<
+  AdminRrwebSession,
+  "id" | "eventsPath" | "eventsUrl" | "eventsEncoding" | "status" | "eventCount" | "replayHints"
+>;
+
+async function decodeEventsBuffer(
+  buf: Uint8Array,
+  encodingHint: string,
+  signal: AbortSignal | undefined,
+  report: (progress: RrwebLoadProgress) => void,
+  downloadVia?: "direct" | "proxy"
+): Promise<{ payload: RrwebSessionEventsPayload; eventsBytes: number }> {
+  throwIfAborted(signal);
+  const eventsBytes = buf.byteLength || 0;
+  const magicGzip = buf.length >= 2 && buf[0] === 0x1f && buf[1] === 0x8b;
+  const isGzip =
+    magicGzip ||
+    encodingHint === "gzip" ||
+    encodingHint.includes("gzip");
+
+  let jsonText: string;
+  if (isGzip) {
+    report({ phase: "gunzip", downloadVia });
+    try {
+      throwIfAborted(signal);
+      const copy = new Uint8Array(buf.byteLength);
+      copy.set(buf);
+      jsonText = await gunzipToText(new Blob([copy]).stream());
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") throw err;
+      report({
+        phase: "error",
+        errorKind: "gunzip",
+        message: "Decompress failed — Retry",
+        downloadVia,
+      });
+      throw new ApiError("Decompress failed — Retry", 500, {
+        message: "Decompress failed — Retry",
+      });
+    }
+  } else {
+    jsonText = new TextDecoder("utf-8").decode(buf);
+  }
+
+  report({ phase: "parse", downloadVia });
+  throwIfAborted(signal);
+
+  try {
+    const payload = parseEventsJsonText(jsonText);
+    return { payload, eventsBytes };
+  } catch {
+    report({
+      phase: "error",
+      errorKind: "parse",
+      message: "Invalid events payload — Retry",
+      downloadVia,
+    });
+    throw new ApiError("Invalid events payload — Retry", 502, {
+      message: "Invalid events payload — Retry",
+    });
+  }
+}
+
+async function fetchEventsResponseBody(
+  res: Response,
+  downloadVia: "direct" | "proxy",
+  encodingFallback: string,
+  signal: AbortSignal | undefined,
+  report: (progress: RrwebLoadProgress) => void
+): Promise<{ payload: RrwebSessionEventsPayload; eventsBytes: number }> {
+  const headerLen = Number(res.headers.get("content-length") || 0);
+  const totalBytes =
+    Number.isFinite(headerLen) && headerLen > 0 ? headerLen : 0;
+  const headerEnc = (
+    res.headers.get("X-Events-Encoding") ||
+    res.headers.get("x-events-encoding") ||
+    ""
+  ).toLowerCase();
+  const contentType = (res.headers.get("content-type") || "").toLowerCase();
+  const encodingHint =
+    headerEnc ||
+    encodingFallback ||
+    (contentType.includes("gzip")
+      ? "gzip"
+      : contentType.includes("json")
+        ? "json"
+        : "");
+
+  if (!res.body) {
+    report({
+      phase: "error",
+      errorKind: "download",
+      message: "Download failed — Retry",
+      downloadVia,
+    });
+    throw new ApiError("Download failed — Retry", 502, {
+      message: "Download failed — Retry",
+    });
+  }
+
+  let buf: Uint8Array;
+  try {
+    buf = await readBodyWithProgress(
+      res.body,
+      (received) => {
+        report({
+          phase: "download",
+          receivedBytes: received,
+          totalBytes: totalBytes || undefined,
+          downloadVia,
+        });
+      },
+      signal
+    );
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    report({
+      phase: "error",
+      errorKind: "download",
+      message: "Download failed — Retry",
+      downloadVia,
+    });
+    throw new ApiError("Download failed — Retry", 0, {
+      message: "Download failed — Retry",
+    });
+  }
+
+  return decodeEventsBuffer(buf, encodingHint, signal, report, downloadVia);
+}
+
 /**
- * Load events via authenticated GET /admin/rrweb-sessions/:id/events.
- * Phased: download (with %) → gunzip → parse. Never B2 `eventsUrl`.
+ * Signed B2/S3 direct download — no Authorization header (auth is in the URL).
+ */
+async function loadRrwebPayloadFromDirectUrl(
+  session: EventsDownloadSession,
+  opts?: RrwebEventsLoadOptions
+): Promise<RrwebEventsLoadResult> {
+  const eventsUrl = session.eventsUrl?.trim() || "";
+  if (!eventsUrl) {
+    throw new ApiError("Missing eventsUrl for direct download.", 400, {
+      message: "Missing eventsUrl for direct download.",
+    });
+  }
+
+  const report = (progress: RrwebLoadProgress) => {
+    opts?.onProgress?.({ ...progress, downloadVia: progress.downloadVia || "direct" });
+  };
+
+  report({ phase: "download", receivedBytes: 0, totalBytes: 0, downloadVia: "direct" });
+
+  let res: Response;
+  try {
+    res = await fetch(eventsUrl, {
+      method: "GET",
+      mode: "cors",
+      credentials: "omit",
+      // Never attach Authorization — signature is in the query string.
+      headers: {
+        Accept: "application/gzip, application/octet-stream, application/json, */*",
+      },
+      signal: opts?.signal,
+      cache: "no-store",
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    // CORS / network — caller should fall back to proxy.
+    throw new ApiError("Direct download failed", 0, {
+      message: "Direct download failed",
+    });
+  }
+
+  if (!res.ok) {
+    throw new ApiError(`Direct download HTTP ${res.status}`, res.status, {
+      message: `Direct download HTTP ${res.status}`,
+    });
+  }
+
+  const encodingFallback = (session.eventsEncoding || "").toLowerCase();
+  const { payload, eventsBytes } = await fetchEventsResponseBody(
+    res,
+    "direct",
+    encodingFallback,
+    opts?.signal,
+    report
+  );
+
+  return { payload, eventsBytes };
+}
+
+/**
+ * Authenticated GET /admin/rrweb-sessions/:id/events (proxy fallback).
  */
 export async function loadRrwebPayloadFromApi(
-  session: Pick<
-    AdminRrwebSession,
-    "id" | "eventsPath" | "eventsEncoding" | "status" | "eventCount"
-  >,
+  session: EventsDownloadSession,
   opts?: RrwebEventsLoadOptions
 ): Promise<RrwebEventsLoadResult> {
   const sid = session.id?.trim() || "";
   const status = (session.status || "").toLowerCase();
   const cacheKey = eventsCacheKey(sid);
   const report = (progress: RrwebLoadProgress) => {
-    opts?.onProgress?.(progress);
+    opts?.onProgress?.({ ...progress, downloadVia: progress.downloadVia || "proxy" });
   };
 
   if (!opts?.bypassCache && sid && status === "uploaded") {
     const hit = rrwebEventsMemoryCache.get(cacheKey);
     if (hit && hit.status === "uploaded") {
-      report({ phase: "parse" });
-      report({ phase: "prepare" });
+      report({ phase: "parse", downloadVia: "proxy" });
+      report({ phase: "prepare", downloadVia: "proxy" });
       return hit.result;
     }
   }
@@ -770,7 +970,7 @@ export async function loadRrwebPayloadFromApi(
     ? path
     : `${API_BASE_URL.replace(/\/$/, "")}${path}`;
 
-  report({ phase: "download", receivedBytes: 0, totalBytes: 0 });
+  report({ phase: "download", receivedBytes: 0, totalBytes: 0, downloadVia: "proxy" });
 
   let res: Response;
   try {
@@ -787,7 +987,12 @@ export async function loadRrwebPayloadFromApi(
     const wrapped = new ApiError("Download failed — Retry", 0, {
       message: "Download failed — Retry",
     });
-    report({ phase: "error", errorKind: "download", message: wrapped.message });
+    report({
+      phase: "error",
+      errorKind: "download",
+      message: wrapped.message,
+      downloadVia: "proxy",
+    });
     throw wrapped;
   }
 
@@ -797,6 +1002,7 @@ export async function loadRrwebPayloadFromApi(
       phase: "error",
       errorKind: "download",
       message: "Download failed — Retry",
+      downloadVia: "proxy",
     });
     try {
       throwAdminError(res, data);
@@ -807,107 +1013,14 @@ export async function loadRrwebPayloadFromApi(
     }
   }
 
-  const headerLen = Number(res.headers.get("content-length") || 0);
-  const totalBytes =
-    Number.isFinite(headerLen) && headerLen > 0 ? headerLen : 0;
-  const headerEnc = (
-    res.headers.get("X-Events-Encoding") ||
-    res.headers.get("x-events-encoding") ||
-    ""
-  ).toLowerCase();
-  const contentType = (res.headers.get("content-type") || "").toLowerCase();
-  const encodingHint =
-    headerEnc ||
-    (session.eventsEncoding || "").toLowerCase() ||
-    (contentType.includes("gzip")
-      ? "gzip"
-      : contentType.includes("json")
-        ? "json"
-        : "");
-
-  if (!res.body) {
-    report({
-      phase: "error",
-      errorKind: "download",
-      message: "Download failed — Retry",
-    });
-    throw new ApiError("Download failed — Retry", 502, {
-      message: "Download failed — Retry",
-    });
-  }
-
-  let buf: Uint8Array;
-  try {
-    buf = await readBodyWithProgress(
-      res.body,
-      (received) => {
-        report({
-          phase: "download",
-          receivedBytes: received,
-          totalBytes: totalBytes || undefined,
-        });
-      },
-      opts?.signal
-    );
-  } catch (err) {
-    if (err instanceof DOMException && err.name === "AbortError") throw err;
-    report({
-      phase: "error",
-      errorKind: "download",
-      message: "Download failed — Retry",
-    });
-    throw new ApiError("Download failed — Retry", 0, {
-      message: "Download failed — Retry",
-    });
-  }
-
-  throwIfAborted(opts?.signal);
-  const eventsBytes = buf.byteLength || totalBytes || 0;
-  const magicGzip = buf.length >= 2 && buf[0] === 0x1f && buf[1] === 0x8b;
-  const isGzip =
-    magicGzip ||
-    encodingHint === "gzip" ||
-    contentType.includes("gzip");
-
-  let jsonText: string;
-  if (isGzip) {
-    report({ phase: "gunzip" });
-    try {
-      throwIfAborted(opts?.signal);
-      const copy = new Uint8Array(buf.byteLength);
-      copy.set(buf);
-      jsonText = await gunzipToText(new Blob([copy]).stream());
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") throw err;
-      report({
-        phase: "error",
-        errorKind: "gunzip",
-        message: "Decompress failed — Retry",
-      });
-      throw new ApiError("Decompress failed — Retry", 500, {
-        message: "Decompress failed — Retry",
-      });
-    }
-  } else {
-    jsonText = new TextDecoder("utf-8").decode(buf);
-  }
-
-  report({ phase: "parse" });
-  throwIfAborted(opts?.signal);
-
-  let payload: RrwebSessionEventsPayload;
-  try {
-    payload = parseEventsJsonText(jsonText);
-  } catch {
-    report({
-      phase: "error",
-      errorKind: "parse",
-      message: "Invalid events payload — Retry",
-    });
-    throw new ApiError("Invalid events payload — Retry", 502, {
-      message: "Invalid events payload — Retry",
-    });
-  }
+  const encodingFallback = (session.eventsEncoding || "").toLowerCase();
+  const { payload, eventsBytes } = await fetchEventsResponseBody(
+    res,
+    "proxy",
+    encodingFallback,
+    opts?.signal,
+    report
+  );
 
   const result: RrwebEventsLoadResult = {
     payload,
@@ -925,24 +1038,35 @@ export async function loadRrwebPayloadFromApi(
   return result;
 }
 
-/** @deprecated Use loadRrwebPayloadFromApi — browser must not fetch B2 eventsUrl. */
+/** @deprecated Prefer loadRrwebEventsPayload (direct B2 then proxy). */
 export async function loadRrwebPayload(
-  _eventsUrl: string,
-  _encoding?: string | null
+  eventsUrl: string,
+  encoding?: string | null
 ): Promise<RrwebSessionEventsPayload> {
-  throw new ApiError(
-    "Do not fetch eventsUrl from the browser (CORS). Use GET /admin/rrweb-sessions/:id/events.",
-    400,
+  const { payload } = await loadRrwebPayloadFromDirectUrl(
     {
-      message:
-        "Do not fetch eventsUrl from the browser (CORS). Use GET /admin/rrweb-sessions/:id/events.",
-    }
+      id: "",
+      eventsUrl,
+      eventsEncoding: encoding || undefined,
+      status: "uploaded",
+      eventCount: 0,
+    },
+    { bypassCache: true }
   );
+  return payload;
+}
+
+function shouldPreferDirectEventsUrl(session: EventsDownloadSession): boolean {
+  const url = session.eventsUrl?.trim() || "";
+  if (!url) return false;
+  const hint = session.replayHints?.preferDirectEventsUrl;
+  // Prefer direct unless explicitly disabled.
+  return hint !== false;
 }
 
 /**
- * Prefer same-origin events API; fall back to rare inlined `events` only.
- * Never fetches `eventsUrl`.
+ * Prefer signed B2 `eventsUrl` (fast, one hop). On CORS/network/non-OK,
+ * fall back once to authenticated `eventsPath` proxy.
  */
 export async function loadRrwebEventsPayload(
   detail: AdminRrwebSessionDetail,
@@ -956,6 +1080,36 @@ export async function loadRrwebEventsPayload(
       eventsBytes: detail.eventsBytes || 0,
     };
   }
+
+  const sid = detail.id?.trim() || "";
+  const status = (detail.status || "").toLowerCase();
+  const cacheKey = eventsCacheKey(sid);
+  if (!opts?.bypassCache && sid && status === "uploaded") {
+    const hit = rrwebEventsMemoryCache.get(cacheKey);
+    if (hit && hit.status === "uploaded") {
+      opts?.onProgress?.({ phase: "parse" });
+      opts?.onProgress?.({ phase: "prepare" });
+      return hit.result;
+    }
+  }
+
+  if (shouldPreferDirectEventsUrl(detail)) {
+    try {
+      const result = await loadRrwebPayloadFromDirectUrl(detail, opts);
+      if (sid && status === "uploaded") {
+        rrwebEventsMemoryCache.set(cacheKey, {
+          result,
+          eventCount: detail.eventCount || 0,
+          status: "uploaded",
+        });
+      }
+      return result;
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") throw err;
+      // Fall through to proxy once.
+    }
+  }
+
   return loadRrwebPayloadFromApi(detail, opts);
 }
 
