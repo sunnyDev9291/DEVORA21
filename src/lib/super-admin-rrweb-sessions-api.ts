@@ -77,6 +77,11 @@ export type RrwebSessionEventsPayload = {
 export type RrwebReplayHints = {
   skipInactive?: boolean;
   preferTopFrame?: boolean;
+  /** Prefer mounting TOP before mounting IFRAME players. */
+  lazyIframeFrames?: boolean;
+  /** Never concatenate frames into one rrweb timeline. */
+  playOneFrameAtATime?: boolean;
+  /** When false, do not apply CSS grayscale to the player. */
   grayscaleOk?: boolean;
   liveReplay?: boolean;
   [key: string]: unknown;
@@ -736,11 +741,47 @@ export async function loadRrwebEventsPayload(
   return loadRrwebPayloadFromApi(detail, opts);
 }
 
-export function pickDefaultRrwebFrame(
+/** TOP frame: isTop, frameKey === "top", else first frame. */
+export function pickTopFrame(
   frames: RrwebEventFrame[]
 ): RrwebEventFrame | null {
   if (!frames.length) return null;
-  return frames.find((f) => f.isTop) || frames.find((f) => f.frameKey === "top") || frames[0];
+  return (
+    frames.find((f) => f.isTop) ||
+    frames.find((f) => f.frameKey === "top") ||
+    frames[0]
+  );
+}
+
+/** @deprecated Prefer pickTopFrame */
+export function pickDefaultRrwebFrame(
+  frames: RrwebEventFrame[]
+): RrwebEventFrame | null {
+  return pickTopFrame(frames);
+}
+
+/** Tab label: `TOP · hostname` or `IFRAME · hostname`. */
+export function rrwebFrameLabel(frame: {
+  frameKey: string;
+  href?: string;
+  isTop?: boolean;
+}): string {
+  let host = frame.frameKey;
+  try {
+    if (frame.href) host = new URL(frame.href).hostname || host;
+  } catch {
+    /* keep frameKey */
+  }
+  const kind =
+    frame.isTop === true || frame.frameKey === "top" ? "TOP" : "IFRAME";
+  return `${kind} · ${host}`;
+}
+
+export function isRrwebTopFrame(frame: {
+  frameKey: string;
+  isTop?: boolean;
+}): boolean {
+  return frame.isTop === true || frame.frameKey === "top";
 }
 
 export function rrwebSessionActivityIso(

@@ -448,6 +448,17 @@
   flex-shrink: 0;
 }
 
+/* Full color — never grayscale the replay surface */
+.rrweb-tv-chassis,
+.rrweb-tv-chassis .rrweb-player-host,
+.rrweb-tv-chassis .rr-player,
+.rrweb-tv-chassis .rr-player__frame,
+.rrweb-tv-chassis .replayer-wrapper,
+.rrweb-tv-chassis iframe {
+  filter: none !important;
+  -webkit-filter: none !important;
+}
+
 /* Fit rrweb-player to TV screen — keep controller (scrubber) visible */
 .rrweb-tv-chassis .rrweb-player-host {
   width: 100% !important;

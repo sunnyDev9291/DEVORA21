@@ -41,7 +41,8 @@ import {
   isRrwebSessionUnread,
   loadRrwebEventsPayload,
   mergeRrwebSession,
-  pickDefaultRrwebFrame,
+  pickTopFrame,
+  rrwebFrameLabel,
   rrwebReplayBlockedReason,
   rrwebSessionActivityIso,
   rrwebSessionTitle,
@@ -78,22 +79,21 @@ function statusBadgeClass(label: "Recording" | "Uploaded"): string {
 
 type StatusFilter = "all" | "recording" | "uploaded";
 
+/**
+ * Keep every frame in memory for tabs; auto-select TOP for first player mount.
+ * Does not remount other frames until the user picks a tab.
+ */
 function applyFramesFromPayload(
   payload: { frames: RrwebEventFrame[] },
-  setFrames: (frames: RrwebEventFrame[]) => void,
-  setActiveFrameKey: (key: string) => void,
-  onLazyAll?: (all: RrwebEventFrame[]) => void
+  setSessionFrames: (frames: RrwebEventFrame[]) => void,
+  setActiveFrameKey: (key: string) => void
 ): boolean {
-  const allFrames = payload.frames;
-  const top = pickDefaultRrwebFrame(allFrames);
+  const allFrames = payload.frames || [];
+  if (!allFrames.length) return false;
+  const top = pickTopFrame(allFrames);
   if (!top) return false;
-  setFrames([top]);
+  setSessionFrames(allFrames);
   setActiveFrameKey(top.frameKey);
-  if (allFrames.length > 1) {
-    onLazyAll?.(allFrames);
-  } else {
-    setFrames(allFrames);
-  }
   return true;
 }
 
@@ -155,7 +155,8 @@ export default function SuperAdminRrwebSessionsWorkspace({
   const [detail, setDetail] = useState<AdminRrwebSessionDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
-  const [frames, setFrames] = useState<RrwebEventFrame[]>([]);
+  /** All frames from the events payload (in memory for this session). */
+  const [sessionFrames, setSessionFrames] = useState<RrwebEventFrame[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsError, setEventsError] = useState("");
   const [activeFrameKey, setActiveFrameKey] = useState<string>("top");
@@ -338,7 +339,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
       setSessions([]);
       setSelectedSessionId(null);
       setDetail(null);
-      setFrames([]);
+      setSessionFrames([]);
       return;
     }
     void loadSessions(selectedUserId, dateYmd, timezone, sessionQ);
@@ -346,7 +347,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
 
   useEffect(() => {
     reviewPostedRef.current.clear();
-    setFrames([]);
+    setSessionFrames([]);
     setEventsError("");
     setActiveFrameKey("top");
   }, [selectedSessionId]);
@@ -359,7 +360,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
     ): Promise<boolean> => {
       if (!isRrwebSessionReplayable(session)) {
         if (!cancelled()) {
-          setFrames([]);
+          setSessionFrames([]);
           setEventsError("");
           setEventsLoading(false);
         }
@@ -389,18 +390,14 @@ export default function SuperAdminRrwebSessionsWorkspace({
             )
           );
         }
+        // One gzip download → all frames stay in memory; TOP selected for first mount.
         const ok = applyFramesFromPayload(
           payload,
-          setFrames,
-          setActiveFrameKey,
-          (all) => {
-            window.setTimeout(() => {
-              if (!cancelled()) setFrames(all);
-            }, 0);
-          }
+          setSessionFrames,
+          setActiveFrameKey
         );
         if (!ok) {
-          setFrames([]);
+          setSessionFrames([]);
           setEventsError("No replay frames in events payload.");
           return false;
         }
@@ -408,7 +405,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
         return true;
       } catch (err) {
         if (!cancelled()) {
-          setFrames([]);
+          setSessionFrames([]);
           setEventsError(
             getApiErrorMessage(err, "Could not load replay events.")
           );
@@ -532,7 +529,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
     if (!selectedSessionId) {
       setDetail(null);
       setDetailError("");
-      setFrames([]);
+      setSessionFrames([]);
       setEventsLoading(false);
       return;
     }
@@ -543,7 +540,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
       setDetailLoading(true);
       setDetailError("");
       setEventsError("");
-      setFrames([]);
+      setSessionFrames([]);
 
       // Kick off events download immediately from list row (don't wait for detail).
       // Path is /admin/rrweb-sessions/:id/events — only needs id (+ replayable).
@@ -575,7 +572,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
         }
 
         if (!isRrwebSessionReplayable(next)) {
-          setFrames([]);
+          setSessionFrames([]);
           setEventsLoading(false);
           return;
         }
@@ -583,7 +580,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
       } catch (err) {
         if (!cancelled) {
           setDetail(null);
-          setFrames([]);
+          setSessionFrames([]);
           setDetailError(getApiErrorMessage(err, "Could not load session detail."));
           setEventsLoading(false);
           setDetailLoading(false);
@@ -640,7 +637,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
   const clearSelectedSessionLocally = useCallback((message?: string) => {
     setSelectedSessionId(null);
     setDetail(null);
-    setFrames([]);
+    setSessionFrames([]);
     if (message) setToast(message);
   }, []);
 
@@ -823,12 +820,24 @@ export default function SuperAdminRrwebSessionsWorkspace({
     };
   }, [filteredSessions]);
 
-  const showFrameSwitcher = (detail?.frameCount ?? frames.length) > 1 && frames.length > 1;
+  const showFrameSwitcher = sessionFrames.length > 1;
   const detailReplayable = detail ? isRrwebSessionReplayable(detail) : false;
   const detailBlockedReason = detail ? rrwebReplayBlockedReason(detail) : null;
   // Prefer backend status only — never replayHints.liveReplay for Recording UI.
   const detailIsRecording = isRrwebSessionRecording(detail);
   const detailIsPartialLive = detailIsRecording && detailReplayable;
+  const skipInactive = detail?.replayHints?.skipInactive !== false;
+
+  /** Exactly one frame for the player — never merge timelines. */
+  const activeFrame = useMemo(() => {
+    if (!sessionFrames.length) return null;
+    return sessionFrames.find((f) => f.frameKey === activeFrameKey) || null;
+  }, [sessionFrames, activeFrameKey]);
+
+  const playerFrames = useMemo(() => {
+    if (!detailReplayable || !activeFrame) return [];
+    return [activeFrame];
+  }, [detailReplayable, activeFrame]);
 
   const playerOverlayMessage = !selectedSessionId
     ? "Select a session URL above to watch."
@@ -842,9 +851,13 @@ export default function SuperAdminRrwebSessionsWorkspace({
             ? eventsError
             : detailError
               ? detailError
-              : frames.length === 0
+              : sessionFrames.length === 0
                 ? detailBlockedReason || "No replay events for this session yet."
-                : undefined;
+                : activeFrame && (!Array.isArray(activeFrame.events) || activeFrame.events.length < 2)
+                  ? activeFrame.events?.length === 0
+                    ? "This frame has no events."
+                    : "This frame has too few events to replay."
+                  : undefined;
 
   return (
     <div className="flex min-h-[min(78vh,52rem)] flex-col gap-4 xl:h-[min(78vh,52rem)]">
@@ -1202,34 +1215,49 @@ export default function SuperAdminRrwebSessionsWorkspace({
                     </button>
                   ) : null}
                   {showFrameSwitcher
-                    ? frames.map((frame) => {
+                    ? sessionFrames.map((frame) => {
                         const active = frame.frameKey === activeFrameKey;
+                        const label = rrwebFrameLabel(frame);
                         return (
                           <button
                             key={frame.frameKey}
                             type="button"
                             onClick={() => setActiveFrameKey(frame.frameKey)}
-                            className={`${saBtnGhost} max-w-[10rem] truncate px-2 py-1 text-[10px] ${
+                            className={`${saBtnGhost} max-w-[14rem] truncate px-2 py-1 text-[10px] ${
                               active ? "border-teal-300 bg-teal-50 text-teal-900" : ""
                             }`}
                             title={frame.href || frame.frameKey}
                           >
-                            {frame.isTop ? "Top" : "Iframe"}
+                            {label}
                           </button>
                         );
                       })
-                    : null}
+                    : sessionFrames.length === 1
+                      ? (
+                          <span
+                            className={`${saMono} max-w-[14rem] truncate px-2 py-1 text-[10px] text-slate-500`}
+                            title={sessionFrames[0]?.href || sessionFrames[0]?.frameKey}
+                          >
+                            {rrwebFrameLabel(sessionFrames[0])}
+                          </span>
+                        )
+                      : null}
                 </div>
               </div>
 
               <RrwebReplayPlayer
                 key={`rrweb-tv-${activeFrameKey}`}
                 className="min-h-[16rem] flex-1"
-                frames={frames.length > 0 && detailReplayable ? frames : []}
+                frames={playerFrames}
                 frameKey={activeFrameKey}
+                skipInactive={skipInactive}
                 busy={Boolean(selectedSessionId) && (detailLoading || eventsLoading)}
                 overlayMessage={
-                  frames.length > 0 && detailReplayable ? undefined : playerOverlayMessage
+                  playerFrames.length > 0 &&
+                  Array.isArray(activeFrame?.events) &&
+                  (activeFrame?.events.length ?? 0) >= 2
+                    ? undefined
+                    : playerOverlayMessage
                 }
                 onPlay={() => {
                   void refreshRecordingEventsOnPlay();

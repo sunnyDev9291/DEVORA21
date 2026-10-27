@@ -31,8 +31,12 @@ const SPEED_OPTIONS = [1, 2, 4] as const;
 const CONTROLLER_H = 80;
 
 export type RrwebReplayPlayerProps = {
+  /**
+   * Frames available for this mount. Pass exactly one active frame
+   * (play-one-at-a-time). Never concatenate multiple frames' events.
+   */
   frames: RrwebEventFrame[];
-  /** Active frame key — parent owns frame switcher. */
+  /** Active frame key — must match a frame in `frames` (no silent fallback). */
   frameKey: string;
   /** Fired on each play / controller interaction (e.g. refetch while recording). */
   onPlay?: () => void | Promise<void>;
@@ -40,6 +44,8 @@ export type RrwebReplayPlayerProps = {
   /** Empty / blocked / loading message inside the TV screen. */
   overlayMessage?: string;
   busy?: boolean;
+  /** From replayHints.skipInactive — default true. */
+  skipInactive?: boolean;
 };
 
 function isPlayingPayload(raw: unknown): boolean | null {
@@ -72,6 +78,7 @@ export default function RrwebReplayPlayer({
   className = "",
   overlayMessage,
   busy = false,
+  skipInactive = true,
 }: RrwebReplayPlayerProps) {
   const glassRef = useRef<HTMLDivElement | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -87,16 +94,13 @@ export default function RrwebReplayPlayer({
   /** Bumps on every frame remount so chin controls remount with the player. */
   const [chromeKey, setChromeKey] = useState(0);
 
-  const frame =
-    frames.find((f) => f.frameKey === frameKey) ||
-    frames.find((f) => f.isTop) ||
-    frames[0] ||
-    null;
+  // Strict match only — never fall back to another frame (no merge / no TOP steal).
+  const frame = frames.find((f) => f.frameKey === frameKey) || null;
 
   const eventCount = Array.isArray(frame?.events) ? frame!.events.length : 0;
   const canMount = Boolean(frame && eventCount >= 2);
-  /** Show Play chrome whenever we intend to mount / have mounted a player. */
-  const showPlayChrome = canMount || busy;
+  /** Play chrome visible whenever a frame is selected (incl. empty / loading). */
+  const showPlayChrome = Boolean(frame) || busy || canMount;
 
   const bindPlayerState = useCallback((player: RrwebPlayerInstance) => {
     const apply = (raw: unknown) => {
@@ -146,8 +150,18 @@ export default function RrwebReplayPlayer({
 
     if (!host || !canMount || !frame) {
       setReady(false);
+      if (host) {
+        host.innerHTML = "";
+        host.style.filter = "";
+      }
       if (!overlayMessage && !busy) {
-        setError(frame ? "This frame has too few events to replay." : "");
+        setError(
+          frame
+            ? eventCount === 0
+              ? "This frame has no events."
+              : "This frame has too few events to replay."
+            : ""
+        );
       } else {
         setError("");
       }
@@ -177,6 +191,8 @@ export default function RrwebReplayPlayer({
         }
         playerRef.current = null;
         host.innerHTML = "";
+        // Full color — never grayscale (replayHints.grayscaleOk === false).
+        host.style.filter = "";
 
         const player = new mod.default({
           target: host,
@@ -187,9 +203,8 @@ export default function RrwebReplayPlayer({
             autoPlay: false,
             showController: true,
             speed,
-            // Hide built-in speed pills — we use chin chips. Keep scrubber + times.
             speedOption: [...SPEED_OPTIONS],
-            skipInactive: true,
+            skipInactive,
             showWarning: true,
           },
         });
@@ -200,6 +215,7 @@ export default function RrwebReplayPlayer({
         requestAnimationFrame(() => {
           try {
             player.triggerResize?.();
+            if (hostRef.current) hostRef.current.style.filter = "";
           } catch {
             /* ignore */
           }
@@ -231,11 +247,14 @@ export default function RrwebReplayPlayer({
         /* ignore */
       }
       playerRef.current = null;
-      if (hostRef.current) hostRef.current.innerHTML = "";
+      if (hostRef.current) {
+        hostRef.current.innerHTML = "";
+        hostRef.current.style.filter = "";
+      }
     };
     // Remount on frame identity / event count (iframe switch, live refresh).
     // eslint-disable-next-line react-hooks/exhaustive-deps -- speed via separate effect
-  }, [frame?.frameKey, eventCount, canMount, bindPlayerState]);
+  }, [frame?.frameKey, eventCount, canMount, bindPlayerState, skipInactive]);
 
   useEffect(() => {
     const player = playerRef.current;
@@ -272,7 +291,13 @@ export default function RrwebReplayPlayer({
   const screenMessage =
     error ||
     overlayMessage ||
-    (!canMount && !busy ? "Select a session URL to watch." : null);
+    (!frame && !busy
+      ? "Select a session URL to watch."
+      : frame && !canMount && !busy
+        ? eventCount === 0
+          ? "This frame has no events."
+          : "This frame has too few events to replay."
+        : null);
 
   const playDisabled = !canMount || !ready || Boolean(busy && !ready);
   const playTitle = !canMount
