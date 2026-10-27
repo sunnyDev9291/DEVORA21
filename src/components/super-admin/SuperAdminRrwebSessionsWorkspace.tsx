@@ -43,6 +43,7 @@ import {
   loadRrwebEventsPayload,
   mergeRrwebSession,
   pickTopFrame,
+  rrwebBlockedLoadProgress,
   rrwebFrameLabel,
   rrwebReplayBlockedReason,
   rrwebSessionActivityIso,
@@ -396,7 +397,8 @@ export default function SuperAdminRrwebSessionsWorkspace({
           setSessionFrames([]);
           setEventsError("");
           setEventsLoading(false);
-          setLoadProgress({ phase: "waiting" });
+          // Never keep "waiting" after uploaded/failed — recompute from status.
+          setLoadProgress(rrwebBlockedLoadProgress(session));
         }
         return false;
       }
@@ -534,21 +536,32 @@ export default function SuperAdminRrwebSessionsWorkspace({
 
         const prevStatus = (prevDetail?.status || "").toLowerCase();
         const nextStatus = nextDetail.status.toLowerCase();
-        if (prevStatus === "recording" && nextStatus === "uploaded") {
-          setToast(`“${rrwebSessionTitle(nextDetail)}” finished uploading — full replay ready.`);
-        }
-
         const wasReplayable = prevDetail
           ? isRrwebSessionReplayable(prevDetail)
           : false;
         const nowReplayable = isRrwebSessionReplayable(nextDetail);
         const recording = nextStatus === "recording";
+        const statusFlippedOffRecording =
+          prevStatus === "recording" &&
+          (nextStatus === "uploaded" || nextStatus === "failed");
         const syncAdvanced =
           (nextDetail.eventCount || 0) > (prevDetail?.eventCount || 0) ||
           (nextDetail.eventsPath || "") !== (prevDetail?.eventsPath || "") ||
           (nextDetail.eventsUrl || "") !== (prevDetail?.eventsUrl || "") ||
           nextDetail.replayable !== prevDetail?.replayable ||
-          (nextDetail.replayable === true && prevDetail?.replayable !== true);
+          (nextDetail.replayable === true && prevDetail?.replayable !== true) ||
+          statusFlippedOffRecording;
+
+        // Always clear stale waiting when status leaves recording without events.
+        if (!nowReplayable) {
+          setEventsLoading(false);
+          setLoadProgress(rrwebBlockedLoadProgress(nextDetail));
+          if (statusFlippedOffRecording && nextStatus === "uploaded") {
+            setToast(
+              `“${rrwebSessionTitle(nextDetail)}” finished — no events recorded.`
+            );
+          }
+        }
 
         // When replayable flips true (or sync advances), refresh detail + load events.
         if (
@@ -563,6 +576,14 @@ export default function SuperAdminRrwebSessionsWorkspace({
                 ? "Ready — first sync landed. You can Play."
                 : `“${rrwebSessionTitle(nextDetail)}” is ready to replay.`
             );
+          } else if (
+            prevStatus === "recording" &&
+            nextStatus === "uploaded" &&
+            nowReplayable
+          ) {
+            setToast(
+              `“${rrwebSessionTitle(nextDetail)}” finished uploading — full replay ready.`
+            );
           }
           void (async () => {
             try {
@@ -572,32 +593,48 @@ export default function SuperAdminRrwebSessionsWorkspace({
               if (selectedSessionIdRef.current !== nextDetail.id) return;
               const mergedFresh = mergeRrwebSession(detailRef.current, fresh);
               setDetail(mergedFresh);
-              if (!isRrwebSessionReplayable(mergedFresh)) return;
+              if (!isRrwebSessionReplayable(mergedFresh)) {
+                setEventsLoading(false);
+                setLoadProgress(rrwebBlockedLoadProgress(mergedFresh));
+                return;
+              }
               await loadEventsIntoPlayer(mergedFresh, () =>
                 selectedSessionIdRef.current !== nextDetail.id
               );
             } catch {
-              // Still try eventsPath if detail said replayable.
               if (isRrwebSessionReplayable(nextDetail)) {
                 await loadEventsIntoPlayer(nextDetail, () =>
                   selectedSessionIdRef.current !== nextDetail.id
                 ).catch(() => {
                   /* keep shell */
                 });
+              } else {
+                setLoadProgress(rrwebBlockedLoadProgress(nextDetail));
               }
             }
           })();
         } else if (
           selectedSessionIdRef.current === incoming.id &&
-          recording &&
+          (recording || statusFlippedOffRecording) &&
           syncAdvanced
         ) {
-          // Keep metadata fresh even while waiting for first replayable sync.
+          // Keep metadata fresh (recording wait OR post-close uploaded/failed).
           void superAdminRrwebSessionsApi
             .getSession(nextDetail.id)
             .then((fresh) => {
               if (selectedSessionIdRef.current !== nextDetail.id) return;
-              setDetail((prev) => mergeRrwebSession(prev, fresh));
+              const mergedFresh = mergeRrwebSession(detailRef.current, fresh);
+              setDetail(mergedFresh);
+              if (!isRrwebSessionReplayable(mergedFresh)) {
+                setEventsLoading(false);
+                setLoadProgress(rrwebBlockedLoadProgress(mergedFresh));
+                return;
+              }
+              if (!wasReplayable) {
+                void loadEventsIntoPlayer(mergedFresh, () =>
+                  selectedSessionIdRef.current !== nextDetail.id
+                );
+              }
             })
             .catch(() => {
               /* ignore */
@@ -679,7 +716,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
       if (!earlyEventsPromise) {
         setEventsLoading(false);
         if (listRow && !isRrwebSessionReplayable(listRow)) {
-          setLoadProgress({ phase: "waiting" });
+          setLoadProgress(rrwebBlockedLoadProgress(listRow));
         }
       }
 
@@ -699,7 +736,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
         if (!isRrwebSessionReplayable(next)) {
           setSessionFrames([]);
           setEventsLoading(false);
-          setLoadProgress({ phase: "waiting" });
+          setLoadProgress(rrwebBlockedLoadProgress(next));
           return;
         }
         await loadEventsIntoPlayer(next, isCancelled);
@@ -1007,21 +1044,48 @@ export default function SuperAdminRrwebSessionsWorkspace({
     return [activeFrame];
   }, [detailReplayable, activeFrame]);
 
-  const loadStatusText = formatRrwebLoadStatus(loadProgress);
+  // Never keep a stale `waiting` once status is uploaded/failed.
+  const displayLoadProgress = useMemo((): RrwebLoadProgress => {
+    const pipelineBusy =
+      loadProgress.phase === "download" ||
+      loadProgress.phase === "gunzip" ||
+      loadProgress.phase === "parse" ||
+      loadProgress.phase === "prepare" ||
+      loadProgress.phase === "mount";
+    if (detail && !detailReplayable && !pipelineBusy && !eventsLoading) {
+      return rrwebBlockedLoadProgress(detail);
+    }
+    if (detail && !detailIsRecording && loadProgress.phase === "waiting") {
+      return rrwebBlockedLoadProgress(detail);
+    }
+    return loadProgress;
+  }, [
+    detail,
+    detailReplayable,
+    detailIsRecording,
+    loadProgress,
+    eventsLoading,
+  ]);
+
+  const loadStatusText = formatRrwebLoadStatus(displayLoadProgress);
   const loadBusy =
-    loadProgress.phase === "download" ||
-    loadProgress.phase === "gunzip" ||
-    loadProgress.phase === "parse" ||
-    loadProgress.phase === "prepare" ||
-    loadProgress.phase === "mount" ||
+    displayLoadProgress.phase === "download" ||
+    displayLoadProgress.phase === "gunzip" ||
+    displayLoadProgress.phase === "parse" ||
+    displayLoadProgress.phase === "prepare" ||
+    displayLoadProgress.phase === "mount" ||
     eventsLoading;
+  const waitingFirstSync =
+    displayLoadProgress.phase === "waiting" && detailIsRecording && !detailReplayable;
 
   const playerOverlayMessage = !selectedSessionId
     ? "Select a session URL above to watch."
     : detail && !detailReplayable
       ? detailBlockedReason ||
-        (detailIsRecording ? "Waiting for first sync…" : "Replay not available yet.")
-      : loadProgress.phase === "error"
+        (detailIsRecording
+          ? "Waiting for first sync…"
+          : "No events recorded for this session")
+      : displayLoadProgress.phase === "error"
         ? loadStatusText || eventsError || "Failed — Retry"
         : loadBusy
           ? loadStatusText || "Loading…"
@@ -1032,9 +1096,10 @@ export default function SuperAdminRrwebSessionsWorkspace({
               : detailError
                 ? detailError
                 : sessionFrames.length === 0
-                  ? detailIsRecording && !detailReplayable
-                    ? "Waiting for first sync…"
-                    : detailBlockedReason || "Replay not available yet."
+                  ? detailBlockedReason ||
+                    (detailIsRecording
+                      ? "Waiting for first sync…"
+                      : "No events recorded for this session")
                   : activeFrame &&
                       (!Array.isArray(activeFrame.events) ||
                         activeFrame.events.length < 2)
@@ -1465,26 +1530,29 @@ export default function SuperAdminRrwebSessionsWorkspace({
                 skipInactive={skipInactive}
                 busy={
                   Boolean(selectedSessionId) &&
-                  (detailLoading || loadBusy || loadProgress.phase === "waiting")
+                  (detailLoading || loadBusy || waitingFirstSync)
                 }
                 statusLabel={
-                  loadProgress.phase === "ready"
+                  displayLoadProgress.phase === "ready"
                     ? ""
                     : loadBusy ||
-                        loadProgress.phase === "waiting" ||
-                        loadProgress.phase === "error"
+                        waitingFirstSync ||
+                        displayLoadProgress.phase === "error"
                       ? loadStatusText
                       : playerOverlayMessage
                 }
                 statusSecondary={playerStatusSecondary}
-                showRetry={loadProgress.phase === "error"}
+                showRetry={
+                  displayLoadProgress.phase === "error" &&
+                  displayLoadProgress.errorKind !== "empty"
+                }
                 onRetry={retryEventsLoad}
                 overlayMessage={
                   playerFrames.length > 0 &&
                   Array.isArray(activeFrame?.events) &&
                   (activeFrame?.events.length ?? 0) >= 2 &&
                   !loadBusy &&
-                  loadProgress.phase !== "error"
+                  displayLoadProgress.phase !== "error"
                     ? undefined
                     : playerOverlayMessage
                 }

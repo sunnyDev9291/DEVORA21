@@ -707,7 +707,7 @@ export function formatRrwebLoadStatus(progress: RrwebLoadProgress): string {
         case "parse":
           return "Invalid events payload — Retry";
         case "empty":
-          return "No replay events for this frame";
+          return "No events recorded for this session";
         default:
           return "Failed — Retry";
       }
@@ -1315,6 +1315,10 @@ export function isRrwebSessionReplayable(
   return Boolean(session.eventsPath?.trim() || session.id?.trim());
 }
 
+/**
+ * Player copy when replay is blocked. Never return "Waiting for first sync…"
+ * for uploaded/failed — that status only applies while recording && !replayable.
+ */
 export function rrwebReplayBlockedReason(
   session: Pick<
     AdminRrwebSession,
@@ -1323,12 +1327,32 @@ export function rrwebReplayBlockedReason(
 ): string | null {
   if (isRrwebSessionReplayable(session)) return null;
   const status = (session.status || "").toLowerCase();
-  if (status === "failed") return "Replay unavailable (failed).";
+  if (status === "failed") return "Recording failed";
   if (status === "deleted") return "Replay unavailable (deleted).";
-  // Soft wait — not a hard error while the extension flushes first chunks.
   if (status === "recording") return "Waiting for first sync…";
-  if (session.replayable === false) return "Replay not available yet.";
+  if (status === "uploaded") return "No events recorded for this session";
+  if (session.replayable === false) return "No events recorded for this session";
   return "Replay not available yet.";
+}
+
+/** Map a blocked session to loadPhase so UI never keeps a stale `waiting`. */
+export function rrwebBlockedLoadProgress(
+  session: Pick<
+    AdminRrwebSession,
+    "status" | "replayable" | "eventsUrl" | "eventsPath" | "id"
+  >
+): RrwebLoadProgress {
+  const status = (session.status || "").toLowerCase();
+  const message =
+    rrwebReplayBlockedReason(session) || "Replay not available yet.";
+  if (status === "recording") {
+    return { phase: "waiting", message };
+  }
+  if (status === "failed") {
+    return { phase: "error", errorKind: "other", message };
+  }
+  // uploaded / other with !replayable — not a spinner wait
+  return { phase: "error", errorKind: "empty", message };
 }
 
 export type RrwebSessionsLiveEvent =
