@@ -39,6 +39,7 @@ import {
   isRrwebSessionRecording,
   isRrwebSessionReplayable,
   isRrwebSessionUnread,
+  formatRrwebEventsPhase,
   loadRrwebEventsPayload,
   mergeRrwebSession,
   pickTopFrame,
@@ -54,6 +55,7 @@ import {
   type AdminRrwebSession,
   type AdminRrwebSessionDetail,
   type RrwebEventFrame,
+  type RrwebEventsLoadPhase,
   type RrwebSessionOwner,
   type RrwebSessionsLiveEvent,
 } from "@/lib/super-admin-rrweb-sessions-api";
@@ -168,6 +170,8 @@ export default function SuperAdminRrwebSessionsWorkspace({
   /** All frames from the events payload (in memory for this session). */
   const [sessionFrames, setSessionFrames] = useState<RrwebEventFrame[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
+  const [eventsPhase, setEventsPhase] = useState<RrwebEventsLoadPhase>("idle");
+  const [eventsPhaseDetail, setEventsPhaseDetail] = useState("");
   const [eventsError, setEventsError] = useState("");
   const [activeFrameKey, setActiveFrameKey] = useState<string>("top");
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
@@ -364,6 +368,8 @@ export default function SuperAdminRrwebSessionsWorkspace({
     reviewPostedRef.current.clear();
     setSessionFrames([]);
     setEventsError("");
+    setEventsPhase("idle");
+    setEventsPhaseDetail("");
     setActiveFrameKey("top");
     setCrossDayNote(null);
   }, [selectedSessionId]);
@@ -379,14 +385,25 @@ export default function SuperAdminRrwebSessionsWorkspace({
           setSessionFrames([]);
           setEventsError("");
           setEventsLoading(false);
+          setEventsPhase("idle");
+          setEventsPhaseDetail("");
         }
         return false;
       }
-      if (!cancelled()) setEventsLoading(true);
+      if (!cancelled()) {
+        setEventsLoading(true);
+        setEventsPhase("requesting");
+        setEventsPhaseDetail("");
+      }
       try {
         const recording = (session.status || "").toLowerCase() === "recording";
         const { payload, eventsBytes } = await loadRrwebEventsPayload(session, {
           bypassCache: opts?.bypassCache ?? recording,
+          onProgress: (progress) => {
+            if (cancelled()) return;
+            setEventsPhase(progress.phase);
+            setEventsPhaseDetail(progress.detail || "");
+          },
         });
         if (cancelled()) return false;
         if (eventsBytes > 0) {
@@ -406,6 +423,10 @@ export default function SuperAdminRrwebSessionsWorkspace({
             )
           );
         }
+        if (!cancelled()) {
+          setEventsPhase("preparing");
+          setEventsPhaseDetail("TOP frame");
+        }
         // One gzip download → all frames stay in memory; TOP selected for first mount.
         const ok = applyFramesFromPayload(
           payload,
@@ -415,13 +436,19 @@ export default function SuperAdminRrwebSessionsWorkspace({
         if (!ok) {
           setSessionFrames([]);
           setEventsError("No replay frames in events payload.");
+          setEventsPhase("error");
           return false;
         }
         setEventsError("");
+        if (!cancelled()) {
+          setEventsPhase("ready");
+          setEventsPhaseDetail("");
+        }
         return true;
       } catch (err) {
         if (!cancelled()) {
           setSessionFrames([]);
+          setEventsPhase("error");
           setEventsError(
             getApiErrorMessage(err, "Could not load replay events.")
           );
@@ -922,15 +949,24 @@ export default function SuperAdminRrwebSessionsWorkspace({
     return [activeFrame];
   }, [detailReplayable, activeFrame]);
 
+  const eventsPhaseLabel = eventsLoading
+    ? formatRrwebEventsPhase(
+        eventsPhase === "idle" || eventsPhase === "ready"
+          ? "requesting"
+          : eventsPhase,
+        eventsPhaseDetail
+      ) || "Loading events…"
+    : "";
+
   const playerOverlayMessage = !selectedSessionId
     ? "Select a session URL above to watch."
     : detail && !detailReplayable
       ? detailBlockedReason ||
         (detailIsRecording ? "Waiting for first sync…" : "Replay not available yet.")
-      : detailLoading
+      : detailLoading && !eventsLoading
         ? "Loading session…"
         : eventsLoading
-          ? "Downloading events…"
+          ? eventsPhaseLabel || "Downloading events…"
           : eventsError
             ? eventsError
             : detailError
@@ -1309,6 +1345,15 @@ export default function SuperAdminRrwebSessionsWorkspace({
                       TV direct play · no fullscreen
                     </p>
                   )}
+                  {eventsPhaseLabel ? (
+                    <p
+                      className={`${saMono} mt-1 text-[11px] text-teal-800`}
+                      role="status"
+                      aria-live="polite"
+                    >
+                      {eventsPhaseLabel}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-1.5">
                   {detailIsPartialLive ? (
@@ -1318,7 +1363,9 @@ export default function SuperAdminRrwebSessionsWorkspace({
                       onClick={() => void refreshEventsFromApi()}
                       className={`${saBtnGhost} text-[11px]`}
                     >
-                      {eventsLoading ? "Refreshing…" : "Refresh"}
+                      {eventsLoading
+                        ? eventsPhaseLabel || "Refreshing…"
+                        : "Refresh"}
                     </button>
                   ) : null}
                   {showFrameSwitcher

@@ -595,6 +595,47 @@ export type RrwebEventsLoadResult = {
   eventsBytes: number;
 };
 
+/** Honest UI stages for the events pipeline (not a fake size probe). */
+export type RrwebEventsLoadPhase =
+  | "idle"
+  | "cache"
+  | "requesting"
+  | "downloading"
+  | "decompressing"
+  | "parsing"
+  | "preparing"
+  | "ready"
+  | "error";
+
+export const RRWEB_EVENTS_PHASE_LABEL: Record<RrwebEventsLoadPhase, string> = {
+  idle: "",
+  cache: "Loading cached events…",
+  requesting: "Requesting events…",
+  downloading: "Downloading events…",
+  decompressing: "Decompressing events…",
+  parsing: "Parsing events…",
+  preparing: "Preparing player…",
+  ready: "Ready",
+  error: "Could not load events",
+};
+
+export type RrwebEventsLoadProgress = {
+  phase: RrwebEventsLoadPhase;
+  /** Optional hint, e.g. "2.4 MB" once Content-Length is known. */
+  detail?: string;
+};
+
+export function formatRrwebEventsPhase(
+  phase: RrwebEventsLoadPhase,
+  detail?: string
+): string {
+  const base = RRWEB_EVENTS_PHASE_LABEL[phase] || "";
+  if (!base) return detail?.trim() || "";
+  const d = detail?.trim();
+  if (!d) return base;
+  return `${base.replace(/…$/, "")} · ${d}…`;
+}
+
 /** In-memory cache — avoids re-downloading finished sessions in the same page session. */
 const rrwebEventsMemoryCache = new Map<
   string,
@@ -617,20 +658,34 @@ function eventsCacheKey(sessionId: string): string {
  * Load events via authenticated GET /admin/rrweb-sessions/:id/events.
  * Streams gzip decode while downloading when possible (faster than buffer→copy→gunzip).
  * Never browser-fetch B2 `eventsUrl` (CORS). Avoid `?includeEvents=1`.
+ * Reports honest phases via `opts.onProgress` for Super Admin UI.
  */
 export async function loadRrwebPayloadFromApi(
   session: Pick<
     AdminRrwebSession,
     "id" | "eventsPath" | "eventsEncoding" | "status" | "eventCount"
   >,
-  opts?: { bypassCache?: boolean }
+  opts?: {
+    bypassCache?: boolean;
+    onProgress?: (progress: RrwebEventsLoadProgress) => void;
+  }
 ): Promise<RrwebEventsLoadResult> {
+  const report = (phase: RrwebEventsLoadPhase, detail?: string) => {
+    try {
+      opts?.onProgress?.({ phase, ...(detail ? { detail } : {}) });
+    } catch {
+      /* ignore UI callback errors */
+    }
+  };
+
   const sid = session.id?.trim() || "";
   const status = (session.status || "").toLowerCase();
   const cacheKey = eventsCacheKey(sid);
   if (!opts?.bypassCache && sid && status === "uploaded") {
     const hit = rrwebEventsMemoryCache.get(cacheKey);
     if (hit && hit.status === "uploaded") {
+      report("cache");
+      report("preparing");
       return hit.result;
     }
   }
@@ -640,6 +695,7 @@ export async function loadRrwebPayloadFromApi(
     ? path
     : `${API_BASE_URL.replace(/\/$/, "")}${path}`;
 
+  report("requesting");
   const res = await apiAuthFetch(url, {
     method: "GET",
     headers: {
@@ -650,10 +706,15 @@ export async function loadRrwebPayloadFromApi(
   });
   if (!res.ok) {
     const data = await parseJson(res).catch(() => ({}));
+    report("error");
     throwAdminError(res, data);
   }
 
   const headerLen = Number(res.headers.get("content-length") || 0);
+  const sizeHint =
+    Number.isFinite(headerLen) && headerLen > 0
+      ? formatRrwebBytes(headerLen) || undefined
+      : undefined;
   const headerEnc = (
     res.headers.get("X-Events-Encoding") ||
     res.headers.get("x-events-encoding") ||
@@ -678,12 +739,22 @@ export async function loadRrwebPayloadFromApi(
 
   // Stream gunzip while bytes arrive (avoids full-buffer + extra copy).
   if (looksGzipHeader && res.body) {
+    // Overlap is real — show one honest combined stage, not a fake size probe.
+    report(
+      "decompressing",
+      sizeHint ? `${sizeHint} · download + gunzip` : "download + gunzip"
+    );
     jsonText = await gunzipToText(res.body);
   } else {
+    report("downloading", sizeHint);
     const buf = new Uint8Array(await res.arrayBuffer());
     if (!eventsBytes) eventsBytes = buf.byteLength;
     const magicGzip = buf.length >= 2 && buf[0] === 0x1f && buf[1] === 0x8b;
     if (magicGzip || encodingHint === "gzip") {
+      report(
+        "decompressing",
+        formatRrwebBytes(buf.byteLength) || sizeHint
+      );
       const copy = new Uint8Array(buf.byteLength);
       copy.set(buf);
       jsonText = await gunzipToText(new Blob([copy]).stream());
@@ -692,7 +763,17 @@ export async function loadRrwebPayloadFromApi(
     }
   }
 
+  report("parsing");
+  // Yield so React can paint the "Parsing…" label before heavy JSON.parse.
+  await new Promise<void>((resolve) => {
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => resolve());
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
   const payload = parseEventsJsonText(jsonText);
+  report("preparing");
   const result: RrwebEventsLoadResult = {
     payload,
     eventsBytes: eventsBytes || 0,
@@ -706,6 +787,7 @@ export async function loadRrwebPayloadFromApi(
     });
   }
 
+  report("ready");
   return result;
 }
 
@@ -730,9 +812,14 @@ export async function loadRrwebPayload(
  */
 export async function loadRrwebEventsPayload(
   detail: AdminRrwebSessionDetail,
-  opts?: { bypassCache?: boolean }
+  opts?: {
+    bypassCache?: boolean;
+    onProgress?: (progress: RrwebEventsLoadProgress) => void;
+  }
 ): Promise<RrwebEventsLoadResult> {
   if (detail.events?.frames?.length) {
+    opts?.onProgress?.({ phase: "preparing", detail: "inlined" });
+    opts?.onProgress?.({ phase: "ready" });
     return {
       payload: detail.events,
       eventsBytes: detail.eventsBytes || 0,
