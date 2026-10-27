@@ -29,7 +29,7 @@ import {
   EST_TZ,
   formatEstTime,
   formatYmdInTimezone,
-  isIsoOnYmd,
+  isIsoInZonedDay,
 } from "@/lib/format-est-datetime";
 import {
   adjustOwnerUncheckedCount,
@@ -45,6 +45,7 @@ import {
   rrwebFrameLabel,
   rrwebReplayBlockedReason,
   rrwebSessionActivityIso,
+  rrwebSessionStartedAtIso,
   rrwebSessionTitle,
   rrwebStatusBadgeLabel,
   sortRrwebSessionsRecent,
@@ -105,14 +106,23 @@ type SuperAdminRrwebSessionsWorkspaceProps = {
   onLiveStatusChange?: (status: RrwebSessionsLiveStatus) => void;
 };
 
+/**
+ * Selected-day membership via startedAt + zoned half-open bounds
+ * (same idea as backend zonedDayBoundsUtc). Never use browser-local TZ alone.
+ */
 function sessionMatchesDay(
-  session: AdminRrwebSession,
+  session: Pick<AdminRrwebSession, "id" | "startedAt" | "endedAt">,
   day: string,
-  timeZone: string
+  timeZone: string,
+  /** Prefer known startedAt from list/detail when SSE payload is sparse. */
+  knownStartedAt?: string
 ): boolean {
-  const iso = rrwebSessionActivityIso(session);
+  const iso =
+    (knownStartedAt || "").trim() ||
+    rrwebSessionStartedAtIso(session) ||
+    rrwebSessionActivityIso(session);
   if (!iso) return true;
-  return isIsoOnYmd(iso, day, timeZone);
+  return isIsoInZonedDay(iso, day, timeZone);
 }
 
 export default function SuperAdminRrwebSessionsWorkspace({
@@ -162,7 +172,12 @@ export default function SuperAdminRrwebSessionsWorkspace({
   const [activeFrameKey, setActiveFrameKey] = useState<string>("top");
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   const [toast, setToast] = useState("");
-  const [outsideFilterHint, setOutsideFilterHint] = useState("");
+  /** Calm one-shot note when the open session is on another calendar day. */
+  const [crossDayNote, setCrossDayNote] = useState<{
+    sessionId: string;
+    title: string;
+    ymd: string;
+  } | null>(null);
   const [flashIds, setFlashIds] = useState<Record<string, number>>({});
 
   const reviewPostedRef = useRef<Set<string>>(new Set());
@@ -350,6 +365,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
     setSessionFrames([]);
     setEventsError("");
     setActiveFrameKey("top");
+    setCrossDayNote(null);
   }, [selectedSessionId]);
 
   const loadEventsIntoPlayer = useCallback(
@@ -460,24 +476,61 @@ export default function SuperAdminRrwebSessionsWorkspace({
           (nextDetail.eventCount || 0) > (prevDetail?.eventCount || 0) ||
           (nextDetail.eventsPath || "") !== (prevDetail?.eventsPath || "") ||
           (nextDetail.eventsUrl || "") !== (prevDetail?.eventsUrl || "") ||
-          nextDetail.replayable !== prevDetail?.replayable;
+          nextDetail.replayable !== prevDetail?.replayable ||
+          (nextDetail.replayable === true && prevDetail?.replayable !== true);
 
-        if (nowReplayable && (!wasReplayable || (recording && syncAdvanced) || (prevStatus === "recording" && nextStatus === "uploaded"))) {
+        // When replayable flips true (or sync advances), refresh detail + load events.
+        if (
+          nowReplayable &&
+          (!wasReplayable ||
+            syncAdvanced ||
+            (prevStatus === "recording" && nextStatus === "uploaded"))
+        ) {
+          if (!wasReplayable && nowReplayable) {
+            setToast(
+              recording
+                ? "Ready — first sync landed. You can Play."
+                : `“${rrwebSessionTitle(nextDetail)}” is ready to replay.`
+            );
+          }
           void (async () => {
             try {
               const fresh = await superAdminRrwebSessionsApi.getSession(
                 nextDetail.id
               );
               if (selectedSessionIdRef.current !== nextDetail.id) return;
-              setDetail((prev) => mergeRrwebSession(prev, fresh));
-              if (!isRrwebSessionReplayable(fresh)) return;
-              await loadEventsIntoPlayer(fresh, () =>
+              const mergedFresh = mergeRrwebSession(detailRef.current, fresh);
+              setDetail(mergedFresh);
+              if (!isRrwebSessionReplayable(mergedFresh)) return;
+              await loadEventsIntoPlayer(mergedFresh, () =>
                 selectedSessionIdRef.current !== nextDetail.id
               );
             } catch {
-              /* keep shell */
+              // Still try eventsPath if detail said replayable.
+              if (isRrwebSessionReplayable(nextDetail)) {
+                await loadEventsIntoPlayer(nextDetail, () =>
+                  selectedSessionIdRef.current !== nextDetail.id
+                ).catch(() => {
+                  /* keep shell */
+                });
+              }
             }
           })();
+        } else if (
+          selectedSessionIdRef.current === incoming.id &&
+          recording &&
+          syncAdvanced
+        ) {
+          // Keep metadata fresh even while waiting for first replayable sync.
+          void superAdminRrwebSessionsApi
+            .getSession(nextDetail.id)
+            .then((fresh) => {
+              if (selectedSessionIdRef.current !== nextDetail.id) return;
+              setDetail((prev) => mergeRrwebSession(prev, fresh));
+            })
+            .catch(() => {
+              /* ignore */
+            });
         }
       }
 
@@ -700,27 +753,40 @@ export default function SuperAdminRrwebSessionsWorkspace({
       const session = event.session;
       const matchesUser =
         !selectedUserIdRef.current || session.userId === selectedUserIdRef.current;
-      const matchesDay = sessionMatchesDay(
-        session,
-        dateYmdRef.current,
-        timezoneRef.current
-      );
+      if (!matchesUser) return;
+
+      const alreadyInList = sessionsRef.current.some((s) => s.id === session.id);
+      const known =
+        sessionsRef.current.find((s) => s.id === session.id) ||
+        (detailRef.current?.id === session.id ? detailRef.current : null);
+      const knownStartedAt =
+        rrwebSessionStartedAtIso(known || session) ||
+        rrwebSessionStartedAtIso(session);
+
+      // Sessions already in the filtered list are never "outside selected day".
+      const matchesDay =
+        alreadyInList ||
+        sessionMatchesDay(
+          session,
+          dateYmdRef.current,
+          timezoneRef.current,
+          knownStartedAt
+        );
+
+      const isOpen = selectedSessionIdRef.current === session.id;
 
       if (event.kind === "session.created") {
         setOwners((prev) => {
           const exists = prev.some((o) => o.userId === session.userId);
-          if (!exists) {
-            // soft bump — full owners refresh is optional
-            return prev;
-          }
+          if (!exists) return prev;
           return prev.map((o) => {
             if (o.userId !== session.userId) return o;
             return {
               ...o,
-              sessionCount: (o.sessionCount || 0) + 1,
+              sessionCount: (o.sessionCount || 0) + (alreadyInList ? 0 : 1),
               lastStartedAt: session.startedAt || o.lastStartedAt,
               uncheckedCount:
-                session.reviewed === false
+                !alreadyInList && session.reviewed === false
                   ? (o.uncheckedCount || 0) + 1
                   : o.uncheckedCount,
             };
@@ -728,15 +794,32 @@ export default function SuperAdminRrwebSessionsWorkspace({
         });
       }
 
-      if (matchesUser && matchesDay) {
+      if (matchesDay) {
         applySessionReviewUpdate(session);
         flashSession(session.id);
-        setOutsideFilterHint("");
-      } else if (matchesUser && !matchesDay) {
-        setOutsideFilterHint(
-          `Live update for ${rrwebSessionTitle(session)} is outside the selected day.`
+        setCrossDayNote((prev) =>
+          prev?.sessionId === session.id ? null : prev
         );
+        return;
       }
+
+      // Outside selected day: never spam a yellow banner on every live flush.
+      // Always refresh the open detail so replayable / eventCount stay current.
+      if (isOpen) {
+        applySessionReviewUpdate(session);
+        const iso = knownStartedAt || rrwebSessionStartedAtIso(session);
+        const jumpYmd = iso
+          ? formatYmdInTimezone(new Date(iso), timezoneRef.current)
+          : "";
+        if (jumpYmd && jumpYmd !== dateYmdRef.current) {
+          setCrossDayNote({
+            sessionId: session.id,
+            title: rrwebSessionTitle(session),
+            ymd: jumpYmd,
+          });
+        }
+      }
+      // else: silently ignore — do not toast / banner
     },
     [applySessionRemoved, applySessionReviewUpdate, flashSession]
   );
@@ -842,7 +925,8 @@ export default function SuperAdminRrwebSessionsWorkspace({
   const playerOverlayMessage = !selectedSessionId
     ? "Select a session URL above to watch."
     : detail && !detailReplayable
-      ? detailBlockedReason || "Waiting for first upload sync…"
+      ? detailBlockedReason ||
+        (detailIsRecording ? "Waiting for first sync…" : "Replay not available yet.")
       : detailLoading
         ? "Loading session…"
         : eventsLoading
@@ -852,7 +936,9 @@ export default function SuperAdminRrwebSessionsWorkspace({
             : detailError
               ? detailError
               : sessionFrames.length === 0
-                ? detailBlockedReason || "No replay events for this session yet."
+                ? detailIsRecording && !detailReplayable
+                  ? "Waiting for first sync…"
+                  : detailBlockedReason || "Replay not available yet."
                 : activeFrame && (!Array.isArray(activeFrame.events) || activeFrame.events.length < 2)
                   ? activeFrame.events?.length === 0
                     ? "This frame has no events."
@@ -876,7 +962,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
                 onChange={(e) => {
                   setDateYmd(e.target.value || todayYmd);
                   setToast("");
-                  setOutsideFilterHint("");
+                  setCrossDayNote(null);
                 }}
               />
               {dateYmd !== todayYmd ? (
@@ -901,7 +987,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
               onChange={(e) => {
                 setTimezone(e.target.value || DEFAULT_TZ);
                 setToast("");
-                setOutsideFilterHint("");
+                setCrossDayNote(null);
               }}
             >
               {TIMEZONE_OPTIONS.map((opt) => (
@@ -926,13 +1012,34 @@ export default function SuperAdminRrwebSessionsWorkspace({
         </p>
       ) : null}
 
-      {outsideFilterHint ? (
-        <p
-          className={`${saMono} shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900`}
+      {crossDayNote ? (
+        <div
+          className={`${saMono} flex shrink-0 flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-700`}
           role="status"
         >
-          {outsideFilterHint}
-        </p>
+          <span className="min-w-0 flex-1">
+            “{crossDayNote.title}” started on {crossDayNote.ymd} (not the
+            selected day). Live metadata still updates.
+          </span>
+          <button
+            type="button"
+            className={`${saBtnGhost} shrink-0 text-[11px]`}
+            onClick={() => {
+              setDateYmd(crossDayNote.ymd);
+              setCrossDayNote(null);
+            }}
+          >
+            Jump to {crossDayNote.ymd}
+          </button>
+          <button
+            type="button"
+            className={`${saBtnGhost} shrink-0 text-[11px]`}
+            onClick={() => setCrossDayNote(null)}
+            aria-label="Dismiss"
+          >
+            Dismiss
+          </button>
+        </div>
       ) : null}
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 xl:flex-row xl:items-stretch">
@@ -996,7 +1103,7 @@ export default function SuperAdminRrwebSessionsWorkspace({
                       onClick={() => {
                         setSelectedUserId(owner.userId);
                         setToast("");
-                        setOutsideFilterHint("");
+                        setCrossDayNote(null);
                       }}
                       className={`flex w-full flex-col gap-0.5 px-4 py-3 text-left transition-colors duration-200 ${
                         active

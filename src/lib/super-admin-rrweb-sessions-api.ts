@@ -790,6 +790,13 @@ export function rrwebSessionActivityIso(
   return session.startedAt || session.endedAt || "";
 }
 
+/** Day membership for filters/SSE — prefer startedAt only (backend day key). */
+export function rrwebSessionStartedAtIso(
+  session: Pick<AdminRrwebSession, "startedAt" | "endedAt">
+): string {
+  return (session.startedAt || "").trim();
+}
+
 /** Recording first, then startedAt desc. */
 export function sortRrwebSessionsRecent(
   sessions: AdminRrwebSession[]
@@ -946,7 +953,9 @@ export function rrwebReplayBlockedReason(
   const status = (session.status || "").toLowerCase();
   if (status === "failed") return "Replay unavailable (failed).";
   if (status === "deleted") return "Replay unavailable (deleted).";
-  if (status === "recording") return "Waiting for first upload sync…";
+  // Soft wait — not a hard error while the extension flushes first chunks.
+  if (status === "recording") return "Waiting for first sync…";
+  if (session.replayable === false) return "Replay not available yet.";
   return "Replay not available yet.";
 }
 
