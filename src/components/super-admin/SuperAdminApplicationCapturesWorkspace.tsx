@@ -445,15 +445,21 @@ export default function SuperAdminApplicationCapturesWorkspace({
   initialTimezone = "",
   onLiveStatusChange,
 }: SuperAdminApplicationCapturesWorkspaceProps) {
-  const todayYmd = formatYmdInTimezone(new Date(), DEFAULT_TZ);
   const [timezone, setTimezone] = useState(
     TIMEZONE_OPTIONS.some((z) => z.value === initialTimezone)
       ? initialTimezone
       : DEFAULT_TZ
   );
-  const [dateYmd, setDateYmd] = useState(
-    /^\d{4}-\d{2}-\d{2}$/.test(initialDate) ? initialDate : todayYmd
-  );
+  const [dateYmd, setDateYmd] = useState(() => {
+    const tz = TIMEZONE_OPTIONS.some((z) => z.value === initialTimezone)
+      ? initialTimezone
+      : DEFAULT_TZ;
+    return /^\d{4}-\d{2}-\d{2}$/.test(initialDate)
+      ? initialDate
+      : formatYmdInTimezone(new Date(), tz);
+  });
+  /** Avoid re-auto-jumping date for the same owner after an empty day. */
+  const autoJumpedOwnerRef = useRef<string | null>(null);
 
   const [owners, setOwners] = useState<ApplicationCaptureOwner[]>([]);
   const [ownersLoading, setOwnersLoading] = useState(true);
@@ -620,11 +626,9 @@ export default function SuperAdminApplicationCapturesWorkspace({
           limit: 100,
         });
 
-        const filtered = sortCaptureSessionsRecent(
-          result.sessions.filter((session) =>
-            sessionMatchesDay(session, day, tz)
-          )
-        );
+        // Trust API date+timezone filter — do not re-filter client-side
+        // (mismatched day bounds were wiping valid rows → "No captures for this day").
+        const filtered = sortCaptureSessionsRecent(result.sessions);
 
         // Merge with prior rows so a stale poll cannot wipe a fresher SSE snapshot.
         setSessions((prev) => {
@@ -662,11 +666,51 @@ export default function SuperAdminApplicationCapturesWorkspace({
       setLightboxIndex(null);
       setCheckedSessionIds(new Set());
       setCheckedImageIds(new Set());
+      autoJumpedOwnerRef.current = null;
       return;
     }
     setCheckedSessionIds(new Set());
     void loadSessions(selectedUserId, dateYmd, timezone, sessionQ);
   }, [selectedUserId, dateYmd, timezone, sessionQ, loadSessions]);
+
+  // Profile has captures, but selected day is empty → jump once to last capture day.
+  useEffect(() => {
+    if (sessionsLoading) return;
+    if (!selectedUserId || !selectedOwner) return;
+    if (sessions.length > 0) {
+      autoJumpedOwnerRef.current = selectedUserId;
+      return;
+    }
+    if (sessionQ.trim()) return;
+    if (autoJumpedOwnerRef.current === selectedUserId) return;
+
+    const lastIso = selectedOwner.lastCapturedAt?.trim() || "";
+    if (!lastIso) {
+      autoJumpedOwnerRef.current = selectedUserId;
+      return;
+    }
+    let lastYmd = "";
+    try {
+      lastYmd = formatYmdInTimezone(new Date(lastIso), timezone);
+    } catch {
+      lastYmd = "";
+    }
+    autoJumpedOwnerRef.current = selectedUserId;
+    if (!lastYmd || lastYmd === dateYmd) return;
+
+    setDateYmd(lastYmd);
+    setToast(
+      `No captures on ${dateYmd}. Showing ${lastYmd} (last capture for this profile).`
+    );
+  }, [
+    sessionsLoading,
+    sessions.length,
+    selectedUserId,
+    selectedOwner,
+    sessionQ,
+    dateYmd,
+    timezone,
+  ]);
 
   // Drop stale session checks when the list changes (live deletes / reloads).
   useEffect(() => {
@@ -1503,6 +1547,9 @@ export default function SuperAdminApplicationCapturesWorkspace({
                       role="option"
                       aria-selected={active}
                       onClick={() => {
+                        if (owner.userId !== selectedUserId) {
+                          autoJumpedOwnerRef.current = null;
+                        }
                         setSelectedUserId(owner.userId);
                         setToast("");
                         setOutsideFilterHint("");
@@ -1670,9 +1717,41 @@ export default function SuperAdminApplicationCapturesWorkspace({
               </li>
             ) : sessions.length === 0 ? (
               <li className={`${saMono} px-4 py-8 text-center text-xs text-slate-400`}>
-                {sessionQ
-                  ? `No captures matching “${sessionQ}”.`
-                  : "No captures for this day."}
+                {sessionQ ? (
+                  `No captures matching “${sessionQ}”.`
+                ) : (
+                  <span className="inline-flex flex-col items-center gap-2">
+                    <span>
+                      No captures on {dateYmd}
+                      {selectedOwner?.captureCount
+                        ? ` · profile has ${selectedOwner.captureCount} total`
+                        : ""}
+                      .
+                    </span>
+                    {selectedOwner?.lastCapturedAt ? (
+                      <button
+                        type="button"
+                        className={`${saBtnGhost} text-[10px]`}
+                        onClick={() => {
+                          try {
+                            const ymd = formatYmdInTimezone(
+                              new Date(selectedOwner.lastCapturedAt!),
+                              timezone
+                            );
+                            if (ymd) {
+                              autoJumpedOwnerRef.current = null;
+                              setDateYmd(ymd);
+                            }
+                          } catch {
+                            /* ignore */
+                          }
+                        }}
+                      >
+                        Jump to last capture day
+                      </button>
+                    ) : null}
+                  </span>
+                )}
               </li>
             ) : (
               sessions.map((session) => {
