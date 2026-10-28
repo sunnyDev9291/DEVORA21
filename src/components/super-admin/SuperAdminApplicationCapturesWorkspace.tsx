@@ -35,7 +35,7 @@ import {
   formatEstDateTime,
   formatEstTime,
   formatYmdInTimezone,
-  isIsoOnYmd,
+  isIsoInZonedDay,
 } from "@/lib/format-est-datetime";
 import {
   adjustOwnerUncheckedSessionCount,
@@ -298,14 +298,23 @@ type SuperAdminApplicationCapturesWorkspaceProps = {
   onLiveStatusChange?: (status: ApplicationCapturesLiveStatus) => void;
 };
 
+/**
+ * Selected-day membership via capturedAt + zoned half-open bounds
+ * (same idea as backend zonedDayBoundsUtc). Prefer known ISO when SSE is sparse.
+ */
 function sessionMatchesDay(
-  session: AdminApplicationCaptureSession,
+  session: Pick<
+    AdminApplicationCaptureSession,
+    "id" | "capturedAt" | "updatedAt" | "createdAt"
+  >,
   day: string,
-  timeZone: string
+  timeZone: string,
+  knownActivityIso?: string
 ): boolean {
-  const iso = captureSessionActivityIso(session);
+  const iso =
+    (knownActivityIso || "").trim() || captureSessionActivityIso(session);
   if (!iso) return true;
-  return isIsoOnYmd(iso, day, timeZone);
+  return isIsoInZonedDay(iso, day, timeZone);
 }
 
 export default function SuperAdminApplicationCapturesWorkspace({
@@ -337,6 +346,8 @@ export default function SuperAdminApplicationCapturesWorkspace({
   const [sessions, setSessions] = useState<AdminApplicationCaptureSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsError, setSessionsError] = useState("");
+  const [sessionQ, setSessionQ] = useState("");
+  const [draftSessionQ, setDraftSessionQ] = useState("");
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
     initialSessionId.trim() || null
   );
@@ -387,12 +398,14 @@ export default function SuperAdminApplicationCapturesWorkspace({
   const selectedSessionIdRef = useRef(selectedSessionId);
   const lightboxIndexRef = useRef(lightboxIndex);
   const detailRef = useRef(detail);
+  const sessionQRef = useRef(sessionQ);
   selectedUserIdRef.current = selectedUserId;
   dateYmdRef.current = dateYmd;
   timezoneRef.current = timezone;
   selectedSessionIdRef.current = selectedSessionId;
   lightboxIndexRef.current = lightboxIndex;
   detailRef.current = detail;
+  sessionQRef.current = sessionQ;
 
   const filteredOwners = useMemo(() => {
     const q = ownerQ.trim().toLowerCase();
@@ -465,7 +478,7 @@ export default function SuperAdminApplicationCapturesWorkspace({
   }, [initialSessionId, initialUserId]);
 
   const loadSessions = useCallback(
-    async (userId: string, day: string, tz: string) => {
+    async (userId: string, day: string, tz: string, q: string) => {
       if (!userId) {
         setSessions([]);
         setSessionsError("");
@@ -481,15 +494,27 @@ export default function SuperAdminApplicationCapturesWorkspace({
           userId,
           date: day,
           timezone: tz,
+          q: q.trim() || undefined,
           page: 1,
           limit: 100,
         });
 
         const filtered = sortCaptureSessionsRecent(
-          result.sessions.filter((session) => sessionMatchesDay(session, day, tz))
+          result.sessions.filter((session) =>
+            sessionMatchesDay(session, day, tz)
+          )
         );
 
-        setSessions(filtered);
+        // Merge with prior rows so a stale poll cannot wipe a fresher SSE snapshot.
+        setSessions((prev) => {
+          const prior = new Map(prev.map((s) => [s.id, s]));
+          return sortCaptureSessionsRecent(
+            filtered.map((row) => {
+              const old = prior.get(row.id);
+              return old ? mergeCaptureSession(old, row) : row;
+            })
+          );
+        });
         setSelectedSessionId((prev) => {
           if (prev && filtered.some((s) => s.id === prev)) return prev;
           if (initialSessionId && filtered.some((s) => s.id === initialSessionId)) {
@@ -519,8 +544,8 @@ export default function SuperAdminApplicationCapturesWorkspace({
       return;
     }
     setCheckedSessionIds(new Set());
-    void loadSessions(selectedUserId, dateYmd, timezone);
-  }, [selectedUserId, dateYmd, timezone, loadSessions]);
+    void loadSessions(selectedUserId, dateYmd, timezone, sessionQ);
+  }, [selectedUserId, dateYmd, timezone, sessionQ, loadSessions]);
 
   // Drop stale session checks when the list changes (live deletes / reloads).
   useEffect(() => {
@@ -815,6 +840,18 @@ export default function SuperAdminApplicationCapturesWorkspace({
       if (event.kind === "session.deleted") {
         const { sessionId, userId } = event;
         applySessionRemoved(sessionId, "Capture deleted.");
+        if (userId) {
+          setOwners((prev) =>
+            prev.map((o) =>
+              o.userId !== userId
+                ? o
+                : {
+                    ...o,
+                    captureCount: Math.max(0, (o.captureCount || 0) - 1),
+                  }
+            )
+          );
+        }
         if (userId && userId === selectedUserIdRef.current) {
           setOutsideFilterHint("");
         }
@@ -862,13 +899,38 @@ export default function SuperAdminApplicationCapturesWorkspace({
       const openDay = dateYmdRef.current;
       const openTz = timezoneRef.current;
       const matchesOwner = Boolean(openOwner && ownerId && ownerId === openOwner);
-      const matchesDay = sessionMatchesDay(session, openDay, openTz);
+      const alreadyInList = sessionsRef.current.some((s) => s.id === session.id);
+      const known =
+        sessionsRef.current.find((s) => s.id === session.id) ||
+        (detailRef.current?.id === session.id ? detailRef.current : null);
+      const knownIso = captureSessionActivityIso(known || session);
+      // Sessions already in the filtered list are never "outside selected day".
+      const matchesDay =
+        alreadyInList ||
+        sessionMatchesDay(session, openDay, openTz, knownIso);
+      const isOpen = selectedSessionIdRef.current === session.id;
       const sparsePayload = session.images.length === 0 && session.sliceCount > 0;
 
-      // Live badge / detail merge — never steal selection.
+      if (event.kind === "session.created" && ownerId) {
+        setOwners((prev) => {
+          const exists = prev.some((o) => o.userId === ownerId);
+          if (!exists) return prev;
+          return prev.map((o) => {
+            if (o.userId !== ownerId) return o;
+            return {
+              ...o,
+              captureCount: (o.captureCount || 0) + (alreadyInList ? 0 : 1),
+              lastCapturedAt:
+                captureSessionActivityIso(session) || o.lastCapturedAt,
+            };
+          });
+        });
+      }
+
+      // Upsert list/detail from SSE payload immediately — no full page refresh.
       applySessionReviewUpdate(session);
 
-      if (selectedSessionIdRef.current === session.id) {
+      if (isOpen) {
         setDetailError("");
         if (session.images.length > 0 || session.sliceCount === 0) {
           setLightboxIndex((idx) => {
@@ -877,7 +939,8 @@ export default function SuperAdminApplicationCapturesWorkspace({
             return Math.min(idx, session.images.length - 1);
           });
         }
-        if (sparsePayload) {
+        // Always refresh open detail so new slices appear without manual reload.
+        if (sparsePayload || event.kind === "session.updated") {
           hydrateSessionDetail(session.id);
         }
       }
@@ -892,9 +955,17 @@ export default function SuperAdminApplicationCapturesWorkspace({
         return;
       }
 
-      setOutsideFilterHint(
-        `Live update for ${captureSessionTitle(session)} outside ${openDay}.`
-      );
+      // Outside selected day: only note when the open session jumps days.
+      if (isOpen) {
+        const jumpYmd = knownIso
+          ? formatYmdInTimezone(new Date(knownIso), openTz)
+          : "";
+        if (jumpYmd && jumpYmd !== openDay) {
+          setOutsideFilterHint(
+            `Open capture “${captureSessionTitle(session)}” is on ${jumpYmd}, not ${openDay}.`
+          );
+        }
+      }
       flashSession(session.id);
     },
     [
@@ -915,9 +986,29 @@ export default function SuperAdminApplicationCapturesWorkspace({
     onLiveStatusChange?.(liveStatus);
   }, [liveStatus, onLiveStatusChange]);
 
+  // Light poll only while SSE is down (list from backend, not extension).
+  useEffect(() => {
+    if (!selectedUserId) return;
+    if (liveStatus === "live" || liveStatus === "connecting") return;
+    const timer = window.setInterval(() => {
+      void loadSessions(
+        selectedUserIdRef.current || selectedUserId,
+        dateYmdRef.current,
+        timezoneRef.current,
+        sessionQRef.current
+      );
+    }, 20_000);
+    return () => window.clearInterval(timer);
+  }, [selectedUserId, liveStatus, loadSessions]);
+
   function handleOwnerSearch(e: FormEvent) {
     e.preventDefault();
     setOwnerQ(draftOwnerQ.trim());
+  }
+
+  function handleSessionSearch(e: FormEvent) {
+    e.preventDefault();
+    setSessionQ(draftSessionQ.trim());
   }
 
   async function handleDeleteSession(session: AdminApplicationCaptureSession) {
@@ -1321,6 +1412,14 @@ export default function SuperAdminApplicationCapturesWorkspace({
                           ? ` · ${owner.captureCount} capture${owner.captureCount === 1 ? "" : "s"}`
                           : ""}
                       </span>
+                      {owner.lastCapturedAt ? (
+                        <span className={`${saMono} truncate text-[10px] text-slate-400`}>
+                          Last{" "}
+                          {formatEstTime(owner.lastCapturedAt) ||
+                            formatEstDateTime(owner.lastCapturedAt) ||
+                            "—"}
+                        </span>
+                      ) : null}
                     </button>
                   </li>
                 );
@@ -1336,7 +1435,7 @@ export default function SuperAdminApplicationCapturesWorkspace({
           <div className="shrink-0 border-b border-slate-100 p-4">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <p className={saEyebrow}>Sessions</p>
+                <p className={saEyebrow}>Application URLs</p>
                 <p className={`${saMono} mt-2 text-[11px] text-slate-400`}>
                   {selectedOwner
                     ? displayCaptureOwnerName(selectedOwner)
@@ -1380,6 +1479,31 @@ export default function SuperAdminApplicationCapturesWorkspace({
                 </label>
               ) : null}
             </div>
+            <form onSubmit={handleSessionSearch} className="mt-3 flex gap-2">
+              <input
+                value={draftSessionQ}
+                onChange={(e) => setDraftSessionQ(e.target.value)}
+                className={saField}
+                placeholder="Search URL or title…"
+                spellCheck={false}
+                aria-label="Search application URLs"
+              />
+              <button type="submit" className={`${saBtnGhost} shrink-0 px-3`}>
+                Go
+              </button>
+              {sessionQ ? (
+                <button
+                  type="button"
+                  className={`${saBtnGhost} shrink-0 px-2`}
+                  onClick={() => {
+                    setDraftSessionQ("");
+                    setSessionQ("");
+                  }}
+                >
+                  Clear
+                </button>
+              ) : null}
+            </form>
             {checkedSessionIds.size > 0 ? (
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <button
@@ -1425,7 +1549,9 @@ export default function SuperAdminApplicationCapturesWorkspace({
               </li>
             ) : sessions.length === 0 ? (
               <li className={`${saMono} px-4 py-8 text-center text-xs text-slate-400`}>
-                No captures for this day.
+                {sessionQ
+                  ? `No captures matching “${sessionQ}”.`
+                  : "No captures for this day."}
               </li>
             ) : (
               sessions.map((session) => {
