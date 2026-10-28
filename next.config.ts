@@ -41,16 +41,16 @@ const nextConfig: NextConfig = {
         destination: "/super-admin",
         permanent: true,
       },
-      // Application Captures (screenshots) replaced by rrweb session replay.
+      // Retired Super Admin rrweb session replay — keep bookmarks working.
       {
-        source: "/super-admin/application-captures",
-        destination: "/super-admin/rrweb-sessions",
-        permanent: false,
+        source: "/super-admin/rrweb-sessions",
+        destination: "/super-admin/application-captures",
+        permanent: true,
       },
       {
-        source: "/super-admin/application-captures/:path*",
-        destination: "/super-admin/rrweb-sessions",
-        permanent: false,
+        source: "/super-admin/rrweb-sessions/:path*",
+        destination: "/super-admin/application-captures",
+        permanent: true,
       },
     ];
   },

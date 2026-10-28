@@ -30,15 +30,8 @@ const modules = [
     delay: "sa-animate-in-delay-2",
   },
   {
-    href: `${AUTH_LINKS.superAdmin}/rrweb-sessions`,
-    eyebrow: "Module 03",
-    title: "Session Replay",
-    body: "Live three-panel review: profile → date → apply attempt → rrweb DOM replay (iframes when recorded).",
-    delay: "sa-animate-in-delay-2",
-  },
-  {
     href: `${AUTH_LINKS.superAdmin}/application-captures`,
-    eyebrow: "Module 04",
+    eyebrow: "Module 03",
     title: "Application Captures",
     body: "Live screenshot gate review: profile → date → apply URL → grayscale slices with lightbox. SSE updates as the extension uploads.",
     delay: "sa-animate-in-delay-3",
@@ -53,7 +46,7 @@ export default function SuperAdminPage() {
       <div className={saPage}>
         <SuperAdminHeader
           title="Super Admin"
-          subtitle="Quiet ops workspace for profiles, resume analytics, session replay, and application captures. Sign in to Devora21 with a super-admin account before calling /admin APIs."
+          subtitle="Quiet ops workspace for profiles, resume analytics, and application captures. Sign in to Devora21 with a super-admin account before calling /admin APIs."
           onLock={() => router.replace(AUTH_LINKS.superAdmin)}
         />
 
