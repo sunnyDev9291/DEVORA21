@@ -38,7 +38,6 @@ import {
   isIsoInZonedDay,
 } from "@/lib/format-est-datetime";
 import {
-  adjustOwnerUncheckedSessionCount,
   captureSessionActivityIso,
   displayCaptureOwnerName,
   isCaptureImageUnread,
@@ -65,19 +64,6 @@ const DEFAULT_TZ = EST_TZ;
 
 /** Screenshots panel shows one slice per page (full-height captures). */
 const SCREENSHOTS_PER_PAGE = 1;
-
-function UncheckedBadge({ count, label }: { count: number; label: string }) {
-  if (count <= 0) return null;
-  return (
-    <span
-      className={`${saMono} inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white`}
-      title={label}
-      aria-label={label}
-    >
-      {count > 99 ? "99+" : count}
-    </span>
-  );
-}
 
 function statusBadgeClass(status: string): string {
   const key = status.toLowerCase();
@@ -841,15 +827,13 @@ export default function SuperAdminApplicationCapturesWorkspace({
       });
   }, []);
 
-  /** Apply a session snapshot and keep profile/session unchecked badges in sync. */
+  /** Apply a session snapshot into the open list/detail (no unchecked count badges). */
   const applySessionReviewUpdate = useCallback(
     (incoming: AdminApplicationCaptureSession) => {
       const existing =
         sessionsRef.current.find((s) => s.id === incoming.id) ||
         (detailRef.current?.id === incoming.id ? detailRef.current : null);
-      const prevUnchecked = existing?.uncheckedCount;
       const merged = mergeCaptureSession(existing, incoming);
-      const nextUnchecked = merged.uncheckedCount;
 
       setSessions((prev) => {
         if (!prev.some((s) => s.id === incoming.id)) {
@@ -869,27 +853,6 @@ export default function SuperAdminApplicationCapturesWorkspace({
       if (selectedSessionIdRef.current === incoming.id) {
         setDetail((prev) => mergeCaptureSession(prev, incoming));
       }
-
-      setOwners((prev) => {
-        if (existing) {
-          return adjustOwnerUncheckedSessionCount(
-            prev,
-            incoming.userId,
-            prevUnchecked,
-            nextUnchecked
-          );
-        }
-        // New session (e.g. SSE created) — bump profile badge when it has unread slices.
-        if ((nextUnchecked ?? 0) > 0) {
-          return adjustOwnerUncheckedSessionCount(
-            prev,
-            incoming.userId,
-            0,
-            nextUnchecked
-          );
-        }
-        return prev;
-      });
     },
     []
   );
@@ -1539,7 +1502,6 @@ export default function SuperAdminApplicationCapturesWorkspace({
             ) : (
               filteredOwners.map((owner) => {
                 const active = owner.userId === selectedUserId;
-                const unchecked = owner.uncheckedSessionCount || 0;
                 return (
                   <li key={owner.userId}>
                     <button
@@ -1561,18 +1523,12 @@ export default function SuperAdminApplicationCapturesWorkspace({
                           : "text-slate-700 hover:bg-slate-50"
                       }`}
                     >
-                      <span className="flex items-center gap-2">
-                        <span
-                          className={`min-w-0 flex-1 truncate text-sm font-medium ${
-                            active ? "text-teal-900" : "text-slate-900"
-                          }`}
-                        >
-                          {displayCaptureOwnerName(owner)}
-                        </span>
-                        <UncheckedBadge
-                          count={unchecked}
-                          label={`${unchecked} session${unchecked === 1 ? "" : "s"} with unreviewed screenshots`}
-                        />
+                      <span
+                        className={`truncate text-sm font-medium ${
+                          active ? "text-teal-900" : "text-slate-900"
+                        }`}
+                      >
+                        {displayCaptureOwnerName(owner)}
                       </span>
                       <span className={`${saMono} truncate text-[11px] text-slate-400`}>
                         {owner.email || owner.userId}
@@ -1761,7 +1717,6 @@ export default function SuperAdminApplicationCapturesWorkspace({
                 const thumb = session.images[0]?.imageUrl;
                 const deletingThis = deletingSessionId === session.id;
                 const busy = bulkDeletingSessions || Boolean(deletingSessionId);
-                const unchecked = session.uncheckedCount || 0;
                 return (
                   <li key={session.id}>
                     <div
@@ -1801,18 +1756,12 @@ export default function SuperAdminApplicationCapturesWorkspace({
                           onExpire={() => void refreshSignedUrls(session.id)}
                         />
                         <span className="min-w-0 flex-1">
-                          <span className="flex items-center gap-2">
-                            <span
-                              className={`min-w-0 flex-1 truncate text-sm font-medium ${
-                                active ? "text-teal-900" : "text-slate-900"
-                              }`}
-                            >
-                              {captureSessionTitle(session)}
-                            </span>
-                            <UncheckedBadge
-                              count={unchecked}
-                              label={`${unchecked} unreviewed screenshot${unchecked === 1 ? "" : "s"}`}
-                            />
+                          <span
+                            className={`block truncate text-sm font-medium ${
+                              active ? "text-teal-900" : "text-slate-900"
+                            }`}
+                          >
+                            {captureSessionTitle(session)}
                           </span>
                           <span className={`${saMono} mt-0.5 block truncate text-[11px] text-slate-400`}>
                             {hostnameFromCaptureUrl(session.tabUrl)}
@@ -1969,16 +1918,13 @@ export default function SuperAdminApplicationCapturesWorkspace({
                   const deletingThis = deletingImageId === image.id;
                   const checked = checkedImageIds.has(image.id);
                   const busy = bulkDeletingImages || Boolean(deletingImageId);
-                  const unread = isCaptureImageUnread(image);
                   return (
                     <div
                       key={image.id}
                       className={`group flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-white transition ${
                         checked
                           ? "border-teal-300 ring-1 ring-teal-100"
-                          : unread
-                            ? "border-amber-300 ring-1 ring-amber-100"
-                            : "border-slate-200 hover:border-teal-300"
+                          : "border-slate-200 hover:border-teal-300"
                       }`}
                     >
                       <div
@@ -1998,15 +1944,8 @@ export default function SuperAdminApplicationCapturesWorkspace({
                             onClick={() => openScreenshot(image, index)}
                             className="min-w-0 flex-1 text-left"
                           >
-                            <span className="inline-flex items-center gap-2">
-                              <span>
-                                Slice {index + 1} of {detailImages.length}
-                              </span>
-                              {unread ? (
-                                <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white">
-                                  New
-                                </span>
-                              ) : null}
+                            <span>
+                              Slice {index + 1} of {detailImages.length}
                             </span>
                             <span className="ml-2 text-teal-700 opacity-0 transition group-hover:opacity-100">
                               Open full size
@@ -2025,9 +1964,7 @@ export default function SuperAdminApplicationCapturesWorkspace({
                       <button
                         type="button"
                         onClick={() => openScreenshot(image, index)}
-                        className={`min-h-0 flex-1 overflow-auto p-2 text-left ${
-                          unread ? "bg-amber-50/80" : "bg-slate-50"
-                        }`}
+                        className="min-h-0 flex-1 overflow-auto bg-slate-50 p-2 text-left"
                         title="Click to open full size with zoom"
                       >
                         {/* Width-fit + scroll: tall captures stay readable (not shrink-to-fit height). */}
