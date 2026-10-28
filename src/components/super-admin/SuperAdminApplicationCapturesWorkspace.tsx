@@ -158,6 +158,19 @@ function CaptureThumb({
   );
 }
 
+const LIGHTBOX_ZOOM_MIN = 0.5;
+const LIGHTBOX_ZOOM_MAX = 3;
+const LIGHTBOX_ZOOM_STEP = 0.25;
+/** Default: fit width so tall pages stay readable (scroll vertically). */
+const LIGHTBOX_ZOOM_DEFAULT = 1;
+
+function clampLightboxZoom(value: number): number {
+  return Math.min(
+    LIGHTBOX_ZOOM_MAX,
+    Math.max(LIGHTBOX_ZOOM_MIN, Math.round(value * 100) / 100)
+  );
+}
+
 function Lightbox({
   images,
   index,
@@ -177,35 +190,82 @@ function Lightbox({
 }) {
   const image = images[index];
   const titleId = useId();
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [zoom, setZoom] = useState(LIGHTBOX_ZOOM_DEFAULT);
+  const [broken, setBroken] = useState(false);
+  const expireCalledRef = useRef(false);
+
+  useEffect(() => {
+    setZoom(LIGHTBOX_ZOOM_DEFAULT);
+    setBroken(false);
+    expireCalledRef.current = false;
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [index, image?.imageUrl]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-      if (event.key === "ArrowRight" && index < images.length - 1) onIndexChange(index + 1);
-      if (event.key === "ArrowLeft" && index > 0) onIndexChange(index - 1);
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (event.key === "+" || event.key === "=") {
+        event.preventDefault();
+        setZoom((z) => clampLightboxZoom(z + LIGHTBOX_ZOOM_STEP));
+        return;
+      }
+      if (event.key === "-" || event.key === "_") {
+        event.preventDefault();
+        setZoom((z) => clampLightboxZoom(z - LIGHTBOX_ZOOM_STEP));
+        return;
+      }
+      if (event.key === "0") {
+        event.preventDefault();
+        setZoom(LIGHTBOX_ZOOM_DEFAULT);
+        return;
+      }
+      if (event.key === "ArrowRight" && index < images.length - 1) {
+        onIndexChange(index + 1);
+      }
+      if (event.key === "ArrowLeft" && index > 0) {
+        onIndexChange(index - 1);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [images.length, index, onClose, onIndexChange]);
 
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      event.preventDefault();
+      const delta = event.deltaY > 0 ? -LIGHTBOX_ZOOM_STEP : LIGHTBOX_ZOOM_STEP;
+      setZoom((z) => clampLightboxZoom(z + delta));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
   if (!image) return null;
 
   const canPrev = index > 0;
   const canNext = index < images.length - 1;
+  const zoomLabel = `${Math.round(zoom * 100)}%`;
 
   return (
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/85 p-3 backdrop-blur-sm sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
       onClick={onClose}
     >
       <div
-        className="relative flex h-[min(92dvh,56rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+        className="relative flex h-[min(96dvh,60rem)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
           <p id={titleId} className={`${saMono} text-xs text-slate-600`}>
             Slice {index + 1} of {images.length}
             {image.width && image.height ? (
@@ -214,7 +274,45 @@ function Lightbox({
               </span>
             ) : null}
           </p>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              aria-label="Zoom out"
+              title="Zoom out (−)"
+              disabled={zoom <= LIGHTBOX_ZOOM_MIN}
+              onClick={() =>
+                setZoom((z) => clampLightboxZoom(z - LIGHTBOX_ZOOM_STEP))
+              }
+              className={`${saBtnGhost} px-2.5`}
+            >
+              −
+            </button>
+            <span
+              className={`${saMono} min-w-[3.25rem] text-center text-[11px] text-slate-600`}
+              title="Ctrl/⌘ + scroll to zoom"
+            >
+              {zoomLabel}
+            </span>
+            <button
+              type="button"
+              aria-label="Zoom in"
+              title="Zoom in (+)"
+              disabled={zoom >= LIGHTBOX_ZOOM_MAX}
+              onClick={() =>
+                setZoom((z) => clampLightboxZoom(z + LIGHTBOX_ZOOM_STEP))
+              }
+              className={`${saBtnGhost} px-2.5`}
+            >
+              +
+            </button>
+            <button
+              type="button"
+              title="Fit width (readable, scroll tall pages)"
+              onClick={() => setZoom(LIGHTBOX_ZOOM_DEFAULT)}
+              className={`${saBtnGhost} text-[10px]`}
+            >
+              Fit width
+            </button>
             {onDeleteImage ? (
               <button
                 type="button"
@@ -222,7 +320,7 @@ function Lightbox({
                 onClick={() => onDeleteImage(image, index)}
                 className={`${saBtnGhost} border-rose-200 text-rose-700 hover:bg-rose-50`}
               >
-                {deleting ? "Deleting…" : "Delete screenshot"}
+                {deleting ? "Deleting…" : "Delete"}
               </button>
             ) : null}
             <button type="button" onClick={onClose} className={saBtnGhost}>
@@ -231,37 +329,58 @@ function Lightbox({
           </div>
         </div>
 
-        <div className="relative min-h-0 flex-1 overflow-hidden bg-slate-50 p-3">
+        <div
+          ref={scrollRef}
+          className="relative min-h-0 flex-1 overflow-auto bg-slate-100"
+        >
           {images.length > 1 ? (
             <button
               type="button"
               disabled={!canPrev || deleting}
               aria-label="Previous screenshot"
               onClick={() => onIndexChange(index - 1)}
-              className={`${saBtnGhost} absolute left-3 top-1/2 z-10 -translate-y-1/2 px-3 py-2 disabled:opacity-40`}
+              className={`${saBtnGhost} sticky left-3 top-3 z-10 float-left ml-3 mt-3 px-3 py-2 disabled:opacity-40`}
             >
               ← Prev
             </button>
           ) : null}
-          <CaptureThumb
-            src={image.imageUrl}
-            alt={`Capture slice ${index + 1}`}
-            fit="contain"
-            fill
-            className="rounded-lg"
-            onExpire={onImageExpire}
-          />
           {images.length > 1 ? (
             <button
               type="button"
               disabled={!canNext || deleting}
               aria-label="Next screenshot"
               onClick={() => onIndexChange(index + 1)}
-              className={`${saBtnGhost} absolute right-3 top-1/2 z-10 -translate-y-1/2 px-3 py-2 disabled:opacity-40`}
+              className={`${saBtnGhost} sticky right-3 top-3 z-10 float-right mr-3 mt-3 px-3 py-2 disabled:opacity-40`}
             >
               Next →
             </button>
           ) : null}
+          <div className="clear-both flex min-h-full justify-center p-3 sm:p-4">
+            {!image.imageUrl || broken ? (
+              <div
+                className="flex min-h-[12rem] w-full items-center justify-center rounded-lg bg-slate-200 text-slate-400"
+                aria-hidden
+              >
+                <span className={`${saMono} text-xs`}>Image unavailable</span>
+              </div>
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element -- signed Backblaze URLs
+              <img
+                src={image.imageUrl}
+                alt={`Capture slice ${index + 1}`}
+                className="block h-auto max-w-none rounded-lg grayscale shadow-sm"
+                style={{ width: `${zoom * 100}%` }}
+                draggable={false}
+                onError={() => {
+                  setBroken(true);
+                  if (!expireCalledRef.current && onImageExpire) {
+                    expireCalledRef.current = true;
+                    onImageExpire();
+                  }
+                }}
+              />
+            )}
+          </div>
         </div>
 
         <div className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-100 px-4 py-3">
@@ -275,6 +394,8 @@ function Lightbox({
           </button>
           <p className={`${saMono} text-[11px] text-slate-500`}>
             {index + 1} / {images.length}
+            <span className="mx-1.5 opacity-40">·</span>
+            Scroll · Ctrl/⌘+wheel zoom · − / +
           </p>
           <button
             type="button"
@@ -1825,15 +1946,16 @@ export default function SuperAdminApplicationCapturesWorkspace({
                       <button
                         type="button"
                         onClick={() => openScreenshot(image, index)}
-                        className={`relative min-h-0 flex-1 overflow-hidden p-2 ${
+                        className={`min-h-0 flex-1 overflow-auto p-2 text-left ${
                           unread ? "bg-amber-50/80" : "bg-slate-50"
                         }`}
+                        title="Click to open full size with zoom"
                       >
+                        {/* Width-fit + scroll: tall captures stay readable (not shrink-to-fit height). */}
                         <CaptureThumb
                           src={image.imageUrl}
                           alt={`${captureSessionTitle(detail!)} slice ${index + 1}`}
-                          fit="contain"
-                          fill
+                          className="h-auto w-full rounded-md"
                           onExpire={() => void refreshSignedUrls(detail!.id)}
                         />
                       </button>

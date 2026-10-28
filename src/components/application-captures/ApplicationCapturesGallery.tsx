@@ -77,7 +77,10 @@ function CaptureThumb({
       src={src}
       alt={alt}
       className={`${fit === "contain" ? "object-contain" : "object-cover object-top"} grayscale ${className}`}
+      style={{ WebkitUserDrag: "none" }}
       loading="lazy"
+      draggable={false}
+      onDragStart={(event) => event.preventDefault()}
       onError={() => {
         setBroken(true);
         if (!expireCalledRef.current && onExpire) {
@@ -86,6 +89,17 @@ function CaptureThumb({
         }
       }}
     />
+  );
+}
+
+const GALLERY_ZOOM_MIN = 0.5;
+const GALLERY_ZOOM_MAX = 3;
+const GALLERY_ZOOM_STEP = 0.25;
+
+function clampGalleryZoom(value: number): number {
+  return Math.min(
+    GALLERY_ZOOM_MAX,
+    Math.max(GALLERY_ZOOM_MIN, Math.round(value * 100) / 100)
   );
 }
 
@@ -104,16 +118,62 @@ function Lightbox({
 }) {
   const image = images[index];
   const titleId = useId();
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [broken, setBroken] = useState(false);
+  const expireCalledRef = useRef(false);
+
+  useEffect(() => {
+    setZoom(1);
+    setBroken(false);
+    expireCalledRef.current = false;
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [index, image?.imageUrl]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-      if (event.key === "ArrowRight" && index < images.length - 1) onIndexChange(index + 1);
-      if (event.key === "ArrowLeft" && index > 0) onIndexChange(index - 1);
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (event.key === "+" || event.key === "=") {
+        event.preventDefault();
+        setZoom((z) => clampGalleryZoom(z + GALLERY_ZOOM_STEP));
+        return;
+      }
+      if (event.key === "-" || event.key === "_") {
+        event.preventDefault();
+        setZoom((z) => clampGalleryZoom(z - GALLERY_ZOOM_STEP));
+        return;
+      }
+      if (event.key === "0") {
+        event.preventDefault();
+        setZoom(1);
+        return;
+      }
+      if (event.key === "ArrowRight" && index < images.length - 1) {
+        onIndexChange(index + 1);
+      }
+      if (event.key === "ArrowLeft" && index > 0) {
+        onIndexChange(index - 1);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [images.length, index, onClose, onIndexChange]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      event.preventDefault();
+      const delta = event.deltaY > 0 ? -GALLERY_ZOOM_STEP : GALLERY_ZOOM_STEP;
+      setZoom((z) => clampGalleryZoom(z + delta));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
 
   if (!image) return null;
 
@@ -126,10 +186,10 @@ function Lightbox({
       onClick={onClose}
     >
       <div
-        className="relative flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-warm-950 shadow-2xl animate-dialog-enter"
+        className="relative flex h-[min(96dvh,60rem)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-warm-950 shadow-2xl animate-dialog-enter"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
           <p id={titleId} className="text-sm font-medium text-stone-200">
             Slice {index + 1} of {images.length}
             {image.width && image.height ? (
@@ -138,22 +198,68 @@ function Lightbox({
               </span>
             ) : null}
           </p>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg px-3 py-1.5 text-sm text-stone-300 hover:bg-white/10 hover:text-white"
-          >
-            Close
-          </button>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              aria-label="Zoom out"
+              disabled={zoom <= GALLERY_ZOOM_MIN}
+              onClick={() => setZoom((z) => clampGalleryZoom(z - GALLERY_ZOOM_STEP))}
+              className="rounded-lg px-2.5 py-1.5 text-sm text-stone-300 hover:bg-white/10 disabled:opacity-40"
+            >
+              −
+            </button>
+            <span className="min-w-[3.25rem] text-center text-xs text-stone-400">
+              {Math.round(zoom * 100)}%
+            </span>
+            <button
+              type="button"
+              aria-label="Zoom in"
+              disabled={zoom >= GALLERY_ZOOM_MAX}
+              onClick={() => setZoom((z) => clampGalleryZoom(z + GALLERY_ZOOM_STEP))}
+              className="rounded-lg px-2.5 py-1.5 text-sm text-stone-300 hover:bg-white/10 disabled:opacity-40"
+            >
+              +
+            </button>
+            <button
+              type="button"
+              onClick={() => setZoom(1)}
+              className="rounded-lg px-2.5 py-1.5 text-xs text-stone-300 hover:bg-white/10"
+            >
+              Fit width
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg px-3 py-1.5 text-sm text-stone-300 hover:bg-white/10 hover:text-white"
+            >
+              Close
+            </button>
+          </div>
         </div>
-        <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-black/40 p-3">
-          <CaptureThumb
-            src={image.imageUrl}
-            alt={`Capture slice ${index + 1}`}
-            fit="contain"
-            className="max-h-[75dvh] w-auto max-w-full rounded-lg"
-            onExpire={onImageExpire}
-          />
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto bg-black/40">
+          <div className="flex min-h-full justify-center p-3">
+            {!image.imageUrl || broken ? (
+              <div className="flex min-h-[12rem] w-full items-center justify-center text-stone-500">
+                Image unavailable
+              </div>
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element -- signed Backblaze URLs
+              <img
+                src={image.imageUrl}
+                alt={`Capture slice ${index + 1}`}
+                className="block h-auto max-w-none rounded-lg grayscale"
+                style={{ width: `${zoom * 100}%` }}
+                draggable={false}
+                onError={() => {
+                  setBroken(true);
+                  if (!expireCalledRef.current && onImageExpire) {
+                    expireCalledRef.current = true;
+                    onImageExpire();
+                  }
+                }}
+              />
+            )}
+          </div>
         </div>
         {images.length > 1 ? (
           <div className="flex items-center justify-between gap-3 border-t border-white/10 px-4 py-3">
@@ -165,6 +271,7 @@ function Lightbox({
             >
               Previous
             </button>
+            <p className="text-[11px] text-stone-500">Scroll · Ctrl/⌘+wheel · − / +</p>
             <button
               type="button"
               disabled={index >= images.length - 1}
