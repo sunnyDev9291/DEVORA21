@@ -77,7 +77,6 @@ function CaptureThumb({
       src={src}
       alt={alt}
       className={`${fit === "contain" ? "object-contain" : "object-cover object-top"} grayscale ${className}`}
-      style={{ WebkitUserDrag: "none" }}
       loading="lazy"
       draggable={false}
       onDragStart={(event) => event.preventDefault()}
