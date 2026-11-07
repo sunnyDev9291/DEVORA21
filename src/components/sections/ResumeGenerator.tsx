@@ -78,6 +78,7 @@ const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"),
 const ResumeDownloadChooser = dynamic(() => import("@/components/ui/ResumeDownloadChooser"), {
   ssr: false,
 });
+const AddBidLogButton = dynamic(() => import("@/components/ui/AddBidLogButton"), { ssr: false });
 const ResumeAtsScoreModal = dynamic(() => import("@/components/ui/ResumeAtsScoreModal"));
 const ResumeChatDialog = dynamic(() => import("@/components/ui/ResumeChatDialog"));
 
@@ -1333,7 +1334,7 @@ export default function ResumeGenerator({
                     )}
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap items-start gap-2">
                   <button
                     type="button"
                     onClick={() => {
@@ -1353,6 +1354,15 @@ export default function ResumeGenerator({
                   >
                     Download
                   </button>
+                  {archiveId ? (
+                    <AddBidLogButton
+                      archiveId={archiveId}
+                      jobUrl={form.jobLink}
+                      variant="outline"
+                      size="sm"
+                      className="!rounded-xl !border-green-500/20 !text-green-800 dark:!text-green-200"
+                    />
+                  ) : null}
                   <button type="button" onClick={handleStartOver} className="px-4 py-2 rounded-xl text-sm font-medium text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-all">
                     Start over
                   </button>

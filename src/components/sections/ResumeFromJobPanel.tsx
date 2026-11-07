@@ -31,6 +31,7 @@ const ResumeChatDialog = dynamic(() => import("@/components/ui/ResumeChatDialog"
 const ResumeDownloadChooser = dynamic(() => import("@/components/ui/ResumeDownloadChooser"), {
   ssr: false,
 });
+const AddBidLogButton = dynamic(() => import("@/components/ui/AddBidLogButton"), { ssr: false });
 
 const inputClass =
   "w-full bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.10] hover:border-slate-300 dark:hover:border-white/[0.16] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 rounded-xl px-4 py-3 text-slate-900 dark:text-white text-sm outline-none transition-all";
@@ -511,13 +512,21 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
 
       {result?.pdfBase64 ? (
         <div className="space-y-2">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-start gap-2">
             <Button type="button" onClick={handleDownloadPdf}>
               Download
             </Button>
             <Button type="button" variant="secondary" onClick={() => setPreviewOpen(true)}>
               Preview PDF
             </Button>
+            {result?.id ? (
+              <AddBidLogButton
+                archiveId={result.id}
+                jobUrl={jobUrl || job?.url}
+                variant="secondary"
+                size="md"
+              />
+            ) : null}
             <Button
               type="button"
               variant="secondary"
