@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
+import JobUrlDisplay from "@/components/ui/JobUrlDisplay";
 import {
   fetchSavedResumeJobDescription,
   listSavedResumes,
@@ -179,6 +180,9 @@ export default function CompanyPastApplications({
                           </span>
                         </>
                       ) : null}
+                    </p>
+                    <p className="mt-0.5 break-all text-xs text-slate-500 dark:text-slate-400">
+                      <JobUrlDisplay jobUrl={item.jobUrl} />
                     </p>
                     {item.resumeFileName ? (
                       <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500 break-all whitespace-normal">

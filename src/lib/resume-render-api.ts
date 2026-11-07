@@ -6,6 +6,7 @@ import {
   isResumeBuilderAccessDenied,
   resumeBuilderAccessDeniedMessage,
 } from "@/lib/resume-access";
+import { jobUrlForSave, pickStoredJobUrl } from "@/lib/resume-job-url";
 import { fetchSavedResumeFile } from "@/lib/saved-resumes-api";
 import { normalizeResumeSkills } from "@/lib/resume-skills";
 import type { GeneratedResumeContent } from "@/lib/resume-types";
@@ -88,6 +89,8 @@ export type ResumeRenderRequest = {
   jobTitle: string;
   companyName: string;
   jobDescription?: string;
+  /** Posting URL — omit or empty when unknown; do not block render. */
+  jobUrl?: string;
   customPrompt?: string;
   resumeFileBaseName?: string;
   profileName?: string;
@@ -105,6 +108,7 @@ export type ResumeRenderResponse = {
   /** Optional convenience — FE still loads PDF via archive endpoints for preview/download. */
   pdfBase64?: string;
   docxBase64?: string;
+  jobUrl?: string;
 };
 
 async function readJson(res: Response): Promise<Record<string, unknown>> {
@@ -175,6 +179,7 @@ function normalizeRenderResponse(data: Record<string, unknown>): ResumeRenderRes
     status: pickString(data, "status") || "done",
     pdfBase64: pickString(data, "pdfBase64", "pdf_base64") || undefined,
     docxBase64: pickString(data, "docxBase64", "docx_base64") || undefined,
+    jobUrl: pickStoredJobUrl(data),
   };
 }
 
@@ -208,6 +213,8 @@ export async function renderResumeOnBackend(
     throw new ApiError("Job title and company name are required to render.", 400);
   }
 
+  const jobUrl = jobUrlForSave(input.jobUrl);
+
   const timeout = withTimeoutSignal(RESUME_RENDER_TIMEOUT_MS);
   let res: Response;
   try {
@@ -227,6 +234,7 @@ export async function renderResumeOnBackend(
         jobTitle: input.jobTitle.trim(),
         companyName: input.companyName.trim(),
         jobDescription: input.jobDescription?.trim() || "",
+        ...(jobUrl ? { jobUrl } : {}),
         customPrompt: input.customPrompt?.trim() || undefined,
         resumeFileBaseName: input.resumeFileBaseName?.trim() || undefined,
         profileName: input.profileName?.trim() || undefined,

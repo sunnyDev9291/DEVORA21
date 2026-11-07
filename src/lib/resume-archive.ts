@@ -1,5 +1,6 @@
 import { API_BASE_URL } from "@/lib/api-base-url";
 import { apiAuthFetch } from "@/lib/api-auth";
+import { jobUrlForSave, pickStoredJobUrl } from "@/lib/resume-job-url";
 import { RESUME_BUILDER_ACCESS_MESSAGE } from "@/lib/resume-access";
 import { getUserApiKey } from "@/lib/user-api-key";
 
@@ -8,12 +9,15 @@ export interface ResumeArchiveResponse {
   resumeName: string;
   pdfFileName: string;
   pdfBase64: string;
+  jobUrl?: string;
 }
 
 export interface ResumeArchivePayload {
   jobTitle: string;
   companyName: string;
   jobDescription: string;
+  /** Posting URL — omit or empty when unknown; do not block archive. */
+  jobUrl?: string;
   docxBlob: Blob;
   fileName: string;
   datetime?: string;
@@ -47,6 +51,8 @@ function buildArchiveFormData(payload: ResumeArchivePayload): FormData {
   form.append("datetime", payload.datetime ?? new Date().toISOString());
   form.append("resumeFileName", payload.fileName);
   form.append("resume", payload.docxBlob, payload.fileName);
+  const jobUrl = jobUrlForSave(payload.jobUrl);
+  if (jobUrl) form.append("jobUrl", jobUrl);
   return form;
 }
 
@@ -107,5 +113,6 @@ export async function archiveResume(payload: ResumeArchivePayload): Promise<Resu
     resumeName: data.resumeName || payload.fileName,
     pdfFileName: data.pdfFileName,
     pdfBase64: data.pdfBase64,
+    jobUrl: pickStoredJobUrl(data as unknown as Record<string, unknown>),
   };
 }

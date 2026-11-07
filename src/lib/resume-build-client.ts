@@ -65,6 +65,7 @@ export type BuildAndArchiveResumeInput = BuildResumeDocxInput & {
   jobTitle: string;
   companyName: string;
   jobDescription: string;
+  jobUrl?: string;
 };
 
 export type BuildAndArchiveResumeResult = BuildResumeDocxResult & {
@@ -81,6 +82,7 @@ export async function buildAndArchiveResume(
     jobTitle: input.jobTitle.trim(),
     companyName: input.companyName,
     jobDescription: input.jobDescription,
+    jobUrl: input.jobUrl,
     docxBlob: base64ToBlob(built.docxBase64, DOCX_MIME),
     fileName: built.fileName,
   });

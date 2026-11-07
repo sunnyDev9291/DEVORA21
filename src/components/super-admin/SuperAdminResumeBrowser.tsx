@@ -7,6 +7,7 @@ import SuperAdminProfileMultiSelect, {
 } from "@/components/super-admin/SuperAdminProfileMultiSelect";
 import Button from "@/components/ui/Button";
 import CopyIconButton from "@/components/ui/CopyIconButton";
+import JobUrlDisplay from "@/components/ui/JobUrlDisplay";
 import {
   saBtnGhost,
   saBtnPrimary,
@@ -111,16 +112,20 @@ function AdminJobDescriptionModal({
   item: AdminResumeRecord | null;
 }) {
   const [text, setText] = useState("");
+  const [detailJobUrl, setDetailJobUrl] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!open || !item?.id) {
       setText("");
+      setDetailJobUrl(undefined);
       setError("");
       setLoading(false);
       return;
     }
+
+    setDetailJobUrl(item.jobUrl);
 
     if (item.jobDescription?.trim()) {
       setText(item.jobDescription);
@@ -137,6 +142,7 @@ function AdminJobDescriptionModal({
       .then((result) => {
         if (cancelled) return;
         setText(result.jobDescription);
+        if (result.jobUrl) setDetailJobUrl(result.jobUrl);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -149,7 +155,7 @@ function AdminJobDescriptionModal({
     return () => {
       cancelled = true;
     };
-  }, [open, item?.id, item?.jobDescription]);
+  }, [open, item?.id, item?.jobDescription, item?.jobUrl]);
 
   const description =
     text.trim() ||
@@ -163,6 +169,15 @@ function AdminJobDescriptionModal({
       className="max-w-2xl"
     >
       <div className="overflow-y-auto px-6 py-5 max-h-[min(70dvh,32rem)]">
+        <div className="mb-4 rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5">
+          <p className="text-xs font-semibold uppercase tracking-wider text-stone-500">Job URL</p>
+          <p className="mt-1 break-all text-sm text-stone-700">
+            <JobUrlDisplay
+              jobUrl={detailJobUrl}
+              linkClassName="text-orange-700 underline-offset-2 hover:underline"
+            />
+          </p>
+        </div>
         <div className="mb-3 flex items-center justify-between gap-2">
           <p className="text-xs font-semibold uppercase tracking-wider text-stone-500">
             Job description
@@ -361,7 +376,7 @@ export default function SuperAdminResumeBrowser() {
   }
 
   const totalPages = Math.max(1, Math.ceil(total / limit) || 1);
-  const colSpan = 7;
+  const colSpan = 8;
 
   return (
     <div className="space-y-4">
@@ -471,6 +486,7 @@ export default function SuperAdminResumeBrowser() {
                         disabled={loading}
                       />
                     </th>
+                    <th className="px-4 py-3 font-medium">Job URL</th>
                     <th className="px-4 py-3 font-medium">Job description</th>
                     <th className="px-4 py-3 font-medium">File name</th>
                     <th className={rowStyles.actionsHead}>Download</th>
@@ -514,6 +530,13 @@ export default function SuperAdminResumeBrowser() {
                           </td>
                           <td className={rowStyles.company}>{item.companyName || "—"}</td>
                           <td className={rowStyles.jobTitle}>{item.jobTitle || "—"}</td>
+                          <td className={`${rowStyles.description} max-w-[14rem]`}>
+                            <JobUrlDisplay
+                              jobUrl={item.jobUrl}
+                              className="break-all text-xs"
+                              linkClassName="text-orange-700 underline-offset-2 hover:underline"
+                            />
+                          </td>
                           <td className={rowStyles.description}>
                             {noDescription ? (
                               <span className="text-stone-400">No description</span>

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
 import ResumeRawAiTextarea from "@/components/ui/ResumeRawAiTextarea";
 import CopyIconButton from "@/components/ui/CopyIconButton";
+import JobUrlDisplay from "@/components/ui/JobUrlDisplay";
 import ResumeContentReview from "@/components/sections/ResumeContentReview";
 import { resolveResumeWizardStep } from "@/components/sections/ResumeStepper";
 import type { ResumeWorkspaceFabActions } from "@/components/ui/ResumeWorkspaceFabs";
@@ -1059,6 +1060,7 @@ export default function ResumeGenerator({
         jobTitle,
         companyName,
         jobDescription,
+        jobUrl: form.jobLink,
         customPrompt,
         resumeFileBaseName: resumeFileBaseName.trim(),
         profileName: chatProfile?.fullName,
@@ -1544,6 +1546,11 @@ export default function ResumeGenerator({
                     ) : (
                       <p className="text-sm text-green-700/80 dark:text-green-300/80">{fileName}</p>
                     )}
+                    {archiveId ? (
+                      <p className="mt-1 break-all text-xs text-green-700/80 dark:text-green-300/80">
+                        <JobUrlDisplay jobUrl={form.jobLink || "not tracked"} />
+                      </p>
+                    ) : null}
                   </div>
                 </div>
                 <div className="flex flex-wrap items-start gap-2">

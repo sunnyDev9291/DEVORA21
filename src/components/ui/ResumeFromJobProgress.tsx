@@ -1,5 +1,6 @@
 "use client";
 
+import JobUrlDisplay from "@/components/ui/JobUrlDisplay";
 import type { ResumeFromJobStep } from "@/lib/resume-from-job-api";
 
 const STATE_STYLES: Record<
@@ -34,6 +35,7 @@ interface ResumeFromJobProgressProps {
   steps: ResumeFromJobStep[];
   jobTitle?: string;
   companyName?: string;
+  jobUrl?: string | null;
   warning?: string;
   downloadUrl?: string | null;
   downloadFileName?: string;
@@ -46,12 +48,14 @@ export default function ResumeFromJobProgress({
   steps,
   jobTitle,
   companyName,
+  jobUrl,
   warning,
   downloadUrl,
   downloadFileName = "resume.pdf",
   onPreview,
 }: ResumeFromJobProgressProps) {
   const clamped = Math.max(0, Math.min(100, Math.round(progressPercent)));
+  const showJobUrl = Boolean(downloadUrl) || Boolean(jobUrl?.trim());
 
   return (
     <div className="rounded-2xl border border-orange-500/20 bg-blue-500/[0.04] p-5 dark:bg-blue-500/[0.06]">
@@ -63,6 +67,11 @@ export default function ResumeFromJobProgress({
               {[jobTitle, companyName].filter(Boolean).join(" · ")}
             </p>
           )}
+          {showJobUrl ? (
+            <p className="mt-1 break-all text-xs text-slate-500 dark:text-slate-400">
+              <JobUrlDisplay jobUrl={jobUrl} />
+            </p>
+          ) : null}
         </div>
         <span className="shrink-0 text-sm font-bold tabular-nums text-orange-700 dark:text-orange-300">
           {clamped}%

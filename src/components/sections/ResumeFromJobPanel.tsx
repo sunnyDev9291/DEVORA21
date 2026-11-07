@@ -539,6 +539,7 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
             steps={steps}
             jobTitle={jobTitle}
             companyName={companyName}
+            jobUrl={result?.jobUrl || job?.url || jobUrl}
             warning={result?.warning || job.warning}
             downloadUrl={pdfDownloadUrl}
             downloadFileName={result?.pdfFileName || "resume.pdf"}
@@ -559,7 +560,7 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
             {result?.id ? (
               <AddBidLogButton
                 archiveId={result.id}
-                jobUrl={jobUrl || job?.url}
+                jobUrl={result.jobUrl || jobUrl || job?.url}
                 variant="secondary"
                 size="md"
               />

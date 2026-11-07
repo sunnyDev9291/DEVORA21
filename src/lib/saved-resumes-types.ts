@@ -11,6 +11,11 @@ export type SavedResumeArchive = {
   jobTitle: string;
   companyName: string;
   /**
+   * Job posting URL from the archive. http(s) URL, or exact "not tracked"
+   * when none was ever stored. Present on both lean and full list payloads.
+   */
+  jobUrl?: string;
+  /**
    * Full JD text. Omitted from lean list responses — fetch via
    * GET /resume/archives/:id/job-description when the user opens JD.
    */
@@ -32,6 +37,8 @@ export type SavedResumeListResponse = {
 export type SavedResumeJobDescriptionResponse = {
   id: string;
   jobDescription: string;
+  /** Present when archive detail / JD endpoint includes jobUrl. */
+  jobUrl?: string;
 };
 
 export type InterviewRoundRecordResponse = {

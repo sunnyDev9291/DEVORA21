@@ -10,6 +10,7 @@ import {
   EnglishTeamRequiredError,
   parseEnglishTeamRequired,
 } from "@/lib/english-team-gate";
+import { pickStoredJobUrl } from "@/lib/resume-job-url";
 import { isResumeSkillsEmpty, normalizeResumeSkills } from "@/lib/resume-skills";
 import type { GeneratedResumeContent, ResumeExperience } from "@/lib/resume-types";
 
@@ -39,6 +40,8 @@ export type ResumeFromJobResult = {
   pdfBase64: string;
   warning?: string;
   jobDescription?: string;
+  /** http(s) URL or exact "not tracked" from the done payload. */
+  jobUrl?: string;
   content?: GeneratedResumeContent;
 };
 
@@ -224,8 +227,9 @@ function parseResultMeta(raw: unknown): Omit<ResumeFromJobResult, "pdfBase64"> |
   const jobDescription = pickJobDescription(row);
   const content = pickContent(row);
 
+  const jobUrl = pickStoredJobUrl(row);
   if (!id && !jobTitle && !companyName && !resumeName && !content && !jobDescription) return undefined;
-  return { id, jobTitle, companyName, resumeName, pdfFileName, warning, jobDescription, content };
+  return { id, jobTitle, companyName, resumeName, pdfFileName, warning, jobDescription, jobUrl, content };
 }
 
 function buildResult(row: Record<string, unknown>, pdfBase64: string): ResumeFromJobResult {
@@ -245,6 +249,7 @@ function buildResult(row: Record<string, unknown>, pdfBase64: string): ResumeFro
     pdfBase64,
     warning: typeof row.warning === "string" && row.warning.trim() ? row.warning.trim() : undefined,
     jobDescription: pickJobDescription(row),
+    jobUrl: pickStoredJobUrl(row),
     content: pickContent(row),
   };
 }

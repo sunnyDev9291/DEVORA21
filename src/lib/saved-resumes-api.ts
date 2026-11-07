@@ -2,6 +2,7 @@ import { API_BASE_URL } from "@/lib/api-base-url";
 import { apiAuthFetch } from "@/lib/api-auth";
 import { RESUME_BUILDER_ACCESS_MESSAGE } from "@/lib/resume-access";
 import { getUserApiKey } from "@/lib/user-api-key";
+import { pickStoredJobUrl } from "@/lib/resume-job-url";
 import type {
   InterviewHistoryEntry,
   InterviewRoundRecordResponse,
@@ -168,6 +169,7 @@ export function normalizeSavedResumeListItem(raw: unknown): SavedResumeArchive |
     bidAt: pickString(row, "bidAt", "bid_at", "createdAt", "created_at") || new Date(0).toISOString(),
     jobTitle: pickString(row, "jobTitle", "job_title", "title"),
     companyName: pickString(row, "companyName", "company_name", "company"),
+    jobUrl: pickStoredJobUrl(row),
     hasJobDescription,
     // Intentionally omit jobDescription on list items — fetch on demand.
     resumeFileName: pickString(row, "resumeFileName", "resume_file_name", "fileName") || "resume.docx",
@@ -283,6 +285,7 @@ export async function fetchSavedResumeJobDescription(
       return {
         id: pickString(nested, "id", "_id") || archiveId,
         jobDescription,
+        jobUrl: pickStoredJobUrl(nested),
       };
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
