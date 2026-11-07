@@ -21,6 +21,13 @@ import {
 const fieldClass =
   "w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/40";
 
+/**
+ * Windows Chrome inherits the <select> text color into the native popup.
+ * Keep this control dark-on-light so profile names stay readable in the list.
+ */
+const selectClass =
+  "w-full rounded-xl border border-white/10 bg-white px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500/40 disabled:opacity-60";
+
 function profileLabel(profile: IntegrationProfile): string {
   const name = `${profile.first_name || ""} ${profile.last_name || ""}`.trim();
   return name || profile.entity_id;
@@ -211,7 +218,7 @@ export default function DashboardJobCommunityPanel({ userId }: DashboardJobCommu
               value={profileId}
               onChange={(e) => setProfileId(e.target.value)}
               disabled={loadingProfiles || profiles.length === 0}
-              className={fieldClass}
+              className={selectClass}
             >
               <option value="">
                 {loadingProfiles
