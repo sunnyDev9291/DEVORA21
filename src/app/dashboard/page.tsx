@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Button from "@/components/ui/Button";
 import DashboardProfilePanel from "@/components/dashboard/DashboardProfilePanel";
 import DashboardApiKeysPanel from "@/components/dashboard/DashboardApiKeysPanel";
+import DashboardJobCommunityPanel from "@/components/dashboard/DashboardJobCommunityPanel";
 import DashboardRemoteDevicesPanel from "@/components/dashboard/DashboardRemoteDevicesPanel";
 import EmailVerificationBanner from "@/components/auth/EmailVerificationBanner";
 import ResumeAccessNotice from "@/components/auth/ResumeAccessNotice";
@@ -110,6 +111,7 @@ function DashboardContent() {
                 void refreshUser();
               }}
             />
+            <DashboardJobCommunityPanel userId={user.id} />
             {isResumeBuilderEnabled ? <DashboardRemoteDevicesPanel /> : null}
             <DashboardApiKeysPanel />
           </div>

@@ -29,6 +29,7 @@ const Modal = dynamic(() => import("@/components/ui/Modal"), { ssr: false });
 const ResumeDownloadChooser = dynamic(() => import("@/components/ui/ResumeDownloadChooser"), {
   ssr: false,
 });
+const AddBidLogButton = dynamic(() => import("@/components/ui/AddBidLogButton"), { ssr: false });
 
 type SavedResumesPanelProps = {
   variant?: "dashboard" | "resume";
@@ -486,6 +487,7 @@ function ApplicationRows({
                       >
                         {downloadingId === item.id ? "…" : "Download"}
                       </Button>
+                      <AddBidLogButton archiveId={item.id} />
                     </div>
                   </td>
                 </tr>
