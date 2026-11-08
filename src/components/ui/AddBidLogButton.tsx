@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import Button from "@/components/ui/Button";
@@ -17,14 +18,21 @@ import {
   JOB_COMMUNITY_PROFILE_CHANGED_EVENT,
 } from "@/lib/job-community-storage";
 
+const Modal = dynamic(() => import("@/components/ui/Modal"), { ssr: false });
+
 type AddBidLogButtonProps = {
   archiveId: string | null | undefined;
   jobUrl?: string | null;
   variant?: "outline" | "secondary" | "primary" | "ghost";
   size?: "sm" | "md" | "lg";
   className?: string;
-  /** Compact inline feedback next to the button (default true). */
+  /** Brief success message under the button (errors/warnings use an alert dialog). */
   showInlineFeedback?: boolean;
+};
+
+type Feedback = {
+  tone: "ok" | "warn" | "err";
+  text: string;
 };
 
 export default function AddBidLogButton({
@@ -38,10 +46,8 @@ export default function AddBidLogButton({
   const { user } = useAuth();
   const [visible, setVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState<{
-    tone: "ok" | "warn" | "err";
-    text: string;
-  } | null>(null);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [alertOpen, setAlertOpen] = useState(false);
   const [needsKey, setNeedsKey] = useState(false);
 
   const syncVisibility = useCallback(() => {
@@ -59,6 +65,20 @@ export default function AddBidLogButton({
     };
   }, [syncVisibility]);
 
+  function showAlert(next: Feedback, requireKey = false) {
+    setNeedsKey(requireKey);
+    setFeedback(next);
+    if (next.tone === "err" || next.tone === "warn") {
+      setAlertOpen(true);
+    } else {
+      setAlertOpen(false);
+    }
+  }
+
+  function dismissAlert() {
+    setAlertOpen(false);
+  }
+
   if (!visible || !archiveId?.trim()) {
     return null;
   }
@@ -70,17 +90,20 @@ export default function AddBidLogButton({
 
     const profileId = getDefaultJobCommunityProfileId(user?.id)?.trim();
     if (!profileId) {
-      setNeedsKey(false);
-      setFeedback({
-        tone: "err",
-        text: "Pick a default Job Community profile under My account first.",
-      });
+      showAlert(
+        {
+          tone: "err",
+          text: "Pick a default Job Community profile under My account first.",
+        },
+        true
+      );
       return;
     }
 
     setSubmitting(true);
     setFeedback(null);
     setNeedsKey(false);
+    setAlertOpen(false);
     try {
       const result = await integrationsApi.createBidLog({
         profile_id: profileId,
@@ -90,7 +113,7 @@ export default function AddBidLogButton({
 
       const warningText = integrationsApi.formatWarnings(result.warnings);
       if (result.confirmed_warnings && warningText) {
-        setFeedback({
+        showAlert({
           tone: "warn",
           text: `${result.message} ${warningText}`.trim(),
         });
@@ -99,21 +122,24 @@ export default function AddBidLogButton({
           tone: "ok",
           text: result.message || "Bid log created successfully.",
         });
+        setAlertOpen(false);
       }
     } catch (err) {
       if (isIntegrationKeyMissingError(err)) {
-        setNeedsKey(true);
-        setFeedback({
-          tone: "err",
-          text: getApiErrorMessage(err, "Integration key is missing or invalid."),
-        });
+        showAlert(
+          {
+            tone: "err",
+            text: getApiErrorMessage(err, "Integration key is missing or invalid."),
+          },
+          true
+        );
       } else if (err instanceof ApiError && err.status === 400) {
-        setFeedback({
+        showAlert({
           tone: "err",
           text: getApiErrorMessage(err, "Could not create bid log."),
         });
       } else {
-        setFeedback({
+        showAlert({
           tone: "err",
           text: getApiErrorMessage(err, "Could not create bid log."),
         });
@@ -123,43 +149,65 @@ export default function AddBidLogButton({
     }
   }
 
+  const alertTitle =
+    feedback?.tone === "warn" ? "Bid log warning" : "Could not add bid log";
+  const showAccountLink =
+    needsKey || Boolean(feedback?.text.toLowerCase().includes("my account"));
+
   return (
-    <div className="inline-flex max-w-full flex-col items-start gap-1">
-      <Button
-        type="button"
-        variant={variant}
-        size={size}
-        className={className}
-        disabled={submitting}
-        onClick={() => void handleClick()}
-      >
-        {submitting ? "Adding…" : "Add bid log"}
-      </Button>
-      {showInlineFeedback && feedback ? (
-        <p
-          className={`max-w-xs text-xs font-medium ${
-            feedback.tone === "ok"
-              ? "text-emerald-700 dark:text-emerald-300"
-              : feedback.tone === "warn"
-                ? "text-amber-700 dark:text-amber-300"
-                : "text-red-700 dark:text-red-300"
-          }`}
-          role="status"
+    <>
+      <div className="inline-flex max-w-full flex-col items-start gap-1">
+        <Button
+          type="button"
+          variant={variant}
+          size={size}
+          className={className}
+          disabled={submitting}
+          onClick={() => void handleClick()}
         >
-          {feedback.text}
-          {needsKey || feedback.text.toLowerCase().includes("my account") ? (
-            <>
-              {" "}
+          {submitting ? "Adding…" : "Add bid log"}
+        </Button>
+        {showInlineFeedback && feedback?.tone === "ok" ? (
+          <p className="max-w-xs text-xs font-medium text-emerald-700 dark:text-emerald-300" role="status">
+            {feedback.text}
+          </p>
+        ) : null}
+      </div>
+
+      <Modal
+        open={alertOpen && Boolean(feedback) && feedback?.tone !== "ok"}
+        onClose={dismissAlert}
+        title={alertTitle}
+        className="max-w-md"
+        priority
+      >
+        <div className="space-y-4 px-6 py-5">
+          <p
+            className={`text-sm leading-relaxed ${
+              feedback?.tone === "warn"
+                ? "text-amber-800 dark:text-amber-200"
+                : "text-slate-700 dark:text-slate-200"
+            }`}
+            role="alert"
+          >
+            {feedback?.text}
+          </p>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {showAccountLink ? (
               <Link
                 href={integrationSettingsHref()}
-                className="underline underline-offset-2 hover:opacity-90"
+                onClick={dismissAlert}
+                className="mr-auto text-sm font-semibold text-orange-700 underline-offset-2 hover:underline dark:text-orange-300"
               >
                 Open My account
               </Link>
-            </>
-          ) : null}
-        </p>
-      ) : null}
-    </div>
+            ) : null}
+            <Button type="button" size="sm" onClick={dismissAlert}>
+              OK
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </>
   );
 }
