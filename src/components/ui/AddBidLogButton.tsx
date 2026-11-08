@@ -161,13 +161,44 @@ export default function AddBidLogButton({
           type="button"
           variant={variant}
           size={size}
-          className={className}
+          className={`${className ?? ""} ${submitting ? "!opacity-100" : ""}`.trim()}
           disabled={submitting}
           onClick={() => void handleClick()}
         >
-          {submitting ? "Adding…" : "Add bid log"}
+          {submitting ? (
+            <>
+              <svg
+                className="h-4 w-4 shrink-0 animate-spin"
+                fill="none"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
+              </svg>
+              Adding…
+            </>
+          ) : (
+            "Add bid log"
+          )}
         </Button>
-        {showInlineFeedback && feedback?.tone === "ok" ? (
+        {submitting ? (
+          <p className="text-xs font-medium text-orange-700 dark:text-orange-300" role="status">
+            Creating bid log…
+          </p>
+        ) : null}
+        {showInlineFeedback && !submitting && feedback?.tone === "ok" ? (
           <p className="max-w-xs text-xs font-medium text-emerald-700 dark:text-emerald-300" role="status">
             {feedback.text}
           </p>
