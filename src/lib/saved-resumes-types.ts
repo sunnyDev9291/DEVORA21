@@ -16,6 +16,10 @@ export type SavedResumeArchive = {
    */
   jobUrl?: string;
   /**
+   * Platform derived by the API from jobUrl (read-only). Exact labels or "not tracked".
+   */
+  platform?: string;
+  /**
    * Full JD text. Omitted from lean list responses — fetch via
    * GET /resume/archives/:id/job-description when the user opens JD.
    */
@@ -39,6 +43,8 @@ export type SavedResumeJobDescriptionResponse = {
   jobDescription: string;
   /** Present when archive detail / JD endpoint includes jobUrl. */
   jobUrl?: string;
+  /** Present when archive detail includes API-derived platform. */
+  platform?: string;
 };
 
 export type InterviewRoundRecordResponse = {

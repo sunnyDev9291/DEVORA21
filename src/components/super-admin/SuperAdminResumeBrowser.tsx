@@ -8,6 +8,7 @@ import SuperAdminProfileMultiSelect, {
 import Button from "@/components/ui/Button";
 import CopyIconButton from "@/components/ui/CopyIconButton";
 import JobUrlDisplay from "@/components/ui/JobUrlDisplay";
+import { normalizeStoredPlatform } from "@/lib/resume-job-url";
 import {
   saBtnGhost,
   saBtnPrimary,
@@ -113,6 +114,7 @@ function AdminJobDescriptionModal({
 }) {
   const [text, setText] = useState("");
   const [detailJobUrl, setDetailJobUrl] = useState<string | undefined>(undefined);
+  const [detailPlatform, setDetailPlatform] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -120,12 +122,14 @@ function AdminJobDescriptionModal({
     if (!open || !item?.id) {
       setText("");
       setDetailJobUrl(undefined);
+      setDetailPlatform(undefined);
       setError("");
       setLoading(false);
       return;
     }
 
     setDetailJobUrl(item.jobUrl);
+    setDetailPlatform(item.platform);
 
     if (item.jobDescription?.trim()) {
       setText(item.jobDescription);
@@ -143,6 +147,7 @@ function AdminJobDescriptionModal({
         if (cancelled) return;
         setText(result.jobDescription);
         if (result.jobUrl) setDetailJobUrl(result.jobUrl);
+        if (result.platform) setDetailPlatform(result.platform);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -155,7 +160,7 @@ function AdminJobDescriptionModal({
     return () => {
       cancelled = true;
     };
-  }, [open, item?.id, item?.jobDescription, item?.jobUrl]);
+  }, [open, item?.id, item?.jobDescription, item?.jobUrl, item?.platform]);
 
   const description =
     text.trim() ||
@@ -169,14 +174,17 @@ function AdminJobDescriptionModal({
       className="max-w-2xl"
     >
       <div className="overflow-y-auto px-6 py-5 max-h-[min(70dvh,32rem)]">
-        <div className="mb-4 rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5">
-          <p className="text-xs font-semibold uppercase tracking-wider text-stone-500">Job URL</p>
-          <p className="mt-1 break-all text-sm text-stone-700">
-            <JobUrlDisplay
-              jobUrl={detailJobUrl}
-              linkClassName="text-orange-700 underline-offset-2 hover:underline"
-            />
-          </p>
+        <div className="mb-4 space-y-3 rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-stone-500">Platform</p>
+            <p className="mt-1 text-sm text-stone-700">{normalizeStoredPlatform(detailPlatform)}</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-stone-500">Job URL</p>
+            <div className="mt-1 text-sm text-stone-700">
+              <JobUrlDisplay jobUrl={detailJobUrl} />
+            </div>
+          </div>
         </div>
         <div className="mb-3 flex items-center justify-between gap-2">
           <p className="text-xs font-semibold uppercase tracking-wider text-stone-500">
@@ -376,7 +384,7 @@ export default function SuperAdminResumeBrowser() {
   }
 
   const totalPages = Math.max(1, Math.ceil(total / limit) || 1);
-  const colSpan = 8;
+  const colSpan = 9;
 
   return (
     <div className="space-y-4">
@@ -486,6 +494,7 @@ export default function SuperAdminResumeBrowser() {
                         disabled={loading}
                       />
                     </th>
+                    <th className="px-4 py-3 font-medium">Platform</th>
                     <th className="px-4 py-3 font-medium">Job URL</th>
                     <th className="px-4 py-3 font-medium">Job description</th>
                     <th className="px-4 py-3 font-medium">File name</th>
@@ -530,12 +539,11 @@ export default function SuperAdminResumeBrowser() {
                           </td>
                           <td className={rowStyles.company}>{item.companyName || "—"}</td>
                           <td className={rowStyles.jobTitle}>{item.jobTitle || "—"}</td>
-                          <td className={`${rowStyles.description} max-w-[14rem]`}>
-                            <JobUrlDisplay
-                              jobUrl={item.jobUrl}
-                              className="break-all text-xs"
-                              linkClassName="text-orange-700 underline-offset-2 hover:underline"
-                            />
+                          <td className={`${rowStyles.company} whitespace-nowrap`}>
+                            {normalizeStoredPlatform(item.platform)}
+                          </td>
+                          <td className={rowStyles.description}>
+                            <JobUrlDisplay jobUrl={item.jobUrl} />
                           </td>
                           <td className={rowStyles.description}>
                             {noDescription ? (

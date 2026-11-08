@@ -10,6 +10,7 @@ import {
 } from "@/lib/saved-resumes-api";
 import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
 import { formatEstDateTime } from "@/lib/format-est-datetime";
+import { normalizeStoredPlatform } from "@/lib/resume-job-url";
 
 const ResumeDownloadChooser = dynamic(() => import("@/components/ui/ResumeDownloadChooser"), {
   ssr: false,
@@ -181,9 +182,12 @@ export default function CompanyPastApplications({
                         </>
                       ) : null}
                     </p>
-                    <p className="mt-0.5 break-all text-xs text-slate-500 dark:text-slate-400">
-                      <JobUrlDisplay jobUrl={item.jobUrl} />
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                      {normalizeStoredPlatform(item.platform)}
                     </p>
+                    <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                      <JobUrlDisplay jobUrl={item.jobUrl} />
+                    </div>
                     {item.resumeFileName ? (
                       <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500 break-all whitespace-normal">
                         {item.resumeFileName}

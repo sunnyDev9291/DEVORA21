@@ -1,6 +1,6 @@
 import { API_BASE_URL } from "@/lib/api-base-url";
 import { apiAuthFetch } from "@/lib/api-auth";
-import { jobUrlForSave, pickStoredJobUrl } from "@/lib/resume-job-url";
+import { jobUrlForSave, pickStoredJobUrl, pickStoredPlatform } from "@/lib/resume-job-url";
 import { RESUME_BUILDER_ACCESS_MESSAGE } from "@/lib/resume-access";
 import { getUserApiKey } from "@/lib/user-api-key";
 
@@ -10,6 +10,8 @@ export interface ResumeArchiveResponse {
   pdfFileName: string;
   pdfBase64: string;
   jobUrl?: string;
+  /** API-derived from jobUrl; never sent by the client. */
+  platform?: string;
 }
 
 export interface ResumeArchivePayload {
@@ -114,5 +116,6 @@ export async function archiveResume(payload: ResumeArchivePayload): Promise<Resu
     pdfFileName: data.pdfFileName,
     pdfBase64: data.pdfBase64,
     jobUrl: pickStoredJobUrl(data as unknown as Record<string, unknown>),
+    platform: pickStoredPlatform(data as unknown as Record<string, unknown>),
   };
 }

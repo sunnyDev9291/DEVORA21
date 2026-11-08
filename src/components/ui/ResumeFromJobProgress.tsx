@@ -2,6 +2,7 @@
 
 import JobUrlDisplay from "@/components/ui/JobUrlDisplay";
 import type { ResumeFromJobStep } from "@/lib/resume-from-job-api";
+import { normalizeStoredPlatform } from "@/lib/resume-job-url";
 
 const STATE_STYLES: Record<
   ResumeFromJobStep["state"],
@@ -36,6 +37,7 @@ interface ResumeFromJobProgressProps {
   jobTitle?: string;
   companyName?: string;
   jobUrl?: string | null;
+  platform?: string | null;
   warning?: string;
   downloadUrl?: string | null;
   downloadFileName?: string;
@@ -49,13 +51,14 @@ export default function ResumeFromJobProgress({
   jobTitle,
   companyName,
   jobUrl,
+  platform,
   warning,
   downloadUrl,
   downloadFileName = "resume.pdf",
   onPreview,
 }: ResumeFromJobProgressProps) {
   const clamped = Math.max(0, Math.min(100, Math.round(progressPercent)));
-  const showJobUrl = Boolean(downloadUrl) || Boolean(jobUrl?.trim());
+  const showMeta = Boolean(downloadUrl) || Boolean(jobUrl?.trim()) || Boolean(platform?.trim());
 
   return (
     <div className="rounded-2xl border border-orange-500/20 bg-blue-500/[0.04] p-5 dark:bg-blue-500/[0.06]">
@@ -67,10 +70,13 @@ export default function ResumeFromJobProgress({
               {[jobTitle, companyName].filter(Boolean).join(" · ")}
             </p>
           )}
-          {showJobUrl ? (
-            <p className="mt-1 break-all text-xs text-slate-500 dark:text-slate-400">
+          {showMeta ? (
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+              {platform?.trim() || downloadUrl ? (
+                <span>{normalizeStoredPlatform(platform)}</span>
+              ) : null}
               <JobUrlDisplay jobUrl={jobUrl} />
-            </p>
+            </div>
           ) : null}
         </div>
         <span className="shrink-0 text-sm font-bold tabular-nums text-orange-700 dark:text-orange-300">

@@ -1,7 +1,7 @@
 import { API_BASE_URL } from "@/lib/api-base-url";
 import { apiAuthFetch } from "@/lib/api-auth";
 import { ApiError } from "@/lib/auth-api";
-import { pickStoredJobUrl } from "@/lib/resume-job-url";
+import { pickStoredJobUrl, pickStoredPlatform } from "@/lib/resume-job-url";
 import {
   normalizeInterviewHistory,
   resolveNextInterviewRound,
@@ -54,6 +54,8 @@ export type AdminResumeRecord = {
   companyName: string;
   /** http(s) URL or exact "not tracked". */
   jobUrl?: string;
+  /** API-derived from jobUrl; read-only. Exact labels or "not tracked". */
+  platform?: string;
   jobDescription: string;
   /** When true/false known from lean list; omit means unknown. */
   hasJobDescription?: boolean;
@@ -285,6 +287,7 @@ function normalizeResumeRecord(raw: unknown): AdminResumeRecord | null {
     jobTitle: pickString(row, "jobTitle", "job_title", "title"),
     companyName: pickString(row, "companyName", "company_name", "company"),
     jobUrl: pickStoredJobUrl(row),
+    platform: pickStoredPlatform(row),
     jobDescription: pickString(row, "jobDescription", "job_description", "jd"),
     hasJobDescription:
       typeof row.hasJobDescription === "boolean"

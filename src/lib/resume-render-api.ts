@@ -6,7 +6,7 @@ import {
   isResumeBuilderAccessDenied,
   resumeBuilderAccessDeniedMessage,
 } from "@/lib/resume-access";
-import { jobUrlForSave, pickStoredJobUrl } from "@/lib/resume-job-url";
+import { jobUrlForSave, pickStoredJobUrl, pickStoredPlatform } from "@/lib/resume-job-url";
 import { fetchSavedResumeFile } from "@/lib/saved-resumes-api";
 import { normalizeResumeSkills } from "@/lib/resume-skills";
 import type { GeneratedResumeContent } from "@/lib/resume-types";
@@ -109,6 +109,8 @@ export type ResumeRenderResponse = {
   pdfBase64?: string;
   docxBase64?: string;
   jobUrl?: string;
+  /** API-derived from jobUrl; never sent by the client. */
+  platform?: string;
 };
 
 async function readJson(res: Response): Promise<Record<string, unknown>> {
@@ -180,6 +182,7 @@ function normalizeRenderResponse(data: Record<string, unknown>): ResumeRenderRes
     pdfBase64: pickString(data, "pdfBase64", "pdf_base64") || undefined,
     docxBase64: pickString(data, "docxBase64", "docx_base64") || undefined,
     jobUrl: pickStoredJobUrl(data),
+    platform: pickStoredPlatform(data),
   };
 }
 

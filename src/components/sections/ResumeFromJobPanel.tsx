@@ -540,6 +540,7 @@ export default function ResumeFromJobPanel({ onFabActionsChange }: ResumeFromJob
             jobTitle={jobTitle}
             companyName={companyName}
             jobUrl={result?.jobUrl || job?.url || jobUrl}
+            platform={result?.platform}
             warning={result?.warning || job.warning}
             downloadUrl={pdfDownloadUrl}
             downloadFileName={result?.pdfFileName || "resume.pdf"}

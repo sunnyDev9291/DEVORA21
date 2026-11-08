@@ -24,7 +24,7 @@ import { TODAYS_RESUME_COUNT_CHANGED_EVENT } from "@/lib/todays-resume-count";
 import { brand, ui } from "@/lib/ui-styles";
 import CopyIconButton from "@/components/ui/CopyIconButton";
 import JobUrlDisplay from "@/components/ui/JobUrlDisplay";
-import { isHttpJobUrl } from "@/lib/resume-job-url";
+import { isHttpJobUrl, normalizeStoredPlatform } from "@/lib/resume-job-url";
 
 const PdfPreviewModal = dynamic(() => import("@/components/ui/PdfPreviewModal"), { ssr: false });
 const Modal = dynamic(() => import("@/components/ui/Modal"), { ssr: false });
@@ -335,6 +335,7 @@ function JobDescriptionModal({
 }) {
   const [text, setText] = useState("");
   const [detailJobUrl, setDetailJobUrl] = useState<string | undefined>(undefined);
+  const [detailPlatform, setDetailPlatform] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -342,12 +343,14 @@ function JobDescriptionModal({
     if (!open || !item?.id) {
       setText("");
       setDetailJobUrl(undefined);
+      setDetailPlatform(undefined);
       setError("");
       setLoading(false);
       return;
     }
 
     setDetailJobUrl(item.jobUrl);
+    setDetailPlatform(item.platform);
 
     // Prefer already-loaded JD (legacy payloads / after prior fetch).
     if (item.jobDescription?.trim()) {
@@ -366,6 +369,7 @@ function JobDescriptionModal({
         if (cancelled) return;
         setText(result.jobDescription);
         if (result.jobUrl) setDetailJobUrl(result.jobUrl);
+        if (result.platform) setDetailPlatform(result.platform);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -378,7 +382,7 @@ function JobDescriptionModal({
     return () => {
       cancelled = true;
     };
-  }, [open, item?.id, item?.jobDescription, item?.jobUrl]);
+  }, [open, item?.id, item?.jobDescription, item?.jobUrl, item?.platform]);
 
   const description =
     text.trim() ||
@@ -392,13 +396,23 @@ function JobDescriptionModal({
       className="max-w-2xl"
     >
       <div className="overflow-y-auto px-6 py-5 max-h-[min(70dvh,32rem)]">
-        <div className="mb-4 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2.5 dark:border-white/10 dark:bg-white/[0.03]">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Job URL
-          </p>
-          <p className="mt-1 break-all text-sm text-slate-700 dark:text-slate-200">
-            <JobUrlDisplay jobUrl={detailJobUrl} />
-          </p>
+        <div className="mb-4 space-y-3 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2.5 dark:border-white/10 dark:bg-white/[0.03]">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Platform
+            </p>
+            <p className="mt-1 text-sm text-slate-700 dark:text-slate-200">
+              {normalizeStoredPlatform(detailPlatform)}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Job URL
+            </p>
+            <div className="mt-1 text-sm text-slate-700 dark:text-slate-200">
+              <JobUrlDisplay jobUrl={detailJobUrl} />
+            </div>
+          </div>
         </div>
         <div className="mb-3 flex items-center justify-between gap-2">
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -449,6 +463,7 @@ function ApplicationRows({
               <th className="px-4 py-3 font-medium">Bid time</th>
               <th className="px-4 py-3 font-medium">Company</th>
               <th className="px-4 py-3 font-medium">Job title</th>
+              <th className="px-4 py-3 font-medium">Platform</th>
               <th className="px-4 py-3 font-medium">Job URL</th>
               <th className="px-4 py-3 font-medium">Job description</th>
               <th className="px-4 py-3 font-medium">File name</th>
@@ -469,11 +484,11 @@ function ApplicationRows({
                   <td className={styles.bidTime}>{timeLabel}</td>
                   <td className={styles.company}>{item.companyName}</td>
                   <td className={styles.jobTitle}>{item.jobTitle}</td>
-                  <td className={`${styles.description} max-w-[14rem]`}>
-                    <JobUrlDisplay
-                      jobUrl={item.jobUrl}
-                      className="break-all text-xs"
-                    />
+                  <td className={`${styles.company} whitespace-nowrap`}>
+                    {normalizeStoredPlatform(item.platform)}
+                  </td>
+                  <td className={styles.description}>
+                    <JobUrlDisplay jobUrl={item.jobUrl} />
                   </td>
                   <td className={styles.description}>
                     {hasDescription ? (

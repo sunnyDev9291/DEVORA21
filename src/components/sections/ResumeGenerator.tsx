@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import ResumeRawAiTextarea from "@/components/ui/ResumeRawAiTextarea";
 import CopyIconButton from "@/components/ui/CopyIconButton";
 import JobUrlDisplay from "@/components/ui/JobUrlDisplay";
+import { normalizeStoredPlatform } from "@/lib/resume-job-url";
 import ResumeContentReview from "@/components/sections/ResumeContentReview";
 import { resolveResumeWizardStep } from "@/components/sections/ResumeStepper";
 import type { ResumeWorkspaceFabActions } from "@/components/ui/ResumeWorkspaceFabs";
@@ -201,6 +202,7 @@ export default function ResumeGenerator({
   const [pdfBase64, setPdfBase64] = useState("");
   const [pdfFileName, setPdfFileName] = useState("");
   const [archiveId, setArchiveId] = useState<string | null>(null);
+  const [archivePlatform, setArchivePlatform] = useState<string | null>(null);
   const [downloadChooserOpen, setDownloadChooserOpen] = useState(false);
   const [downloadFeedback, setDownloadFeedback] = useState<{
     tone: "ok" | "err" | "pending";
@@ -1044,6 +1046,7 @@ export default function ResumeGenerator({
     setPdfBase64("");
     setPdfFileName("");
     setArchiveId(null);
+    setArchivePlatform(null);
     setDocxBase64("");
 
     try {
@@ -1070,6 +1073,7 @@ export default function ResumeGenerator({
       setFileName(rendered.fileName);
       setPdfFileName(rendered.pdfFileName);
       setArchiveId(rendered.archiveId);
+      setArchivePlatform(rendered.platform ?? null);
       // Marker so the success banner still appears (legacy state name).
       setDocxBase64("backend-rendered");
       setStep("done");
@@ -1175,6 +1179,7 @@ export default function ResumeGenerator({
     setPdfBase64("");
     setPdfFileName("");
     setArchiveId(null);
+    setArchivePlatform(null);
     setDownloadChooserOpen(false);
     setDownloadFeedback(null);
     setArchiveError("");
@@ -1547,9 +1552,10 @@ export default function ResumeGenerator({
                       <p className="text-sm text-green-700/80 dark:text-green-300/80">{fileName}</p>
                     )}
                     {archiveId ? (
-                      <p className="mt-1 break-all text-xs text-green-700/80 dark:text-green-300/80">
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-green-700/80 dark:text-green-300/80">
+                        <span>{normalizeStoredPlatform(archivePlatform)}</span>
                         <JobUrlDisplay jobUrl={form.jobLink || "not tracked"} />
-                      </p>
+                      </div>
                     ) : null}
                   </div>
                 </div>

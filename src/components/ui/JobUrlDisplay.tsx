@@ -1,20 +1,20 @@
+"use client";
+
+import CopyIconButton from "@/components/ui/CopyIconButton";
 import { isHttpJobUrl, JOB_URL_NOT_TRACKED, normalizeStoredJobUrl } from "@/lib/resume-job-url";
 
 type JobUrlDisplayProps = {
   jobUrl?: string | null;
   className?: string;
-  /** Extra classes for the link when jobUrl is http(s). */
+  /** Kept for callers; unused now that URLs are copy-only. */
   linkClassName?: string;
 };
 
 /**
- * Show archive jobUrl: http(s) as a link, "not tracked" (and any non-URL) as plain text.
+ * Job URL control: http(s) shows a copy button only (URL not visible).
+ * "not tracked" (and any non-URL) shows as plain text.
  */
-export default function JobUrlDisplay({
-  jobUrl,
-  className = "",
-  linkClassName = "text-orange-700 underline-offset-2 hover:underline dark:text-orange-300",
-}: JobUrlDisplayProps) {
+export default function JobUrlDisplay({ jobUrl, className = "" }: JobUrlDisplayProps) {
   const value = normalizeStoredJobUrl(jobUrl);
 
   if (!isHttpJobUrl(value)) {
@@ -26,14 +26,12 @@ export default function JobUrlDisplay({
   }
 
   return (
-    <a
-      href={value}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={`${linkClassName} ${className}`.trim()}
-      title={value}
-    >
-      {value}
-    </a>
+    <span className={`inline-flex items-center ${className}`.trim()}>
+      <CopyIconButton
+        text={value}
+        label="Copy job URL"
+        className="h-9 self-auto px-2.5"
+      />
+    </span>
   );
 }
