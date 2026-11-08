@@ -31,11 +31,36 @@ export const ALL_JOB_CRAWL_PLATFORMS: JobCrawlPlatform[] = [
   "jobgether",
 ];
 
+/** Crawl window sent as postedWithin on every /jobs/crawl/* request. */
+export type JobCrawlPostedWithin = "24h" | "3d";
+
+export const DEFAULT_JOB_CRAWL_POSTED_WITHIN: JobCrawlPostedWithin = "24h";
+
+export const JOB_CRAWL_POSTED_WITHIN_OPTIONS: {
+  value: JobCrawlPostedWithin;
+  label: string;
+}[] = [
+  { value: "24h", label: "24 hours" },
+  { value: "3d", label: "3 days" },
+];
+
+export function normalizePostedWithin(raw: unknown): JobCrawlPostedWithin {
+  if (raw === "3d" || raw === "3D") return "3d";
+  if (raw === "24h" || raw === "24H") return "24h";
+  return DEFAULT_JOB_CRAWL_POSTED_WITHIN;
+}
+
+export function postedWithinLabel(value: JobCrawlPostedWithin | string | null | undefined): string {
+  return normalizePostedWithin(value) === "3d" ? "3 days" : "24 hours";
+}
+
 export type JobCrawlResult = {
   sourceUrl: string;
   platform: JobCrawlPlatform;
   pagesScraped?: number;
   totalCount: number;
+  /** Echoed from the crawl API: "24h" or "3d". */
+  postedWithin?: JobCrawlPostedWithin;
   jobs: JobCrawlJob[];
 };
 

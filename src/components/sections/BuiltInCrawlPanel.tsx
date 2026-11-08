@@ -17,12 +17,17 @@ import {
 import {
   ALL_JOB_CRAWL_PLATFORMS,
   BUILTIN_CRAWL_TIMEOUT_MS,
+  DEFAULT_JOB_CRAWL_POSTED_WITHIN,
   DEFAULT_LISTING_URLS,
   JOB_CRAWL_PLATFORM_LABEL,
   JOB_CRAWL_PLATFORM_VALIDATOR,
+  JOB_CRAWL_POSTED_WITHIN_OPTIONS,
   mergeListingUrls,
+  normalizePostedWithin,
+  postedWithinLabel,
   type DiscoveredJobRow,
   type JobCrawlPlatform,
+  type JobCrawlPostedWithin,
   type JobCrawlResult,
 } from "@/lib/builtin-crawl-types";
 import { AUTH_LINKS } from "@/lib/constants";
@@ -88,16 +93,17 @@ function jobRowKey(job: DiscoveredJobRow, index: number): string {
 function crawlPlatform(
   platform: JobCrawlPlatform,
   url: string,
-  signal: AbortSignal
+  signal: AbortSignal,
+  postedWithin: JobCrawlPostedWithin
 ): Promise<JobCrawlResult> {
-  if (platform === "builtin") return crawlBuiltInJobs(url, signal);
-  if (platform === "hiringcafe") return crawlHiringCafeJobs(url, signal);
-  if (platform === "workable") return crawlWorkableJobs(url, signal);
-  if (platform === "workingnomads") return crawlWorkingNomadsJobs(url, signal);
-  if (platform === "getonboard") return crawlGetOnBoardJobs(url, signal);
-  if (platform === "jobicy") return crawlJobicyJobs(url, signal);
-  if (platform === "jobgether") return crawlJobgetherJobs(url, signal);
-  return crawlHimalayasJobs(url, signal);
+  if (platform === "builtin") return crawlBuiltInJobs(url, signal, postedWithin);
+  if (platform === "hiringcafe") return crawlHiringCafeJobs(url, signal, postedWithin);
+  if (platform === "workable") return crawlWorkableJobs(url, signal, postedWithin);
+  if (platform === "workingnomads") return crawlWorkingNomadsJobs(url, signal, postedWithin);
+  if (platform === "getonboard") return crawlGetOnBoardJobs(url, signal, postedWithin);
+  if (platform === "jobicy") return crawlJobicyJobs(url, signal, postedWithin);
+  if (platform === "jobgether") return crawlJobgetherJobs(url, signal, postedWithin);
+  return crawlHimalayasJobs(url, signal, postedWithin);
 }
 
 async function copyTextToClipboard(text: string): Promise<boolean> {
@@ -730,6 +736,8 @@ export default function BuiltInCrawlPanel() {
   const [listingUrls, setListingUrls] = useState<Record<JobCrawlPlatform, string>>(() =>
     mergeListingUrls(null)
   );
+  const [postedWithin, setPostedWithin] = useState<JobCrawlPostedWithin>(DEFAULT_JOB_CRAWL_POSTED_WITHIN);
+  const [resultPostedWithin, setResultPostedWithin] = useState<JobCrawlPostedWithin | null>(null);
   const [jobList, setJobList] = useState<DiscoveredJobRow[]>([]);
   const [checkedJobKeys, setCheckedJobKeys] = useState<Set<string>>(() => new Set());
   const [jobTitleFilter, setJobTitleFilter] = useState(DEFAULT_JOB_TITLE_FILTER);
@@ -768,6 +776,7 @@ export default function BuiltInCrawlPanel() {
         setLastCrawledAt(null);
         setNewJobKeys(new Set());
         setCrawlDiff(null);
+        setResultPostedWithin(null);
       }
       setCheckedJobKeys(new Set());
       setPlatformErrors({});
@@ -958,7 +967,12 @@ export default function BuiltInCrawlPanel() {
     await Promise.all(
       selectedPlatforms.map(async (platform) => {
         try {
-          crawlResults[platform] = await crawlPlatform(platform, listingUrls[platform], controller.signal);
+          crawlResults[platform] = await crawlPlatform(
+            platform,
+            listingUrls[platform],
+            controller.signal,
+            postedWithin
+          );
         } catch (err) {
           nextErrors[platform] = getApiErrorMessage(err, `${PLATFORM_LABEL[platform]} crawl failed.`);
         }
@@ -978,11 +992,16 @@ export default function BuiltInCrawlPanel() {
         : { added: 0, removed: 0, newKeys: new Set<string>() };
       const nextDiff =
         previousJobs.length > 0 ? { added: diff.added, removed: diff.removed } : null;
+      const echoedPostedWithin =
+        selectedPlatforms
+          .map((platform) => crawlResults[platform]?.postedWithin)
+          .find((value) => value === "24h" || value === "3d") ?? postedWithin;
 
       setJobList(freshJobs);
       setCheckedJobKeys(new Set());
       setNewJobKeys(diff.newKeys);
       setCrawlDiff(nextDiff);
+      setResultPostedWithin(normalizePostedWithin(echoedPostedWithin));
       // Always re-apply default keywords so results are filtered immediately (not only after refresh).
       setJobTitleFilter(DEFAULT_JOB_TITLE_FILTER);
       setLastCrawledAt(savedAt);
@@ -1088,6 +1107,32 @@ export default function BuiltInCrawlPanel() {
           </p>
         ) : null}
 
+        <fieldset className="min-w-0" disabled={crawling}>
+          <legend className="text-sm font-medium text-slate-700 dark:text-slate-300">Crawl mode</legend>
+          <div className="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-label="Crawl mode">
+            {JOB_CRAWL_POSTED_WITHIN_OPTIONS.map((option) => {
+              const selected = postedWithin === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  onClick={() => setPostedWithin(option.value)}
+                  disabled={crawling}
+                  className={`rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all ${
+                    selected
+                      ? "border-orange-500 bg-orange-500/15 text-orange-900 dark:text-orange-200"
+                      : "border-slate-200 bg-white text-slate-700 hover:border-orange-300 dark:border-white/10 dark:bg-transparent dark:text-slate-200 dark:hover:border-orange-400/40"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
+
         <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-start sm:items-center">
           <button
             type="button"
@@ -1146,6 +1191,14 @@ export default function BuiltInCrawlPanel() {
                 ? `${filteredJobRows.length} of ${jobList.length} job${jobList.length === 1 ? "" : "s"}`
                 : `${jobList.length} job${jobList.length === 1 ? "" : "s"}`}
             </span>
+            {resultPostedWithin ? (
+              <span
+                className="inline-flex items-center rounded-full bg-slate-500/10 px-3.5 py-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200"
+                title={`postedWithin=${resultPostedWithin}`}
+              >
+                Mode: {postedWithinLabel(resultPostedWithin)}
+              </span>
+            ) : null}
             {crawlDiff ? (
               <>
                 <span

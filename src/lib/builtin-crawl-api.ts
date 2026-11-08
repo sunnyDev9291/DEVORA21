@@ -5,6 +5,7 @@ import { apiAuthFetch } from "@/lib/api-auth";
 import { ApiError } from "@/lib/auth-api";
 
 import {
+  DEFAULT_JOB_CRAWL_POSTED_WITHIN,
   detectJobCrawlPlatform,
   isBuiltInListingUrl,
   isHiringCafeListingUrl,
@@ -18,9 +19,11 @@ import {
   normalizeGetOnBoardCountry,
   normalizeJobicyCountry,
   normalizeJobgetherCountry,
+  normalizePostedWithin,
   stripListingPageParam,
   type JobCrawlJob,
   type JobCrawlPlatform,
+  type JobCrawlPostedWithin,
   type JobCrawlResult,
 } from "@/lib/builtin-crawl-types";
 
@@ -171,6 +174,8 @@ function parseResult(
     ...(pagesScraped > 0 ? { pagesScraped } : {}),
 
     totalCount: asNumber(data.totalCount, jobs.length),
+
+    postedWithin: normalizePostedWithin(data.postedWithin ?? data.posted_within),
 
     jobs,
 
@@ -348,13 +353,17 @@ async function postJobCrawl(
 
   url: string,
 
-  signal?: AbortSignal
+  signal?: AbortSignal,
+
+  postedWithin: JobCrawlPostedWithin = DEFAULT_JOB_CRAWL_POSTED_WITHIN
 
 ): Promise<JobCrawlResult> {
 
   const config = CRAWL_CONFIG[platform];
 
   const listingUrl = validateListingUrl(url, platform);
+
+  const window = normalizePostedWithin(postedWithin);
 
 
 
@@ -374,7 +383,7 @@ async function postJobCrawl(
 
       },
 
-      body: JSON.stringify({ url: listingUrl }),
+      body: JSON.stringify({ url: listingUrl, postedWithin: window }),
 
       signal,
 
@@ -484,9 +493,13 @@ async function postJobCrawl(
 
 /** POST /jobs/crawl/builtin — backend crawls all pagination pages via Zyte. */
 
-export async function crawlBuiltInJobs(url: string, signal?: AbortSignal): Promise<JobCrawlResult> {
+export async function crawlBuiltInJobs(
+  url: string,
+  signal?: AbortSignal,
+  postedWithin: JobCrawlPostedWithin = DEFAULT_JOB_CRAWL_POSTED_WITHIN
+): Promise<JobCrawlResult> {
 
-  return postJobCrawl("builtin", url, signal);
+  return postJobCrawl("builtin", url, signal, postedWithin);
 
 }
 
@@ -494,9 +507,13 @@ export async function crawlBuiltInJobs(url: string, signal?: AbortSignal): Promi
 
 /** POST /jobs/crawl/hiringcafe — backend crawls all pagination pages via Zyte. */
 
-export async function crawlHiringCafeJobs(url: string, signal?: AbortSignal): Promise<JobCrawlResult> {
+export async function crawlHiringCafeJobs(
+  url: string,
+  signal?: AbortSignal,
+  postedWithin: JobCrawlPostedWithin = DEFAULT_JOB_CRAWL_POSTED_WITHIN
+): Promise<JobCrawlResult> {
 
-  return postJobCrawl("hiringcafe", url, signal);
+  return postJobCrawl("hiringcafe", url, signal, postedWithin);
 
 }
 
@@ -504,9 +521,13 @@ export async function crawlHiringCafeJobs(url: string, signal?: AbortSignal): Pr
 
 /** POST /jobs/crawl/workable — single-page Workable search via Zyte. */
 
-export async function crawlWorkableJobs(url: string, signal?: AbortSignal): Promise<JobCrawlResult> {
+export async function crawlWorkableJobs(
+  url: string,
+  signal?: AbortSignal,
+  postedWithin: JobCrawlPostedWithin = DEFAULT_JOB_CRAWL_POSTED_WITHIN
+): Promise<JobCrawlResult> {
 
-  return postJobCrawl("workable", url, signal);
+  return postJobCrawl("workable", url, signal, postedWithin);
 
 }
 
@@ -514,9 +535,13 @@ export async function crawlWorkableJobs(url: string, signal?: AbortSignal): Prom
 
 /** POST /jobs/crawl/workingnomads — single-page Working Nomads listing via Zyte. */
 
-export async function crawlWorkingNomadsJobs(url: string, signal?: AbortSignal): Promise<JobCrawlResult> {
+export async function crawlWorkingNomadsJobs(
+  url: string,
+  signal?: AbortSignal,
+  postedWithin: JobCrawlPostedWithin = DEFAULT_JOB_CRAWL_POSTED_WITHIN
+): Promise<JobCrawlResult> {
 
-  return postJobCrawl("workingnomads", url, signal);
+  return postJobCrawl("workingnomads", url, signal, postedWithin);
 
 }
 
@@ -524,7 +549,11 @@ export async function crawlWorkingNomadsJobs(url: string, signal?: AbortSignal):
 
 /** POST /jobs/crawl/himalayas — free API filtered by country name (not a listing URL). */
 
-export async function crawlHimalayasJobs(country: string, signal?: AbortSignal): Promise<JobCrawlResult> {
+export async function crawlHimalayasJobs(
+  country: string,
+  signal?: AbortSignal,
+  postedWithin: JobCrawlPostedWithin = DEFAULT_JOB_CRAWL_POSTED_WITHIN
+): Promise<JobCrawlResult> {
 
   const config = CRAWL_CONFIG.himalayas;
 
@@ -535,6 +564,8 @@ export async function crawlHimalayasJobs(country: string, signal?: AbortSignal):
     throw new ApiError(config.invalidMessage, 400);
 
   }
+
+  const window = normalizePostedWithin(postedWithin);
 
 
 
@@ -559,6 +590,8 @@ export async function crawlHimalayasJobs(country: string, signal?: AbortSignal):
         country: normalized,
 
         countryName: normalized,
+
+        postedWithin: window,
 
       }),
 
@@ -634,7 +667,11 @@ export async function crawlHimalayasJobs(country: string, signal?: AbortSignal):
 
 /** POST /jobs/crawl/getonboard — public search API filtered by country (not a listing URL). */
 
-export async function crawlGetOnBoardJobs(country: string, signal?: AbortSignal): Promise<JobCrawlResult> {
+export async function crawlGetOnBoardJobs(
+  country: string,
+  signal?: AbortSignal,
+  postedWithin: JobCrawlPostedWithin = DEFAULT_JOB_CRAWL_POSTED_WITHIN
+): Promise<JobCrawlResult> {
 
   const config = CRAWL_CONFIG.getonboard;
 
@@ -645,6 +682,8 @@ export async function crawlGetOnBoardJobs(country: string, signal?: AbortSignal)
     throw new ApiError(config.invalidMessage, 400);
 
   }
+
+  const window = normalizePostedWithin(postedWithin);
 
 
 
@@ -669,6 +708,8 @@ export async function crawlGetOnBoardJobs(country: string, signal?: AbortSignal)
         country: normalized,
 
         countryName: normalized,
+
+        postedWithin: window,
 
       }),
 
@@ -773,7 +814,11 @@ export async function crawlGetOnBoardJobs(country: string, signal?: AbortSignal)
 
 /** POST /jobs/crawl/jobicy — free Remote Jobs API filtered by country (not a listing URL). */
 
-export async function crawlJobicyJobs(country: string, signal?: AbortSignal): Promise<JobCrawlResult> {
+export async function crawlJobicyJobs(
+  country: string,
+  signal?: AbortSignal,
+  postedWithin: JobCrawlPostedWithin = DEFAULT_JOB_CRAWL_POSTED_WITHIN
+): Promise<JobCrawlResult> {
 
   const config = CRAWL_CONFIG.jobicy;
 
@@ -784,6 +829,8 @@ export async function crawlJobicyJobs(country: string, signal?: AbortSignal): Pr
     throw new ApiError(config.invalidMessage, 400);
 
   }
+
+  const window = normalizePostedWithin(postedWithin);
 
 
 
@@ -808,6 +855,8 @@ export async function crawlJobicyJobs(country: string, signal?: AbortSignal): Pr
         country: normalized,
 
         countryName: normalized,
+
+        postedWithin: window,
 
       }),
 
@@ -912,7 +961,11 @@ export async function crawlJobicyJobs(country: string, signal?: AbortSignal): Pr
 
 /** POST /jobs/crawl/jobgether — full-remote jobs filtered by country (not a listing URL). */
 
-export async function crawlJobgetherJobs(country: string, signal?: AbortSignal): Promise<JobCrawlResult> {
+export async function crawlJobgetherJobs(
+  country: string,
+  signal?: AbortSignal,
+  postedWithin: JobCrawlPostedWithin = DEFAULT_JOB_CRAWL_POSTED_WITHIN
+): Promise<JobCrawlResult> {
 
   const config = CRAWL_CONFIG.jobgether;
 
@@ -923,6 +976,8 @@ export async function crawlJobgetherJobs(country: string, signal?: AbortSignal):
     throw new ApiError(config.invalidMessage, 400);
 
   }
+
+  const window = normalizePostedWithin(postedWithin);
 
 
 
@@ -947,6 +1002,8 @@ export async function crawlJobgetherJobs(country: string, signal?: AbortSignal):
         country: normalized,
 
         countryName: normalized,
+
+        postedWithin: window,
 
       }),
 
@@ -1106,19 +1163,23 @@ export async function discoverHiringCafeJobs(url: string, signal?: AbortSignal):
 
 /** Route to platform crawl based on listing URL host. */
 
-export async function crawlJobs(url: string, signal?: AbortSignal): Promise<JobCrawlResult> {
+export async function crawlJobs(
+  url: string,
+  signal?: AbortSignal,
+  postedWithin: JobCrawlPostedWithin = DEFAULT_JOB_CRAWL_POSTED_WITHIN
+): Promise<JobCrawlResult> {
 
   const platform = detectJobCrawlPlatform(url);
 
-  if (platform === "hiringcafe") return crawlHiringCafeJobs(url, signal);
+  if (platform === "hiringcafe") return crawlHiringCafeJobs(url, signal, postedWithin);
 
-  if (platform === "builtin") return crawlBuiltInJobs(url, signal);
+  if (platform === "builtin") return crawlBuiltInJobs(url, signal, postedWithin);
 
-  if (platform === "workable") return crawlWorkableJobs(url, signal);
+  if (platform === "workable") return crawlWorkableJobs(url, signal, postedWithin);
 
-  if (platform === "workingnomads") return crawlWorkingNomadsJobs(url, signal);
+  if (platform === "workingnomads") return crawlWorkingNomadsJobs(url, signal, postedWithin);
 
-  if (platform === "himalayas") return crawlHimalayasJobs(url, signal);
+  if (platform === "himalayas") return crawlHimalayasJobs(url, signal, postedWithin);
 
   throw new ApiError(
     "URL must be a builtin.com, hiringcafe.com, jobs.workable.com, or workingnomads.com listing.",
