@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
+import Modal from "@/components/ui/Modal";
 import { useAuth } from "@/context/AuthContext";
 import { getApiErrorMessage } from "@/lib/auth-api";
 import {
@@ -42,10 +43,12 @@ import {
   countCrawlCompanyBadges,
   crawlResumeBadgeLabel,
   crawlResumeBadgeRank,
+  filterArchivesByCompany,
   type CrawlJobResumeBadge,
 } from "@/lib/job-crawl-resume-badge";
 import { loadStoredJobCrawl, saveStoredJobCrawl } from "@/lib/job-crawl-storage";
 import { listSavedResumesCached } from "@/lib/saved-resumes-cache";
+import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
 import {
   DEFAULT_JOB_SHEET_COUNTRY,
   JOB_SHEET_COUNTRIES,
@@ -377,6 +380,161 @@ function JobTitleCell({ title, postedAt }: { title: string; postedAt?: string })
   );
 }
 
+type JobRowContextMenuState = {
+  x: number;
+  y: number;
+  companyName: string;
+  companyLabel: string;
+};
+
+function JobRowContextMenu({
+  menu,
+  onClose,
+  onSavedRecord,
+}: {
+  menu: JobRowContextMenuState;
+  onClose: () => void;
+  onSavedRecord: () => void;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) onClose();
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    function handleScroll() {
+      onClose();
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("scroll", handleScroll, true);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("scroll", handleScroll, true);
+    };
+  }, [onClose]);
+
+  const menuWidth = 180;
+  const menuHeight = 48;
+  const left = Math.min(menu.x, Math.max(8, window.innerWidth - menuWidth - 8));
+  const top = Math.min(menu.y, Math.max(8, window.innerHeight - menuHeight - 8));
+
+  return createPortal(
+    <div
+      ref={rootRef}
+      role="menu"
+      aria-label={`Actions for ${menu.companyLabel}`}
+      className="fixed z-[90] min-w-[11rem] overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl shadow-slate-300/50 dark:border-white/[0.12] dark:bg-warm-900 dark:shadow-black/50"
+      style={{ left, top }}
+    >
+      <button
+        type="button"
+        role="menuitem"
+        className="flex w-full items-center px-3.5 py-2.5 text-left text-sm font-semibold text-slate-800 transition-colors hover:bg-orange-500/10 hover:text-orange-800 dark:text-slate-100 dark:hover:bg-orange-400/10 dark:hover:text-orange-200"
+        onClick={() => {
+          onSavedRecord();
+          onClose();
+        }}
+      >
+        Saved record
+      </button>
+    </div>,
+    document.body
+  );
+}
+
+function CompanySavedArchivesDialog({
+  open,
+  companyLabel,
+  archives,
+  loading,
+  onClose,
+}: {
+  open: boolean;
+  companyLabel: string;
+  archives: SavedResumeArchive[];
+  loading: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`Saved records · ${companyLabel || "Company"}`}
+      className="max-w-2xl"
+      priority
+    >
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+        {loading ? (
+          <p className="text-sm text-slate-500 dark:text-slate-400">Loading saved records…</p>
+        ) : archives.length === 0 ? (
+          <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-slate-300">
+            No saved resume archives for this company.
+          </p>
+        ) : (
+          <ul className="space-y-3">
+            {archives.map((archive) => {
+              const bidParts = formatEstDateTimeParts(archive.bidAt);
+              return (
+                <li
+                  key={archive.id}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-white/[0.08] dark:bg-white/[0.03]"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-900 dark:text-white">
+                        {archive.jobTitle || "—"}
+                      </p>
+                      <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
+                        {archive.companyName || companyLabel}
+                        {archive.platform ? ` · ${archive.platform}` : ""}
+                      </p>
+                    </div>
+                    {bidParts ? (
+                      <time
+                        dateTime={archive.bidAt}
+                        className="shrink-0 text-xs font-semibold tabular-nums text-slate-500 dark:text-slate-400"
+                      >
+                        {bidParts.combined}
+                      </time>
+                    ) : null}
+                  </div>
+                  <p className="mt-2 truncate text-sm text-slate-600 dark:text-slate-300">
+                    {archive.resumeFileName || "Resume"}
+                  </p>
+                  {archive.jobUrl ? (
+                    <a
+                      href={archive.jobUrl.startsWith("http") ? archive.jobUrl : undefined}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`mt-1 block truncate text-sm ${
+                        archive.jobUrl.startsWith("http")
+                          ? "text-orange-600 hover:underline dark:text-orange-400"
+                          : "text-slate-400"
+                      }`}
+                      title={archive.jobUrl}
+                      onClick={(event) => {
+                        if (!archive.jobUrl?.startsWith("http")) event.preventDefault();
+                      }}
+                    >
+                      {archive.jobUrl}
+                    </a>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 function CompanyPagination({
   page,
   totalPages,
@@ -514,6 +672,7 @@ function MergedJobTable({
   onToggleRow,
   onToggleAll,
   allChecked,
+  onRowContextMenu,
   emptyMessage,
 }: {
   groups: CompanyJobGroup[];
@@ -523,6 +682,11 @@ function MergedJobTable({
   onToggleRow: (key: string) => void;
   onToggleAll: () => void;
   allChecked: boolean;
+  onRowContextMenu: (
+    event: ReactMouseEvent<HTMLTableRowElement>,
+    job: DiscoveredJobRow,
+    companyLabel: string
+  ) => void;
   emptyMessage?: string;
 }) {
   const [flashKeys, setFlashKeys] = useState<Set<string>>(() => new Set());
@@ -608,6 +772,7 @@ function MergedJobTable({
                   data-checked={checked ? "true" : "false"}
                   className={`job-select-row ${flashing ? "is-flashing" : ""}`}
                   onClick={(event) => handleRowClick(event, key)}
+                  onContextMenu={(event) => onRowContextMenu(event, row.job, group.companyLabel)}
                 >
                   <td className="px-2 py-2.5 text-center align-middle">
                     <JobSelectCheckbox
@@ -714,23 +879,65 @@ export default function BuiltInCrawlPanel() {
   const [badgeByCompany, setBadgeByCompany] = useState<Map<string, CrawlJobResumeBadge>>(
     () => new Map()
   );
+  const [resumeArchives, setResumeArchives] = useState<SavedResumeArchive[]>([]);
+  const [rowContextMenu, setRowContextMenu] = useState<JobRowContextMenuState | null>(null);
+  const [savedRecordsDialog, setSavedRecordsDialog] = useState<{
+    companyName: string;
+    companyLabel: string;
+  } | null>(null);
+  const [savedRecordsLoading, setSavedRecordsLoading] = useState(false);
   const [crawlDiff, setCrawlDiff] = useState<{ added: number; removed: number } | null>(null);
   const hydratedUserIdRef = useRef<string | undefined>(undefined);
 
   async function refreshResumeFitBadges(jobs: DiscoveredJobRow[], forceArchives = false) {
     if (jobs.length === 0) {
       setBadgeByCompany(new Map());
+      setResumeArchives([]);
       return;
     }
     try {
       const archives = await listSavedResumesCached({ force: forceArchives });
+      setResumeArchives(archives);
       const index = buildCrawlResumeMatchIndex(archives);
       setBadgeByCompany(buildCrawlCompanyBadgeMap(jobs, index));
     } catch {
       // Archives unavailable — treat everything as unmatched (good) for this pass.
+      setResumeArchives([]);
       setBadgeByCompany(buildCrawlCompanyBadgeMap(jobs, buildCrawlResumeMatchIndex([])));
     }
   }
+
+  async function openSavedRecordsDialog(companyName: string, companyLabel: string) {
+    setSavedRecordsDialog({ companyName, companyLabel });
+    setSavedRecordsLoading(true);
+    try {
+      const archives = await listSavedResumesCached({ force: false });
+      setResumeArchives(archives);
+    } catch {
+      // Keep whatever archives we already have; dialog shows empty/filtered list.
+    } finally {
+      setSavedRecordsLoading(false);
+    }
+  }
+
+  function handleJobRowContextMenu(
+    event: ReactMouseEvent<HTMLTableRowElement>,
+    job: DiscoveredJobRow,
+    companyLabel: string
+  ) {
+    event.preventDefault();
+    setRowContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      companyName: job.companyName,
+      companyLabel: companyLabel || normalizeCompanyName(job.companyName) || "—",
+    });
+  }
+
+  const dialogArchives = useMemo(() => {
+    if (!savedRecordsDialog) return [];
+    return filterArchivesByCompany(resumeArchives, savedRecordsDialog.companyName);
+  }, [resumeArchives, savedRecordsDialog]);
 
   useEffect(() => {
     const isNewUserSession = hydratedUserIdRef.current !== userId;
@@ -752,11 +959,14 @@ export default function BuiltInCrawlPanel() {
         setJobList([]);
         setLastCrawledAt(null);
         setBadgeByCompany(new Map());
+        setResumeArchives([]);
         setCrawlDiff(null);
         setResultPostedWithin(null);
       }
       setCheckedJobKeys(new Set());
       setCompanyPage(1);
+      setRowContextMenu(null);
+      setSavedRecordsDialog(null);
       setPlatformErrors({});
       setCrawlProgress({});
       setSheetFeedback(null);
@@ -1427,6 +1637,7 @@ export default function BuiltInCrawlPanel() {
               onToggleRow={toggleJobRow}
               onToggleAll={toggleAllJobsOnPage}
               allChecked={allPageJobsChecked}
+              onRowContextMenu={handleJobRowContextMenu}
               emptyMessage={
                 hasTitleFilter ? "No jobs match this job title filter." : undefined
               }
@@ -1441,6 +1652,27 @@ export default function BuiltInCrawlPanel() {
               />
             ) : null}
           </div>
+
+          {rowContextMenu ? (
+            <JobRowContextMenu
+              menu={rowContextMenu}
+              onClose={() => setRowContextMenu(null)}
+              onSavedRecord={() =>
+                void openSavedRecordsDialog(
+                  rowContextMenu.companyName,
+                  rowContextMenu.companyLabel
+                )
+              }
+            />
+          ) : null}
+
+          <CompanySavedArchivesDialog
+            open={Boolean(savedRecordsDialog)}
+            companyLabel={savedRecordsDialog?.companyLabel ?? ""}
+            archives={dialogArchives}
+            loading={savedRecordsLoading}
+            onClose={() => setSavedRecordsDialog(null)}
+          />
         </>
       ) : null}
     </div>

@@ -180,3 +180,22 @@ export function countCrawlCompanyBadges(
 
   return { good, possible, bad };
 }
+
+/** All saved archives for a company key, newest bidAt first. */
+export function filterArchivesByCompany(
+  archives: SavedResumeArchive[],
+  companyName: string | undefined | null
+): SavedResumeArchive[] {
+  const key = companyBadgeKey(companyName);
+  if (!key) return [];
+
+  return archives
+    .filter((archive) => companyBadgeKey(archive.companyName) === key)
+    .sort((a, b) => {
+      const aMs = Date.parse(a.bidAt);
+      const bMs = Date.parse(b.bidAt);
+      const aSafe = Number.isFinite(aMs) ? aMs : 0;
+      const bSafe = Number.isFinite(bMs) ? bMs : 0;
+      return bSafe - aSafe;
+    });
+}
