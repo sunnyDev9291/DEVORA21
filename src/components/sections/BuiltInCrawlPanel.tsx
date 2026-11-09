@@ -34,7 +34,16 @@ import { AUTH_LINKS } from "@/lib/constants";
 import { formatEstDateTimeParts } from "@/lib/format-est-datetime";
 import { flattenCrawlResults } from "@/lib/job-crawl-list";
 import { diffCrawlJobs, jobIdentityKey } from "@/lib/job-crawl-diff";
+import {
+  buildCrawlJobBadgeMap,
+  buildCrawlResumeMatchIndex,
+  countCrawlJobBadges,
+  crawlResumeBadgeLabel,
+  crawlResumeBadgeRank,
+  type CrawlJobResumeBadge,
+} from "@/lib/job-crawl-resume-badge";
 import { loadStoredJobCrawl, saveStoredJobCrawl } from "@/lib/job-crawl-storage";
+import { listSavedResumesCached } from "@/lib/saved-resumes-cache";
 import {
   DEFAULT_JOB_SHEET_COUNTRY,
   JOB_SHEET_COUNTRIES,
@@ -237,8 +246,13 @@ function platformOrderIndex(platform: JobCrawlPlatform, platformOrder: JobCrawlP
   return index === -1 ? ALL_JOB_CRAWL_PLATFORMS.indexOf(platform) : index;
 }
 
-function buildCompanyGroups(rows: DisplayJobRow[]): CompanyJobGroup[] {
+function buildCompanyGroups(
+  rows: DisplayJobRow[],
+  getBadge: (job: DiscoveredJobRow) => CrawlJobResumeBadge
+): CompanyJobGroup[] {
   const sorted = [...rows].sort((a, b) => {
+    const byBadge = crawlResumeBadgeRank(getBadge(a.job)) - crawlResumeBadgeRank(getBadge(b.job));
+    if (byBadge !== 0) return byBadge;
     const byCompany = companySortKey(a.job.companyName).localeCompare(companySortKey(b.job.companyName));
     if (byCompany !== 0) return byCompany;
     return a.originalIndex - b.originalIndex;
@@ -246,7 +260,8 @@ function buildCompanyGroups(rows: DisplayJobRow[]): CompanyJobGroup[] {
 
   const groups: CompanyJobGroup[] = [];
   for (const row of sorted) {
-    const sortKey = companySortKey(row.job.companyName);
+    const badge = getBadge(row.job);
+    const sortKey = `${crawlResumeBadgeRank(badge)}:${companySortKey(row.job.companyName)}`;
     const companyLabel = normalizeCompanyName(row.job.companyName) || "—";
     const last = groups[groups.length - 1];
     if (last && last.sortKey === sortKey) {
@@ -258,8 +273,14 @@ function buildCompanyGroups(rows: DisplayJobRow[]): CompanyJobGroup[] {
   return groups;
 }
 
-function buildPlatformGroups(rows: DisplayJobRow[], platformOrder: JobCrawlPlatform[]): PlatformJobGroup[] {
+function buildPlatformGroups(
+  rows: DisplayJobRow[],
+  platformOrder: JobCrawlPlatform[],
+  getBadge: (job: DiscoveredJobRow) => CrawlJobResumeBadge
+): PlatformJobGroup[] {
   const sorted = [...rows].sort((a, b) => {
+    const byBadge = crawlResumeBadgeRank(getBadge(a.job)) - crawlResumeBadgeRank(getBadge(b.job));
+    if (byBadge !== 0) return byBadge;
     const byPlatform =
       platformOrderIndex(a.job.platform, platformOrder) - platformOrderIndex(b.job.platform, platformOrder);
     if (byPlatform !== 0) return byPlatform;
@@ -268,8 +289,10 @@ function buildPlatformGroups(rows: DisplayJobRow[], platformOrder: JobCrawlPlatf
 
   const groups: PlatformJobGroup[] = [];
   for (const row of sorted) {
+    const badge = getBadge(row.job);
     const last = groups[groups.length - 1];
-    if (last && last.platform === row.job.platform) {
+    // Keep platform rowspan only within the same badge band.
+    if (last && last.platform === row.job.platform && getBadge(last.rows[0].job) === badge) {
       last.rows.push(row);
     } else {
       groups.push({ platform: row.job.platform, rows: [row] });
@@ -448,10 +471,19 @@ function JobSelectCheckbox({
   );
 }
 
-function NewJobBadge() {
+function ResumeFitBadge({ badge }: { badge: CrawlJobResumeBadge }) {
+  const label = crawlResumeBadgeLabel(badge);
+  const className =
+    badge === "good"
+      ? "bg-emerald-500 shadow-emerald-500/30"
+      : badge === "possible"
+        ? "bg-amber-500 shadow-amber-500/30"
+        : "bg-rose-500 shadow-rose-500/30";
   return (
-    <span className="inline-flex shrink-0 items-center rounded-md bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm shadow-emerald-500/30">
-      New
+    <span
+      className={`inline-flex shrink-0 items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm ${className}`}
+    >
+      {label}
     </span>
   );
 }
@@ -470,18 +502,18 @@ function formatPostedAt(iso?: string): string | null {
 
 function JobTitleCell({
   title,
-  isNew,
+  badge,
   postedAt,
 }: {
   title: string;
-  isNew: boolean;
+  badge: CrawlJobResumeBadge;
   postedAt?: string;
 }) {
   const postedLabel = formatPostedAt(postedAt);
   return (
     <div className="min-w-0">
       <div className="flex flex-wrap items-center gap-2">
-        {isNew ? <NewJobBadge /> : null}
+        <ResumeFitBadge badge={badge} />
         <span>{title || "—"}</span>
       </div>
       {postedLabel ? (
@@ -496,7 +528,7 @@ function MergedJobTable({
   sortMode,
   platformOrder,
   checkedKeys,
-  newJobKeys,
+  badgeByKey,
   onToggleRow,
   onToggleAll,
   allChecked,
@@ -506,16 +538,19 @@ function MergedJobTable({
   sortMode: JobTableSortMode;
   platformOrder: JobCrawlPlatform[];
   checkedKeys: Set<string>;
-  newJobKeys: Set<string>;
+  badgeByKey: Map<string, CrawlJobResumeBadge>;
   onToggleRow: (key: string) => void;
   onToggleAll: () => void;
   allChecked: boolean;
   emptyMessage?: string;
 }) {
-  const companyGroups = useMemo(() => buildCompanyGroups(rows), [rows]);
+  const getBadge = (job: DiscoveredJobRow): CrawlJobResumeBadge =>
+    badgeByKey.get(jobIdentityKey(job)) ?? "good";
+
+  const companyGroups = useMemo(() => buildCompanyGroups(rows, getBadge), [rows, badgeByKey]);
   const platformGroups = useMemo(
-    () => buildPlatformGroups(rows, platformOrder),
-    [rows, platformOrder]
+    () => buildPlatformGroups(rows, platformOrder, getBadge),
+    [rows, platformOrder, badgeByKey]
   );
   const [flashKeys, setFlashKeys] = useState<Set<string>>(() => new Set());
   const flashTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -592,7 +627,7 @@ function MergedJobTable({
                   const key = jobRowKey(row.job, row.originalIndex);
                   const checked = checkedKeys.has(key);
                   const flashing = flashKeys.has(key);
-                  const isNew = newJobKeys.has(jobIdentityKey(row.job));
+                  const badge = getBadge(row.job);
 
                   return (
                     <tr
@@ -619,7 +654,7 @@ function MergedJobTable({
                       <td className="px-4 py-3 text-slate-800 dark:text-slate-100">
                         <JobTitleCell
                           title={row.job.jobTitle}
-                          isNew={isNew}
+                          badge={badge}
                           postedAt={row.job.postedAt}
                         />
                       </td>
@@ -658,7 +693,7 @@ function MergedJobTable({
                   const key = jobRowKey(row.job, row.originalIndex);
                   const checked = checkedKeys.has(key);
                   const flashing = flashKeys.has(key);
-                  const isNew = newJobKeys.has(jobIdentityKey(row.job));
+                  const badge = getBadge(row.job);
 
                   return (
                     <tr
@@ -680,7 +715,7 @@ function MergedJobTable({
                       <td className="px-4 py-3 text-slate-800 dark:text-slate-100">
                         <JobTitleCell
                           title={row.job.jobTitle}
-                          isNew={isNew}
+                          badge={badge}
                           postedAt={row.job.postedAt}
                         />
                       </td>
@@ -762,9 +797,26 @@ export default function BuiltInCrawlPanel() {
   const [sheetFeedback, setSheetFeedback] = useState<{ tone: "ok" | "err"; text: string } | null>(
     null
   );
-  const [newJobKeys, setNewJobKeys] = useState<Set<string>>(() => new Set());
+  const [badgeByKey, setBadgeByKey] = useState<Map<string, CrawlJobResumeBadge>>(
+    () => new Map()
+  );
   const [crawlDiff, setCrawlDiff] = useState<{ added: number; removed: number } | null>(null);
   const hydratedUserIdRef = useRef<string | undefined>(undefined);
+
+  async function refreshResumeFitBadges(jobs: DiscoveredJobRow[], forceArchives = false) {
+    if (jobs.length === 0) {
+      setBadgeByKey(new Map());
+      return;
+    }
+    try {
+      const archives = await listSavedResumesCached({ force: forceArchives });
+      const index = buildCrawlResumeMatchIndex(archives);
+      setBadgeByKey(buildCrawlJobBadgeMap(jobs, index, jobIdentityKey));
+    } catch {
+      // Archives unavailable — treat everything as unmatched (good) for this pass.
+      setBadgeByKey(buildCrawlJobBadgeMap(jobs, buildCrawlResumeMatchIndex([]), jobIdentityKey));
+    }
+  }
 
   useEffect(() => {
     const isNewUserSession = hydratedUserIdRef.current !== userId;
@@ -779,13 +831,13 @@ export default function BuiltInCrawlPanel() {
         setSelectedPlatforms(stored.selectedPlatforms);
         setJobList(stored.jobs);
         if (stored.savedAt) setLastCrawledAt(stored.savedAt);
-        setNewJobKeys(new Set(stored.newJobKeys ?? []));
         setCrawlDiff(stored.lastDiff ?? null);
+        void refreshResumeFitBadges(stored.jobs);
       } else {
         setSelectedPlatforms(defaultSelectedPlatforms());
         setJobList([]);
         setLastCrawledAt(null);
-        setNewJobKeys(new Set());
+        setBadgeByKey(new Map());
         setCrawlDiff(null);
         setResultPostedWithin(null);
       }
@@ -849,15 +901,16 @@ export default function BuiltInCrawlPanel() {
     [jobList, jobTitleFilter]
   );
   const hasTitleFilter = jobTitleFilter.trim().length > 0;
-  /** New badges only appear on visible rows; keep the pill in sync with the title filter. */
-  const visibleNewCount = useMemo(() => {
-    if (newJobKeys.size === 0) return 0;
-    let count = 0;
-    for (const { job } of filteredJobRows) {
-      if (newJobKeys.has(jobIdentityKey(job))) count += 1;
-    }
-    return count;
-  }, [filteredJobRows, newJobKeys]);
+  /** Badge counts for the visible (title-filtered) rows. */
+  const visibleBadgeCounts = useMemo(
+    () =>
+      countCrawlJobBadges(
+        filteredJobRows.map((row) => row.job),
+        badgeByKey,
+        jobIdentityKey
+      ),
+    [filteredJobRows, badgeByKey]
+  );
   const crawlPlatformOrder = useMemo(() => buildPlatformOrder(jobList), [jobList]);
 
   const allJobsChecked = useMemo(() => {
@@ -1053,19 +1106,18 @@ export default function BuiltInCrawlPanel() {
 
       setJobList(freshJobs);
       setCheckedJobKeys(new Set());
-      setNewJobKeys(diff.newKeys);
       setCrawlDiff(nextDiff);
       setResultPostedWithin(normalizePostedWithin(echoedPostedWithin));
       // Always re-apply default keywords so results are filtered immediately (not only after refresh).
       setJobTitleFilter(DEFAULT_JOB_TITLE_FILTER);
       setLastCrawledAt(savedAt);
+      await refreshResumeFitBadges(freshJobs, true);
       saveStoredJobCrawl(
         {
           selectedPlatforms: platformsThisRun,
           listingUrls,
           jobs: freshJobs,
           savedAt,
-          newJobKeys: [...diff.newKeys],
           lastDiff: nextDiff ?? undefined,
         },
         userId
@@ -1341,28 +1393,31 @@ export default function BuiltInCrawlPanel() {
                 Mode: {postedWithinLabel(resultPostedWithin)}
               </span>
             ) : null}
+            <span
+              className="inline-flex items-center rounded-full bg-emerald-500/15 px-3 py-1.5 text-sm font-semibold text-emerald-800 dark:text-emerald-300"
+              title="No matching resume archive for this job"
+            >
+              {visibleBadgeCounts.good} good
+            </span>
+            <span
+              className="inline-flex items-center rounded-full bg-amber-500/15 px-3 py-1.5 text-sm font-semibold text-amber-800 dark:text-amber-300"
+              title="Last matching resume archive was 10+ days ago"
+            >
+              {visibleBadgeCounts.possible} possible
+            </span>
+            <span
+              className="inline-flex items-center rounded-full bg-rose-500/15 px-3 py-1.5 text-sm font-semibold text-rose-800 dark:text-rose-300"
+              title="Last matching resume archive was within the last 10 days"
+            >
+              {visibleBadgeCounts.bad} bad
+            </span>
             {crawlDiff ? (
-              <>
-                <span
-                  className="inline-flex items-center rounded-full bg-emerald-500/15 px-3 py-1.5 text-sm font-semibold text-emerald-800 dark:text-emerald-300"
-                  title={
-                    hasTitleFilter && crawlDiff.added !== visibleNewCount
-                      ? `${visibleNewCount} new in this filtered view (${crawlDiff.added} new in the full crawl)`
-                      : "Jobs that appeared since the previous crawl"
-                  }
-                >
-                  +{visibleNewCount} new
-                  {hasTitleFilter && crawlDiff.added !== visibleNewCount
-                    ? ` of ${crawlDiff.added}`
-                    : ""}
-                </span>
-                <span
-                  className="inline-flex items-center rounded-full bg-rose-500/15 px-3 py-1.5 text-sm font-semibold text-rose-800 dark:text-rose-300"
-                  title="Jobs from the previous crawl that are gone now"
-                >
-                  −{crawlDiff.removed} gone
-                </span>
-              </>
+              <span
+                className="inline-flex items-center rounded-full bg-slate-500/10 px-3 py-1.5 text-sm font-semibold text-slate-600 dark:text-slate-300"
+                title="Jobs from the previous crawl that are gone now"
+              >
+                −{crawlDiff.removed} gone
+              </span>
             ) : null}
             {checkedJobKeys.size > 0 ? (
               <span className="text-slate-500 dark:text-slate-400">
@@ -1461,7 +1516,7 @@ export default function BuiltInCrawlPanel() {
             sortMode={jobTableSortMode}
             platformOrder={crawlPlatformOrder}
             checkedKeys={checkedJobKeys}
-            newJobKeys={newJobKeys}
+            badgeByKey={badgeByKey}
             onToggleRow={toggleJobRow}
             onToggleAll={toggleAllJobs}
             allChecked={allJobsChecked}
