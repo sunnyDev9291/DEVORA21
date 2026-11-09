@@ -23,7 +23,7 @@ export const metadata: Metadata = pageMetadata({
 
 export default function JobDiscoverPage() {
   return (
-    <section className="relative overflow-hidden bg-transparent py-10 sm:py-14">
+    <section className="relative overflow-x-hidden bg-transparent py-10 sm:py-14">
       <div className="pointer-events-none absolute inset-0" aria-hidden="true">
         <div className="absolute left-1/2 top-0 h-[380px] w-[820px] -translate-x-1/2 rounded-full bg-orange-400/12 blur-[110px]" />
         <div className="absolute bottom-0 right-0 h-[280px] w-[460px] rounded-full bg-sun-400/10 blur-[100px]" />

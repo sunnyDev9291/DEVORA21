@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { createPortal } from "react-dom";
 import { useAuth } from "@/context/AuthContext";
 import { getApiErrorMessage } from "@/lib/auth-api";
 import {
@@ -438,56 +439,71 @@ function FixedSheetControls({
   addingToSheet: boolean;
   selectedCount: number;
 }) {
-  return (
-    <div className="fixed right-3 bottom-3 z-40 w-[min(100vw-1.5rem,15.5rem)] rounded-2xl border border-slate-200/90 bg-white/95 p-3 shadow-xl shadow-slate-300/40 backdrop-blur-md dark:border-white/[0.12] dark:bg-warm-900/95 dark:shadow-black/50 sm:right-5 sm:bottom-auto sm:top-1/2 sm:-translate-y-1/2">
-      <div className="space-y-3">
-        <div>
-          <label
-            htmlFor="jobSheetCountry"
-            className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500"
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return null;
+
+  // Portal to body so parent overflow/transform cannot break viewport `position: fixed`.
+  return createPortal(
+    <div
+      className="pointer-events-none fixed inset-y-0 right-0 z-[80] flex items-end justify-end p-3 sm:items-center sm:p-5"
+      aria-live="polite"
+    >
+      <div className="pointer-events-auto w-[min(100vw-1.5rem,15.5rem)] rounded-2xl border border-slate-200/90 bg-white/95 p-3 shadow-xl shadow-slate-300/40 backdrop-blur-md dark:border-white/[0.12] dark:bg-warm-900/95 dark:shadow-black/50">
+        <div className="space-y-3">
+          <div>
+            <label
+              htmlFor="jobSheetCountry"
+              className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500"
+            >
+              Sheet country
+            </label>
+            <select
+              id="jobSheetCountry"
+              value={sheetCountry}
+              onChange={(e) => onCountryChange(e.target.value as JobSheetCountry)}
+              className={`${ui.input} py-2.5 text-sm`}
+            >
+              {JOB_SHEET_COUNTRIES.map((country) => (
+                <option key={country} value={country}>
+                  {country}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="button"
+            onClick={onAddToSheet}
+            disabled={addingToSheet || selectedCount === 0}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Sheet country
-          </label>
-          <select
-            id="jobSheetCountry"
-            value={sheetCountry}
-            onChange={(e) => onCountryChange(e.target.value as JobSheetCountry)}
-            className={`${ui.input} py-2.5 text-sm`}
-          >
-            {JOB_SHEET_COUNTRIES.map((country) => (
-              <option key={country} value={country}>
-                {country}
-              </option>
-            ))}
-          </select>
+            {addingToSheet ? (
+              <>
+                <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+                Adding…
+              </>
+            ) : (
+              <>Add Sheet{selectedCount > 0 ? ` (${selectedCount})` : ""}</>
+            )}
+          </button>
+          <p className="text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+            Check jobs, pick the sheet tab country, then add rows.
+          </p>
         </div>
-        <button
-          type="button"
-          onClick={onAddToSheet}
-          disabled={addingToSheet || selectedCount === 0}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {addingToSheet ? (
-            <>
-              <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                />
-              </svg>
-              Adding…
-            </>
-          ) : (
-            <>Add Sheet{selectedCount > 0 ? ` (${selectedCount})` : ""}</>
-          )}
-        </button>
-        <p className="text-[11px] leading-snug text-slate-500 dark:text-slate-400">
-          Check jobs, pick the sheet tab country, then add rows.
-        </p>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
