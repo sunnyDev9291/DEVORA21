@@ -33,11 +33,12 @@ import {
 import { AUTH_LINKS } from "@/lib/constants";
 import { formatEstDateTimeParts } from "@/lib/format-est-datetime";
 import { flattenCrawlResults } from "@/lib/job-crawl-list";
-import { diffCrawlJobs, jobIdentityKey } from "@/lib/job-crawl-diff";
+import { diffCrawlJobs } from "@/lib/job-crawl-diff";
 import {
-  buildCrawlJobBadgeMap,
+  buildCrawlCompanyBadgeMap,
   buildCrawlResumeMatchIndex,
-  countCrawlJobBadges,
+  companyBadgeKey,
+  countCrawlCompanyBadges,
   crawlResumeBadgeLabel,
   crawlResumeBadgeRank,
   type CrawlJobResumeBadge,
@@ -58,8 +59,6 @@ const filterInputClass = `${ui.input} py-3.5 text-base placeholder:text-slate-40
 
 const DEFAULT_JOB_TITLE_FILTER = "Engine OR Dev OR Scientist OR Specialist OR Architect";
 
-type JobTableSortMode = "company" | "platform";
-
 type PlatformCrawlStatus = "pending" | "crawling" | "done" | "error";
 
 type PlatformCrawlProgress = {
@@ -67,11 +66,6 @@ type PlatformCrawlProgress = {
   jobCount?: number;
   message?: string;
 };
-
-const SORT_MODE_OPTIONS: { value: JobTableSortMode; label: string; description: string }[] = [
-  { value: "company", label: "Company name", description: "Sort A–Z and merge duplicate companies" },
-  { value: "platform", label: "Platform order", description: "Original crawl order grouped by platform" },
-];
 
 const PLATFORM_LABEL = JOB_CRAWL_PLATFORM_LABEL;
 const PLATFORM_DEFAULT_URL = DEFAULT_LISTING_URLS;
@@ -221,81 +215,40 @@ type DisplayJobRow = {
 
 type CompanyJobGroup = {
   companyLabel: string;
+  companyKey: string;
+  badge: CrawlJobResumeBadge;
   sortKey: string;
   rows: DisplayJobRow[];
 };
 
-type PlatformJobGroup = {
-  platform: JobCrawlPlatform;
-  rows: DisplayJobRow[];
-};
-
-function buildPlatformOrder(jobs: DiscoveredJobRow[]): JobCrawlPlatform[] {
-  const order: JobCrawlPlatform[] = [];
-  const seen = new Set<JobCrawlPlatform>();
-  for (const job of jobs) {
-    if (seen.has(job.platform)) continue;
-    seen.add(job.platform);
-    order.push(job.platform);
-  }
-  return order;
-}
-
-function platformOrderIndex(platform: JobCrawlPlatform, platformOrder: JobCrawlPlatform[]): number {
-  const index = platformOrder.indexOf(platform);
-  return index === -1 ? ALL_JOB_CRAWL_PLATFORMS.indexOf(platform) : index;
-}
-
+/** Sort good → possible → bad, then company A–Z within each badge. */
 function buildCompanyGroups(
   rows: DisplayJobRow[],
-  getBadge: (job: DiscoveredJobRow) => CrawlJobResumeBadge
+  getBadge: (companyName: string | undefined | null) => CrawlJobResumeBadge
 ): CompanyJobGroup[] {
   const sorted = [...rows].sort((a, b) => {
-    const byBadge = crawlResumeBadgeRank(getBadge(a.job)) - crawlResumeBadgeRank(getBadge(b.job));
+    const byBadge =
+      crawlResumeBadgeRank(getBadge(a.job.companyName)) -
+      crawlResumeBadgeRank(getBadge(b.job.companyName));
     if (byBadge !== 0) return byBadge;
-    const byCompany = companySortKey(a.job.companyName).localeCompare(companySortKey(b.job.companyName));
+    const byCompany = companySortKey(a.job.companyName).localeCompare(
+      companySortKey(b.job.companyName)
+    );
     if (byCompany !== 0) return byCompany;
     return a.originalIndex - b.originalIndex;
   });
 
   const groups: CompanyJobGroup[] = [];
   for (const row of sorted) {
-    const badge = getBadge(row.job);
+    const badge = getBadge(row.job.companyName);
+    const companyKey = companyBadgeKey(row.job.companyName);
     const sortKey = `${crawlResumeBadgeRank(badge)}:${companySortKey(row.job.companyName)}`;
     const companyLabel = normalizeCompanyName(row.job.companyName) || "—";
     const last = groups[groups.length - 1];
     if (last && last.sortKey === sortKey) {
       last.rows.push(row);
     } else {
-      groups.push({ companyLabel, sortKey, rows: [row] });
-    }
-  }
-  return groups;
-}
-
-function buildPlatformGroups(
-  rows: DisplayJobRow[],
-  platformOrder: JobCrawlPlatform[],
-  getBadge: (job: DiscoveredJobRow) => CrawlJobResumeBadge
-): PlatformJobGroup[] {
-  const sorted = [...rows].sort((a, b) => {
-    const byBadge = crawlResumeBadgeRank(getBadge(a.job)) - crawlResumeBadgeRank(getBadge(b.job));
-    if (byBadge !== 0) return byBadge;
-    const byPlatform =
-      platformOrderIndex(a.job.platform, platformOrder) - platformOrderIndex(b.job.platform, platformOrder);
-    if (byPlatform !== 0) return byPlatform;
-    return a.originalIndex - b.originalIndex;
-  });
-
-  const groups: PlatformJobGroup[] = [];
-  for (const row of sorted) {
-    const badge = getBadge(row.job);
-    const last = groups[groups.length - 1];
-    // Keep platform rowspan only within the same badge band.
-    if (last && last.platform === row.job.platform && getBadge(last.rows[0].job) === badge) {
-      last.rows.push(row);
-    } else {
-      groups.push({ platform: row.job.platform, rows: [row] });
+      groups.push({ companyLabel, companyKey, badge, sortKey, rows: [row] });
     }
   }
   return groups;
@@ -339,98 +292,6 @@ function jobTitleMatchesFilter(title: string | undefined | null, filter: string)
     return normalizedTerms.every((term) => normalizedTitle.includes(term));
   }
   return normalizedTitle.includes(normalizedTerms[0]);
-}
-
-function JobTableSortDropdown({
-  value,
-  onChange,
-}: {
-  value: JobTableSortMode;
-  onChange: (mode: JobTableSortMode) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const selected = SORT_MODE_OPTIONS.find((option) => option.value === value) ?? SORT_MODE_OPTIONS[0];
-
-  useEffect(() => {
-    if (!open) return;
-
-    function handlePointerDown(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    }
-
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
-    }
-
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleEscape);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, [open]);
-
-  return (
-    <div ref={rootRef} className="relative shrink-0 w-full sm:w-[15.5rem]">
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-left shadow-sm transition-all hover:border-orange-400/40 hover:shadow-md focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20 dark:border-white/[0.10] dark:bg-white/[0.03] dark:hover:border-orange-400/30"
-      >
-        <span className="min-w-0">
-          <span className="block text-[13px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
-            Sort by
-          </span>
-          <span className="block truncate text-base font-semibold text-slate-900 dark:text-white">
-            {selected.label}
-          </span>
-        </span>
-        <svg
-          className={`h-5 w-5 shrink-0 text-orange-600 transition-transform dark:text-orange-400 ${open ? "rotate-180" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-          aria-hidden="true"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-
-      {open ? (
-        <ul
-          role="listbox"
-          aria-label="Sort jobs by"
-          className="absolute right-0 z-20 mt-2 w-full overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 shadow-xl shadow-slate-200/60 dark:border-white/[0.10] dark:bg-warm-900 dark:shadow-black/40"
-        >
-          {SORT_MODE_OPTIONS.map((option) => {
-            const active = option.value === value;
-            return (
-              <li key={option.value} role="option" aria-selected={active}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onChange(option.value);
-                    setOpen(false);
-                  }}
-                  className={`flex w-full flex-col items-start gap-0.5 px-4 py-3 text-left transition-colors ${
-                    active
-                      ? "bg-orange-500/10 text-orange-800 dark:bg-orange-400/10 dark:text-orange-200"
-                      : "text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-white/[0.04]"
-                  }`}
-                >
-                  <span className="text-base font-semibold">{option.label}</span>
-                  <span className="text-sm text-slate-500 dark:text-slate-400">{option.description}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
-    </div>
-  );
 }
 
 function filterJobsByTitle(jobs: DiscoveredJobRow[], titleFilter: string): DisplayJobRow[] {
@@ -500,22 +361,11 @@ function formatPostedAt(iso?: string): string | null {
   });
 }
 
-function JobTitleCell({
-  title,
-  badge,
-  postedAt,
-}: {
-  title: string;
-  badge: CrawlJobResumeBadge;
-  postedAt?: string;
-}) {
+function JobTitleCell({ title, postedAt }: { title: string; postedAt?: string }) {
   const postedLabel = formatPostedAt(postedAt);
   return (
     <div className="min-w-0">
-      <div className="flex flex-wrap items-center gap-2">
-        <ResumeFitBadge badge={badge} />
-        <span>{title || "—"}</span>
-      </div>
+      <span>{title || "—"}</span>
       {postedLabel ? (
         <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Posted {postedLabel}</p>
       ) : null}
@@ -525,32 +375,27 @@ function JobTitleCell({
 
 function MergedJobTable({
   rows,
-  sortMode,
-  platformOrder,
   checkedKeys,
-  badgeByKey,
+  badgeByCompany,
   onToggleRow,
   onToggleAll,
   allChecked,
   emptyMessage,
 }: {
   rows: DisplayJobRow[];
-  sortMode: JobTableSortMode;
-  platformOrder: JobCrawlPlatform[];
   checkedKeys: Set<string>;
-  badgeByKey: Map<string, CrawlJobResumeBadge>;
+  badgeByCompany: Map<string, CrawlJobResumeBadge>;
   onToggleRow: (key: string) => void;
   onToggleAll: () => void;
   allChecked: boolean;
   emptyMessage?: string;
 }) {
-  const getBadge = (job: DiscoveredJobRow): CrawlJobResumeBadge =>
-    badgeByKey.get(jobIdentityKey(job)) ?? "good";
+  const getBadge = (companyName: string | undefined | null): CrawlJobResumeBadge =>
+    badgeByCompany.get(companyBadgeKey(companyName)) ?? "good";
 
-  const companyGroups = useMemo(() => buildCompanyGroups(rows, getBadge), [rows, badgeByKey]);
-  const platformGroups = useMemo(
-    () => buildPlatformGroups(rows, platformOrder, getBadge),
-    [rows, platformOrder, badgeByKey]
+  const companyGroups = useMemo(
+    () => buildCompanyGroups(rows, getBadge),
+    [rows, badgeByCompany]
   );
   const [flashKeys, setFlashKeys] = useState<Set<string>>(() => new Set());
   const flashTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -621,139 +466,70 @@ function MergedJobTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-white/[0.06]">
-          {sortMode === "company"
-            ? companyGroups.map((group) =>
-                group.rows.map((row, rowIndex) => {
-                  const key = jobRowKey(row.job, row.originalIndex);
-                  const checked = checkedKeys.has(key);
-                  const flashing = flashKeys.has(key);
-                  const badge = getBadge(row.job);
+          {companyGroups.map((group) =>
+            group.rows.map((row, rowIndex) => {
+              const key = jobRowKey(row.job, row.originalIndex);
+              const checked = checkedKeys.has(key);
+              const flashing = flashKeys.has(key);
 
-                  return (
-                    <tr
-                      key={key}
-                      data-checked={checked ? "true" : "false"}
-                      className={`job-select-row ${flashing ? "is-flashing" : ""}`}
-                      onClick={(event) => handleRowClick(event, key)}
+              return (
+                <tr
+                  key={key}
+                  data-checked={checked ? "true" : "false"}
+                  className={`job-select-row ${flashing ? "is-flashing" : ""}`}
+                  onClick={(event) => handleRowClick(event, key)}
+                >
+                  <td className="px-2 py-2.5 text-center align-middle">
+                    <JobSelectCheckbox
+                      checked={checked}
+                      onChange={() => handleToggleRow(key)}
+                      ariaLabel={`Select ${row.job.jobTitle || "job"}`}
+                    />
+                  </td>
+                  {rowIndex === 0 ? (
+                    <td
+                      rowSpan={group.rows.length}
+                      className="px-4 py-3 align-middle font-medium text-slate-900 dark:text-white whitespace-nowrap border-r border-slate-100 dark:border-white/[0.06]"
                     >
-                      <td className="px-2 py-2.5 text-center align-middle">
-                        <JobSelectCheckbox
-                          checked={checked}
-                          onChange={() => handleToggleRow(key)}
-                          ariaLabel={`Select ${row.job.jobTitle || "job"}`}
-                        />
-                      </td>
-                      {rowIndex === 0 ? (
-                        <td
-                          rowSpan={group.rows.length}
-                          className="px-4 py-3 align-middle font-medium text-slate-900 dark:text-white whitespace-nowrap border-r border-slate-100 dark:border-white/[0.06]"
+                      <div className="flex flex-wrap items-center gap-2">
+                        <ResumeFitBadge badge={group.badge} />
+                        <span>{group.companyLabel}</span>
+                      </div>
+                    </td>
+                  ) : null}
+                  <td className="px-4 py-3 text-slate-800 dark:text-slate-100">
+                    <JobTitleCell title={row.job.jobTitle} postedAt={row.job.postedAt} />
+                  </td>
+                  <td className="px-4 py-3 max-w-[20rem]">
+                    {row.job.jobUrl ? (
+                      <div className="flex items-center gap-2 min-w-0" data-no-row-toggle>
+                        <a
+                          href={row.job.jobUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={row.job.jobUrl}
+                          className="truncate text-orange-600 hover:underline dark:text-orange-400 select-all"
+                          data-no-row-toggle
                         >
-                          {group.companyLabel}
-                        </td>
-                      ) : null}
-                      <td className="px-4 py-3 text-slate-800 dark:text-slate-100">
-                        <JobTitleCell
-                          title={row.job.jobTitle}
-                          badge={badge}
-                          postedAt={row.job.postedAt}
-                        />
-                      </td>
-                      <td className="px-4 py-3 max-w-[20rem]">
-                        {row.job.jobUrl ? (
-                          <div className="flex items-center gap-2 min-w-0" data-no-row-toggle>
-                            <a
-                              href={row.job.jobUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title={row.job.jobUrl}
-                              className="truncate text-orange-600 hover:underline dark:text-orange-400 select-all"
-                              data-no-row-toggle
-                            >
-                              {row.job.jobUrl}
-                            </a>
-                            <CopyUrlButton url={row.job.jobUrl} />
-                          </div>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span
-                          className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${PLATFORM_TABLE_BADGE_CLASS[row.job.platform]}`}
-                        >
-                          {PLATFORM_LABEL[row.job.platform]}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })
-              )
-            : platformGroups.map((group) =>
-                group.rows.map((row, rowIndex) => {
-                  const key = jobRowKey(row.job, row.originalIndex);
-                  const checked = checkedKeys.has(key);
-                  const flashing = flashKeys.has(key);
-                  const badge = getBadge(row.job);
-
-                  return (
-                    <tr
-                      key={key}
-                      data-checked={checked ? "true" : "false"}
-                      className={`job-select-row ${flashing ? "is-flashing" : ""}`}
-                      onClick={(event) => handleRowClick(event, key)}
+                          {row.job.jobUrl}
+                        </a>
+                        <CopyUrlButton url={row.job.jobUrl} />
+                      </div>
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <span
+                      className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${PLATFORM_TABLE_BADGE_CLASS[row.job.platform]}`}
                     >
-                      <td className="px-2 py-2.5 text-center align-middle">
-                        <JobSelectCheckbox
-                          checked={checked}
-                          onChange={() => handleToggleRow(key)}
-                          ariaLabel={`Select ${row.job.jobTitle || "job"}`}
-                        />
-                      </td>
-                      <td className="px-4 py-3 font-medium text-slate-900 dark:text-white whitespace-nowrap">
-                        {normalizeCompanyName(row.job.companyName) || "—"}
-                      </td>
-                      <td className="px-4 py-3 text-slate-800 dark:text-slate-100">
-                        <JobTitleCell
-                          title={row.job.jobTitle}
-                          badge={badge}
-                          postedAt={row.job.postedAt}
-                        />
-                      </td>
-                      <td className="px-4 py-3 max-w-[20rem]">
-                        {row.job.jobUrl ? (
-                          <div className="flex items-center gap-2 min-w-0" data-no-row-toggle>
-                            <a
-                              href={row.job.jobUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title={row.job.jobUrl}
-                              className="truncate text-orange-600 hover:underline dark:text-orange-400 select-all"
-                              data-no-row-toggle
-                            >
-                              {row.job.jobUrl}
-                            </a>
-                            <CopyUrlButton url={row.job.jobUrl} />
-                          </div>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-                      {rowIndex === 0 ? (
-                        <td
-                          rowSpan={group.rows.length}
-                          className="px-4 py-3 align-middle whitespace-nowrap border-l border-slate-100 dark:border-white/[0.06]"
-                        >
-                          <span
-                            className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${PLATFORM_TABLE_BADGE_CLASS[group.platform]}`}
-                          >
-                            {PLATFORM_LABEL[group.platform]}
-                          </span>
-                        </td>
-                      ) : null}
-                    </tr>
-                  );
-                })
-              )}
+                      {PLATFORM_LABEL[row.job.platform]}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })
+          )}
         </tbody>
       </table>
     </div>
@@ -784,7 +560,6 @@ export default function BuiltInCrawlPanel() {
   const [jobList, setJobList] = useState<DiscoveredJobRow[]>([]);
   const [checkedJobKeys, setCheckedJobKeys] = useState<Set<string>>(() => new Set());
   const [jobTitleFilter, setJobTitleFilter] = useState(DEFAULT_JOB_TITLE_FILTER);
-  const [jobTableSortMode, setJobTableSortMode] = useState<JobTableSortMode>("company");
   const [platformErrors, setPlatformErrors] = useState<Partial<Record<JobCrawlPlatform, string>>>({});
   const [crawling, setCrawling] = useState(false);
   const [crawlProgress, setCrawlProgress] = useState<
@@ -797,7 +572,7 @@ export default function BuiltInCrawlPanel() {
   const [sheetFeedback, setSheetFeedback] = useState<{ tone: "ok" | "err"; text: string } | null>(
     null
   );
-  const [badgeByKey, setBadgeByKey] = useState<Map<string, CrawlJobResumeBadge>>(
+  const [badgeByCompany, setBadgeByCompany] = useState<Map<string, CrawlJobResumeBadge>>(
     () => new Map()
   );
   const [crawlDiff, setCrawlDiff] = useState<{ added: number; removed: number } | null>(null);
@@ -805,16 +580,16 @@ export default function BuiltInCrawlPanel() {
 
   async function refreshResumeFitBadges(jobs: DiscoveredJobRow[], forceArchives = false) {
     if (jobs.length === 0) {
-      setBadgeByKey(new Map());
+      setBadgeByCompany(new Map());
       return;
     }
     try {
       const archives = await listSavedResumesCached({ force: forceArchives });
       const index = buildCrawlResumeMatchIndex(archives);
-      setBadgeByKey(buildCrawlJobBadgeMap(jobs, index, jobIdentityKey));
+      setBadgeByCompany(buildCrawlCompanyBadgeMap(jobs, index));
     } catch {
       // Archives unavailable — treat everything as unmatched (good) for this pass.
-      setBadgeByKey(buildCrawlJobBadgeMap(jobs, buildCrawlResumeMatchIndex([]), jobIdentityKey));
+      setBadgeByCompany(buildCrawlCompanyBadgeMap(jobs, buildCrawlResumeMatchIndex([])));
     }
   }
 
@@ -837,7 +612,7 @@ export default function BuiltInCrawlPanel() {
         setSelectedPlatforms(defaultSelectedPlatforms());
         setJobList([]);
         setLastCrawledAt(null);
-        setBadgeByKey(new Map());
+        setBadgeByCompany(new Map());
         setCrawlDiff(null);
         setResultPostedWithin(null);
       }
@@ -901,17 +676,15 @@ export default function BuiltInCrawlPanel() {
     [jobList, jobTitleFilter]
   );
   const hasTitleFilter = jobTitleFilter.trim().length > 0;
-  /** Badge counts for the visible (title-filtered) rows. */
+  /** Unique company badge counts for the visible (title-filtered) rows. */
   const visibleBadgeCounts = useMemo(
     () =>
-      countCrawlJobBadges(
+      countCrawlCompanyBadges(
         filteredJobRows.map((row) => row.job),
-        badgeByKey,
-        jobIdentityKey
+        badgeByCompany
       ),
-    [filteredJobRows, badgeByKey]
+    [filteredJobRows, badgeByCompany]
   );
-  const crawlPlatformOrder = useMemo(() => buildPlatformOrder(jobList), [jobList]);
 
   const allJobsChecked = useMemo(() => {
     if (filteredJobRows.length === 0) return false;
@@ -1395,19 +1168,19 @@ export default function BuiltInCrawlPanel() {
             ) : null}
             <span
               className="inline-flex items-center rounded-full bg-emerald-500/15 px-3 py-1.5 text-sm font-semibold text-emerald-800 dark:text-emerald-300"
-              title="No matching resume archive for this job"
+              title="No resume archive for this company"
             >
               {visibleBadgeCounts.good} good
             </span>
             <span
               className="inline-flex items-center rounded-full bg-amber-500/15 px-3 py-1.5 text-sm font-semibold text-amber-800 dark:text-amber-300"
-              title="Last matching resume archive was 10+ days ago"
+              title="Last resume archive for this company was 10+ days ago"
             >
               {visibleBadgeCounts.possible} possible
             </span>
             <span
               className="inline-flex items-center rounded-full bg-rose-500/15 px-3 py-1.5 text-sm font-semibold text-rose-800 dark:text-rose-300"
-              title="Last matching resume archive was within the last 10 days"
+              title="Last resume archive for this company was within the last 10 days"
             >
               {visibleBadgeCounts.bad} bad
             </span>
@@ -1426,29 +1199,25 @@ export default function BuiltInCrawlPanel() {
             ) : null}
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-            <div className="min-w-0 flex-1">
-              <label htmlFor="jobTitleFilter" className="mb-1.5 block text-sm font-medium text-slate-600 dark:text-slate-300">
-                Job title filter
-              </label>
-              <input
-                id="jobTitleFilter"
-                type="text"
-                value={jobTitleFilter}
-                onChange={(e) => setJobTitleFilter(e.target.value)}
-                placeholder={DEFAULT_JOB_TITLE_FILTER}
-                className={filterInputClass}
-                spellCheck={false}
-                autoComplete="off"
-              />
-              <p className="mt-1.5 text-sm text-slate-400 dark:text-slate-500">
-                Use <span className="font-semibold text-slate-500 dark:text-slate-400">OR</span> to match any term, or{" "}
-                <span className="font-semibold text-slate-500 dark:text-slate-400">AND</span> to require every term.
-              </p>
-            </div>
-            <div className="sm:pt-7">
-              <JobTableSortDropdown value={jobTableSortMode} onChange={setJobTableSortMode} />
-            </div>
+          <div className="min-w-0">
+            <label htmlFor="jobTitleFilter" className="mb-1.5 block text-sm font-medium text-slate-600 dark:text-slate-300">
+              Job title filter
+            </label>
+            <input
+              id="jobTitleFilter"
+              type="text"
+              value={jobTitleFilter}
+              onChange={(e) => setJobTitleFilter(e.target.value)}
+              placeholder={DEFAULT_JOB_TITLE_FILTER}
+              className={filterInputClass}
+              spellCheck={false}
+              autoComplete="off"
+            />
+            <p className="mt-1.5 text-sm text-slate-400 dark:text-slate-500">
+              Use <span className="font-semibold text-slate-500 dark:text-slate-400">OR</span> to match any term, or{" "}
+              <span className="font-semibold text-slate-500 dark:text-slate-400">AND</span> to require every term.
+              Sorted by company badge (good → possible → bad), then company name.
+            </p>
           </div>
 
           <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-white/[0.08] dark:bg-white/[0.02] sm:flex-row sm:flex-wrap sm:items-end">
@@ -1513,10 +1282,8 @@ export default function BuiltInCrawlPanel() {
 
           <MergedJobTable
             rows={filteredJobRows}
-            sortMode={jobTableSortMode}
-            platformOrder={crawlPlatformOrder}
             checkedKeys={checkedJobKeys}
-            badgeByKey={badgeByKey}
+            badgeByCompany={badgeByCompany}
             onToggleRow={toggleJobRow}
             onToggleAll={toggleAllJobs}
             allChecked={allJobsChecked}
