@@ -51,6 +51,14 @@ const DEFAULT_JOB_TITLE_FILTER = "Engine OR Dev OR Scientist OR Specialist OR Ar
 
 type JobTableSortMode = "company" | "platform";
 
+type PlatformCrawlStatus = "pending" | "crawling" | "done" | "error";
+
+type PlatformCrawlProgress = {
+  status: PlatformCrawlStatus;
+  jobCount?: number;
+  message?: string;
+};
+
 const SORT_MODE_OPTIONS: { value: JobTableSortMode; label: string; description: string }[] = [
   { value: "company", label: "Company name", description: "Sort A–Z and merge duplicate companies" },
   { value: "platform", label: "Platform order", description: "Original crawl order grouped by platform" },
@@ -744,6 +752,9 @@ export default function BuiltInCrawlPanel() {
   const [jobTableSortMode, setJobTableSortMode] = useState<JobTableSortMode>("company");
   const [platformErrors, setPlatformErrors] = useState<Partial<Record<JobCrawlPlatform, string>>>({});
   const [crawling, setCrawling] = useState(false);
+  const [crawlProgress, setCrawlProgress] = useState<
+    Partial<Record<JobCrawlPlatform, PlatformCrawlProgress>>
+  >({});
   const [hydrated, setHydrated] = useState(false);
   const [lastCrawledAt, setLastCrawledAt] = useState<string | null>(null);
   const [sheetCountry, setSheetCountry] = useState<JobSheetCountry>(DEFAULT_JOB_SHEET_COUNTRY);
@@ -780,6 +791,7 @@ export default function BuiltInCrawlPanel() {
       }
       setCheckedJobKeys(new Set());
       setPlatformErrors({});
+      setCrawlProgress({});
       setSheetFeedback(null);
       try {
         const savedCountry = window.localStorage.getItem(SHEET_COUNTRY_STORAGE_KEY);
@@ -806,13 +818,31 @@ export default function BuiltInCrawlPanel() {
   }, [userId, profileListingUrls]);
 
   const allPlatformSelected = ALL_JOB_CRAWL_PLATFORMS.every((p) => selectedPlatforms.includes(p));
-  const canCrawl =
-    !crawling &&
+  const listingReady =
     selectedPlatforms.length > 0 &&
     selectedPlatforms.every((p) => {
       const url = listingUrls[p]?.trim() ?? "";
       return url.length > 0 && PLATFORM_URL_VALID[p](url);
     });
+  const canCrawl = !crawling && listingReady;
+  const crawlProgressEntries = useMemo(
+    () =>
+      selectedPlatforms
+        .map((platform) => {
+          const progress = crawlProgress[platform];
+          if (!progress) return null;
+          return [platform, progress] as const;
+        })
+        .filter((entry): entry is readonly [JobCrawlPlatform, PlatformCrawlProgress] => Boolean(entry)),
+    [crawlProgress, selectedPlatforms]
+  );
+  const crawlFinishedCount = useMemo(
+    () =>
+      crawlProgressEntries.filter(
+        ([, progress]) => progress.status === "done" || progress.status === "error"
+      ).length,
+    [crawlProgressEntries]
+  );
 
   const filteredJobRows = useMemo(
     () => filterJobsByTitle(jobList, jobTitleFilter),
@@ -955,8 +985,15 @@ export default function BuiltInCrawlPanel() {
   async function handleCrawl() {
     if (!canCrawl) return;
 
+    const platformsThisRun = [...selectedPlatforms];
+    const initialProgress: Partial<Record<JobCrawlPlatform, PlatformCrawlProgress>> = {};
+    for (const platform of platformsThisRun) {
+      initialProgress[platform] = { status: "pending" };
+    }
+
     setCrawling(true);
     setPlatformErrors({});
+    setCrawlProgress(initialProgress);
 
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), BUILTIN_CRAWL_TIMEOUT_MS);
@@ -965,26 +1002,43 @@ export default function BuiltInCrawlPanel() {
     const nextErrors: Partial<Record<JobCrawlPlatform, string>> = {};
 
     await Promise.all(
-      selectedPlatforms.map(async (platform) => {
+      platformsThisRun.map(async (platform) => {
+        setCrawlProgress((prev) => ({
+          ...prev,
+          [platform]: { status: "crawling" },
+        }));
         try {
-          crawlResults[platform] = await crawlPlatform(
+          const result = await crawlPlatform(
             platform,
             listingUrls[platform],
             controller.signal,
             postedWithin
           );
+          crawlResults[platform] = result;
+          setCrawlProgress((prev) => ({
+            ...prev,
+            [platform]: {
+              status: "done",
+              jobCount: result.totalCount ?? result.jobs.length,
+            },
+          }));
         } catch (err) {
-          nextErrors[platform] = getApiErrorMessage(err, `${PLATFORM_LABEL[platform]} crawl failed.`);
+          const message = getApiErrorMessage(err, `${PLATFORM_LABEL[platform]} crawl failed.`);
+          nextErrors[platform] = message;
+          setCrawlProgress((prev) => ({
+            ...prev,
+            [platform]: { status: "error", message },
+          }));
         }
       })
     );
 
     setPlatformErrors(nextErrors);
 
-    const hadSuccess = selectedPlatforms.some((platform) => crawlResults[platform]);
+    const hadSuccess = platformsThisRun.some((platform) => crawlResults[platform]);
 
     if (hadSuccess) {
-      const freshJobs = flattenCrawlResults(crawlResults, selectedPlatforms);
+      const freshJobs = flattenCrawlResults(crawlResults, platformsThisRun);
       const savedAt = new Date().toISOString();
       const previousJobs = jobList;
       const diff = previousJobs.length > 0
@@ -993,7 +1047,7 @@ export default function BuiltInCrawlPanel() {
       const nextDiff =
         previousJobs.length > 0 ? { added: diff.added, removed: diff.removed } : null;
       const echoedPostedWithin =
-        selectedPlatforms
+        platformsThisRun
           .map((platform) => crawlResults[platform]?.postedWithin)
           .find((value) => value === "24h" || value === "3d") ?? postedWithin;
 
@@ -1007,7 +1061,7 @@ export default function BuiltInCrawlPanel() {
       setLastCrawledAt(savedAt);
       saveStoredJobCrawl(
         {
-          selectedPlatforms,
+          selectedPlatforms: platformsThisRun,
           listingUrls,
           jobs: freshJobs,
           savedAt,
@@ -1133,34 +1187,122 @@ export default function BuiltInCrawlPanel() {
           </div>
         </fieldset>
 
-        <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-start sm:items-center">
-          <button
-            type="button"
-            onClick={() => void handleCrawl()}
-            disabled={!canCrawl}
-            className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-tomato-600 via-orange-500 to-sun-400 hover:from-tomato-500 hover:via-orange-400 hover:to-sun-300 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold px-6 py-3 rounded-xl transition-all shadow-lg shadow-orange-500/25"
-          >
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-start sm:items-center">
+            <button
+              type="button"
+              onClick={() => void handleCrawl()}
+              disabled={crawling || !listingReady}
+              className={`inline-flex items-center justify-center gap-2 bg-gradient-to-r from-tomato-600 via-orange-500 to-sun-400 hover:from-tomato-500 hover:via-orange-400 hover:to-sun-300 disabled:cursor-not-allowed text-white font-semibold px-6 py-3 rounded-xl transition-all shadow-lg shadow-orange-500/25 ${
+                crawling ? "opacity-100" : "disabled:opacity-50"
+              }`}
+            >
+              {crawling ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Crawling… {crawlFinishedCount}/{selectedPlatforms.length}
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  Crawl jobs
+                </>
+              )}
+            </button>
             {crawling ? (
-              <>
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                Crawling {selectedPlatforms.map((p) => PLATFORM_LABEL[p]).join(" + ")}…
-              </>
-            ) : (
-              <>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                Crawl jobs
-              </>
-            )}
-          </button>
-          {crawling ? (
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              This can take <strong className="font-semibold">30–90+ seconds</strong> per platform…
-            </p>
+              <p className="text-sm font-medium text-orange-800 dark:text-orange-300" role="status">
+                Crawling {postedWithinLabel(postedWithin)} · this can take 30–90+ seconds per platform
+              </p>
+            ) : null}
+          </div>
+
+          {crawling && crawlProgressEntries.length > 0 ? (
+            <div
+              className="rounded-2xl border border-orange-500/25 bg-orange-500/[0.06] px-4 py-3 dark:bg-orange-500/[0.08]"
+              aria-live="polite"
+              aria-busy="true"
+            >
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">Crawl status</p>
+                <p className="text-xs font-semibold tabular-nums text-orange-800 dark:text-orange-300">
+                  {crawlFinishedCount} of {crawlProgressEntries.length} platforms done
+                </p>
+              </div>
+              <div
+                className="mb-3 h-2 overflow-hidden rounded-full bg-orange-500/15"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={crawlProgressEntries.length}
+                aria-valuenow={crawlFinishedCount}
+              >
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-tomato-600 to-sun-400 transition-[width] duration-300"
+                  style={{
+                    width: `${Math.round(
+                      (crawlFinishedCount / Math.max(crawlProgressEntries.length, 1)) * 100
+                    )}%`,
+                  }}
+                />
+              </div>
+              <ul className="grid gap-2 sm:grid-cols-2">
+                {crawlProgressEntries.map(([platform, progress]) => {
+                  const label = PLATFORM_LABEL[platform];
+                  if (progress.status === "crawling") {
+                    return (
+                      <li
+                        key={platform}
+                        className="flex items-center gap-2 rounded-xl border border-orange-500/20 bg-white/70 px-3 py-2 text-sm dark:bg-warm-950/40"
+                      >
+                        <svg className="h-3.5 w-3.5 shrink-0 animate-spin text-orange-600" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        <span className="font-semibold text-slate-900 dark:text-white">{label}</span>
+                        <span className="text-xs text-orange-700 dark:text-orange-300">Crawling…</span>
+                      </li>
+                    );
+                  }
+                  if (progress.status === "done") {
+                    return (
+                      <li
+                        key={platform}
+                        className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.08] px-3 py-2 text-sm"
+                      >
+                        <span className="font-semibold text-slate-900 dark:text-white">{label}</span>
+                        <span className="text-xs text-emerald-700 dark:text-emerald-300">
+                          Done{typeof progress.jobCount === "number" ? ` · ${progress.jobCount}` : ""}
+                        </span>
+                      </li>
+                    );
+                  }
+                  if (progress.status === "error") {
+                    return (
+                      <li
+                        key={platform}
+                        className="flex items-center gap-2 rounded-xl border border-rose-500/20 bg-rose-500/[0.08] px-3 py-2 text-sm"
+                      >
+                        <span className="font-semibold text-slate-900 dark:text-white">{label}</span>
+                        <span className="text-xs text-rose-700 dark:text-rose-300">Failed</span>
+                      </li>
+                    );
+                  }
+                  return (
+                    <li
+                      key={platform}
+                      className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white/70 px-3 py-2 text-sm dark:border-white/10 dark:bg-warm-950/40"
+                    >
+                      <span className="font-semibold text-slate-900 dark:text-white">{label}</span>
+                      <span className="text-xs text-slate-500 dark:text-slate-400">Waiting…</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           ) : null}
         </div>
       </div>
