@@ -59,6 +59,9 @@ const filterInputClass = `${ui.input} py-3.5 text-base placeholder:text-slate-40
 
 const DEFAULT_JOB_TITLE_FILTER = "Engine OR Dev OR Scientist OR Specialist OR Architect";
 
+/** Companies shown per results page (pagination is by company, not by job row). */
+const COMPANIES_PER_PAGE = 25;
+
 type PlatformCrawlStatus = "pending" | "crawling" | "done" | "error";
 
 type PlatformCrawlProgress = {
@@ -373,30 +376,139 @@ function JobTitleCell({ title, postedAt }: { title: string; postedAt?: string })
   );
 }
 
+function CompanyPagination({
+  page,
+  totalPages,
+  totalCompanies,
+  onPageChange,
+}: {
+  page: number;
+  totalPages: number;
+  totalCompanies: number;
+  onPageChange: (page: number) => void;
+}) {
+  if (totalCompanies === 0) return null;
+
+  const from = (page - 1) * COMPANIES_PER_PAGE + 1;
+  const to = Math.min(page * COMPANIES_PER_PAGE, totalCompanies);
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-white/[0.08] dark:bg-white/[0.02]">
+      <p className="text-sm text-slate-600 dark:text-slate-300">
+        Companies <span className="font-semibold tabular-nums">{from}</span>–
+        <span className="font-semibold tabular-nums">{to}</span> of{" "}
+        <span className="font-semibold tabular-nums">{totalCompanies}</span>
+        <span className="text-slate-400 dark:text-slate-500"> · {COMPANIES_PER_PAGE}/page</span>
+      </p>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onPageChange(page - 1)}
+          disabled={page <= 1}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-orange-400/40 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/[0.10] dark:bg-white/[0.03] dark:text-slate-200"
+        >
+          Prev
+        </button>
+        <span className="min-w-[5.5rem] text-center text-sm font-semibold tabular-nums text-slate-700 dark:text-slate-200">
+          {page} / {totalPages}
+        </span>
+        <button
+          type="button"
+          onClick={() => onPageChange(page + 1)}
+          disabled={page >= totalPages}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-orange-400/40 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/[0.10] dark:bg-white/[0.03] dark:text-slate-200"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function FixedSheetControls({
+  sheetCountry,
+  onCountryChange,
+  onAddToSheet,
+  addingToSheet,
+  selectedCount,
+}: {
+  sheetCountry: JobSheetCountry;
+  onCountryChange: (value: JobSheetCountry) => void;
+  onAddToSheet: () => void;
+  addingToSheet: boolean;
+  selectedCount: number;
+}) {
+  return (
+    <div className="fixed right-3 bottom-3 z-40 w-[min(100vw-1.5rem,15.5rem)] rounded-2xl border border-slate-200/90 bg-white/95 p-3 shadow-xl shadow-slate-300/40 backdrop-blur-md dark:border-white/[0.12] dark:bg-warm-900/95 dark:shadow-black/50 sm:right-5 sm:bottom-auto sm:top-1/2 sm:-translate-y-1/2">
+      <div className="space-y-3">
+        <div>
+          <label
+            htmlFor="jobSheetCountry"
+            className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500"
+          >
+            Sheet country
+          </label>
+          <select
+            id="jobSheetCountry"
+            value={sheetCountry}
+            onChange={(e) => onCountryChange(e.target.value as JobSheetCountry)}
+            className={`${ui.input} py-2.5 text-sm`}
+          >
+            {JOB_SHEET_COUNTRIES.map((country) => (
+              <option key={country} value={country}>
+                {country}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button
+          type="button"
+          onClick={onAddToSheet}
+          disabled={addingToSheet || selectedCount === 0}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {addingToSheet ? (
+            <>
+              <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
+              </svg>
+              Adding…
+            </>
+          ) : (
+            <>Add Sheet{selectedCount > 0 ? ` (${selectedCount})` : ""}</>
+          )}
+        </button>
+        <p className="text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+          Check jobs, pick the sheet tab country, then add rows.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function MergedJobTable({
-  rows,
+  groups,
+  companyNumberStart,
   checkedKeys,
-  badgeByCompany,
   onToggleRow,
   onToggleAll,
   allChecked,
   emptyMessage,
 }: {
-  rows: DisplayJobRow[];
+  groups: CompanyJobGroup[];
+  /** 1-based company number for the first group on this page. */
+  companyNumberStart: number;
   checkedKeys: Set<string>;
-  badgeByCompany: Map<string, CrawlJobResumeBadge>;
   onToggleRow: (key: string) => void;
   onToggleAll: () => void;
   allChecked: boolean;
   emptyMessage?: string;
 }) {
-  const getBadge = (companyName: string | undefined | null): CrawlJobResumeBadge =>
-    badgeByCompany.get(companyBadgeKey(companyName)) ?? "good";
-
-  const companyGroups = useMemo(
-    () => buildCompanyGroups(rows, getBadge),
-    [rows, badgeByCompany]
-  );
   const [flashKeys, setFlashKeys] = useState<Set<string>>(() => new Set());
   const flashTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -439,7 +551,7 @@ function MergedJobTable({
     handleToggleRow(key);
   }
 
-  if (rows.length === 0) {
+  if (groups.length === 0) {
     return (
       <p className="rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
         {emptyMessage ?? "Crawl finished but no jobs were returned."}
@@ -456,9 +568,10 @@ function MergedJobTable({
               <JobSelectCheckbox
                 checked={allChecked}
                 onChange={onToggleAll}
-                ariaLabel="Select all jobs"
+                ariaLabel="Select all jobs on this page"
               />
             </th>
+            <th className="px-2 py-3 font-semibold text-center w-12 whitespace-nowrap">#</th>
             <th className="px-4 py-3 font-semibold whitespace-nowrap">Company name</th>
             <th className="px-4 py-3 font-semibold min-w-[12rem]">Job title</th>
             <th className="px-4 py-3 font-semibold min-w-[10rem]">Job URL</th>
@@ -466,8 +579,9 @@ function MergedJobTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-white/[0.06]">
-          {companyGroups.map((group) =>
-            group.rows.map((row, rowIndex) => {
+          {groups.map((group, groupIndex) => {
+            const companyNumber = companyNumberStart + groupIndex;
+            return group.rows.map((row, rowIndex) => {
               const key = jobRowKey(row.job, row.originalIndex);
               const checked = checkedKeys.has(key);
               const flashing = flashKeys.has(key);
@@ -486,6 +600,14 @@ function MergedJobTable({
                       ariaLabel={`Select ${row.job.jobTitle || "job"}`}
                     />
                   </td>
+                  {rowIndex === 0 ? (
+                    <td
+                      rowSpan={group.rows.length}
+                      className="px-2 py-3 align-middle text-center tabular-nums text-sm font-semibold text-slate-500 dark:text-slate-400 border-r border-slate-100 dark:border-white/[0.06]"
+                    >
+                      {companyNumber}
+                    </td>
+                  ) : null}
                   {rowIndex === 0 ? (
                     <td
                       rowSpan={group.rows.length}
@@ -528,8 +650,8 @@ function MergedJobTable({
                   </td>
                 </tr>
               );
-            })
-          )}
+            });
+          })}
         </tbody>
       </table>
     </div>
@@ -560,6 +682,7 @@ export default function BuiltInCrawlPanel() {
   const [jobList, setJobList] = useState<DiscoveredJobRow[]>([]);
   const [checkedJobKeys, setCheckedJobKeys] = useState<Set<string>>(() => new Set());
   const [jobTitleFilter, setJobTitleFilter] = useState(DEFAULT_JOB_TITLE_FILTER);
+  const [companyPage, setCompanyPage] = useState(1);
   const [platformErrors, setPlatformErrors] = useState<Partial<Record<JobCrawlPlatform, string>>>({});
   const [crawling, setCrawling] = useState(false);
   const [crawlProgress, setCrawlProgress] = useState<
@@ -617,6 +740,7 @@ export default function BuiltInCrawlPanel() {
         setResultPostedWithin(null);
       }
       setCheckedJobKeys(new Set());
+      setCompanyPage(1);
       setPlatformErrors({});
       setCrawlProgress({});
       setSheetFeedback(null);
@@ -676,6 +800,32 @@ export default function BuiltInCrawlPanel() {
     [jobList, jobTitleFilter]
   );
   const hasTitleFilter = jobTitleFilter.trim().length > 0;
+
+  const companyGroups = useMemo(() => {
+    const getBadge = (companyName: string | undefined | null): CrawlJobResumeBadge =>
+      badgeByCompany.get(companyBadgeKey(companyName)) ?? "good";
+    return buildCompanyGroups(filteredJobRows, getBadge);
+  }, [filteredJobRows, badgeByCompany]);
+
+  const totalCompanyPages = Math.max(1, Math.ceil(companyGroups.length / COMPANIES_PER_PAGE));
+  const safeCompanyPage = Math.min(companyPage, totalCompanyPages);
+  const pageCompanyGroups = useMemo(() => {
+    const start = (safeCompanyPage - 1) * COMPANIES_PER_PAGE;
+    return companyGroups.slice(start, start + COMPANIES_PER_PAGE);
+  }, [companyGroups, safeCompanyPage]);
+  const pageJobRows = useMemo(
+    () => pageCompanyGroups.flatMap((group) => group.rows),
+    [pageCompanyGroups]
+  );
+
+  useEffect(() => {
+    setCompanyPage(1);
+  }, [jobTitleFilter, jobList]);
+
+  useEffect(() => {
+    if (companyPage > totalCompanyPages) setCompanyPage(totalCompanyPages);
+  }, [companyPage, totalCompanyPages]);
+
   /** Unique company badge counts for the visible (title-filtered) rows. */
   const visibleBadgeCounts = useMemo(
     () =>
@@ -686,12 +836,12 @@ export default function BuiltInCrawlPanel() {
     [filteredJobRows, badgeByCompany]
   );
 
-  const allJobsChecked = useMemo(() => {
-    if (filteredJobRows.length === 0) return false;
-    return filteredJobRows.every(({ job, originalIndex }) =>
+  const allPageJobsChecked = useMemo(() => {
+    if (pageJobRows.length === 0) return false;
+    return pageJobRows.every(({ job, originalIndex }) =>
       checkedJobKeys.has(jobRowKey(job, originalIndex))
     );
-  }, [filteredJobRows, checkedJobKeys]);
+  }, [pageJobRows, checkedJobKeys]);
 
   function selectAllPlatforms() {
     setSelectedPlatforms([...ALL_JOB_CRAWL_PLATFORMS]);
@@ -724,11 +874,11 @@ export default function BuiltInCrawlPanel() {
     });
   }
 
-  function toggleAllJobs() {
-    if (allJobsChecked) {
+  function toggleAllJobsOnPage() {
+    if (allPageJobsChecked) {
       setCheckedJobKeys((current) => {
         const next = new Set(current);
-        for (const { job, originalIndex } of filteredJobRows) {
+        for (const { job, originalIndex } of pageJobRows) {
           next.delete(jobRowKey(job, originalIndex));
         }
         return next;
@@ -737,7 +887,7 @@ export default function BuiltInCrawlPanel() {
     }
     setCheckedJobKeys((current) => {
       const next = new Set(current);
-      for (const { job, originalIndex } of filteredJobRows) {
+      for (const { job, originalIndex } of pageJobRows) {
         next.add(jobRowKey(job, originalIndex));
       }
       return next;
@@ -1151,147 +1301,131 @@ export default function BuiltInCrawlPanel() {
       ) : null}
 
       {hydrated && jobList.length > 0 ? (
-        <div className="mt-8 space-y-3">
-          <div className="flex flex-wrap items-center gap-3 text-base">
-            <span className="inline-flex items-center rounded-full bg-orange-500/10 px-3.5 py-1.5 font-semibold text-orange-800 dark:text-orange-300">
-              {hasTitleFilter
-                ? `${filteredJobRows.length} of ${jobList.length} job${jobList.length === 1 ? "" : "s"}`
-                : `${jobList.length} job${jobList.length === 1 ? "" : "s"}`}
-            </span>
-            {resultPostedWithin ? (
+        <>
+          <FixedSheetControls
+            sheetCountry={sheetCountry}
+            onCountryChange={handleSheetCountryChange}
+            onAddToSheet={() => void handleAddToSheet()}
+            addingToSheet={addingToSheet}
+            selectedCount={checkedJobKeys.size}
+          />
+
+          <div className="mt-8 space-y-3 pr-0 sm:pr-[16.5rem]">
+            <div className="flex flex-wrap items-center gap-3 text-base">
+              <span className="inline-flex items-center rounded-full bg-orange-500/10 px-3.5 py-1.5 font-semibold text-orange-800 dark:text-orange-300">
+                {hasTitleFilter
+                  ? `${filteredJobRows.length} of ${jobList.length} job${jobList.length === 1 ? "" : "s"}`
+                  : `${jobList.length} job${jobList.length === 1 ? "" : "s"}`}
+              </span>
               <span
                 className="inline-flex items-center rounded-full bg-slate-500/10 px-3.5 py-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200"
-                title={`postedWithin=${resultPostedWithin}`}
+                title="Unique companies in the filtered results"
               >
-                Mode: {postedWithinLabel(resultPostedWithin)}
+                {companyGroups.length} compan{companyGroups.length === 1 ? "y" : "ies"}
               </span>
-            ) : null}
-            <span
-              className="inline-flex items-center rounded-full bg-emerald-500/15 px-3 py-1.5 text-sm font-semibold text-emerald-800 dark:text-emerald-300"
-              title="No resume archive for this company"
-            >
-              {visibleBadgeCounts.good} good
-            </span>
-            <span
-              className="inline-flex items-center rounded-full bg-amber-500/15 px-3 py-1.5 text-sm font-semibold text-amber-800 dark:text-amber-300"
-              title="Last resume archive for this company was 10+ days ago"
-            >
-              {visibleBadgeCounts.possible} possible
-            </span>
-            <span
-              className="inline-flex items-center rounded-full bg-rose-500/15 px-3 py-1.5 text-sm font-semibold text-rose-800 dark:text-rose-300"
-              title="Last resume archive for this company was within the last 10 days"
-            >
-              {visibleBadgeCounts.bad} bad
-            </span>
-            {crawlDiff ? (
+              {resultPostedWithin ? (
+                <span
+                  className="inline-flex items-center rounded-full bg-slate-500/10 px-3.5 py-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200"
+                  title={`postedWithin=${resultPostedWithin}`}
+                >
+                  Mode: {postedWithinLabel(resultPostedWithin)}
+                </span>
+              ) : null}
               <span
-                className="inline-flex items-center rounded-full bg-slate-500/10 px-3 py-1.5 text-sm font-semibold text-slate-600 dark:text-slate-300"
-                title="Jobs from the previous crawl that are gone now"
+                className="inline-flex items-center rounded-full bg-emerald-500/15 px-3 py-1.5 text-sm font-semibold text-emerald-800 dark:text-emerald-300"
+                title="No resume archive for this company"
               >
-                −{crawlDiff.removed} gone
+                {visibleBadgeCounts.good} good
               </span>
-            ) : null}
-            {checkedJobKeys.size > 0 ? (
-              <span className="text-slate-500 dark:text-slate-400">
-                {checkedJobKeys.size} selected
-              </span>
-            ) : null}
-          </div>
-
-          <div className="min-w-0">
-            <label htmlFor="jobTitleFilter" className="mb-1.5 block text-sm font-medium text-slate-600 dark:text-slate-300">
-              Job title filter
-            </label>
-            <input
-              id="jobTitleFilter"
-              type="text"
-              value={jobTitleFilter}
-              onChange={(e) => setJobTitleFilter(e.target.value)}
-              placeholder={DEFAULT_JOB_TITLE_FILTER}
-              className={filterInputClass}
-              spellCheck={false}
-              autoComplete="off"
-            />
-            <p className="mt-1.5 text-sm text-slate-400 dark:text-slate-500">
-              Use <span className="font-semibold text-slate-500 dark:text-slate-400">OR</span> to match any term, or{" "}
-              <span className="font-semibold text-slate-500 dark:text-slate-400">AND</span> to require every term.
-              Sorted by company badge (good → possible → bad), then company name.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-white/[0.08] dark:bg-white/[0.02] sm:flex-row sm:flex-wrap sm:items-end">
-            <div className="min-w-[12rem]">
-              <label
-                htmlFor="jobSheetCountry"
-                className="mb-1.5 block text-sm font-medium text-slate-600 dark:text-slate-300"
+              <span
+                className="inline-flex items-center rounded-full bg-amber-500/15 px-3 py-1.5 text-sm font-semibold text-amber-800 dark:text-amber-300"
+                title="Last resume archive for this company was 10+ days ago"
               >
-                Sheet country
+                {visibleBadgeCounts.possible} possible
+              </span>
+              <span
+                className="inline-flex items-center rounded-full bg-rose-500/15 px-3 py-1.5 text-sm font-semibold text-rose-800 dark:text-rose-300"
+                title="Last resume archive for this company was within the last 10 days"
+              >
+                {visibleBadgeCounts.bad} bad
+              </span>
+              {crawlDiff ? (
+                <span
+                  className="inline-flex items-center rounded-full bg-slate-500/10 px-3 py-1.5 text-sm font-semibold text-slate-600 dark:text-slate-300"
+                  title="Jobs from the previous crawl that are gone now"
+                >
+                  −{crawlDiff.removed} gone
+                </span>
+              ) : null}
+              {checkedJobKeys.size > 0 ? (
+                <span className="text-slate-500 dark:text-slate-400">
+                  {checkedJobKeys.size} selected
+                </span>
+              ) : null}
+            </div>
+
+            <div className="min-w-0">
+              <label htmlFor="jobTitleFilter" className="mb-1.5 block text-sm font-medium text-slate-600 dark:text-slate-300">
+                Job title filter
               </label>
-              <select
-                id="jobSheetCountry"
-                value={sheetCountry}
-                onChange={(e) => handleSheetCountryChange(e.target.value as JobSheetCountry)}
-                className={`${ui.input} py-2.5 text-sm`}
+              <input
+                id="jobTitleFilter"
+                type="text"
+                value={jobTitleFilter}
+                onChange={(e) => setJobTitleFilter(e.target.value)}
+                placeholder={DEFAULT_JOB_TITLE_FILTER}
+                className={filterInputClass}
+                spellCheck={false}
+                autoComplete="off"
+              />
+              <p className="mt-1.5 text-sm text-slate-400 dark:text-slate-500">
+                Use <span className="font-semibold text-slate-500 dark:text-slate-400">OR</span> to match any term, or{" "}
+                <span className="font-semibold text-slate-500 dark:text-slate-400">AND</span> to require every term.
+                Sorted by company badge (good → possible → bad), then company name. {COMPANIES_PER_PAGE} companies per page.
+              </p>
+            </div>
+
+            {sheetFeedback ? (
+              <div
+                className={`rounded-xl border px-4 py-3 text-sm ${
+                  sheetFeedback.tone === "ok"
+                    ? "border-emerald-500/25 bg-emerald-500/[0.08] text-emerald-800 dark:text-emerald-200"
+                    : "border-red-500/25 bg-red-500/[0.08] text-red-700 dark:text-red-300"
+                }`}
               >
-                {JOB_SHEET_COUNTRIES.map((country) => (
-                  <option key={country} value={country}>
-                    {country}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <button
-              type="button"
-              onClick={handleAddToSheet}
-              disabled={addingToSheet || checkedJobKeys.size === 0}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {addingToSheet ? (
-                <>
-                  <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                    />
-                  </svg>
-                  Adding…
-                </>
-              ) : (
-                <>Add Sheet{checkedJobKeys.size > 0 ? ` (${checkedJobKeys.size})` : ""}</>
-              )}
-            </button>
-            <p className="text-sm text-slate-500 dark:text-slate-400 sm:pb-2.5">
-              Check jobs, pick the sheet tab country, then add rows automatically.
-            </p>
+                {sheetFeedback.text}
+              </div>
+            ) : null}
+
+            <CompanyPagination
+              page={safeCompanyPage}
+              totalPages={totalCompanyPages}
+              totalCompanies={companyGroups.length}
+              onPageChange={setCompanyPage}
+            />
+
+            <MergedJobTable
+              groups={pageCompanyGroups}
+              companyNumberStart={(safeCompanyPage - 1) * COMPANIES_PER_PAGE + 1}
+              checkedKeys={checkedJobKeys}
+              onToggleRow={toggleJobRow}
+              onToggleAll={toggleAllJobsOnPage}
+              allChecked={allPageJobsChecked}
+              emptyMessage={
+                hasTitleFilter ? "No jobs match this job title filter." : undefined
+              }
+            />
+
+            {companyGroups.length > COMPANIES_PER_PAGE ? (
+              <CompanyPagination
+                page={safeCompanyPage}
+                totalPages={totalCompanyPages}
+                totalCompanies={companyGroups.length}
+                onPageChange={setCompanyPage}
+              />
+            ) : null}
           </div>
-
-          {sheetFeedback ? (
-            <div
-              className={`rounded-xl border px-4 py-3 text-sm ${
-                sheetFeedback.tone === "ok"
-                  ? "border-emerald-500/25 bg-emerald-500/[0.08] text-emerald-800 dark:text-emerald-200"
-                  : "border-red-500/25 bg-red-500/[0.08] text-red-700 dark:text-red-300"
-              }`}
-            >
-              {sheetFeedback.text}
-            </div>
-          ) : null}
-
-          <MergedJobTable
-            rows={filteredJobRows}
-            checkedKeys={checkedJobKeys}
-            badgeByCompany={badgeByCompany}
-            onToggleRow={toggleJobRow}
-            onToggleAll={toggleAllJobs}
-            allChecked={allJobsChecked}
-            emptyMessage={
-              hasTitleFilter ? "No jobs match this job title filter." : undefined
-            }
-          />
-        </div>
+        </>
       ) : null}
     </div>
   );
