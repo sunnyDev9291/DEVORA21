@@ -28,6 +28,20 @@ export function invalidateSavedResumesCache(): void {
   memoryCache = null;
 }
 
+/** Patch one cached archive in place (no full-list reload). */
+export function patchCachedSavedResume(
+  id: string,
+  patch: Partial<SavedResumeArchive>
+): void {
+  if (!memoryCache || !id) return;
+  memoryCache = {
+    fetchedAt: memoryCache.fetchedAt,
+    items: memoryCache.items.map((item) =>
+      item.id === id ? { ...item, ...patch } : item
+    ),
+  };
+}
+
 function isFresh(entry: CacheEntry): boolean {
   return Date.now() - entry.fetchedAt < CACHE_TTL_MS;
 }

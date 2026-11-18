@@ -4,12 +4,30 @@ export type InterviewHistoryEntry = {
   downloadedAt: string;
 };
 
+/** Exact API strings for resume archive application status. */
+export const SAVED_RESUME_STATUSES = [
+  "draft",
+  "saved",
+  "applied",
+  "round1",
+  "round2",
+] as const;
+
+export type SavedResumeStatus = (typeof SAVED_RESUME_STATUSES)[number];
+
+export const DEFAULT_SAVED_RESUME_STATUS: SavedResumeStatus = "saved";
+
 export type SavedResumeArchive = {
   id: string;
   /** ISO 8601 UTC — when the application / bid was saved */
   bidAt: string;
   jobTitle: string;
   companyName: string;
+  /**
+   * Application pipeline status. Exact API strings only.
+   * Separate from interviewHistory — changing status does not record a round.
+   */
+  status: SavedResumeStatus;
   /**
    * Job posting URL from the archive. http(s) URL, or exact "not tracked"
    * when none was ever stored. Present on both lean and full list payloads.
@@ -32,6 +50,12 @@ export type SavedResumeArchive = {
   interviewHistory?: InterviewHistoryEntry[];
   /** Next round number to offer (1 when history empty). */
   nextInterviewRound?: number;
+};
+
+export type PatchSavedResumeStatusResponse = {
+  success: true;
+  id: string;
+  status: SavedResumeStatus;
 };
 
 export type SavedResumeListResponse = {

@@ -7,6 +7,7 @@ import JobUrlDisplay from "@/components/ui/JobUrlDisplay";
 import {
   fetchSavedResumeJobDescription,
   listSavedResumes,
+  savedResumeStatusLabel,
 } from "@/lib/saved-resumes-api";
 import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
 import { formatEstDateTime } from "@/lib/format-est-datetime";
@@ -183,6 +184,8 @@ export default function CompanyPastApplications({
                       ) : null}
                     </p>
                     <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                      {savedResumeStatusLabel(item.status)}
+                      {" · "}
                       {normalizeStoredPlatform(item.platform)}
                     </p>
                     <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
