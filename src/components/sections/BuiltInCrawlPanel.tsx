@@ -47,7 +47,6 @@ import {
   type CrawlJobResumeBadge,
 } from "@/lib/job-crawl-resume-badge";
 import { loadStoredJobCrawl, saveStoredJobCrawl } from "@/lib/job-crawl-storage";
-import { savedResumeStatusLabel } from "@/lib/saved-resumes-api";
 import { listSavedResumesCached } from "@/lib/saved-resumes-cache";
 import type { SavedResumeArchive } from "@/lib/saved-resumes-types";
 import {
@@ -488,14 +487,9 @@ function CompanySavedArchivesDialog({
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold text-slate-900 dark:text-white">
-                          {archive.jobTitle || "—"}
-                        </p>
-                        <span className="inline-flex items-center rounded-md bg-slate-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 dark:bg-white/[0.08] dark:text-slate-300">
-                          {savedResumeStatusLabel(archive.status)}
-                        </span>
-                      </div>
+                      <p className="font-semibold text-slate-900 dark:text-white">
+                        {archive.jobTitle || "—"}
+                      </p>
                       <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
                         {archive.companyName || companyLabel}
                         {archive.platform ? ` · ${archive.platform}` : ""}

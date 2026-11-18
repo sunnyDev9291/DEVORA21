@@ -8,15 +8,9 @@ import type {
   InterviewRoundRecordResponse,
   OtherInterviewProgressItem,
   OtherInterviewProgressResponse,
-  PatchSavedResumeStatusResponse,
   SavedResumeArchive,
   SavedResumeJobDescriptionResponse,
   SavedResumeListResponse,
-  SavedResumeStatus,
-} from "@/lib/saved-resumes-types";
-import {
-  DEFAULT_SAVED_RESUME_STATUS,
-  SAVED_RESUME_STATUSES,
 } from "@/lib/saved-resumes-types";
 
 export type SavedResumeSearchFilters = {
@@ -82,31 +76,6 @@ function pickString(row: Record<string, unknown>, ...keys: string[]): string {
     if (typeof value === "string" && value.trim()) return value.trim();
   }
   return "";
-}
-
-export function isSavedResumeStatus(value: unknown): value is SavedResumeStatus {
-  return (
-    typeof value === "string" &&
-    (SAVED_RESUME_STATUSES as readonly string[]).includes(value)
-  );
-}
-
-/** Normalize API status; missing/unknown → "saved" (existing records default). */
-export function normalizeSavedResumeStatus(value: unknown): SavedResumeStatus {
-  if (isSavedResumeStatus(value)) return value;
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (isSavedResumeStatus(trimmed)) return trimmed;
-  }
-  return DEFAULT_SAVED_RESUME_STATUS;
-}
-
-export function savedResumeStatusLabel(status: SavedResumeStatus): string {
-  if (status === "draft") return "Draft";
-  if (status === "saved") return "Saved";
-  if (status === "applied") return "Applied";
-  if (status === "round1") return "Round 1";
-  return "Round 2";
 }
 
 function toBool(value: unknown): boolean | undefined {
@@ -200,7 +169,6 @@ export function normalizeSavedResumeListItem(raw: unknown): SavedResumeArchive |
     bidAt: pickString(row, "bidAt", "bid_at", "createdAt", "created_at") || new Date(0).toISOString(),
     jobTitle: pickString(row, "jobTitle", "job_title", "title"),
     companyName: pickString(row, "companyName", "company_name", "company"),
-    status: normalizeSavedResumeStatus(row.status),
     jobUrl: pickStoredJobUrl(row),
     platform: pickStoredPlatform(row),
     hasJobDescription,
@@ -209,60 +177,6 @@ export function normalizeSavedResumeListItem(raw: unknown): SavedResumeArchive |
     pdfFileName: pickString(row, "pdfFileName", "pdf_file_name") || undefined,
     interviewHistory,
     nextInterviewRound,
-  };
-}
-
-/**
- * PATCH /resume/archives/:id/status
- * Body: { status: "draft" | "saved" | "applied" | "round1" | "round2" }
- * Does not touch interviewHistory.
- */
-export async function patchSavedResumeStatus(
-  id: string,
-  status: SavedResumeStatus
-): Promise<PatchSavedResumeStatusResponse> {
-  const archiveId = id.trim();
-  if (!archiveId) throw new Error("Archive id is required.");
-  if (!isSavedResumeStatus(status)) {
-    throw new Error("Invalid status. Use draft, saved, applied, round1, or round2.");
-  }
-
-  const res = await apiAuthFetch(
-    `${API_BASE_URL}/resume/archives/${encodeURIComponent(archiveId)}/status`,
-    {
-      method: "PATCH",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ status }),
-    }
-  );
-
-  const data = (await res.json().catch(() => ({}))) as Record<string, unknown> & {
-    error?: string;
-    message?: string;
-  };
-
-  if (res.status === 404) {
-    throw archivesAuthError(404, data.error || data.message || "Archive not found or not yours.");
-  }
-  if (res.status === 400) {
-    throw new Error(
-      data.error || data.message || "Invalid status. Use draft, saved, applied, round1, or round2."
-    );
-  }
-  if (!res.ok) {
-    throw archivesAuthError(
-      res.status,
-      data.error || data.message || `Could not update status (${res.status}).`
-    );
-  }
-
-  return {
-    success: true,
-    id: pickString(data, "id", "_id") || archiveId,
-    status: normalizeSavedResumeStatus(data.status ?? status),
   };
 }
 

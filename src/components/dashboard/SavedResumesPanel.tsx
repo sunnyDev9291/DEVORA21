@@ -7,24 +7,19 @@ import {
   fetchSavedResumeFile,
   fetchSavedResumeJobDescription,
   listSavedResumes,
-  patchSavedResumeStatus,
   resolveArchiveFileName,
-  savedResumeStatusLabel,
   type SavedResumeSearchFilters,
 } from "@/lib/saved-resumes-api";
 import {
   filterSavedResumes,
   invalidateSavedResumesCache,
   listSavedResumesCached,
-  patchCachedSavedResume,
   peekCachedSavedResumes,
 } from "@/lib/saved-resumes-cache";
 import type {
   InterviewRoundRecordResponse,
   SavedResumeArchive,
-  SavedResumeStatus,
 } from "@/lib/saved-resumes-types";
-import { SAVED_RESUME_STATUSES } from "@/lib/saved-resumes-types";
 import { TODAYS_RESUME_COUNT_CHANGED_EVENT } from "@/lib/todays-resume-count";
 import { brand, ui } from "@/lib/ui-styles";
 import CopyIconButton from "@/components/ui/CopyIconButton";
@@ -448,20 +443,16 @@ function ApplicationRows({
   items,
   styles,
   downloadingId,
-  statusUpdatingId,
   onPreview,
   onDownload,
   onJobDescription,
-  onStatusChange,
 }: {
   items: SavedResumeArchive[];
   styles: PanelStyles;
   downloadingId: string | null;
-  statusUpdatingId: string | null;
   onPreview: (item: SavedResumeArchive) => void;
   onDownload: (item: SavedResumeArchive) => void;
   onJobDescription: (item: SavedResumeArchive) => void;
-  onStatusChange: (item: SavedResumeArchive, status: SavedResumeStatus) => void;
 }) {
   return (
     <div className={styles.groupPanel}>
@@ -472,7 +463,6 @@ function ApplicationRows({
               <th className="px-4 py-3 font-medium">Bid time</th>
               <th className="px-4 py-3 font-medium">Company</th>
               <th className="px-4 py-3 font-medium">Job title</th>
-              <th className="px-4 py-3 font-medium">Status</th>
               <th className="px-4 py-3 font-medium">Platform</th>
               <th className="px-4 py-3 font-medium">Job URL</th>
               <th className="px-4 py-3 font-medium">Job description</th>
@@ -488,30 +478,12 @@ function ApplicationRows({
               const previewSnippet = item.jobDescription?.trim()
                 ? truncate(item.jobDescription)
                 : "View description";
-              const statusBusy = statusUpdatingId === item.id;
 
               return (
                 <tr key={item.id} className={`group ${styles.rowHover}`}>
                   <td className={styles.bidTime}>{timeLabel}</td>
                   <td className={styles.company}>{item.companyName}</td>
                   <td className={styles.jobTitle}>{item.jobTitle}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <select
-                      value={item.status}
-                      disabled={statusBusy}
-                      aria-label={`Status for ${item.jobTitle || "resume"}`}
-                      onChange={(event) =>
-                        onStatusChange(item, event.target.value as SavedResumeStatus)
-                      }
-                      className={`${ui.input} min-w-[7.5rem] py-1.5 text-sm disabled:cursor-wait disabled:opacity-60`}
-                    >
-                      {SAVED_RESUME_STATUSES.map((status) => (
-                        <option key={status} value={status}>
-                          {savedResumeStatusLabel(status)}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
                   <td className={`${styles.company} whitespace-nowrap`}>
                     {normalizeStoredPlatform(item.platform)}
                   </td>
@@ -594,7 +566,6 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
-  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
 
   const [jobDescOpen, setJobDescOpen] = useState(false);
   const [jobDescItem, setJobDescItem] = useState<SavedResumeArchive | null>(null);
@@ -843,31 +814,6 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
     invalidateSavedResumesCache();
   }
 
-  async function handleStatusChange(item: SavedResumeArchive, status: SavedResumeStatus) {
-    if (item.status === status || statusUpdatingId === item.id) return;
-
-    setStatusUpdatingId(item.id);
-    setError("");
-    try {
-      const result = await patchSavedResumeStatus(item.id, status);
-      setItems((current) =>
-        current.map((row) =>
-          row.id === result.id ? { ...row, status: result.status } : row
-        )
-      );
-      setDownloadTarget((current) =>
-        current && current.id === result.id
-          ? { ...current, status: result.status }
-          : current
-      );
-      patchCachedSavedResume(result.id, { status: result.status });
-    } catch (err) {
-      setError((err as Error).message || "Could not update status.");
-    } finally {
-      setStatusUpdatingId(null);
-    }
-  }
-
   function openDownloadChooser(
     item: SavedResumeArchive,
     defaults: { pdf: boolean; docx: boolean } = { pdf: true, docx: false }
@@ -1107,13 +1053,9 @@ export default function SavedResumesPanel({ variant = "dashboard" }: SavedResume
                             items={day.items}
                             styles={styles}
                             downloadingId={downloadTarget?.id ?? null}
-                            statusUpdatingId={statusUpdatingId}
                             onPreview={(item) => void openPreview(item)}
                             onDownload={(item) => openDownloadChooser(item)}
                             onJobDescription={openJobDescription}
-                            onStatusChange={(item, status) => {
-                              void handleStatusChange(item, status);
-                            }}
                           />
                         </div>
                       )}
